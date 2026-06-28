@@ -1,0 +1,47 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest run src",
+    "test:e2e": "playwright test",
+    "test:e2e:dashboard": "playwright test tests/e2e/dashboard-mobile.spec.ts",
+    "test:e2e:qa-gate": "playwright test tests/e2e/dashboard-qa-gate.spec.ts",
+    "verify:dashboard-dod": "node scripts/verify-dashboard-dod.mjs",
+    "perf:lighthouse": "node scripts/lighthouse-dashboard.mjs",
+    "perf:baseline": "node scripts/run-perf-baseline.mjs"
+  },
+  "dependencies": {
+    "@shipready/scanner-core": "1.0.0",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.108.1",
+    "jszip": "^3.10.1",
+    "lucide-react": "^1.21.0",
+    "next": "16.2.9",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "stripe": "^22.2.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
+    "@playwright/test": "^1.61.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/jszip": "^3.4.0",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "chrome-launcher": "^1.2.0",
+    "jsdom": "^25.0.1",
+    "lighthouse": "^12.8.2",
+    "typescript": "^5",
+    "vitest": "^4.1.8"
+  }
+}

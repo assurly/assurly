@@ -1,0 +1,28 @@
+name: 'ShipReady Production-Readiness Scanner'
+description: 'Statically scans Next.js, Supabase, and Stripe projects for security leaks, serverless DB client leaks, and missing configurations.'
+author: 'ShipReady'
+inputs:
+  path:
+    description: 'The root directory of the project to scan'
+    required: false
+    default: '.'
+  cli-path:
+    description: 'Custom path to the CLI tool (e.g. for monorepo development/testing)'
+    required: false
+  github-token:
+    description: 'GitHub token for PR annotations and summaries (falls back to GITHUB_TOKEN)'
+    required: false
+    default: '${{ github.token }}'
+outputs:
+  findings-count:
+    description: 'Total number of findings detected'
+  errors-count:
+    description: 'Total number of critical errors detected'
+  warnings-count:
+    description: 'Total number of warnings detected'
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
+branding:
+  icon: 'shield'
+  color: 'gray'

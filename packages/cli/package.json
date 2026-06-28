@@ -1,0 +1,45 @@
+{
+  "name": "@shipready/cli",
+  "version": "1.0.0",
+  "description": "Core CLI for ShipReady production readiness verification",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "shipready": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
+    "dev": "tsc -w",
+    "test": "vitest run src"
+  },
+  "dependencies": {
+    "@shipready/scanner-core": "1.0.0",
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "ora": "^5.4.1",
+    "ts-morph": "^20.0.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.8"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shipready/shipready.git",
+    "directory": "packages/cli"
+  },
+  "license": "MIT"
+}

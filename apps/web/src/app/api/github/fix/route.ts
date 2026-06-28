@@ -1,0 +1,231 @@
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import {
+  ApiError,
+  assertTrustedRedirect,
+  emptyObjectSchema,
+  RATE_LIMITS,
+  requireRouteUser,
+  secureRoute,
+} from '../../../../utils/apiSecurity';
+import {
+  AuthorizationError,
+  requireFindingAccess,
+  requireScanAccess,
+} from '../../../../utils/authorization';
+import { resolveGitHubAccessToken } from '../../../../utils/auth';
+import {
+  buildGitHubAutoFix,
+  buildGitHubAutoFixBatch,
+  isAutoFixableFinding,
+} from '../../../../utils/githubAutoFix';
+import { executeGitHubFixPullRequest } from '../../../../utils/githubFixPipeline';
+import { GitHubWriteAccessError, isGitHubRepositoryName } from '../../../../utils/githubApp';
+
+const singleFixBody = z
+  .object({
+    repoId: z.string().uuid(),
+    scanId: z.string().uuid(),
+    findingId: z.string().uuid(),
+  })
+  .strict();
+
+const batchFixBody = z
+  .object({
+    repoId: z.string().uuid(),
+    scanId: z.string().uuid(),
+    batch: z.literal(true),
+  })
+  .strict();
+
+const fixBody = z.union([singleFixBody, batchFixBody]);
+
+function githubConfigured(
+  context: ReturnType<typeof requireRouteUser>,
+  request: Request,
+  installationId?: string,
+): Promise<boolean> {
+  if (
+    installationId ||
+    process.env.GITHUB_PAT ||
+    process.env.GITHUB_TOKEN ||
+    context.githubAccessToken
+  ) {
+    return Promise.resolve(true);
+  }
+  return resolveGitHubAccessToken(request).then(Boolean);
+}
+
+async function persistFixPullRequest(
+  context: ReturnType<typeof requireRouteUser>,
+  findingIds: string[],
+  prUrl: string,
+): Promise<void> {
+  const trustedUrl = assertTrustedRedirect(prUrl, ['https://github.com']);
+  await context.db.updateFindingFixPrUrls(
+    findingIds.map((findingId) => ({ findingId, fixPrUrl: trustedUrl })),
+  );
+}
+
+export const POST = secureRoute(
+  {
+    routeId: 'github:fix',
+    auth: 'required',
+    query: emptyObjectSchema,
+    params: emptyObjectSchema,
+    body: fixBody,
+    bodyMode: 'json',
+    maxBodyBytes: 4 * 1024,
+    rateLimit: RATE_LIMITS.expensive,
+    csrf: true,
+  },
+  async ({ auth, body, request }) => {
+    const context = requireRouteUser(auth);
+
+    if ('batch' in body) {
+      const access = await requireScanAccess(context, body.scanId);
+      if (access.repository.id !== body.repoId) {
+        throw new AuthorizationError('Scan not found');
+      }
+      if (!(await githubConfigured(context, request, access.organization.github_installation_id))) {
+        throw new ApiError(503, 'github_not_configured', 'GitHub integration is unavailable.');
+      }
+      if (!isGitHubRepositoryName(access.repository.name)) {
+        throw new ApiError(
+          422,
+          'invalid_repository',
+          'The connected repository name is invalid. Reconnect the repository and try again.',
+        );
+      }
+
+      const scanFindings = await context.db.getScanFindings(body.scanId);
+      const pendingFindings = scanFindings.filter(
+        (finding) => isAutoFixableFinding(finding) && !finding.fix_pr_url,
+      );
+      if (pendingFindings.length === 0) {
+        const alreadyLinked = scanFindings.find((finding) => finding.fix_pr_url);
+        if (alreadyLinked?.fix_pr_url) {
+          return NextResponse.json(
+            {
+              prUrl: assertTrustedRedirect(alreadyLinked.fix_pr_url, ['https://github.com']),
+              findingIds: scanFindings
+                .filter((finding) => finding.fix_pr_url === alreadyLinked.fix_pr_url)
+                .map((finding) => finding.id),
+            },
+            { status: 201 },
+          );
+        }
+        throw new ApiError(400, 'not_fixable', 'No auto-fixable findings remain for this scan.');
+      }
+
+      let batchFix;
+      try {
+        batchFix = buildGitHubAutoFixBatch(pendingFindings);
+      } catch {
+        throw new ApiError(400, 'unsafe_fix_input', 'Findings cannot be fixed safely.');
+      }
+      if (!batchFix) {
+        throw new ApiError(
+          400,
+          'not_fixable',
+          'Remaining findings cannot be combined into a single pull request.',
+        );
+      }
+
+      const githubAccessToken =
+        context.githubAccessToken ?? (await resolveGitHubAccessToken(request));
+      const filePath = pendingFindings[0]?.file_path;
+      if (!filePath) {
+        throw new ApiError(400, 'not_fixable', 'No auto-fixable findings remain for this scan.');
+      }
+
+      let prUrl: string;
+      try {
+        prUrl = await executeGitHubFixPullRequest({
+          repositoryName: access.repository.name,
+          baseBranch: access.scan.branch || 'main',
+          filePath,
+          fix: batchFix,
+          branchSeed: `batch:${body.scanId}`,
+          userGitHubToken: githubAccessToken,
+          installationId: access.organization.github_installation_id,
+          repositoryId: access.repository.github_repo_id,
+        });
+      } catch (error) {
+        if (error instanceof GitHubWriteAccessError) throw error;
+        throw new ApiError(502, 'github_unavailable', 'GitHub is temporarily unavailable.');
+      }
+
+      const findingIds = pendingFindings.map((finding) => finding.id);
+      await persistFixPullRequest(context, findingIds, prUrl);
+      return NextResponse.json(
+        {
+          prUrl: assertTrustedRedirect(prUrl, ['https://github.com']),
+          findingIds,
+        },
+        { status: 201 },
+      );
+    }
+
+    const access = await requireFindingAccess(context, body.findingId);
+    if (access.scan.id !== body.scanId || access.repository.id !== body.repoId) {
+      throw new AuthorizationError('Finding not found');
+    }
+    if (access.finding.fix_pr_url) {
+      return NextResponse.json(
+        {
+          prUrl: assertTrustedRedirect(access.finding.fix_pr_url, ['https://github.com']),
+          findingIds: [access.finding.id],
+        },
+        { status: 201 },
+      );
+    }
+
+    let fix;
+    try {
+      fix = buildGitHubAutoFix(access.finding.file_path, access.finding.message);
+    } catch {
+      throw new ApiError(400, 'unsafe_fix_input', 'Finding cannot be fixed safely.');
+    }
+    if (!fix) throw new ApiError(400, 'not_fixable', 'Finding is not auto-fixable.');
+    if (!(await githubConfigured(context, request, access.organization.github_installation_id))) {
+      throw new ApiError(503, 'github_not_configured', 'GitHub integration is unavailable.');
+    }
+    if (!isGitHubRepositoryName(access.repository.name)) {
+      throw new ApiError(
+        422,
+        'invalid_repository',
+        'The connected repository name is invalid. Reconnect the repository and try again.',
+      );
+    }
+
+    const githubAccessToken =
+      context.githubAccessToken ?? (await resolveGitHubAccessToken(request));
+
+    let prUrl: string;
+    try {
+      prUrl = await executeGitHubFixPullRequest({
+        repositoryName: access.repository.name,
+        baseBranch: access.scan.branch || 'main',
+        filePath: access.finding.file_path,
+        fix,
+        branchSeed: access.finding.id,
+        userGitHubToken: githubAccessToken,
+        installationId: access.organization.github_installation_id,
+        repositoryId: access.repository.github_repo_id,
+      });
+    } catch (error) {
+      if (error instanceof GitHubWriteAccessError) throw error;
+      throw new ApiError(502, 'github_unavailable', 'GitHub is temporarily unavailable.');
+    }
+
+    await persistFixPullRequest(context, [access.finding.id], prUrl);
+    return NextResponse.json(
+      {
+        prUrl: assertTrustedRedirect(prUrl, ['https://github.com']),
+        findingIds: [access.finding.id],
+      },
+      { status: 201 },
+    );
+  },
+);

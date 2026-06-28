@@ -1,0 +1,35 @@
+{
+  "name": "shipready-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Production-Readiness Verifier for AI-generated code",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:scanner": "npm run build -w packages/scanner-core",
+    "dev:cli": "npm run dev -w packages/cli",
+    "build:cli": "npm run build:scanner && npm run build -w packages/cli",
+    "dev:web": "npm run dev -w apps/web",
+    "build:web": "npm run build -w apps/web",
+    "build:action": "npm run build -w packages/github-action",
+    "build:vscode": "npm run build:scanner && npm run vscode:prepublish -w packages/vscode-extension",
+    "pack:release": "npm pack -w packages/scanner-core -w packages/cli --dry-run && npm run package:vsix -w packages/vscode-extension",
+    "test:action": "npm test -w packages/github-action",
+    "test": "npm test --workspaces --if-present",
+    "prepare": "husky"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,css,md}": "prettier --write",
+    "packages/cli/src/**/*.{ts,tsx}": "npx vitest related --run --passWithNoTests --root packages/cli"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.7",
+    "prettier": "^3.8.4"
+  }
+}

@@ -1,0 +1,36 @@
+name: Package release candidates
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run build:cli
+      - run: npm run build:action
+      - run: npm run build:vscode
+      - run: npm pack -w packages/scanner-core -w packages/cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shipready-release-candidates
+          path: |
+            shipready-*.tgz
+            packages/vscode-extension/*.vsix
+            packages/github-action/action.yml
+            packages/github-action/dist/index.js
+          if-no-files-found: error
+
+# Publishing intentionally remains a separate, authorized operation:
+# npm publish --provenance for scanner-core and CLI, a signed GitHub release/tag
+# for the Action Marketplace, and vsce publish with a VS Marketplace token.

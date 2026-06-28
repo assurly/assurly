@@ -1,0 +1,30 @@
+{
+  "name": "@shipready/github-action",
+  "version": "1.0.0",
+  "description": "GitHub Action to scan projects for B2B SaaS and Indie Hackers production-readiness",
+  "main": "dist/index.js",
+  "files": [
+    "action.yml",
+    "dist/index.js",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js",
+    "test": "vitest run src"
+  },
+  "dependencies": {
+    "@actions/exec": "^1.1.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1",
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.8"
+  },
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shipready/shipready.git",
+    "directory": "packages/github-action"
+  },
+  "license": "MIT"
+}

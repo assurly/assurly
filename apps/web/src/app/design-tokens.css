@@ -1,0 +1,78 @@
+:root {
+  color-scheme: dark;
+
+  /* Semantic color system */
+  --color-canvas: hsl(240 10% 4%);
+  --color-canvas-deep: hsl(240 10% 2%);
+  --color-surface: hsl(240 10% 8%);
+  --color-surface-raised: hsl(240 10% 12%);
+  --color-surface-subtle: hsl(240 9% 6%);
+  --color-border: hsl(240 6% 16%);
+  --color-border-strong: hsl(240 8% 24%);
+  --color-text: hsl(0 0% 98%);
+  --color-text-secondary: hsl(240 5% 68%);
+  --color-text-muted: hsl(240 5% 58%);
+  --color-accent: hsl(160 84% 48%);
+  --color-accent-hover: hsl(160 84% 58%);
+  --color-accent-soft: hsl(160 84% 48% / 0.15);
+  --color-success: hsl(142 72% 45%);
+  --color-warning: hsl(38 92% 50%);
+  --color-danger: hsl(0 84% 60%);
+  --color-danger-text: hsl(0 100% 78%);
+  --color-info: hsl(199 89% 60%);
+  --color-focus: var(--color-accent);
+
+  /* Spacing and sizing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --touch-target: 44px;
+  --content-width: 1200px;
+  --reading-width: 760px;
+
+  /* Shape, elevation, and motion */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+  --shadow-card: 0 10px 30px hsl(0 0% 0% / 0.35);
+  --shadow-menu: 0 18px 48px hsl(0 0% 0% / 0.5);
+  --focus-ring: 0 0 0 3px var(--color-accent-soft);
+  --duration-fast: 120ms;
+  --duration-normal: 220ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Backwards-compatible semantic aliases while legacy selectors are consolidated. */
+  --bg-main: var(--color-canvas);
+  --bg-card: var(--color-surface);
+  --bg-card-hover: var(--color-surface-raised);
+  --border-color: var(--color-border);
+  --text-primary: var(--color-text);
+  --text-main: var(--color-text);
+  --text-secondary: var(--color-text-secondary);
+  --text-muted: var(--color-text-muted);
+  --accent-color: var(--color-accent);
+  --accent-hover: var(--color-accent-hover);
+  --accent-glow: var(--color-accent-soft);
+  --color-error: var(--color-danger);
+  --font-family:
+    var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono:
+    var(--font-geist-mono), ui-monospace, SFMono-Regular, Roboto Mono, Menlo, Courier, monospace;
+  --border-radius: var(--radius-md);
+  --transition-smooth:
+    color var(--duration-normal) var(--ease-standard),
+    background-color var(--duration-normal) var(--ease-standard),
+    border-color var(--duration-normal) var(--ease-standard),
+    box-shadow var(--duration-normal) var(--ease-standard),
+    opacity var(--duration-normal) var(--ease-standard),
+    transform var(--duration-normal) var(--ease-standard);
+}

@@ -1,0 +1,54 @@
+{
+  "name": "shipready-vscode",
+  "displayName": "ShipReady",
+  "description": "Production-Readiness Verifier for Next.js, Supabase, and Stripe",
+  "version": "1.0.0",
+  "publisher": "shipready",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Security"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "files": [
+    "dist",
+    "vendor",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "shipready.scan",
+        "title": "ShipReady: Scan Workspace"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package:cli && npm run compile",
+    "package:cli": "esbuild ../cli/src/index.ts --bundle --minify --legal-comments=external --platform=node --target=node20 --outfile=vendor/shipready-cli.js",
+    "compile": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "vitest run src",
+    "package:vsix": "npx @vscode/vsce@3.6.2 package --no-dependencies"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "3.6.2",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shipready/shipready.git"
+  },
+  "license": "MIT",
+  "homepage": "https://shipready.dev",
+  "bugs": "https://github.com/shipready/shipready/issues"
+}
