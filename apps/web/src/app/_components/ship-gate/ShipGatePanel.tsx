@@ -14,6 +14,7 @@ interface ShipGatePanelProps {
   compact?: boolean;
   billingPlan?: ShipGateBillingPlan;
   shareUrl?: string | null;
+  badgeMarkdown?: string | null;
   onShare?: () => void;
   isSharing?: boolean;
   shareError?: string | null;
@@ -43,6 +44,7 @@ export function ShipGatePanel({
   compact = false,
   billingPlan,
   shareUrl = null,
+  badgeMarkdown = null,
   onShare,
   isSharing = false,
   shareError = null,
@@ -147,7 +149,7 @@ export function ShipGatePanel({
 
         <p className="ship-gate-hint">{hint}</p>
 
-        {(onShare || shareUrl) && (
+        {(onShare || shareUrl || badgeMarkdown) && (
           <div className="ship-gate-share">
             {shareUrl ? (
               <div className="ship-gate-share-link">
@@ -181,6 +183,29 @@ export function ShipGatePanel({
               >
                 {getShareReportButtonLabel(billingPlan, isSharing)}
               </button>
+            ) : null}
+            {badgeMarkdown ? (
+              <div className="ship-gate-share-link">
+                <label className="ship-gate-share-label" htmlFor="ship-gate-badge-markdown">
+                  README badge
+                </label>
+                <div className="ship-gate-share-row">
+                  <input
+                    id="ship-gate-badge-markdown"
+                    className="ship-gate-share-input"
+                    readOnly
+                    value={badgeMarkdown}
+                    aria-label="Ship Score badge markdown snippet"
+                  />
+                  <button
+                    type="button"
+                    className="ship-gate-share-copy"
+                    onClick={() => void navigator.clipboard.writeText(badgeMarkdown)}
+                  >
+                    Copy badge
+                  </button>
+                </div>
+              </div>
             ) : null}
             {shareError ? <p className="ship-gate-share-error">{shareError}</p> : null}
           </div>

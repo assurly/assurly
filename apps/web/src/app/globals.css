@@ -6386,6 +6386,55 @@ button.dashboard-repo-selector-item {
   line-height: 1.5;
 }
 
+.ship-score-trend {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg-subtle);
+}
+
+.ship-score-trend__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.ship-score-trend__label {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ship-score-trend__meta {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.ship-score-trend__chart {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+}
+
+.ship-score-trend__axis {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.ship-score-trend__line {
+  stroke: var(--color-accent, #2563eb);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .ship-gate-share {
   display: flex;
   flex-direction: column;

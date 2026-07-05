@@ -91,6 +91,26 @@ export function assertProductionStripeConfig(): void {
   assertStripeConfig();
 }
 
+export function getResendApiKey(): string | undefined {
+  const value = process.env.RESEND_API_KEY?.trim();
+  return value || undefined;
+}
+
+export function getResendFromAddress(): string {
+  const value = process.env.RESEND_FROM_EMAIL?.trim();
+  return value || 'ShipReady Alerts <onboarding@resend.dev>';
+}
+
+export function assertResendApiKey(): string {
+  const apiKey = getResendApiKey();
+  if (!apiKey) {
+    throw new ConfigurationError(
+      'RESEND_API_KEY is required for email delivery. See .env.example for setup instructions.',
+    );
+  }
+  return apiKey;
+}
+
 export function getApplicationUrl(): string {
   const value = process.env.APP_URL?.trim();
   if (!value) throw new ConfigurationError('APP_URL is required.');

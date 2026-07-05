@@ -51,6 +51,12 @@ export interface ScanFinding {
   scan_id: string;
   rule_id: string;
   severity: 'error' | 'warning';
+  /**
+   * Confidence used by the Ship Gate to separate blockers (error + high) from
+   * review items (error + medium/low). Optional for legacy rows persisted before
+   * this column existed — the Ship Gate treats a missing value as 'high'.
+   */
+  confidence?: 'high' | 'medium' | 'low';
   file_path: string;
   line_number?: number;
   message: string;
@@ -130,6 +136,7 @@ export interface DbAdapter {
   setScanShareToken(scanId: string, shareToken: string): Promise<Scan>;
   getScanByShareToken(shareToken: string): Promise<Scan | null>;
   getRepositoryNameForScan(scanId: string): Promise<string | null>;
+  getOrganizationAdminEmails(organizationId: string): Promise<string[]>;
   updateFindingFixPrUrl(findingId: string, fixPrUrl: string): Promise<void>;
   updateFindingFixPrUrls(updates: { findingId: string; fixPrUrl: string }[]): Promise<void>;
 }
@@ -390,6 +397,28 @@ export class SupabaseDbAdapter implements DbAdapter {
     if (!scan) return null;
     const repository = await this.getRepository(scan.repository_id);
     return repository?.name ?? null;
+  }
+
+  async getOrganizationAdminEmails(organizationId: string): Promise<string[]> {
+    const memberships = await this.fetchDb<Array<{ user_id: string }>>(
+      `memberships?select=user_id&organization_id=eq.${eq(organizationId)}&role=eq.admin`,
+    );
+    const emails: string[] = [];
+    for (const membership of memberships) {
+      const response = await fetch(
+        `${this.url}/auth/v1/admin/users/${encodeURIComponent(membership.user_id)}`,
+        {
+          headers: {
+            apikey: this.apiKey,
+            Authorization: `Bearer ${this.authorizationToken}`,
+          },
+        },
+      );
+      if (!response.ok) continue;
+      const user = (await response.json()) as { email?: string | null };
+      if (user.email) emails.push(user.email);
+    }
+    return emails;
   }
 
   async updateFindingFixPrUrl(findingId: string, fixPrUrl: string): Promise<void> {

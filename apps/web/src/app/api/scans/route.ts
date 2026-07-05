@@ -15,6 +15,7 @@ const findingSchema = z
   .object({
     rule_id: z.string().trim().min(1).max(120),
     severity: z.enum(['error', 'warning']),
+    confidence: z.enum(['high', 'medium', 'low']).optional(),
     file_path: z.string().trim().min(1).max(1024),
     line_number: z.number().int().positive().max(10_000_000).optional(),
     message: z.string().trim().min(1).max(4000),
