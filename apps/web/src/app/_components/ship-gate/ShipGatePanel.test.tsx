@@ -137,3 +137,40 @@ describe('ShipGatePanel share button copy', () => {
     );
   });
 });
+
+describe('ShipGatePanel redactFindings', () => {
+  const blockedReport = buildShipGateReport(
+    [
+      {
+        ruleId: 'runtime-supabase-rls-open',
+        severity: 'error',
+        file: 'Supabase REST API',
+        message: "Supabase table 'profiles' returned rows via anon key without RLS protection.",
+        suggestion: "Enable row-level security and add policies for table 'profiles'.",
+      },
+    ],
+    { scannedFileCount: 1, cleanFileCount: 0 },
+  );
+  const cleanReport = buildShipGateReport([], { scannedFileCount: 1, cleanFileCount: 1 });
+
+  it('renders the full findings list when redactFindings is not set', () => {
+    render(<ShipGatePanel report={blockedReport} />);
+
+    expect(screen.getByText(/Supabase table 'profiles' returned rows via anon key/)).toBeTruthy();
+    expect(screen.queryByTestId('ship-gate-redacted-hint')).toBeNull();
+  });
+
+  it('hides the findings details when redactFindings is true, keeping the verdict visible', () => {
+    render(<ShipGatePanel report={blockedReport} redactFindings />);
+
+    expect(screen.getByText('NOT READY TO SHIP')).toBeTruthy();
+    expect(screen.getByLabelText(/Ship score \d+ out of 100/)).toBeTruthy();
+    expect(screen.queryByText(/Supabase table 'profiles' returned rows via anon key/)).toBeNull();
+    expect(screen.getByTestId('ship-gate-redacted-hint')).toBeTruthy();
+  });
+
+  it('does not render the redacted hint when there is nothing to redact', () => {
+    render(<ShipGatePanel report={cleanReport} redactFindings />);
+    expect(screen.queryByTestId('ship-gate-redacted-hint')).toBeNull();
+  });
+});

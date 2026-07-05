@@ -16,6 +16,10 @@ interface ShipGatePanelProps {
   onShare?: () => void;
   isSharing?: boolean;
   shareError?: string | null;
+  /** When true, hides the blocker/warning finding details entirely (not just
+   *  visually) — used for anonymous, pre-sign-in previews where only the
+   *  verdict and score should be free. */
+  redactFindings?: boolean;
 }
 
 function fileSuffix(count: number): string {
@@ -41,6 +45,7 @@ export function ShipGatePanel({
   onShare,
   isSharing = false,
   shareError = null,
+  redactFindings = false,
 }: ShipGatePanelProps): ReactElement {
   const hint = actionHint ?? getShipGateActionHint(report);
 
@@ -63,7 +68,7 @@ export function ShipGatePanel({
         </div>
       </div>
 
-      {(report.blockers.length > 0 || report.warnings.length > 0) && (
+      {!redactFindings && (report.blockers.length > 0 || report.warnings.length > 0) && (
         <div className="ship-gate-groups">
           {report.blockers.length > 0 ? (
             <div className="ship-gate-group ship-gate-group--blockers">
@@ -96,6 +101,12 @@ export function ShipGatePanel({
           ) : null}
         </div>
       )}
+
+      {redactFindings && (report.blockers.length > 0 || report.warnings.length > 0) ? (
+        <p className="ship-gate-redacted-hint" data-testid="ship-gate-redacted-hint">
+          Sign in to see exactly which files and lines are affected.
+        </p>
+      ) : null}
 
       <div className="ship-gate-footer">
         {report.cleanFileCount > 0 ? (

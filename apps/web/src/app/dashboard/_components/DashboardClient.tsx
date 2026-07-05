@@ -34,6 +34,7 @@ import { RepoListPanel } from './RepoListPanel';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { DashboardTabs } from './DashboardTabs';
 import { PublicRepoConnect } from './PublicRepoConnect';
+import { DeployedUrlScan } from './DeployedUrlScan';
 import { ScanWorkspace } from './ScanWorkspace';
 import { DashboardToast } from './DashboardToast';
 import { DashboardHeader } from './DashboardHeader';
@@ -1216,6 +1217,8 @@ function DashboardContent({
                   void handleAddPublicRepo(undefined, fullName);
                 }}
               />
+
+              <DeployedUrlScan loginUrl={loginUrl} />
             </div>
 
             <ScanWorkspace
