@@ -24,7 +24,9 @@ function isScopedPolicy(clause) {
 function scanSupabasePolicies(content, file = 'policy.sql') {
     const findings = [];
     const sql = stripSqlComments(content);
-    const policyChunks = sql.split(/(?=create\s+policy\b)/i).filter((chunk) => /^create\s+policy\b/i.test(chunk.trim()));
+    const policyChunks = sql
+        .split(/(?=create\s+policy\b)/i)
+        .filter((chunk) => /^create\s+policy\b/i.test(chunk.trim()));
     for (const chunk of policyChunks) {
         const tableMatch = chunk.match(/create\s+policy\s+["'`]?[^"'`;]+["'`]?\s+on\s+([a-zA-Z0-9_."`'-]+)/i);
         if (!tableMatch)
@@ -86,7 +88,8 @@ function scanAuthLinkedMigrationNoRls(sources) {
             const create = code.match(/create\s+table\s+(?:if\s+not\s+exists\s+)?([a-zA-Z0-9_."`'-]+)/i);
             if (create) {
                 const table = normalizeTableName(create[1]);
-                if (/references\s+auth\.users/i.test(code) || /\buser_id\b[\s\S]*references\s+auth\.users/i.test(code)) {
+                if (/references\s+auth\.users/i.test(code) ||
+                    /\buser_id\b[\s\S]*references\s+auth\.users/i.test(code)) {
                     authLinkedTables.set(table, { file: source.file, line: index + 1 });
                 }
             }
