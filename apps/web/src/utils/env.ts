@@ -1,5 +1,3 @@
-import os from 'node:os';
-
 const REQUIRED_SUPABASE_ENV = [
   'NEXT_PUBLIC_SUPABASE_URL',
   'NEXT_PUBLIC_SUPABASE_ANON_KEY',
@@ -124,6 +122,9 @@ export function getLocalDevHostnames(): Set<string> {
   if (cachedLocalDevHostnames) return cachedLocalDevHostnames;
 
   const hostnames = new Set(['localhost', '127.0.0.1', '::1']);
+  // Lazy import keeps this module edge-safe when pulled in via instrumentation.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const os = require('node:os') as typeof import('node:os');
   for (const entries of Object.values(os.networkInterfaces())) {
     if (!entries) continue;
     for (const entry of entries) {

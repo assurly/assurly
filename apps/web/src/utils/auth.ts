@@ -2,17 +2,13 @@ import type { User as SupabaseUser } from '@supabase/supabase-js';
 import type { DbAdapter, User } from './dbAdapter';
 import { getUserDbAdapter } from './dbAdapter';
 import { createStatelessSupabaseClient, getSupabaseClient } from './supabase';
-import { COOKIE_NAME } from './sessionCookie';
+import {
+  COOKIE_NAME,
+  serializeSessionCookiePayload,
+  type SupabaseSessionPayload,
+} from './sessionCookie';
 
-export { COOKIE_NAME };
-
-export interface SupabaseSessionPayload {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number;
-  /** GitHub OAuth token captured at sign-in; used for auto-fix PR creation. */
-  githubAccessToken?: string;
-}
+export { COOKIE_NAME, type SupabaseSessionPayload };
 
 export interface AuthContext {
   user: User;
@@ -160,10 +156,6 @@ export async function getSessionUser(req: Request): Promise<User | null> {
     if (error instanceof AuthenticationError) return null;
     throw error;
   }
-}
-
-export function serializeSessionCookiePayload(session: SupabaseSessionPayload): string {
-  return encodeURIComponent(JSON.stringify(session));
 }
 
 export function setSupabaseSessionCookie(session: SupabaseSessionPayload): string {

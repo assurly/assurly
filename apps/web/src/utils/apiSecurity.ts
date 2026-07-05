@@ -165,7 +165,11 @@ function normalizeError(error: unknown): { status: number; code: string; message
     return { status: 404, code: 'not_found', message: 'Resource not found.' };
   }
   if (error instanceof ConfigurationError) {
-    return { status: 503, code: 'service_unavailable', message: 'Service is unavailable.' };
+    return {
+      status: 503,
+      code: 'service_unavailable',
+      message: process.env.NODE_ENV === 'development' ? error.message : 'Service is unavailable.',
+    };
   }
   if (error instanceof GitHubApiError) {
     if (error.status === 404 || error.status === 422) {

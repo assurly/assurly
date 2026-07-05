@@ -21,7 +21,8 @@ import {
 const installQuery = z
   .object({
     installation_id: z.string().regex(/^[0-9]{1,20}$/),
-    state: z.string().min(20).max(4096),
+    state: z.string().min(20).max(4096).optional(),
+    setup_action: z.enum(['install', 'update']).optional(),
   })
   .strict();
 const installationSchema = z
@@ -78,16 +79,36 @@ export const GET = secureRoute(
   },
   async ({ auth, query }) => {
     const context = requireRouteUser(auth);
-    let state;
-    try {
-      state = verifyGitHubInstallationState(query.state);
-    } catch {
-      throw new ApiError(400, 'invalid_install_state', 'GitHub installation state is invalid.');
+    const workspace = await context.db.getOrganizationByUserId(context.user.id);
+    if (!workspace) throw new ApiError(404, 'not_found', 'Workspace not found.');
+
+    let organizationId = workspace.id;
+
+    if (query.state) {
+      let signedState;
+      try {
+        signedState = verifyGitHubInstallationState(query.state);
+      } catch {
+        throw new ApiError(400, 'invalid_install_state', 'GitHub installation state is invalid.');
+      }
+      if (context.user.id !== signedState.userId) {
+        throw new ApiError(403, 'invalid_install_state', 'GitHub installation state is invalid.');
+      }
+      await requireOrganizationMember(context, signedState.organizationId);
+      organizationId = signedState.organizationId;
+    } else {
+      await requireOrganizationMember(context, workspace.id);
+      if (
+        workspace.github_installation_id &&
+        workspace.github_installation_id !== query.installation_id
+      ) {
+        throw new ApiError(
+          403,
+          'invalid_install_state',
+          'GitHub installation does not match this workspace.',
+        );
+      }
     }
-    if (context.user.id !== state.userId) {
-      throw new ApiError(403, 'invalid_install_state', 'GitHub installation state is invalid.');
-    }
-    await requireOrganizationMember(context, state.organizationId);
 
     const installation = installationSchema.parse(
       await getGitHubInstallation(query.installation_id),
@@ -95,7 +116,7 @@ export const GET = secureRoute(
     const token = await getInstallationAccessToken(query.installation_id);
     const repositories = await listInstallationRepositories(token);
     await getAdminDbAdapter().connectGitHubInstallation(
-      state.organizationId,
+      organizationId,
       installation.account.id,
       query.installation_id,
       repositories,
