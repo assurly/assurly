@@ -150,7 +150,7 @@ describe('ScanFindingsDetails', () => {
     expect(screen.queryByTestId('scan-finding-card-finding-c')).toBeNull();
     expect(screen.getByTestId('scan-finding-occurrence-finding-a').textContent).toBe('×3');
 
-    fireEvent.click(screen.getByRole('button', { name: /create fix pr/i }));
+    fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
     expect(onCreateFixPr).toHaveBeenCalledWith(duplicateEnvFindings[0]);
   });
 

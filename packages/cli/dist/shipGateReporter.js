@@ -43,7 +43,9 @@ function printShipGateSummary(report) {
     else {
         console.log('');
     }
-    const plain = (0, scanner_core_1.formatShipGatePlainText)(report).split('\n').slice(report.scanScope ? 2 : 1);
+    const plain = (0, scanner_core_1.formatShipGatePlainText)(report)
+        .split('\n')
+        .slice(report.scanScope ? 2 : 1);
     for (const line of plain) {
         if (line.startsWith('Blockers')) {
             console.log(chalk_1.default.bold.red(line));

@@ -47,4 +47,5 @@ export declare function resolveEnvExampleForPath(codePath: string, examples: rea
 export declare function collectTestOnlyEnvKeys(sources: readonly SourceInput[]): Set<string>;
 export declare function scanEnvVariables(exampleContent: string, codeContent: string, exampleFile?: string, codeFile?: string, options?: ScanEnvOptions): ScanResult;
 export { buildScanScope, formatScanScopeSummary, getFileRelevanceScore, inferScanRoots, isScannableFile, rankFilesByRelevance, type ScanScope, };
+export { scanAiAppSecurity, scanAiLlmKeyLeak, scanAiPiiToModelContext, scanAiPromptInjection, scanAiRateLimit, scanAiRouteAuthz, } from './aiAppSecurity';
 export { buildIssueGroups, buildShipGateReport, formatShipGateMarkdown, formatShipGatePlainText, getFindingGroupKey, isShipGateBlocked, resolveGroupAction, type ShipGateAction, type ShipGateActionKind, type ShipGateFindingInput, type ShipGateGroup, type ShipGateMarkdownOptions, type ShipGateOptions, type ShipGateReport, type ShipGateStatus, } from './shipGate';

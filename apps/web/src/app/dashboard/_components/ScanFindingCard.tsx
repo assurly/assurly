@@ -71,7 +71,7 @@ export function ScanFindingCard({
           ) : (
             <button
               type="button"
-              className="scan-finding-action-btn"
+              className="scan-finding-action-btn scan-finding-action-btn--success"
               onClick={() => onCreateFixPr(finding)}
               disabled={fixingFindingId === finding.id}
               aria-busy={fixingFindingId === finding.id}
@@ -83,7 +83,7 @@ export function ScanFindingCard({
                 </>
               ) : (
                 <>
-                  <span aria-hidden="true">🔧</span> Create Fix PR
+                  <span aria-hidden="true">🔧</span> Fix it
                 </>
               )}
             </button>

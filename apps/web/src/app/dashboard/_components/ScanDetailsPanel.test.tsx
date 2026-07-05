@@ -187,4 +187,21 @@ describe('ScanDetailsPanel information architecture', () => {
   it('documents the canonical section order contract', () => {
     expect(SCAN_DETAILS_SECTION_ORDER).toEqual(['ship-gate', 'commit', 'fix-summary', 'findings']);
   });
+
+  it('copies the fix prompt to the clipboard and shows a toast', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {
+      clipboard: { writeText },
+    });
+
+    render(<ScanDetailsPanel {...buildProps()} />);
+
+    fireEvent.click(screen.getByTestId('scan-copy-fix-prompt'));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledTimes(1);
+    });
+    expect(writeText.mock.calls[0]?.[0]).toContain('ShipReady fix prompt');
+    expect(screen.getByText('Fix prompt copied to clipboard.')).toBeTruthy();
+  });
 });

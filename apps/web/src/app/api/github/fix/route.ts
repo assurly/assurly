@@ -20,7 +20,11 @@ import {
   isAutoFixableFinding,
 } from '../../../../utils/githubAutoFix';
 import { executeGitHubFixPullRequest } from '../../../../utils/githubFixPipeline';
-import { GitHubWriteAccessError, isGitHubRepositoryName } from '../../../../utils/githubApp';
+import {
+  AutoFixAlreadyAppliedError,
+  GitHubWriteAccessError,
+  isGitHubRepositoryName,
+} from '../../../../utils/githubApp';
 
 const singleFixBody = z
   .object({
@@ -153,6 +157,9 @@ export const POST = secureRoute(
         });
       } catch (error) {
         if (error instanceof GitHubWriteAccessError) throw error;
+        if (error instanceof AutoFixAlreadyAppliedError) {
+          throw new ApiError(409, 'fix_already_applied', error.message);
+        }
         throw new ApiError(502, 'github_unavailable', 'GitHub is temporarily unavailable.');
       }
 
@@ -183,7 +190,11 @@ export const POST = secureRoute(
 
     let fix;
     try {
-      fix = buildGitHubAutoFix(access.finding.file_path, access.finding.message);
+      fix = buildGitHubAutoFix(
+        access.finding.file_path,
+        access.finding.message,
+        access.finding.rule_id,
+      );
     } catch {
       throw new ApiError(400, 'unsafe_fix_input', 'Finding cannot be fixed safely.');
     }
@@ -216,6 +227,9 @@ export const POST = secureRoute(
       });
     } catch (error) {
       if (error instanceof GitHubWriteAccessError) throw error;
+      if (error instanceof AutoFixAlreadyAppliedError) {
+        throw new ApiError(409, 'fix_already_applied', error.message);
+      }
       throw new ApiError(502, 'github_unavailable', 'GitHub is temporarily unavailable.');
     }
 

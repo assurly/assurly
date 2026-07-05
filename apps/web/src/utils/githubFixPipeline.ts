@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import type { GitHubAutoFix } from './githubAutoFix';
+import { applyAutoFixToFileContent, resolveAutoFixTargetPath } from './githubAutoFix';
 import {
+  AutoFixAlreadyAppliedError,
   encodeGitHubPath,
   githubContentsApiUrl,
   githubHeaders,
@@ -138,11 +140,12 @@ export async function executeGitHubFixPullRequest(input: ExecuteGitHubFixInput):
   });
 
   const fixBranch = buildFixBranch(input.branchSeed);
+  const targetFilePath = resolveAutoFixTargetPath(input.filePath, input.fix);
   const prUrl = await commitFixAndOpenPullRequest({
     writeTarget,
     repositoryName,
     baseBranch,
-    filePath,
+    filePath: targetFilePath,
     fix: input.fix,
     fixBranch,
   });
@@ -177,32 +180,52 @@ async function commitFixAndOpenPullRequest(options: {
 
   await ensureFixBranch(commitRepositoryName, baseBranch, fixBranch, ref.object.sha, token);
 
-  const fileResponse = await requireOk(
-    await githubRequest(githubContentsApiUrl(repositoryName, filePath, baseBranch), token),
-    'File lookup',
+  const fileLookupResponse = await githubRequest(
+    githubContentsApiUrl(repositoryName, filePath, baseBranch),
+    token,
   );
-  const file = fileSchema.parse(await fileResponse.json());
-  const original = Buffer.from(file.content.replace(/\n/g, ''), 'base64').toString('utf8');
-  const content = `${original}${original && !original.endsWith('\n') ? '\n' : ''}${fix.statement}\n`;
 
-  let commitFileSha = file.sha;
-  if (commitRepositoryName !== repositoryName) {
-    const forkFileResponse = await requireOk(
-      await githubRequest(githubContentsApiUrl(commitRepositoryName, filePath, baseBranch), token),
-      'Fork file lookup',
-    );
-    commitFileSha = fileSchema.parse(await forkFileResponse.json()).sha;
+  let original = '';
+  let commitFileSha: string | undefined;
+
+  if (fileLookupResponse.ok) {
+    const file = fileSchema.parse(await fileLookupResponse.json());
+    original = Buffer.from(file.content.replace(/\n/g, ''), 'base64').toString('utf8');
+    commitFileSha = file.sha;
+
+    if (commitRepositoryName !== repositoryName) {
+      const forkFileResponse = await requireOk(
+        await githubRequest(
+          githubContentsApiUrl(commitRepositoryName, filePath, baseBranch),
+          token,
+        ),
+        'Fork file lookup',
+      );
+      commitFileSha = fileSchema.parse(await forkFileResponse.json()).sha;
+    }
+  } else if (fileLookupResponse.status === 404 && fix.applyMode === 'create') {
+    original = '';
+    commitFileSha = undefined;
+  } else {
+    await requireOk(fileLookupResponse, 'File lookup');
   }
+
+  const content = applyAutoFixToFileContent(original, fix);
+  if (content === original) {
+    throw new AutoFixAlreadyAppliedError();
+  }
+
+  const putBody: Record<string, unknown> = {
+    message: fix.title,
+    content: Buffer.from(content).toString('base64'),
+    branch: fixBranch,
+  };
+  if (commitFileSha) putBody.sha = commitFileSha;
 
   await requireOk(
     await githubRequest(githubContentsApiUrl(commitRepositoryName, filePath), token, {
       method: 'PUT',
-      body: JSON.stringify({
-        message: fix.title,
-        content: Buffer.from(content).toString('base64'),
-        sha: commitFileSha,
-        branch: fixBranch,
-      }),
+      body: JSON.stringify(putBody),
     }),
     'Fix commit',
   );

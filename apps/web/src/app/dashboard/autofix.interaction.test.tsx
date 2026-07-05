@@ -98,13 +98,13 @@ async function expectRlsFindingInDetails(): Promise<void> {
 }
 
 /** Renders the dashboard with a single persisted scan and a fixable finding,
- *  then waits until the "Create Fix PR" button is visible. */
+ *  then waits until the "Fix it" button is visible. */
 async function renderWithFixableFinding(): Promise<void> {
   scansMock.mockResolvedValue({ scans: [PERSISTED_SCAN] });
   findingsMock.mockResolvedValue({ findings: [RLS_FINDING] });
   render(<DashboardClient initialSession={SESSION} />);
   await revealDetailedFindings();
-  await screen.findByRole('button', { name: /create fix pr/i });
+  await screen.findByRole('button', { name: /fix it/i });
 }
 
 beforeEach(() => {
@@ -142,29 +142,29 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
     createFixMock.mockImplementation(() => new Promise(() => {}));
 
     await renderWithFixableFinding();
-    fireEvent.click(screen.getByRole('button', { name: /create fix pr/i }));
+    fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
 
     const status = await screen.findByRole('status');
     expect(status.textContent).toMatch(/creating fix branch and pull request/i);
   });
 
-  it('replaces the "Create Fix PR" button with a "View Fix PR" link on success', async () => {
+  it('replaces the "Fix it" button with a "View Fix PR" link on success', async () => {
     createFixMock.mockResolvedValue({ prUrl: FIX_PR_URL, findingIds: FIX_FINDING_IDS });
 
     await renderWithFixableFinding();
-    fireEvent.click(screen.getByRole('button', { name: /create fix pr/i }));
+    fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
 
     const link = await screen.findByRole('link', { name: /view fix pr/i });
     expect(link.getAttribute('href')).toBe(FIX_PR_URL);
     expect(link.getAttribute('target')).toBe('_blank');
-    expect(screen.queryByRole('button', { name: /create fix pr/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /fix it/i })).toBeNull();
   });
 
   it('shows an English success toast after the PR is created', async () => {
     createFixMock.mockResolvedValue({ prUrl: FIX_PR_URL, findingIds: FIX_FINDING_IDS });
 
     await renderWithFixableFinding();
-    fireEvent.click(screen.getByRole('button', { name: /create fix pr/i }));
+    fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
 
     const status = await screen.findByRole('status');
     expect(status.textContent).toMatch(/pull request created successfully/i);
@@ -174,7 +174,7 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
     createFixMock.mockResolvedValue({ prUrl: FIX_PR_URL, findingIds: FIX_FINDING_IDS });
 
     await renderWithFixableFinding();
-    fireEvent.click(screen.getByRole('button', { name: /create fix pr/i }));
+    fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
 
     await waitFor(() => expect(createFixMock).toHaveBeenCalledTimes(1));
     expect(createFixMock).toHaveBeenCalledWith({
@@ -190,7 +190,7 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
     );
 
     await renderWithFixableFinding();
-    fireEvent.click(screen.getByRole('button', { name: /create fix pr/i }));
+    fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
 
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('GitHub rate limit exceeded.');
@@ -200,7 +200,7 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
     createFixMock.mockRejectedValue(new Error('network timeout'));
 
     await renderWithFixableFinding();
-    fireEvent.click(screen.getByRole('button', { name: /create fix pr/i }));
+    fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
 
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('network timeout');
@@ -210,7 +210,7 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
     createFixMock.mockRejectedValue('unexpected non-error object');
 
     await renderWithFixableFinding();
-    fireEvent.click(screen.getByRole('button', { name: /create fix pr/i }));
+    fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
 
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toMatch(/auto-fix failed\./i);
@@ -220,7 +220,7 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
     createFixMock.mockResolvedValue({ prUrl: undefined });
 
     await renderWithFixableFinding();
-    fireEvent.click(screen.getByRole('button', { name: /create fix pr/i }));
+    fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
 
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toMatch(/failed to retrieve the pr url/i);
@@ -240,14 +240,14 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
 
     render(<DashboardClient initialSession={SESSION} />);
 
-    const buttons = await screen.findAllByRole('button', { name: /create fix pr/i });
+    const buttons = await screen.findAllByRole('button', { name: /fix it/i });
     expect(buttons).toHaveLength(2);
 
     fireEvent.click(buttons[0]);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /fixing/i })).toBeTruthy();
-      const idle = screen.getAllByRole('button', { name: /create fix pr/i });
+      const idle = screen.getAllByRole('button', { name: /fix it/i });
       expect(idle).toHaveLength(1);
       expect((idle[0] as HTMLButtonElement).disabled).toBe(false);
     });
@@ -257,13 +257,13 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
     createFixMock.mockRejectedValue(new Error('server error'));
 
     await renderWithFixableFinding();
-    fireEvent.click(screen.getByRole('button', { name: /create fix pr/i }));
+    fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
 
     // After the error resolves the button must return to its clickable idle state.
-    await screen.findByRole('button', { name: /create fix pr/i });
+    await screen.findByRole('button', { name: /fix it/i });
   });
 
-  it('does not display a "Create Fix PR" button for warning-severity findings', async () => {
+  it('does not display a "Fix it" button for warning-severity findings', async () => {
     const warnFinding: ScanFinding = {
       ...RLS_FINDING,
       id: 'f-warn',
@@ -276,10 +276,10 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
 
     await revealDetailedFindings();
     await expectRlsFindingInDetails();
-    expect(screen.queryByRole('button', { name: /create fix pr/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /fix it/i })).toBeNull();
   });
 
-  it('hides "Create Fix PR" for client-generated findings that lack a persisted id', async () => {
+  it('hides "Fix it" for client-generated findings that lack a persisted id', async () => {
     // An otherwise-fixable RLS error whose id is client-generated (`find-...`),
     // as happens for the in-session overflow beyond the persistence cap. The
     // backend would reject its non-UUID id, so the action must not be offered.
@@ -294,6 +294,6 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
 
     await revealDetailedFindings();
     await expectRlsFindingInDetails();
-    expect(screen.queryByRole('button', { name: /create fix pr/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /fix it/i })).toBeNull();
   });
 });

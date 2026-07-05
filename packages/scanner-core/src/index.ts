@@ -620,6 +620,15 @@ export {
 };
 
 export {
+  scanAiAppSecurity,
+  scanAiLlmKeyLeak,
+  scanAiPiiToModelContext,
+  scanAiPromptInjection,
+  scanAiRateLimit,
+  scanAiRouteAuthz,
+} from './aiAppSecurity';
+
+export {
   buildIssueGroups,
   buildShipGateReport,
   formatShipGateMarkdown,

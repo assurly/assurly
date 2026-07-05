@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.buildShipGateReport = exports.buildIssueGroups = exports.rankFilesByRelevance = exports.isScannableFile = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = void 0;
+exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.buildShipGateReport = exports.buildIssueGroups = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.rankFilesByRelevance = exports.isScannableFile = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = void 0;
 exports.selectFiles = selectFiles;
 exports.incompleteScanFinding = incompleteScanFinding;
 exports.scanStripeWebhook = scanStripeWebhook;
@@ -536,6 +536,13 @@ function scanEnvVariables(exampleContent, codeContent, exampleFile = '.env.examp
     });
     return result(findings);
 }
+var aiAppSecurity_1 = require("./aiAppSecurity");
+Object.defineProperty(exports, "scanAiAppSecurity", { enumerable: true, get: function () { return aiAppSecurity_1.scanAiAppSecurity; } });
+Object.defineProperty(exports, "scanAiLlmKeyLeak", { enumerable: true, get: function () { return aiAppSecurity_1.scanAiLlmKeyLeak; } });
+Object.defineProperty(exports, "scanAiPiiToModelContext", { enumerable: true, get: function () { return aiAppSecurity_1.scanAiPiiToModelContext; } });
+Object.defineProperty(exports, "scanAiPromptInjection", { enumerable: true, get: function () { return aiAppSecurity_1.scanAiPromptInjection; } });
+Object.defineProperty(exports, "scanAiRateLimit", { enumerable: true, get: function () { return aiAppSecurity_1.scanAiRateLimit; } });
+Object.defineProperty(exports, "scanAiRouteAuthz", { enumerable: true, get: function () { return aiAppSecurity_1.scanAiRouteAuthz; } });
 var shipGate_1 = require("./shipGate");
 Object.defineProperty(exports, "buildIssueGroups", { enumerable: true, get: function () { return shipGate_1.buildIssueGroups; } });
 Object.defineProperty(exports, "buildShipGateReport", { enumerable: true, get: function () { return shipGate_1.buildShipGateReport; } });
