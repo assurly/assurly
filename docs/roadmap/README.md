@@ -56,17 +56,19 @@ trust, so it ships first.
 
 ## 3. Phases (order = impact priority)
 
-| #   | Spec                                                                   | Goal                                                                                  |
-| --- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| 0   | [00-rule-quality-and-trust.md](00-rule-quality-and-trust.md)           | Kill noise, reclassify blockers by confidence, monorepo-correct rules, self-scan gate |
-| 1   | [01-url-runtime-scanner.md](01-url-runtime-scanner.md)                 | Scan a live deployed URL (RLS probe, secrets in bundle, headers) with no repo         |
-| 2   | [02-autofix-and-ai-app-security.md](02-autofix-and-ai-app-security.md) | Auto-fix as the core product + new AI-app security rules                              |
-| 3   | [03-deeper-stack-rules.md](03-deeper-stack-rules.md)                   | Auth/session boundaries, deeper Supabase, Stripe lifecycle, Vercel deploy readiness   |
-| 4   | [04-mcp-server.md](04-mcp-server.md)                                   | MCP server over `scanner-core` — a ship gate AI agents call before deploy             |
-| 5   | [05-monitoring-and-badge.md](05-monitoring-and-badge.md)               | Continuous scans, regression alerts, shareable Ship Score badge                       |
-| 6   | [06-positioning-pricing-cleanup.md](06-positioning-pricing-cleanup.md) | Messaging, pricing, kill-list, landing reliability & SEO fixes                        |
+| #   | Spec                                                                     | Goal                                                                                  |
+| --- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| 0   | [00-rule-quality-and-trust.md](00-rule-quality-and-trust.md)             | Kill noise, reclassify blockers by confidence, monorepo-correct rules, self-scan gate |
+| 1   | [01-url-runtime-scanner.md](01-url-runtime-scanner.md)                   | Scan a live deployed URL (RLS probe, secrets in bundle, headers) with no repo         |
+| 2   | [02-autofix-and-ai-app-security.md](02-autofix-and-ai-app-security.md)   | Auto-fix as the core product + new AI-app security rules                              |
+| 3   | [03-deeper-stack-rules.md](03-deeper-stack-rules.md)                     | Auth/session boundaries, deeper Supabase, Stripe lifecycle, Vercel deploy readiness   |
+| 4   | [04-mcp-server.md](04-mcp-server.md)                                     | MCP server over `scanner-core` — a ship gate AI agents call before deploy             |
+| 4b  | [04b-mcp-publish-and-positioning.md](04b-mcp-publish-and-positioning.md) | Publish the MCP packages to npm and give the "AI agents" segment a page to find them  |
+| 5   | [05-monitoring-and-badge.md](05-monitoring-and-badge.md)                 | Continuous scans, regression alerts, shareable Ship Score badge                       |
+| 6   | [06-positioning-pricing-cleanup.md](06-positioning-pricing-cleanup.md)   | Messaging, pricing, kill-list, landing reliability & SEO fixes                        |
 
-**Recommended build order: 0 → 1 → 2 → (6 messaging, ongoing) → 3 → 4 → 5.**
+**Recommended build order: 0 → 1 → 2 → (6 messaging, ongoing) → 3 → 4 → 4b → 5.**
+Phase 4b has one human-only step (the actual `npm publish`) — see its "Scope / Non-goals" before starting.
 Phase 6 runs continuously — update messaging for each shipped capability, not all at once at the end.
 
 ---

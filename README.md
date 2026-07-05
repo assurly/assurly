@@ -7,6 +7,7 @@ ShipReady is a professional production-readiness verifier designed to scan B2B S
 This project is organized as a monorepo utilizing npm workspaces:
 
 - `packages/cli`: The core local static analysis CLI tool (`npx shipready`).
+- `packages/mcp-server`: MCP server exposing ShipReady Ship Gate scans to AI agents (`npx @shipready/mcp-server`). See [the MCP page](https://shipready.dev/mcp) or `packages/mcp-server/README.md`.
 - `packages/vscode-extension`: The VS Code editor integration and dashboard.
 - `apps/web`: The Next.js landing page, documentation, and web audit portal.
 
