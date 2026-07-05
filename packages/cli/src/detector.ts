@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { buildScanScope, isScannableFile, type ScanScope } from '@shipready/scanner-core';
 import { TechStack, ProjectContext } from './types';
 
 /**
@@ -101,11 +102,14 @@ export function detectStack(projectPath: string): TechStack {
  */
 export function buildContext(projectPath: string): ProjectContext {
   const detectedStack = detectStack(projectPath);
-  const files = listFiles(projectPath);
+  const allFiles = listFiles(projectPath);
+  const files = allFiles.filter(isScannableFile);
+  const scanScope: ScanScope = buildScanScope(allFiles, files);
 
   return {
     projectPath,
     detectedStack,
     files,
+    scanScope,
   };
 }

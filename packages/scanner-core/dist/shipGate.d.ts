@@ -1,5 +1,6 @@
 import type { ScannerFinding, Severity } from './index';
-export type ShipGateFindingInput = Pick<ScannerFinding, 'severity' | 'message' | 'file' | 'line' | 'ruleId' | 'suggestion'>;
+import type { ScanScope } from './fileRelevance';
+export type ShipGateFindingInput = Pick<ScannerFinding, 'severity' | 'message' | 'file' | 'line' | 'ruleId' | 'suggestion' | 'confidence'>;
 export type ShipGateActionKind = 'command' | 'link' | 'hint';
 export interface ShipGateAction {
     label: string;
@@ -24,15 +25,19 @@ export interface ShipGateReport {
     headline: string;
     statusEmoji: string;
     blockers: ShipGateGroup[];
+    /** Error-severity findings with medium/low confidence — review, not block. */
+    reviews: ShipGateGroup[];
     warnings: ShipGateGroup[];
     cleanFileCount: number;
     scannedFileCount: number;
     totalErrorFindings: number;
     totalWarningFindings: number;
+    scanScope?: ScanScope;
 }
 export interface ShipGateOptions {
     scannedFileCount?: number;
     cleanFileCount?: number;
+    scanScope?: ScanScope;
 }
 export declare function getFindingGroupKey(finding: ShipGateFindingInput): string;
 export declare function resolveGroupAction(key: string, suggestion: string | undefined, ruleId: string | undefined): ShipGateAction | undefined;

@@ -58,6 +58,9 @@ export function getShipGateActionHint(report: ShipGateReport): string {
     case 'blocked':
       return 'Fix all blockers above before deploying to production.';
     case 'review':
+      if (report.blockers.length === 0 && report.reviews.length > 0) {
+        return 'No blockers detected. Review heuristic findings and warnings before shipping.';
+      }
       return 'No blockers detected. Review warnings before shipping.';
     case 'ready':
       return 'All scanned files passed. You can deploy with confidence.';

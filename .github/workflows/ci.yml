@@ -71,6 +71,27 @@ jobs:
       - name: Run tests
         run: npm test
 
+  dogfood:
+    name: ShipReady self-scan (dogfood gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run self-scan (max 2 blockers)
+        run: npm run scan:self
+
   lint:
     name: Lint web application
     runs-on: ubuntu-latest

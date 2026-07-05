@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  collectTestOnlyEnvKeys,
   incompleteScanFinding,
+  resolveEnvExampleForPath,
   scanEdgeRuntime,
+  scanEnvVariables,
   scanRscDataLeaks,
   scanSqlMigrations,
   scanStripeWebhook,
@@ -54,5 +57,82 @@ describe('shared scanner core', () => {
       scanSupabaseClientLeaks(`'use client'; process.env.SUPABASE_SERVICE_ROLE_KEY`).errorCount,
     ).toBe(1);
     expect(scanSupabaseClientLeaks(`process.env.SUPABASE_SERVICE_ROLE_KEY`).errorCount).toBe(0);
+  });
+
+  it('marks RSC client-import heuristics as medium confidence', () => {
+    const code = `'use client';\nimport { PrismaClient } from '@prisma/client';`;
+    const finding = scanRscDataLeaks(code).findings[0];
+    expect(finding?.confidence).toBe('medium');
+  });
+});
+
+describe('scanEnvVariables monorepo matching', () => {
+  const allExamples = [
+    { file: '.env.example', content: 'ROOT_KEY=\n' },
+    { file: 'apps/web/.env.example', content: 'WEB_KEY=\n' },
+  ];
+
+  it('matches the nearest app-root .env.example for code paths', () => {
+    const result = scanEnvVariables(
+      '',
+      'const x = process.env.WEB_KEY;',
+      '.env.example',
+      'apps/web/src/app/page.tsx',
+      {
+        allExamples,
+      },
+    );
+    expect(result.errorCount).toBe(0);
+
+    const missing = scanEnvVariables(
+      '',
+      'const x = process.env.MISSING_KEY;',
+      '.env.example',
+      'apps/web/src/app/page.tsx',
+      {
+        allExamples,
+      },
+    );
+    expect(missing.errorCount).toBe(1);
+    expect(missing.findings[0]?.message).toContain('apps/web/.env.example');
+  });
+
+  it('resolves nearest example path helper', () => {
+    expect(resolveEnvExampleForPath('apps/web/src/page.tsx', allExamples)?.file).toBe(
+      'apps/web/.env.example',
+    );
+    expect(resolveEnvExampleForPath('packages/cli/src/index.ts', allExamples)?.file).toBe(
+      '.env.example',
+    );
+  });
+
+  it('ignores framework, CI, and test-only env keys', () => {
+    const testSources = [
+      { file: 'src/testing/e2e.ts', content: 'process.env.E2E_ONLY;' },
+      { file: 'src/app.ts', content: 'process.env.NODE_ENV;' },
+    ];
+    const testOnlyKeys = collectTestOnlyEnvKeys(testSources);
+
+    const result = scanEnvVariables(
+      '',
+      testSources.map((s) => s.content).join('\n'),
+      '.env.example',
+      'src/app.ts',
+      {
+        testOnlyKeys,
+      },
+    );
+    expect(result.findings.some((finding) => finding.message.includes('E2E_ONLY'))).toBe(false);
+    expect(result.findings.some((finding) => finding.message.includes('NODE_ENV'))).toBe(false);
+  });
+
+  it('treats NEXT_PUBLIC_* keys as documenting server-side fallback names', () => {
+    const result = scanEnvVariables(
+      'NEXT_PUBLIC_SUPABASE_URL=\nNEXT_PUBLIC_SUPABASE_ANON_KEY=',
+      'const url = process.env.SUPABASE_URL;\nconst key = process.env.SUPABASE_ANON_KEY;',
+      'apps/web/.env.example',
+      'apps/web/src/utils/env.ts',
+    );
+    expect(result.errorCount).toBe(0);
   });
 });

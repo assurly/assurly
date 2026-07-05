@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import {
   buildShipGateReport,
+  formatScanScopeSummary,
   formatShipGatePlainText,
   type ShipGateFindingInput,
   type ShipGateOptions,
@@ -12,15 +13,18 @@ function toShipGateFinding(finding: Finding): ShipGateFindingInput {
   return {
     ruleId: finding.ruleId,
     severity: finding.severity,
+    confidence: finding.confidence,
     message: finding.message,
     file: finding.file,
     line: finding.line,
+    suggestion: finding.suggestion,
   };
 }
 
 export function buildCliShipGateReport(
   findings: Finding[],
   scannedFileCount: number,
+  scanScope?: ShipGateOptions['scanScope'],
 ): ShipGateReport {
   const affectedPaths = new Set(
     findings.map((finding) => finding.file).filter((file): file is string => Boolean(file)),
@@ -28,6 +32,7 @@ export function buildCliShipGateReport(
   const options: ShipGateOptions = {
     scannedFileCount,
     cleanFileCount: Math.max(0, scannedFileCount - affectedPaths.size),
+    scanScope,
   };
   return buildShipGateReport(findings.map(toShipGateFinding), options);
 }
@@ -49,12 +54,20 @@ export function printShipGateSummary(report: ShipGateReport): void {
       `${report.statusEmoji} ${report.headline}${' '.repeat(Math.max(1, 24 - report.headline.length))}Ship Score: ${report.shipScore}/100`,
     ),
   );
-  console.log('');
+  if (report.scanScope) {
+    console.log(chalk.gray(formatScanScopeSummary(report.scanScope)));
+  } else {
+    console.log('');
+  }
 
-  const plain = formatShipGatePlainText(report).split('\n').slice(1);
+  const plain = formatShipGatePlainText(report)
+    .split('\n')
+    .slice(report.scanScope ? 2 : 1);
   for (const line of plain) {
     if (line.startsWith('Blockers')) {
       console.log(chalk.bold.red(line));
+    } else if (line.startsWith('Review')) {
+      console.log(chalk.bold.yellow(line));
     } else if (line.startsWith('Warnings')) {
       console.log(chalk.bold.yellow(line));
     } else if (line.startsWith('  ')) {

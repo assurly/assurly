@@ -38,6 +38,7 @@ exports.detectStack = detectStack;
 exports.buildContext = buildContext;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const scanner_core_1 = require("@shipready/scanner-core");
 /**
  * Recursively scans a directory to list all file paths, ignoring common system/dependency folders.
  */
@@ -125,10 +126,13 @@ function detectStack(projectPath) {
  */
 function buildContext(projectPath) {
     const detectedStack = detectStack(projectPath);
-    const files = listFiles(projectPath);
+    const allFiles = listFiles(projectPath);
+    const files = allFiles.filter(scanner_core_1.isScannableFile);
+    const scanScope = (0, scanner_core_1.buildScanScope)(allFiles, files);
     return {
         projectPath,
         detectedStack,
         files,
+        scanScope,
     };
 }

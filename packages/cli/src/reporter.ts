@@ -48,24 +48,15 @@ export function reportFindings(findings: Finding[]): void {
     console.log('');
   }
 
-  // Count errors and warnings
-  const errorCount = findings.filter((f) => f.severity === 'error').length;
-  const warningCount = findings.filter((f) => f.severity === 'warning').length;
-
+  // NB: this function intentionally does not print its own pass/fail verdict.
+  // Raw finding.severity does not account for the confidence-aware Ship Gate
+  // classification (see shipGate.ts), so a blanket "Scan Failed" summary here
+  // could contradict the Ship Gate status printed right after (e.g. a
+  // medium-confidence error-severity finding is a "review" item, not a
+  // blocker). The ship/no-ship verdict is owned exclusively by
+  // printShipGateSummary() in shipGateReporter.ts.
   console.log(chalk.bold.cyan('--------------------------------------------------'));
-  if (errorCount > 0) {
-    console.log(
-      chalk.bold.red(
-        `  ❌ Scan Failed: Found ${errorCount} error(s) and ${warningCount} warning(s).`,
-      ),
-    );
-    console.log(chalk.red('     Please fix the errors before deploying to production.\n'));
-  } else {
-    console.log(
-      chalk.bold.yellow(`  ⚠️ Scan Passed with warnings: Found ${warningCount} warning(s).`),
-    );
-    console.log(chalk.yellow('     Review warnings, but you are cleared for deployment.\n'));
-  }
+  console.log(chalk.gray('  See the Ship Gate verdict below for the deploy decision.\n'));
 }
 
 /**

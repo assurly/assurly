@@ -118,11 +118,18 @@ program
             console.log(`  Payments:   ${chalk_1.default.green(context.detectedStack.payments.toUpperCase())}`);
             console.log(`  Deployment: ${chalk_1.default.green(context.detectedStack.deployment.toUpperCase())}\n`);
             (0, reporter_1.reportFindings)(findings);
-            const shipGate = (0, shipGateReporter_1.buildCliShipGateReport)(findings, context.files.length);
+            const shipGate = (0, shipGateReporter_1.buildCliShipGateReport)(findings, context.files.length, context.scanScope);
             (0, shipGateReporter_1.printShipGateSummary)(shipGate);
+            const maxBlockers = process.env.SHIPREADY_DOGFOOD_MAX_BLOCKERS
+                ? Number.parseInt(process.env.SHIPREADY_DOGFOOD_MAX_BLOCKERS, 10)
+                : undefined;
+            if (maxBlockers !== undefined && shipGate.blockers.length > maxBlockers) {
+                console.error(chalk_1.default.red(`\nDogfood gate failed: ${shipGate.blockers.length} blockers (max ${maxBlockers}).\n`));
+                process.exit(1);
+            }
             process.exit(shipGate.status === 'blocked' ? 1 : 0);
         }
-        const shipGate = (0, shipGateReporter_1.buildCliShipGateReport)(findings, context.files.length);
+        const shipGate = (0, shipGateReporter_1.buildCliShipGateReport)(findings, context.files.length, context.scanScope);
         process.exit(shipGate.status === 'blocked' ? 1 : 0);
     }
     catch (error) {

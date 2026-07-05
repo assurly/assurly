@@ -244,7 +244,11 @@ describe('ShipReady Verification Rules', () => {
       if (!fs.existsSync(workflowsDir)) {
         fs.mkdirSync(workflowsDir, { recursive: true });
       }
-      fs.writeFileSync(workflowFile, 'placeholder content', 'utf8');
+      fs.writeFileSync(
+        workflowFile,
+        'name: ShipReady\njobs:\n  scan:\n    steps:\n      - run: npx shipready scan\n',
+        'utf8',
+      );
 
       const context: ProjectContext = {
         projectPath: FIXTURE_DIR,

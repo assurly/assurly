@@ -7,8 +7,21 @@ exports.buildShipGateReport = buildShipGateReport;
 exports.formatShipGatePlainText = formatShipGatePlainText;
 exports.formatShipGateMarkdown = formatShipGateMarkdown;
 exports.isShipGateBlocked = isShipGateBlocked;
+const fileRelevance_1 = require("./fileRelevance");
 const BLOCKER_PENALTY = 12;
 const WARNING_PENALTY = 4;
+function effectiveConfidence(confidence) {
+    return confidence ?? 'high';
+}
+function isBlockerFinding(finding) {
+    return finding.severity === 'error' && effectiveConfidence(finding.confidence) === 'high';
+}
+function isReviewFinding(finding) {
+    return finding.severity === 'error' && effectiveConfidence(finding.confidence) !== 'high';
+}
+function isWarningFinding(finding) {
+    return finding.severity === 'warning';
+}
 function getFindingGroupKey(finding) {
     const message = (finding.message || '').toLowerCase();
     const envMatch = finding.message?.match(/variable 'process\.env\.([^']+)'/i);
@@ -214,11 +227,17 @@ function resolveFileCounts(findings, options) {
     return { scannedFileCount, cleanFileCount };
 }
 function buildShipGateReport(findings, options = {}) {
-    const groups = buildIssueGroups(findings);
-    const blockers = groups.filter((group) => group.severity === 'error');
-    const warnings = groups.filter((group) => group.severity === 'warning');
+    const blockerFindings = findings.filter(isBlockerFinding);
+    const reviewFindings = findings.filter(isReviewFinding);
+    const warningFindings = findings.filter(isWarningFinding);
+    const blockers = buildIssueGroups(blockerFindings);
+    const reviews = buildIssueGroups(reviewFindings);
+    const warnings = buildIssueGroups(warningFindings);
     const { scannedFileCount, cleanFileCount } = resolveFileCounts(findings, options);
-    const shipScore = Math.max(0, Math.min(100, 100 - blockers.length * BLOCKER_PENALTY - warnings.length * WARNING_PENALTY));
+    const shipScore = Math.max(0, Math.min(100, 100 -
+        blockers.length * BLOCKER_PENALTY -
+        reviews.length * WARNING_PENALTY -
+        warnings.length * WARNING_PENALTY));
     let status;
     let headline;
     let statusEmoji;
@@ -227,7 +246,7 @@ function buildShipGateReport(findings, options = {}) {
         headline = 'NOT READY TO SHIP';
         statusEmoji = '🚫';
     }
-    else if (warnings.length > 0) {
+    else if (warnings.length > 0 || reviews.length > 0) {
         status = 'review';
         headline = 'REVIEW RECOMMENDED';
         statusEmoji = '⚠️';
@@ -243,11 +262,13 @@ function buildShipGateReport(findings, options = {}) {
         headline,
         statusEmoji,
         blockers,
+        reviews,
         warnings,
         cleanFileCount,
         scannedFileCount,
         totalErrorFindings: findings.filter((finding) => finding.severity === 'error').length,
         totalWarningFindings: findings.filter((finding) => finding.severity === 'warning').length,
+        scanScope: options.scanScope,
     };
 }
 function formatFileSuffix(count) {
@@ -260,12 +281,24 @@ function padLine(left, right, width = 52) {
 function formatShipGatePlainText(report) {
     const lines = [];
     lines.push(`${report.statusEmoji} ${report.headline}${padLine('', `Ship Score: ${report.shipScore}/100`, 28)}`);
+    if (report.scanScope) {
+        lines.push((0, fileRelevance_1.formatScanScopeSummary)(report.scanScope));
+    }
     if (report.blockers.length > 0) {
         lines.push('Blockers (must fix):');
         report.blockers.forEach((blocker, index) => {
             lines.push(`  ${index + 1}. ${padLine(blocker.label, formatFileSuffix(blocker.affectedFileCount))}`);
             if (blocker.action) {
                 lines.push(`     ↳ ${formatActionPlainText(blocker.action)}`);
+            }
+        });
+    }
+    if (report.reviews.length > 0) {
+        lines.push('Review (heuristic — verify before blocking deploy):');
+        report.reviews.forEach((review, index) => {
+            lines.push(`  ${index + 1}. ${padLine(review.label, formatFileSuffix(review.affectedFileCount))}`);
+            if (review.action) {
+                lines.push(`     ↳ ${formatActionPlainText(review.action)}`);
             }
         });
     }
@@ -293,6 +326,9 @@ function formatShipGateMarkdown(report, options = {}) {
     if (options.repositoryName) {
         lines.push(`Repository: \`${options.repositoryName}\``);
     }
+    if (report.scanScope) {
+        lines.push((0, fileRelevance_1.formatScanScopeSummary)(report.scanScope));
+    }
     lines.push('');
     if (report.blockers.length > 0) {
         lines.push('#### Blockers (must fix)');
@@ -300,6 +336,16 @@ function formatShipGateMarkdown(report, options = {}) {
             lines.push(`${index + 1}. ${blocker.label} → ${blocker.affectedFileCount} file${blocker.affectedFileCount === 1 ? '' : 's'}`);
             if (blocker.action) {
                 lines.push(`   - Action: ${formatActionMarkdown(blocker.action)}`);
+            }
+        });
+        lines.push('');
+    }
+    if (report.reviews.length > 0) {
+        lines.push('#### Review (heuristic)');
+        report.reviews.forEach((review, index) => {
+            lines.push(`${index + 1}. ${review.label} → ${review.affectedFileCount} file${review.affectedFileCount === 1 ? '' : 's'}`);
+            if (review.action) {
+                lines.push(`   - Action: ${formatActionMarkdown(review.action)}`);
             }
         });
         lines.push('');
