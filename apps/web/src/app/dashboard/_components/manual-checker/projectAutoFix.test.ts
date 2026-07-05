@@ -32,6 +32,7 @@ const PLAYWRIGHT_CONFIG: ProjectFile = {
 
 function envFinding(varName: string, file: string, line: number): WebFinding {
   return {
+    ruleId: 'undocumented-env',
     severity: 'error',
     file,
     line,
@@ -42,6 +43,7 @@ function envFinding(varName: string, file: string, line: number): WebFinding {
 
 function rlsFinding(table: string, file: string): WebFinding {
   return {
+    ruleId: 'supabase-rls',
     severity: 'error',
     file,
     line: 1,
@@ -55,6 +57,7 @@ describe('projectAutoFix', () => {
     expect(isManualFindingFixable(rlsFinding('users', SQL_SCHEMA.path))).toBe(true);
     expect(
       isManualFindingFixable({
+        ruleId: 'stripe-secret-leak',
         severity: 'error',
         message: 'CRITICAL KEY LEAK: Hardcoded Stripe secret key found (sk_test...).',
         file: 'Attesta/.env',

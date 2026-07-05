@@ -10,7 +10,12 @@ export function CookieInventoryTable(): ReactElement {
   const rows = [...COOKIE_INVENTORY, ...NON_COOKIE_STORAGE];
 
   return (
-    <div className="legal-cookie-table-wrap">
+    <div
+      className="legal-cookie-table-wrap"
+      role="region"
+      aria-label="Cookie and essential storage inventory"
+      tabIndex={0}
+    >
       <p className="legal-cookie-policy-version">
         Cookie policy version: <strong>{COOKIE_POLICY_VERSION}</strong>
       </p>

@@ -9,6 +9,25 @@ import {
   buildScanMetricSummary,
 } from './projectWorkspace';
 import type { ProjectFile } from './useManualScan';
+import type { WebFinding } from '../../../../utils/browserScanner';
+
+/** Shared, correctly-typed finding fixtures used across the terminal specs. */
+const rlsFinding = (file = 'demo/schema.sql'): WebFinding => ({
+  ruleId: 'supabase-rls',
+  severity: 'error',
+  message: "Supabase table 'users' is created but Row-Level Security (RLS) is not enabled.",
+  file,
+  line: 1,
+});
+
+const undocumentedEnvFinding = (): WebFinding => ({
+  ruleId: 'undocumented-env',
+  severity: 'error',
+  message:
+    "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
+  file: 'demo/route.test.ts',
+  line: 1,
+});
 
 const files: ProjectFile[] = [
   { path: 'demo/.env.example', content: 'PORT=3000\n' },
@@ -22,57 +41,12 @@ const files: ProjectFile[] = [
   },
 ];
 
-const overview = buildProjectScanOverview(files, [
-  {
-    severity: 'error',
-    message: "Supabase table 'users' is created but Row-Level Security (RLS) is not enabled.",
-    file: 'demo/schema.sql',
-    line: 1,
-  },
-  {
-    severity: 'error',
-    message:
-      "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
-    file: 'demo/route.test.ts',
-    line: 1,
-  },
-]);
+const overview = buildProjectScanOverview(files, [rlsFinding(), undocumentedEnvFinding()]);
 
 const projectScan = {
   fileStats: overview.fileStats,
-  metrics: buildScanMetricSummary(
-    [
-      {
-        severity: 'error',
-        message: "Supabase table 'users' is created but Row-Level Security (RLS) is not enabled.",
-        file: 'demo/schema.sql',
-        line: 1,
-      },
-      {
-        severity: 'error',
-        message:
-          "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
-        file: 'demo/route.test.ts',
-        line: 1,
-      },
-    ],
-    overview.fileStats,
-  ),
-  issueGroups: buildIssueGroupSummaries([
-    {
-      severity: 'error',
-      message: "Supabase table 'users' is created but Row-Level Security (RLS) is not enabled.",
-      file: 'demo/schema.sql',
-      line: 1,
-    },
-    {
-      severity: 'error',
-      message:
-        "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
-      file: 'demo/route.test.ts',
-      line: 1,
-    },
-  ]),
+  metrics: buildScanMetricSummary([rlsFinding(), undocumentedEnvFinding()], overview.fileStats),
+  issueGroups: buildIssueGroupSummaries([rlsFinding(), undocumentedEnvFinding()]),
 };
 
 describe('DiagnosticTerminal project mode', () => {
@@ -85,22 +59,7 @@ describe('DiagnosticTerminal project mode', () => {
         results={{
           errorCount: 2,
           warningCount: 0,
-          findings: [
-            {
-              severity: 'error',
-              message:
-                "Supabase table 'users' is created but Row-Level Security (RLS) is not enabled.",
-              file: 'demo/schema.sql',
-              line: 1,
-            },
-            {
-              severity: 'error',
-              message:
-                "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
-              file: 'demo/route.test.ts',
-              line: 1,
-            },
-          ],
+          findings: [rlsFinding(), undocumentedEnvFinding()],
         }}
         selectedProjectPath="demo/schema.sql"
         isFindingFixable={() => false}
@@ -135,22 +94,7 @@ describe('DiagnosticTerminal project mode', () => {
         results={{
           errorCount: 2,
           warningCount: 0,
-          findings: [
-            {
-              severity: 'error',
-              message:
-                "Supabase table 'users' is created but Row-Level Security (RLS) is not enabled.",
-              file: 'demo/schema.sql',
-              line: 1,
-            },
-            {
-              severity: 'error',
-              message:
-                "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
-              file: 'demo/route.test.ts',
-              line: 1,
-            },
-          ],
+          findings: [rlsFinding(), undocumentedEnvFinding()],
         }}
         selectedProjectPath="demo/schema.sql"
         isFindingFixable={() => false}
@@ -167,22 +111,7 @@ describe('DiagnosticTerminal project mode', () => {
         results={{
           errorCount: 2,
           warningCount: 0,
-          findings: [
-            {
-              severity: 'error',
-              message:
-                "Supabase table 'users' is created but Row-Level Security (RLS) is not enabled.",
-              file: 'demo/schema.sql',
-              line: 1,
-            },
-            {
-              severity: 'error',
-              message:
-                "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
-              file: 'demo/route.test.ts',
-              line: 1,
-            },
-          ],
+          findings: [rlsFinding(), undocumentedEnvFinding()],
         }}
         selectedProjectPath="demo/route.test.ts"
         isFindingFixable={() => false}
@@ -205,15 +134,7 @@ describe('DiagnosticTerminal project mode', () => {
         results={{
           errorCount: 1,
           warningCount: 0,
-          findings: [
-            {
-              severity: 'error',
-              message:
-                "Supabase table 'users' is created but Row-Level Security (RLS) is not enabled.",
-              file: 'demo/schema.sql',
-              line: 1,
-            },
-          ],
+          findings: [rlsFinding()],
         }}
         selectedProjectPath="demo/schema.sql"
         isFindingFixable={() => true}
@@ -251,21 +172,7 @@ describe('DiagnosticTerminal project mode', () => {
 
   it('shows bulk auto-fix action when fixable findings exist', () => {
     const onFixAll = vi.fn();
-    const findings = [
-      {
-        severity: 'error' as const,
-        message: "Supabase table 'users' is created but Row-Level Security (RLS) is not enabled.",
-        file: 'demo/schema.sql',
-        line: 1,
-      },
-      {
-        severity: 'error' as const,
-        message:
-          "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
-        file: 'demo/route.test.ts',
-        line: 1,
-      },
-    ];
+    const findings = [rlsFinding(), undocumentedEnvFinding()];
 
     render(
       <DiagnosticTerminal
@@ -299,15 +206,7 @@ describe('DiagnosticTerminal snippet mode', () => {
         results={{
           errorCount: 1,
           warningCount: 0,
-          findings: [
-            {
-              severity: 'error',
-              message:
-                "Supabase table 'users' is created but Row-Level Security (RLS) is not enabled.",
-              file: 'schema.sql',
-              line: 1,
-            },
-          ],
+          findings: [rlsFinding('schema.sql')],
         }}
         selectedProjectPath={null}
         isFindingFixable={() => true}

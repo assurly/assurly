@@ -385,10 +385,12 @@ header nav a:hover {
     visibility: hidden;
     pointer-events: none;
     transform: translateY(-12px);
+    /* Delay only the hide so the fade-out is still visible; visibility flips
+       instantly on open (see .open) so the menu is focusable immediately. */
     transition:
       opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1),
       transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
-      visibility 0.28s;
+      visibility 0s linear 0.28s;
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -399,6 +401,11 @@ header nav a:hover {
     visibility: visible;
     pointer-events: auto;
     transform: translateY(0);
+    /* Become visible immediately on open (no delay) so focus can move in. */
+    transition:
+      opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+      visibility 0s;
   }
 
   header nav a {
@@ -2875,6 +2882,13 @@ footer {
   border: 1px solid var(--color-border);
   border-radius: 10px;
   background: color-mix(in srgb, var(--color-surface) 88%, var(--color-canvas));
+}
+
+/* The wrap is keyboard-focusable so keyboard users can scroll the wide table. */
+.legal-cookie-table-wrap:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+  box-shadow: var(--focus-ring);
 }
 
 .legal-cookie-table {

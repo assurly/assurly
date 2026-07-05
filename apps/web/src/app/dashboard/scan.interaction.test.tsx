@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import DashboardClient from './_components/DashboardClient';
 import { getScanDetailsSectionOrder } from './_components/ScanDetailsPanel';
 import * as clientApiModule from '../../utils/clientApi';
-import type { Scan, ScanFinding } from '../../utils/dbAdapter';
+import type { Organization, Scan, ScanFinding } from '../../utils/dbAdapter';
 
 type SessionResult = clientApiModule.SessionResult;
 
@@ -56,14 +56,16 @@ function assertRlsFindingInDetails(): void {
 }
 const CI_FINDING_TEXT = /GitHub Actions workflow for ShipReady is missing/i;
 
+const baseOrganization: Organization = {
+  id: 'org-1',
+  name: 'acme',
+  billing_plan: 'free',
+  created_at: '2026-06-21T00:00:00Z',
+};
+
 const session: SessionResult = {
   user: { id: 'user-1', name: 'Tibor Dev', email: 'dev@example.com', avatar_url: '' },
-  organization: {
-    id: 'org-1',
-    name: 'acme',
-    billing_plan: 'free',
-    created_at: '2026-06-21T00:00:00Z',
-  },
+  organization: baseOrganization,
   // A public repo (owner/name) so the scanner uses the server-side public-scan proxy.
   repositories: [
     {
@@ -400,7 +402,7 @@ describe('Run Secure Scan — installation proxy fallback & error reporting', ()
   // the authenticated proxy first.
   const installedSession: SessionResult = {
     ...session,
-    organization: { ...session.organization, github_installation_id: '140302856' },
+    organization: { ...baseOrganization, github_installation_id: '140302856' },
   };
 
   /** Routes the GitHub-tree/file calls by endpoint so each proxy can be controlled independently. */

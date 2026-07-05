@@ -65,7 +65,20 @@ export function useAccessibleMenu<TMenu extends HTMLElement>({
         );
       });
 
-    if (shouldTrap) getFocusable()[0]?.focus();
+    // The overlay nav starts at `visibility: hidden` and only becomes visible
+    // once the `.open` class lands, so focusing synchronously here is a no-op
+    // (a still-hidden element is filtered out / cannot be focused). Defer with a
+    // macrotask so the browser has resolved the open styles first, then move
+    // focus into the menu. setTimeout is used over requestAnimationFrame because
+    // rAF is throttled/suppressed in headless and background tabs.
+    let focusTimer: ReturnType<typeof setTimeout> | undefined;
+    if (shouldTrap) {
+      focusTimer = setTimeout(() => {
+        const target =
+          getFocusable()[0] ?? menu.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ?? null;
+        target?.focus();
+      }, 0);
+    }
 
     const handlePointerDown = (event: PointerEvent): void => {
       if (!shouldTrap) return;
@@ -109,6 +122,7 @@ export function useAccessibleMenu<TMenu extends HTMLElement>({
     document.addEventListener('pointerdown', handlePointerDown, true);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
+      if (focusTimer) clearTimeout(focusTimer);
       document.removeEventListener('pointerdown', handlePointerDown, true);
       document.removeEventListener('keydown', handleKeyDown);
       trigger?.focus();

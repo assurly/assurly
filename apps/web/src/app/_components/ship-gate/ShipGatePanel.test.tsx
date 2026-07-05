@@ -97,7 +97,7 @@ describe('ShipGatePanel blocker label layout', () => {
 
     expect(label?.textContent).toContain('NEXT_PUBLIC_SENTRY_DSN');
     expect(meta?.textContent).toBe('→ 1 file');
-    expect(label?.compareDocumentPosition(meta!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(label!.compareDocumentPosition(meta!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 
