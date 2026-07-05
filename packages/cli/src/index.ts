@@ -4,12 +4,10 @@ import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
 import * as path from 'path';
-import { buildContext } from './detector';
-import { allRules } from './rules';
 import { reportFindings } from './reporter';
-import { buildCliShipGateReport, printShipGateSummary } from './shipGateReporter';
+import { printShipGateSummary } from './shipGateReporter';
+import { scanProjectDirectory } from './scanProject';
 import { applyFixesInteractive } from './fixer';
-import { Finding } from './types';
 import { setupGitHubAction } from './ci';
 
 const program = new Command();
@@ -30,25 +28,12 @@ program
     const spinner = ora(chalk.cyan('Detecting stack and scanning configurations...')).start();
 
     try {
-      // 1. Build context (lists files and detects tech stack)
-      const context = buildContext(targetDir);
-
       spinner.text = chalk.cyan('Running production-readiness checks...');
 
-      // 2. Run all rules
-      let findings: Finding[] = [];
-      for (const rule of allRules) {
-        try {
-          const ruleFindings = await rule.run(context);
-          findings.push(...ruleFindings);
-        } catch (ruleError: any) {
-          findings.push({
-            ruleId: rule.id,
-            severity: 'error',
-            message: `Rule failed to execute: ${ruleError.message || ruleError}`,
-          });
-        }
-      }
+      let scanResult = await scanProjectDirectory(targetDir);
+      const { context } = scanResult;
+      let { findings } = scanResult;
+      let shipGate = scanResult.report;
 
       spinner.stop();
 
@@ -57,20 +42,9 @@ program
         const fixed = await applyFixesInteractive(targetDir, findings);
         if (fixed > 0) {
           console.log(chalk.green(`\nApplied ${fixed} auto-fix(es). Re-running scan...\n`));
-          // Re-run rules after fixes
-          findings = [];
-          for (const rule of allRules) {
-            try {
-              const ruleFindings = await rule.run(context);
-              findings.push(...ruleFindings);
-            } catch (ruleError: any) {
-              findings.push({
-                ruleId: rule.id,
-                severity: 'error',
-                message: `Rule failed to execute: ${ruleError.message || ruleError}`,
-              });
-            }
-          }
+          scanResult = await scanProjectDirectory(targetDir);
+          findings = scanResult.findings;
+          shipGate = scanResult.report;
         } else {
           console.log(chalk.gray('No auto-fixable issues found.\n'));
         }
@@ -90,7 +64,6 @@ program
         );
 
         reportFindings(findings);
-        const shipGate = buildCliShipGateReport(findings, context.files.length, context.scanScope);
         printShipGateSummary(shipGate);
         const maxBlockers = process.env.SHIPREADY_DOGFOOD_MAX_BLOCKERS
           ? Number.parseInt(process.env.SHIPREADY_DOGFOOD_MAX_BLOCKERS, 10)
@@ -106,7 +79,6 @@ program
         process.exit(shipGate.status === 'blocked' ? 1 : 0);
       }
 
-      const shipGate = buildCliShipGateReport(findings, context.files.length, context.scanScope);
       process.exit(shipGate.status === 'blocked' ? 1 : 0);
     } catch (error: any) {
       spinner.stop();

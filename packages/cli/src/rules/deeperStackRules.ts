@@ -23,6 +23,9 @@ function excludeGitIgnored(projectPath: string, files: string[]): string[] {
         cwd: projectPath,
         input: files.join('\n'),
         encoding: 'utf8',
+        // Silence git's own stderr ("fatal: not a git repository") — scanning a
+        // non-git dir (e.g. the MCP scan_files temp dir) is an expected fallback.
+        stdio: ['pipe', 'pipe', 'ignore'],
       });
     } catch (error: unknown) {
       const status = (error as { status?: number }).status;

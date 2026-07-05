@@ -286,9 +286,9 @@ function declaresEdgeRuntime(content, ast) {
         if (node.type !== 'ExportNamedDeclaration' && node.type !== 'VariableDeclarator')
             return;
         const declarator = node.type === 'ExportNamedDeclaration'
-            ? (node.declaration?.type === 'VariableDeclaration'
+            ? node.declaration?.type === 'VariableDeclaration'
                 ? node.declaration.declarations?.[0]
-                : undefined)
+                : undefined
             : node;
         if (!declarator || declarator.type !== 'VariableDeclarator')
             return;

@@ -4,6 +4,20 @@
   "description": "Core CLI for ShipReady production readiness verification",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./scanProject": {
+      "types": "./dist/scanProject.d.ts",
+      "default": "./dist/scanProject.js"
+    },
+    "./ruleExplainer": {
+      "types": "./dist/ruleExplainer.d.ts",
+      "default": "./dist/ruleExplainer.js"
+    }
+  },
   "bin": {
     "shipready": "./dist/index.js"
   },
