@@ -9,6 +9,7 @@ import { dbPoolRules } from './dbPoolRules';
 import { rscRules } from './rscRules';
 import { coldStartRules } from './coldStartRules';
 import { sqlSafetyRules } from './sqlSafetyRules';
+import { deeperStackRules } from './deeperStackRules';
 
 /**
  * Array containing all static analysis rules implemented in ShipReady.
@@ -24,4 +25,5 @@ export const allRules: Rule[] = [
   rscRules,
   coldStartRules,
   sqlSafetyRules,
+  deeperStackRules,
 ];

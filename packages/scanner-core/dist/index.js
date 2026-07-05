@@ -1,18 +1,20 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.buildShipGateReport = exports.buildIssueGroups = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.rankFilesByRelevance = exports.isScannableFile = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = void 0;
+exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.buildShipGateReport = exports.buildIssueGroups = exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = exports.scanStripeWebhookIdempotency = exports.scanStripeMissingSubscriptionEvents = exports.scanStripeLiveKeyInDev = exports.scanStripeLifecycle = exports.scanSupabaseStorage = exports.scanSupabasePolicies = exports.scanSupabaseDeepPolicies = exports.scanAuthLinkedMigrationNoRls = exports.scanServiceRoleBypass = exports.scanServerActionAuth = exports.scanRouteHandlerAuth = exports.scanAuthBoundary = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.rankFilesByRelevance = exports.isScannableFile = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = void 0;
 exports.selectFiles = selectFiles;
 exports.incompleteScanFinding = incompleteScanFinding;
 exports.scanStripeWebhook = scanStripeWebhook;
 exports.scanRscDataLeaks = scanRscDataLeaks;
 exports.scanColdStart = scanColdStart;
 exports.scanEdgeRuntime = scanEdgeRuntime;
+exports.scanMaxDuration = scanMaxDuration;
 exports.scanSqlMigrations = scanSqlMigrations;
 exports.scanSqlMigration = scanSqlMigration;
 exports.scanSupabaseClientLeaks = scanSupabaseClientLeaks;
 exports.resolveEnvExampleForPath = resolveEnvExampleForPath;
 exports.collectTestOnlyEnvKeys = collectTestOnlyEnvKeys;
 exports.scanEnvVariables = scanEnvVariables;
+exports.runDeeperStackScans = runDeeperStackScans;
 const parser_1 = require("@babel/parser");
 const fileRelevance_1 = require("./fileRelevance");
 Object.defineProperty(exports, "buildScanScope", { enumerable: true, get: function () { return fileRelevance_1.buildScanScope; } });
@@ -21,6 +23,9 @@ Object.defineProperty(exports, "getFileRelevanceScore", { enumerable: true, get:
 Object.defineProperty(exports, "inferScanRoots", { enumerable: true, get: function () { return fileRelevance_1.inferScanRoots; } });
 Object.defineProperty(exports, "isScannableFile", { enumerable: true, get: function () { return fileRelevance_1.isScannableFile; } });
 Object.defineProperty(exports, "rankFilesByRelevance", { enumerable: true, get: function () { return fileRelevance_1.rankFilesByRelevance; } });
+const authBoundary_1 = require("./authBoundary");
+const supabasePolicies_1 = require("./supabasePolicies");
+const stripeLifecycle_1 = require("./stripeLifecycle");
 const result = (findings) => ({
     errorCount: findings.filter((finding) => finding.severity === 'error').length,
     warningCount: findings.filter((finding) => finding.severity === 'warning').length,
@@ -245,6 +250,59 @@ function scanColdStart(content, file = 'route.ts') {
     });
     return result(findings);
 }
+const EDGE_FORBIDDEN_IMPORTS = new Set([
+    'fs',
+    'node:fs',
+    'fs/promises',
+    'node:fs/promises',
+    'path',
+    'node:path',
+    'child_process',
+    'node:child_process',
+    'os',
+    'node:os',
+    'net',
+    'node:net',
+    'dns',
+    'node:dns',
+    'tls',
+    'node:tls',
+    'worker_threads',
+    'node:worker_threads',
+    '@prisma/client',
+    'pg',
+    'mysql2',
+    'mongodb',
+    'mongoose',
+    'redis',
+    'sequelize',
+    'sharp',
+    'bcrypt',
+    'bcryptjs',
+]);
+function declaresEdgeRuntime(content, ast) {
+    let edgeRuntime = false;
+    walk(ast, (node) => {
+        if (node.type !== 'ExportNamedDeclaration' && node.type !== 'VariableDeclarator')
+            return;
+        const declarator = node.type === 'ExportNamedDeclaration'
+            ? (node.declaration?.type === 'VariableDeclaration'
+                ? node.declaration.declarations?.[0]
+                : undefined)
+            : node;
+        if (!declarator || declarator.type !== 'VariableDeclarator')
+            return;
+        const id = declarator.id;
+        const init = declarator.init;
+        if (id?.type === 'Identifier' &&
+            id.name === 'runtime' &&
+            init?.type === 'StringLiteral' &&
+            init.value === 'edge') {
+            edgeRuntime = true;
+        }
+    });
+    return edgeRuntime || /export\s+const\s+runtime\s*=\s*['"]edge['"]/.test(content);
+}
 function scanEdgeRuntime(content, file = 'route.ts') {
     const findings = [];
     let ast;
@@ -254,7 +312,8 @@ function scanEdgeRuntime(content, file = 'route.ts') {
     catch {
         return result(findings);
     }
-    let edgeRuntime = false;
+    if (!declaresEdgeRuntime(content, ast))
+        return result(findings);
     const imports = [];
     walk(ast, (node) => {
         if (node.type === 'ImportDeclaration') {
@@ -263,40 +322,61 @@ function scanEdgeRuntime(content, file = 'route.ts') {
                 line: lineOf(node),
             });
         }
-        if (node.type !== 'VariableDeclarator')
-            return;
-        const id = node.id;
-        const init = node.init;
-        if (id?.type === 'Identifier' &&
-            id.name === 'runtime' &&
-            init?.type === 'StringLiteral' &&
-            init.value === 'edge')
-            edgeRuntime = true;
     });
-    if (!edgeRuntime)
-        return result(findings);
-    const forbidden = new Set([
-        'fs',
-        'node:fs',
-        'path',
-        'node:path',
-        'child_process',
-        'node:child_process',
-        'os',
-        'node:os',
-    ]);
     for (const imported of imports) {
-        if (forbidden.has(imported.source))
+        const source = imported.source;
+        if (EDGE_FORBIDDEN_IMPORTS.has(source) ||
+            [...EDGE_FORBIDDEN_IMPORTS].some((pkg) => source.startsWith(`${pkg}/`) || source === pkg)) {
             findings.push({
-                ruleId: 'vercel-edge-compatibility',
+                ruleId: 'vercel-edge-node-mismatch',
                 severity: 'error',
+                confidence: 'high',
                 file,
                 line: imported.line,
-                message: `File '${file}' is configured to run on the Edge Runtime, but imports incompatible Node.js core module '${imported.source}'.`,
-                suggestion: 'Remove the Edge Runtime configuration or use web-standard APIs.',
+                message: `File '${file}' declares Edge Runtime but imports Node-only module '${source}'.`,
+                suggestion: 'Remove the Edge Runtime configuration or replace Node-only imports with web-standard APIs.',
             });
+        }
     }
     return result(findings);
+}
+const LONG_RUNNING_ROUTE_PATTERNS = [
+    /\bstreamText\s*\(/,
+    /\bstreamUI\s*\(/,
+    /\$transaction\s*\(/,
+    /\bwhile\s*\(\s*true\s*\)/,
+    /\bsetTimeout\s*\(\s*[^,]+,\s*(?:[5-9]\d{3}|\d{5,})\s*\)/,
+    /\.webhooks\.constructEvent(?:Async)?\s*\(/,
+    /\bprisma\.[a-zA-Z_$]+\.(?:createMany|updateMany|deleteMany)\s*\(/,
+];
+function isRouteHandlerPath(file) {
+    const normalized = file.replace(/\\/g, '/').toLowerCase();
+    return (normalized.endsWith('/route.ts') ||
+        normalized.endsWith('/route.js') ||
+        normalized.endsWith('/route.tsx') ||
+        normalized.endsWith('/route.jsx') ||
+        normalized.includes('/api/'));
+}
+function scanMaxDuration(content, file = 'route.ts') {
+    const findings = [];
+    if (!isRouteHandlerPath(file))
+        return result(findings);
+    if (/\bmaxDuration\b/.test(content))
+        return result(findings);
+    const longRunningSignals = LONG_RUNNING_ROUTE_PATTERNS.filter((pattern) => pattern.test(content));
+    if (longRunningSignals.length === 0)
+        return result(findings);
+    return result([
+        {
+            ruleId: 'vercel-maxduration-missing',
+            severity: 'warning',
+            confidence: 'low',
+            file,
+            line: 1,
+            message: 'Route handler looks long-running but does not export maxDuration for Vercel serverless limits.',
+            suggestion: 'Export maxDuration (seconds) on routes that stream, run transactions, or process webhooks.',
+        },
+    ]);
 }
 function scanSqlMigrations(sources) {
     const findings = [];
@@ -340,6 +420,7 @@ function scanSqlMigrations(sources) {
                 suggestion: `Add SQL step: ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`,
             });
     }
+    findings.push(...(0, supabasePolicies_1.scanSupabaseDeepPolicies)(sources).findings);
     return result(findings);
 }
 function scanSqlMigration(content, file = 'schema.sql') {
@@ -543,6 +624,89 @@ Object.defineProperty(exports, "scanAiPiiToModelContext", { enumerable: true, ge
 Object.defineProperty(exports, "scanAiPromptInjection", { enumerable: true, get: function () { return aiAppSecurity_1.scanAiPromptInjection; } });
 Object.defineProperty(exports, "scanAiRateLimit", { enumerable: true, get: function () { return aiAppSecurity_1.scanAiRateLimit; } });
 Object.defineProperty(exports, "scanAiRouteAuthz", { enumerable: true, get: function () { return aiAppSecurity_1.scanAiRouteAuthz; } });
+var authBoundary_2 = require("./authBoundary");
+Object.defineProperty(exports, "scanAuthBoundary", { enumerable: true, get: function () { return authBoundary_2.scanAuthBoundary; } });
+Object.defineProperty(exports, "scanRouteHandlerAuth", { enumerable: true, get: function () { return authBoundary_2.scanRouteHandlerAuth; } });
+Object.defineProperty(exports, "scanServerActionAuth", { enumerable: true, get: function () { return authBoundary_2.scanServerActionAuth; } });
+Object.defineProperty(exports, "scanServiceRoleBypass", { enumerable: true, get: function () { return authBoundary_2.scanServiceRoleBypass; } });
+var supabasePolicies_2 = require("./supabasePolicies");
+Object.defineProperty(exports, "scanAuthLinkedMigrationNoRls", { enumerable: true, get: function () { return supabasePolicies_2.scanAuthLinkedMigrationNoRls; } });
+Object.defineProperty(exports, "scanSupabaseDeepPolicies", { enumerable: true, get: function () { return supabasePolicies_2.scanSupabaseDeepPolicies; } });
+Object.defineProperty(exports, "scanSupabasePolicies", { enumerable: true, get: function () { return supabasePolicies_2.scanSupabasePolicies; } });
+Object.defineProperty(exports, "scanSupabaseStorage", { enumerable: true, get: function () { return supabasePolicies_2.scanSupabaseStorage; } });
+var stripeLifecycle_2 = require("./stripeLifecycle");
+Object.defineProperty(exports, "scanStripeLifecycle", { enumerable: true, get: function () { return stripeLifecycle_2.scanStripeLifecycle; } });
+Object.defineProperty(exports, "scanStripeLiveKeyInDev", { enumerable: true, get: function () { return stripeLifecycle_2.scanStripeLiveKeyInDev; } });
+Object.defineProperty(exports, "scanStripeMissingSubscriptionEvents", { enumerable: true, get: function () { return stripeLifecycle_2.scanStripeMissingSubscriptionEvents; } });
+Object.defineProperty(exports, "scanStripeWebhookIdempotency", { enumerable: true, get: function () { return stripeLifecycle_2.scanStripeWebhookIdempotency; } });
+/**
+ * High-confidence blocker ruleIds (error + confidence high, or legacy error without confidence).
+ *
+ * The Phase 0 target was "~12 or fewer". Phase 3 added five genuinely
+ * high-precision blockers to the existing nine, landing at 14. Every entry here
+ * must be near-certain when it fires; heuristic rules stay review/warning only.
+ * Notably, the two auth-boundary "no visible guard" rules
+ * (auth-server-action-no-check, auth-route-handler-unprotected) are error+medium
+ * → review, NOT blockers, because public forms and public routes legitimately
+ * run without auth — so they are deliberately absent from this list.
+ *
+ *  1. stripe-webhook-signature
+ *  2. database-migration-safety
+ *  3. supabase-rls
+ *  4. supabase-service-role-leak
+ *  5. public-secret
+ *  6. stripe-secret-leak
+ *  7. undocumented-env
+ *  8. ai-llm-key-in-client
+ *  9. database-connection-pooling (CLI)
+ * 10. auth-service-role-bypass
+ * 11. supabase-policy-permissive
+ * 12. supabase-migration-auth-linked-no-rls
+ * 13. stripe-live-key-in-dev
+ * 14. vercel-edge-node-mismatch
+ */
+exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = [
+    'stripe-webhook-signature',
+    'database-migration-safety',
+    'supabase-rls',
+    'supabase-service-role-leak',
+    'public-secret',
+    'stripe-secret-leak',
+    'undocumented-env',
+    'ai-llm-key-in-client',
+    'database-connection-pooling',
+    'auth-service-role-bypass',
+    'supabase-policy-permissive',
+    'supabase-migration-auth-linked-no-rls',
+    'stripe-live-key-in-dev',
+    'vercel-edge-node-mismatch',
+];
+/** Runs Phase 3 deeper-stack scanners over the supplied project sources. */
+function runDeeperStackScans(sources, options = {}) {
+    const { includeEdgeRuntime = true } = options;
+    const findings = [];
+    const sqlSources = sources.filter((source) => source.file.endsWith('.sql'));
+    const codeSources = sources.filter((source) => /\.(?:js|ts|jsx|tsx)$/.test(source.file));
+    const envSources = sources.filter((source) => /(?:^|[/\\])\.env(?:\.(?:local|development|dev|test|staging))?(?:$|[/\\])/.test(source.file.replace(/\\/g, '/')));
+    for (const source of codeSources) {
+        findings.push(...(0, authBoundary_1.scanServerActionAuth)(source.content, source.file).findings);
+        findings.push(...(0, authBoundary_1.scanRouteHandlerAuth)(source.content, source.file).findings);
+        findings.push(...(0, authBoundary_1.scanServiceRoleBypass)(source.content, source.file).findings);
+        findings.push(...(0, stripeLifecycle_1.scanStripeWebhookIdempotency)(source.content, source.file).findings);
+        findings.push(...(0, stripeLifecycle_1.scanStripeMissingSubscriptionEvents)(source.content, source.file).findings);
+        if (includeEdgeRuntime) {
+            findings.push(...scanEdgeRuntime(source.content, source.file).findings);
+        }
+        findings.push(...scanMaxDuration(source.content, source.file).findings);
+    }
+    for (const source of envSources) {
+        findings.push(...(0, stripeLifecycle_1.scanStripeLiveKeyInDev)(source.content, source.file).findings);
+    }
+    if (sqlSources.length > 0) {
+        findings.push(...(0, supabasePolicies_1.scanSupabaseDeepPolicies)(sqlSources).findings);
+    }
+    return result(findings);
+}
 var shipGate_1 = require("./shipGate");
 Object.defineProperty(exports, "buildIssueGroups", { enumerable: true, get: function () { return shipGate_1.buildIssueGroups; } });
 Object.defineProperty(exports, "buildShipGateReport", { enumerable: true, get: function () { return shipGate_1.buildShipGateReport; } });

@@ -9,11 +9,18 @@ export {
   scanColdStart,
   scanEnvVariables,
   scanEdgeRuntime,
+  scanMaxDuration,
+  scanRouteHandlerAuth,
   scanRscDataLeaks,
+  scanServerActionAuth,
+  scanServiceRoleBypass,
   scanSqlMigration,
   scanSqlMigrations,
+  scanStripeMissingSubscriptionEvents,
   scanStripeWebhook,
+  scanStripeWebhookIdempotency,
   scanSupabaseClientLeaks,
+  scanSupabaseDeepPolicies,
   selectFiles,
 } from '@shipready/scanner-core';
 
