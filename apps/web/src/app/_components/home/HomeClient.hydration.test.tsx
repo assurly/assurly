@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { act } from 'react';
 import { hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -38,11 +39,24 @@ describe('HomeClient — hydration contract', () => {
       originalConsoleError(...args);
     };
 
+    // hydrateRoot schedules React's concurrent-mode work asynchronously (via
+    // the internal scheduler). Wrapping in act() flushes that work
+    // synchronously so hydration is actually complete before this test ends
+    // — unmounting (or the next test file's jsdom teardown) before that
+    // point previously surfaced as an intermittent unhandled exception from
+    // a scheduler task firing against a torn-down `window`.
+    let root: ReturnType<typeof hydrateRoot> | undefined;
     try {
-      hydrateRoot(container, <HomeClient {...props} />);
+      act(() => {
+        root = hydrateRoot(container, <HomeClient {...props} />);
+      });
     } finally {
       console.error = originalConsoleError;
     }
+
+    act(() => {
+      root?.unmount();
+    });
 
     expect(hydrationErrors).toEqual([]);
   });

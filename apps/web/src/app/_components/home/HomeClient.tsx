@@ -72,6 +72,17 @@ export default function HomeClient({
     shipGate: ShipGateReport;
   } | null>(null);
 
+  const [urlInput, setUrlInput] = useState('');
+  const [isUrlScanning, setIsUrlScanning] = useState(false);
+  const [urlScanError, setUrlScanError] = useState<string | null>(null);
+  const [urlScanFinished, setUrlScanFinished] = useState(false);
+  const [urlScanResults, setUrlScanResults] = useState<{
+    targetUrl: string;
+    errorCount: number;
+    warningCount: number;
+    shipGate: ShipGateReport;
+  } | null>(null);
+
   const [isFetchingRepos, setIsFetchingRepos] = useState(false);
   const [publicReposList, setPublicReposList] = useState<GitHubRepository[]>([]);
   const [ownerSearched, setOwnerSearched] = useState('');
@@ -135,6 +146,61 @@ export default function HomeClient({
     repoName = repoName.replace(/\/$/, '');
     localStorage.setItem('last_scanned_public_repo', repoName);
     window.location.href = '/api/auth/login';
+  };
+
+  const handleUnlockUrlReport = (): void => {
+    if (!urlInput.trim()) return;
+    localStorage.setItem('last_scanned_deployed_url', urlInput.trim());
+    window.location.href = '/api/auth/login';
+  };
+
+  const handleStartUrlScan = async (): Promise<void> => {
+    const trimmed = urlInput.trim();
+    if (!trimmed) return;
+
+    setIsUrlScanning(true);
+    setUrlScanFinished(false);
+    setUrlScanError(null);
+    setUrlScanResults(null);
+
+    try {
+      const response = await fetch('/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: trimmed }),
+      });
+
+      if (!response.ok) {
+        let message = 'URL scan failed. Please verify the URL and try again.';
+        try {
+          const data = (await response.json()) as { error?: { message?: string } };
+          if (data.error?.message) message = data.error.message;
+        } catch {
+          // Keep the default message.
+        }
+        throw new Error(message);
+      }
+
+      const data = (await response.json()) as {
+        report: ShipGateReport;
+        findings: Array<{ severity: 'error' | 'warning' }>;
+      };
+
+      const errorCount = data.findings.filter((finding) => finding.severity === 'error').length;
+      const warningCount = data.findings.filter((finding) => finding.severity === 'warning').length;
+
+      setUrlScanResults({
+        targetUrl: trimmed,
+        errorCount,
+        warningCount,
+        shipGate: data.report,
+      });
+      setUrlScanFinished(true);
+    } catch (error: unknown) {
+      setUrlScanError(error instanceof Error ? error.message : 'URL scan failed.');
+    } finally {
+      setIsUrlScanning(false);
+    }
   };
 
   const handleStartScan = async (forcedRepoName?: string): Promise<void> => {
@@ -655,6 +721,101 @@ export default function HomeClient({
               {copied ? 'Copied! ✓' : 'npx shipready scan'}
               {!copied && <span style={{ opacity: 0.6 }}>📋</span>}
             </code>
+          </div>
+        </section>
+
+        <section className="interactive-scanner-section">
+          <div className="scanner-box">
+            <h2 style={{ textAlign: 'center', marginBottom: '8px', fontSize: '1.4rem' }}>
+              Scan a Deployed URL
+            </h2>
+            <p
+              style={{
+                textAlign: 'center',
+                color: 'var(--text-secondary)',
+                fontSize: '0.9rem',
+                marginBottom: '24px',
+              }}
+            >
+              Paste your live app URL to probe Supabase RLS, production bundle secrets, and security
+              headers — no repository required.
+            </p>
+
+            <div className="scanner-input-container">
+              <div className="scanner-input-wrapper">
+                <label className="visually-hidden" htmlFor="deployed-url">
+                  Deployed application URL
+                </label>
+                <input
+                  id="deployed-url"
+                  type="url"
+                  placeholder="https://myapp.lovable.app"
+                  className="scanner-input"
+                  style={{ paddingLeft: '16px' }}
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  disabled={isUrlScanning}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleStartUrlScan();
+                  }}
+                />
+              </div>
+              <button
+                className="scanner-btn"
+                onClick={() => void handleStartUrlScan()}
+                disabled={isUrlScanning || !urlInput.trim()}
+              >
+                {isUrlScanning ? 'Scanning...' : 'Scan URL'}
+              </button>
+            </div>
+
+            {urlScanError && (
+              <div
+                style={{
+                  color: 'var(--color-error)',
+                  fontSize: '0.9rem',
+                  marginTop: '10px',
+                  textAlign: 'center',
+                  fontWeight: 'bold',
+                }}
+              >
+                ❌ {urlScanError}
+              </div>
+            )}
+
+            {urlScanFinished && urlScanResults && (
+              <div>
+                <div className="scanner-results-card scanner-results-card--ship-gate">
+                  <div className="scanner-results-info">
+                    <h4>Ship Gate for {urlScanResults.targetUrl}</h4>
+                    <p>
+                      Runtime verdict — {urlScanResults.errorCount} blocker
+                      {urlScanResults.errorCount === 1 ? '' : 's'}, {urlScanResults.warningCount}{' '}
+                      warning
+                      {urlScanResults.warningCount === 1 ? '' : 's'}.
+                    </p>
+                  </div>
+                  <ShipGatePanel
+                    report={urlScanResults.shipGate}
+                    compact
+                    redactFindings={!isAuthenticated}
+                  />
+                </div>
+
+                {!isAuthenticated ? (
+                  <div className="conversion-wall-box">
+                    <h4>🔒 Full Runtime Findings are Locked</h4>
+                    <p>
+                      Sign in to unlock the complete findings list, exact probe details, and
+                      remediation guidance for your deployed app.
+                    </p>
+                    <button className="btn btn-primary" onClick={handleUnlockUrlReport}>
+                      Sign In with GitHub to Unlock Report
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
         </section>
 

@@ -17,6 +17,10 @@ interface ShipGatePanelProps {
   onShare?: () => void;
   isSharing?: boolean;
   shareError?: string | null;
+  /** When true, hides the blocker/warning finding details entirely (not just
+   *  visually) — used for anonymous, pre-sign-in previews where only the
+   *  verdict and score should be free. */
+  redactFindings?: boolean;
 }
 
 function fileSuffix(count: number): string {
@@ -42,6 +46,7 @@ export function ShipGatePanel({
   onShare,
   isSharing = false,
   shareError = null,
+  redactFindings = false,
 }: ShipGatePanelProps): ReactElement {
   const hint = actionHint ?? getShipGateActionHint(report);
 
@@ -70,54 +75,62 @@ export function ShipGatePanel({
         </p>
       ) : null}
 
-      {(report.blockers.length > 0 || report.reviews.length > 0 || report.warnings.length > 0) && (
-        <div className="ship-gate-groups">
-          {report.blockers.length > 0 ? (
-            <div className="ship-gate-group ship-gate-group--blockers">
-              <h4 className="ship-gate-group-title">Blockers (must fix)</h4>
-              <ol className="ship-gate-list">
-                {report.blockers.map((blocker) => (
-                  <ShipGateGroupRow
-                    key={blocker.id}
-                    group={blocker}
-                    fileSuffix={fileSuffix(blocker.affectedFileCount)}
-                  />
-                ))}
-              </ol>
-            </div>
-          ) : null}
+      {!redactFindings &&
+        (report.blockers.length > 0 || report.reviews.length > 0 || report.warnings.length > 0) && (
+          <div className="ship-gate-groups">
+            {report.blockers.length > 0 ? (
+              <div className="ship-gate-group ship-gate-group--blockers">
+                <h4 className="ship-gate-group-title">Blockers (must fix)</h4>
+                <ol className="ship-gate-list">
+                  {report.blockers.map((blocker) => (
+                    <ShipGateGroupRow
+                      key={blocker.id}
+                      group={blocker}
+                      fileSuffix={fileSuffix(blocker.affectedFileCount)}
+                    />
+                  ))}
+                </ol>
+              </div>
+            ) : null}
 
-          {report.reviews.length > 0 ? (
-            <div className="ship-gate-group ship-gate-group--reviews">
-              <h4 className="ship-gate-group-title">Review (heuristic)</h4>
-              <ol className="ship-gate-list">
-                {report.reviews.map((review) => (
-                  <ShipGateGroupRow
-                    key={review.id}
-                    group={review}
-                    fileSuffix={fileSuffix(review.affectedFileCount)}
-                  />
-                ))}
-              </ol>
-            </div>
-          ) : null}
+            {report.reviews.length > 0 ? (
+              <div className="ship-gate-group ship-gate-group--reviews">
+                <h4 className="ship-gate-group-title">Review (heuristic)</h4>
+                <ol className="ship-gate-list">
+                  {report.reviews.map((review) => (
+                    <ShipGateGroupRow
+                      key={review.id}
+                      group={review}
+                      fileSuffix={fileSuffix(review.affectedFileCount)}
+                    />
+                  ))}
+                </ol>
+              </div>
+            ) : null}
 
-          {report.warnings.length > 0 ? (
-            <div className="ship-gate-group ship-gate-group--warnings">
-              <h4 className="ship-gate-group-title">Warnings (review)</h4>
-              <ul className="ship-gate-list ship-gate-list--warnings">
-                {report.warnings.map((warning) => (
-                  <ShipGateGroupRow
-                    key={warning.id}
-                    group={warning}
-                    fileSuffix={fileSuffix(warning.affectedFileCount)}
-                  />
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </div>
-      )}
+            {report.warnings.length > 0 ? (
+              <div className="ship-gate-group ship-gate-group--warnings">
+                <h4 className="ship-gate-group-title">Warnings (review)</h4>
+                <ul className="ship-gate-list ship-gate-list--warnings">
+                  {report.warnings.map((warning) => (
+                    <ShipGateGroupRow
+                      key={warning.id}
+                      group={warning}
+                      fileSuffix={fileSuffix(warning.affectedFileCount)}
+                    />
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        )}
+
+      {redactFindings &&
+      (report.blockers.length > 0 || report.reviews.length > 0 || report.warnings.length > 0) ? (
+        <p className="ship-gate-redacted-hint" data-testid="ship-gate-redacted-hint">
+          Sign in to see exactly which files and lines are affected.
+        </p>
+      ) : null}
 
       <div className="ship-gate-footer">
         {report.cleanFileCount > 0 ? (
