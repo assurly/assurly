@@ -15,12 +15,16 @@ export {
 } from '@shipready/scanner-core';
 
 export function toShipGateFinding(
-  finding: Pick<WebFinding, 'severity' | 'message' | 'file' | 'line' | 'suggestion'> & {
+  finding: Pick<
+    WebFinding,
+    'severity' | 'confidence' | 'message' | 'file' | 'line' | 'suggestion'
+  > & {
     rule_id?: string;
   },
 ): ShipGateFindingInput {
   return {
     severity: finding.severity,
+    confidence: finding.confidence,
     message: finding.message,
     file: finding.file,
     line: finding.line,
@@ -43,6 +47,7 @@ export function buildShipGateFromScanFindings(
   return buildShipGateReport(
     findings.map((finding) => ({
       severity: finding.severity,
+      confidence: finding.confidence,
       message: finding.message,
       file: finding.file_path,
       line: finding.line_number,

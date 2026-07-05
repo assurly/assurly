@@ -6,7 +6,12 @@ import {
   RATE_LIMITS,
   secureRoute,
 } from '../../../../utils/apiSecurity';
-import { getAdminDbAdapter, type DbAdapter, type Repository } from '../../../../utils/dbAdapter';
+import {
+  getAdminDbAdapter,
+  type DbAdapter,
+  type Repository,
+  type ScanFinding,
+} from '../../../../utils/dbAdapter';
 import {
   fetchGitHubFile,
   getGitHubWebhookSecret,
@@ -17,6 +22,7 @@ import {
   verifyGitHubWebhookSignature,
 } from '../../../../utils/githubApp';
 import { buildShipGateReport, formatShipGateMarkdown } from '@shipready/scanner-core';
+import { notifyIfRegressionBlockers } from '../../../../utils/scanRegression';
 import {
   incompleteScanFinding,
   scanColdStart,
@@ -135,6 +141,7 @@ async function completeCheckRun(
   const shipGate = buildShipGateReport(
     findings.map((finding) => ({
       severity: finding.severity,
+      confidence: finding.confidence,
       message: finding.message,
       file: finding.path || finding.file,
       line: finding.line,
@@ -260,22 +267,38 @@ async function scanPullRequest(
 
   const errors = findings.filter((finding) => finding.severity === 'error').length;
   const warnings = findings.filter((finding) => finding.severity === 'warning').length;
-  await db.saveScan(
+  const persistedFindings = findings.map((finding) => ({
+    rule_id: finding.ruleId,
+    severity: finding.severity,
+    confidence: finding.confidence,
+    file_path: finding.path || finding.file || 'unknown',
+    line_number: finding.line || 1,
+    message: finding.message,
+    suggestion: finding.suggestion || '',
+  }));
+  const savedScan = await db.saveScan(
     repository.id,
     commitSha,
     branch,
     errors > 0 ? 'failed' : 'success',
     errors,
     warnings,
-    findings.map((finding) => ({
-      rule_id: finding.ruleId,
-      severity: finding.severity,
-      file_path: finding.path || finding.file || 'unknown',
-      line_number: finding.line || 1,
-      message: finding.message,
-      suggestion: finding.suggestion || '',
-    })),
+    persistedFindings,
   );
+
+  const recentScans = await db.getRecentScans(repository.id);
+  const previousScan = recentScans.find((scan) => scan.id !== savedScan.id);
+  if (previousScan) {
+    const previousFindings = await db.getScanFindings(previousScan.id);
+    const currentFindings: ScanFinding[] = persistedFindings.map((finding, index) => ({
+      id: `webhook-current-${index}`,
+      scan_id: savedScan.id,
+      ...finding,
+      created_at: savedScan.created_at,
+    }));
+    await notifyIfRegressionBlockers(db, repository, previousFindings, currentFindings);
+  }
+
   await completeCheckRun(token, repositoryName, checkRunId, findings, {
     scannedFileCount: selection.files.length,
     repositoryName,

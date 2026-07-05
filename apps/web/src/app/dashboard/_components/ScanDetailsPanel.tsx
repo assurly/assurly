@@ -26,6 +26,7 @@ export interface ScanDetailsPanelProps {
   findingsLimit?: number;
   billingPlan?: ShipGateBillingPlan;
   shareUrl?: string | null;
+  badgeMarkdown?: string | null;
   onShare?: () => void;
   isSharing?: boolean;
   shareError?: string | null;
@@ -60,6 +61,7 @@ export function ScanDetailsPanel({
   findingsLimit = 100,
   billingPlan,
   shareUrl = null,
+  badgeMarkdown = null,
   onShare,
   isSharing = false,
   shareError = null,
@@ -119,6 +121,7 @@ export function ScanDetailsPanel({
           report={shipGateReport}
           billingPlan={billingPlan}
           shareUrl={shareUrl}
+          badgeMarkdown={badgeMarkdown}
           onShare={onShare}
           isSharing={isSharing}
           shareError={shareError}

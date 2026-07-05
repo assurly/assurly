@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import type { Organization, Repository, Scan, ScanFinding } from '../../../utils/dbAdapter';
 import type { ScanFixSummary } from '../../../utils/fixSummary';
 import type { ShipGateReport } from '../../../utils/shipGate';
+import { ShipScoreTrendChart } from './ShipScoreTrendChart';
 import { ScanDetailsPanel } from './ScanDetailsPanel';
 import { ScanDetailsSkeleton } from './ScanDetailsSkeleton';
 import { ScanHistoryRail } from './ScanHistoryRail';
@@ -36,7 +37,11 @@ export interface ScanWorkspaceProps {
   fixSummary: ScanFixSummary | null;
   displayedFindings: ScanFinding[];
   findingsLimit: number;
+  fetchTrend: (
+    repositoryId: string,
+  ) => Promise<{ points: Array<{ date: string; shipScore: number }> }>;
   selectedShareUrl: string | null;
+  selectedBadgeMarkdown: string | null;
   onShare?: () => void;
   isSharing: boolean;
   shareError: string | null;
@@ -80,7 +85,9 @@ export function ScanWorkspace({
   fixSummary,
   displayedFindings,
   findingsLimit,
+  fetchTrend,
   selectedShareUrl,
+  selectedBadgeMarkdown,
   onShare,
   isSharing,
   shareError,
@@ -113,6 +120,8 @@ export function ScanWorkspace({
         canJumpToResults={canJumpToScanResults}
         onJumpToResults={onJumpToResults}
       />
+
+      <ShipScoreTrendChart repositoryId={selectedRepo.id} fetchTrend={fetchTrend} />
 
       <div className="repo-scan-card">
         <div className="repo-scan-header">
@@ -206,6 +215,7 @@ export function ScanWorkspace({
                 findingsLimit={findingsLimit}
                 billingPlan={billingPlan}
                 shareUrl={selectedShareUrl}
+                badgeMarkdown={selectedBadgeMarkdown}
                 onShare={onShare}
                 isSharing={isSharing}
                 shareError={shareError}

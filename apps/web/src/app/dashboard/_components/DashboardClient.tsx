@@ -497,6 +497,20 @@ function DashboardContent({
     return null;
   }, [selectedScan, shareUrlsByScanId]);
 
+  const selectedShareToken = useMemo(() => {
+    if (!selectedScan) return null;
+    if (selectedScan.share_token) return selectedScan.share_token;
+    const shareUrl = shareUrlsByScanId[selectedScan.id];
+    if (!shareUrl) return null;
+    const match = shareUrl.match(/\/report\/([a-f0-9]{32})$/);
+    return match?.[1] ?? null;
+  }, [selectedScan, shareUrlsByScanId]);
+
+  const selectedBadgeMarkdown = useMemo(() => {
+    if (!selectedShareToken) return null;
+    return `![Ship Score](${window.location.origin}/api/badge/${selectedShareToken})`;
+  }, [selectedShareToken]);
+
   const handleShareScan = async (): Promise<void> => {
     if (!selectedScan || org?.billing_plan !== 'pro') return;
     if (isLocalScanId(selectedScan.id)) {
@@ -1112,6 +1126,7 @@ function DashboardContent({
       const dbFindings = prioritizedFindings.slice(0, SAVE_FINDINGS_LIMIT).map((f) => ({
         rule_id: f.ruleId || deriveRuleId(f.file),
         severity: f.severity,
+        confidence: f.confidence,
         file_path: f.file || 'unknown',
         line_number: f.line || 1,
         message: f.message,
@@ -1313,6 +1328,8 @@ function DashboardContent({
               displayedFindings={displayedFindings}
               findingsLimit={SAVE_FINDINGS_LIMIT}
               selectedShareUrl={selectedShareUrl}
+              selectedBadgeMarkdown={selectedBadgeMarkdown}
+              fetchTrend={clientApi.trend}
               onShare={
                 org?.billing_plan === 'pro' && !selectedShareUrl
                   ? () => void handleShareScan()

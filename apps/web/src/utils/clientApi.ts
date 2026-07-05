@@ -40,6 +40,7 @@ const findingSchema = z.object({
   scan_id: z.string(),
   rule_id: z.string(),
   severity: z.enum(['error', 'warning']),
+  confidence: z.enum(['high', 'medium', 'low']).optional(),
   file_path: z.string(),
   line_number: z.number().optional(),
   message: z.string(),
@@ -62,6 +63,13 @@ const fixSchema = z.object({
 const shareReportSchema = z.object({
   token: z.string(),
   url: z.string().url(),
+});
+const trendPointSchema = z.object({
+  date: z.string(),
+  shipScore: z.number(),
+});
+const trendSchema = z.object({
+  points: z.array(trendPointSchema),
 });
 const scanFindingInputSchema = findingSchema.omit({ id: true, scan_id: true, created_at: true });
 const saveScanBodySchema = z.object({
@@ -172,6 +180,8 @@ export const clientApi = {
     requestJson('/api/github/fix', fixSchema, jsonRequest('POST', body)),
   shareScan: (scanId: string): Promise<{ token: string; url: string }> =>
     requestJson('/api/scans/share', shareReportSchema, jsonRequest('POST', { scanId })),
+  trend: (repositoryId: string): Promise<{ points: Array<{ date: string; shipScore: number }> }> =>
+    requestJson(`/api/repositories/${encodeURIComponent(repositoryId)}/trend`, trendSchema),
   contact: (body: {
     name: string;
     email: string;
