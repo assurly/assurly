@@ -33,11 +33,15 @@ structure, and metadata only.
 
 ### B) Pricing (sell peace of mind, not features)
 
-| Plan       | Price  | What they get                                                              |
-| ---------- | ------ | -------------------------------------------------------------------------- |
-| **Free**   | $0     | URL scan (limited result) + public repo — the acquisition funnel           |
-| **Guard**  | $19/mo | Monitoring on every deploy, private repos, auto-fix PRs, regression alerts |
-| **Agency** | $49/mo | + white-label PDF audit reports, 5 seats, Ship Score badge, priority       |
+| Plan       | Price  | What they get                                                                        |
+| ---------- | ------ | ------------------------------------------------------------------------------------ |
+| **Free**   | $0     | URL scan (limited result) + public repo + MCP server access — the acquisition funnel |
+| **Guard**  | $19/mo | Monitoring on every deploy, private repos, auto-fix PRs, regression alerts           |
+| **Agency** | $49/mo | + white-label PDF audit reports, 5 seats, Ship Score badge, priority                 |
+
+> **MCP placement (decided in Phase 4b):** the MCP server is part of **Free** — it is a distribution/acquisition
+> channel (agents call it before deploy), not a paid surface. Monetization is the Guard/Agency stickiness features
+> above, not gating the gate itself.
 
 - Emphasize that an **Agency bills the $49 to its client** as part of an audit (the most reliable paying segment).
 - "Most Popular" on Guard.

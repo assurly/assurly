@@ -2,6 +2,12 @@ name: Package release candidates
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Leave empty to build release candidates only. Type "publish" to publish to npm.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -18,9 +24,10 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run build:cli
+      - run: npm run build -w @shipready/mcp-server
       - run: npm run build:action
       - run: npm run build:vscode
-      - run: npm pack -w packages/scanner-core -w packages/cli
+      - run: npm pack -w packages/scanner-core -w packages/cli -w packages/mcp-server
       - uses: actions/upload-artifact@v4
         with:
           name: shipready-release-candidates
@@ -31,6 +38,44 @@ jobs:
             packages/github-action/dist/index.js
           if-no-files-found: error
 
-# Publishing intentionally remains a separate, authorized operation:
-# npm publish --provenance for scanner-core and CLI, a signed GitHub release/tag
-# for the Action Marketplace, and vsce publish with a VS Marketplace token.
+  publish:
+    if: github.event.inputs.confirm == 'publish'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Require explicit publish confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "publish" ]; then
+            echo "Refusing to publish: workflow input confirm must be exactly publish."
+            exit 1
+          fi
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:cli
+      - run: npm run build -w @shipready/mcp-server
+      - name: Publish scanner-core, CLI, and MCP server (dependency order)
+        run: |
+          npm publish --provenance -w packages/scanner-core
+          npm publish --provenance -w packages/cli
+          npm publish --provenance -w packages/mcp-server
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+# Release candidates (package job) and npm publish (publish job) are intentionally separate operations.
+# The publish job runs only when a human dispatches this workflow with confirm set to "publish".
+# Prerequisites before the first publish:
+# - Create the @shipready npm org and configure 2FA on the publishing account.
+# - Add NPM_TOKEN (Automation token with publish access) to repository secrets.
+# - Align each package repository.url with this GitHub repository (required for publishConfig.provenance).
+# - Choose and tag the first public version (currently 1.0.0 in all three packages).
+# Publish order: scanner-core → cli → mcp-server (mcp-server depends on exact published versions).
+# Other release surfaces remain separate authorized operations: a signed GitHub release/tag for the Action
+# Marketplace, and vsce publish with a VS Marketplace token.
