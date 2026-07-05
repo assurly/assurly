@@ -1,10 +1,12 @@
 'use client';
 
-import type { ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { ShipGatePanel, type ShipGateBillingPlan } from '../../_components/ship-gate/ShipGatePanel';
 import type { Scan, ScanFinding } from '../../../utils/dbAdapter';
+import { buildAiFixPrompt } from '../../../utils/aiFixPrompt';
 import type { ScanFixSummary } from '../../../utils/fixSummary';
 import type { ShipGateReport } from '../../../utils/shipGate';
+import { DashboardToast, type DashboardToastData } from './DashboardToast';
 import { ScanFindingsDetails } from './ScanFindingsDetails';
 
 export const SCAN_DETAILS_SECTION_ORDER = [
@@ -39,6 +41,17 @@ export function getScanDetailsSectionOrder(container: ParentNode): ScanDetailsSe
     .filter((section): section is ScanDetailsSectionId => Boolean(section));
 }
 
+function toWebFinding(finding: ScanFinding) {
+  return {
+    ruleId: finding.rule_id,
+    severity: finding.severity,
+    message: finding.message,
+    suggestion: finding.suggestion,
+    file: finding.file_path,
+    line: finding.line_number,
+  };
+}
+
 export function ScanDetailsPanel({
   selectedScan,
   shipGateReport,
@@ -55,6 +68,14 @@ export function ScanDetailsPanel({
   onCreateFixPr,
   onCreateBatchFixPr,
 }: ScanDetailsPanelProps): ReactElement {
+  const [copyToast, setCopyToast] = useState<DashboardToastData | null>(null);
+
+  useEffect(() => {
+    if (!copyToast) return;
+    const timer = window.setTimeout(() => setCopyToast(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [copyToast]);
+
   const showFixSummary =
     fixSummary !== null &&
     (fixSummary.issueCount > 0 ||
@@ -62,12 +83,33 @@ export function ScanDetailsPanel({
       fixSummary.remainingCount > 0 ||
       displayedFindings.some((finding) => finding.severity === 'error'));
 
+  const handleCopyFixPrompt = async (): Promise<void> => {
+    const prompt = buildAiFixPrompt(displayedFindings.map(toWebFinding));
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopyToast({
+        type: 'success',
+        message: 'Fix prompt copied to clipboard.',
+      });
+    } catch {
+      setCopyToast({
+        type: 'error',
+        message: 'Could not copy the fix prompt. Check browser clipboard permissions.',
+      });
+    }
+  };
+
+  const showPrimaryFixCta =
+    fixSummary !== null && fixSummary.remainingCount > 0 && fixingFindingId !== 'batch';
+
   return (
     <div
       id="scan-details-container"
       className="scan-details-container"
       data-testid="scan-details-container"
     >
+      {copyToast ? <DashboardToast toast={copyToast} onDismiss={() => setCopyToast(null)} /> : null}
+
       <section
         data-scan-section="ship-gate"
         data-testid="scan-details-ship-gate"
@@ -98,6 +140,16 @@ export function ScanDetailsPanel({
           aria-label="Auto-fix summary"
         >
           <div className="scan-fix-summary__metric">
+            <span className="scan-fix-summary__label">Remediation</span>
+            <strong className="scan-fix-summary__value scan-fix-summary__value--fix">
+              Fix these issues
+            </strong>
+            <p className="scan-fix-summary__hint">
+              Open auto-fix pull requests or copy a paste-ready prompt for your AI editor.
+            </p>
+          </div>
+
+          <div className="scan-fix-summary__metric">
             <span className="scan-fix-summary__label">Upstream code</span>
             <strong className="scan-fix-summary__value scan-fix-summary__value--issue">
               {fixSummary.issueCount} {fixSummary.issueCount === 1 ? 'issue' : 'issues'} detected
@@ -120,7 +172,43 @@ export function ScanDetailsPanel({
                   : 'No auto-fixable findings in this scan.'}
             </p>
           </div>
-          {fixSummary.fixableCount > 1 && fixSummary.remainingCount > 0 ? (
+
+          <div className="scan-fix-summary__actions">
+            {showPrimaryFixCta ? (
+              <button
+                type="button"
+                className="scan-finding-action-btn scan-finding-action-btn--success"
+                onClick={onCreateBatchFixPr}
+                disabled={fixingFindingId !== null}
+                aria-busy={fixingFindingId === 'batch'}
+                data-testid="scan-fix-primary-cta"
+              >
+                {fixingFindingId === 'batch' ? (
+                  <>
+                    <span className="scan-finding-action-spinner" aria-hidden="true" />
+                    Fixing...
+                  </>
+                ) : (
+                  <>Fix these issues</>
+                )}
+              </button>
+            ) : null}
+
+            {displayedFindings.length > 0 ? (
+              <button
+                type="button"
+                className="scan-finding-action-btn scan-finding-action-btn--batch"
+                onClick={() => {
+                  void handleCopyFixPrompt();
+                }}
+                data-testid="scan-copy-fix-prompt"
+              >
+                Copy fix prompt for AI
+              </button>
+            ) : null}
+          </div>
+
+          {fixSummary.fixableCount > 1 && fixSummary.remainingCount > 1 ? (
             <div className="scan-fix-summary__actions">
               <button
                 type="button"

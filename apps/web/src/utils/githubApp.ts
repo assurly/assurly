@@ -42,6 +42,16 @@ export class GitHubWriteAccessError extends Error {
   }
 }
 
+/** Raised when the target file already contains the proposed fix. */
+export class AutoFixAlreadyAppliedError extends Error {
+  readonly status = 409;
+
+  constructor(message = 'This fix has already been applied.') {
+    super(message);
+    this.name = 'AutoFixAlreadyAppliedError';
+  }
+}
+
 /** Server-side PAT used by the public-scan proxy and as a write fallback for auto-fix. */
 export function getGitHubServerPat(): string | undefined {
   const value = process.env.GITHUB_PAT?.trim() || process.env.GITHUB_TOKEN?.trim();

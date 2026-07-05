@@ -185,7 +185,7 @@ test.describe('Dashboard full suite @1280px', () => {
     await page.getByTestId(`scan-history-chip-${ATTESTA_BLOCKED_SCAN}`).click();
     await page.getByTestId('scan-findings-details-toggle').click();
 
-    const fixBtn = page.getByRole('button', { name: /Create Fix PR/i });
+    const fixBtn = page.getByRole('button', { name: /Fix it/i });
     await expect(fixBtn).toBeVisible();
     await fixBtn.click();
 

@@ -39,7 +39,7 @@ describe('ScanFindingCard', () => {
     expect(screen.getByText('schema.sql:L1')).toBeTruthy();
     expect(screen.getByText(finding.message)).toBeTruthy();
     expect(screen.getByText('Enable RLS on the table.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /create fix pr/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /fix it/i })).toBeTruthy();
   });
 
   it('shows a linked fix PR when one already exists', () => {
@@ -73,7 +73,7 @@ describe('ScanFindingCard', () => {
     expect(screen.getByTestId('scan-finding-occurrence-finding-1').textContent).toBe('×3');
   });
 
-  it('passes the representative finding id to Create Fix PR', () => {
+  it('passes the representative finding id to Fix it', () => {
     const onCreateFixPr = vi.fn();
 
     render(
@@ -86,7 +86,7 @@ describe('ScanFindingCard', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /create fix pr/i }));
+    fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
 
     expect(onCreateFixPr).toHaveBeenCalledTimes(1);
     expect(onCreateFixPr).toHaveBeenCalledWith(finding);
