@@ -1,0 +1,66 @@
+---
+description: ShipReady 2026 product direction, trust-first rule discipline, and non-negotiable engineering guardrails. Applies to all work.
+globs:
+alwaysApply: true
+---
+
+# ShipReady — 2026 direction & guardrails
+
+Read `docs/roadmap/README.md` before starting roadmap work. This rule is the short, always-on version.
+
+## Language (non-negotiable)
+- **Communicate with the user in Slovak.** All chat replies, explanations, and summaries are in Slovak.
+- **Write everything inside the app in professional, senior-level English** — code, identifiers, code comments,
+  commit messages, docs, and `.md` files. Never mix languages inside the codebase.
+
+## Product north star
+ShipReady is moving from "a static code analyzer for developers with a terminal" to
+"a trustworthy pre-deploy Ship Gate for people who had their SaaS built by AI."
+The one question it answers: "Can I ship this to Vercel + Supabase + Stripe right now without leaking data?"
+
+Target users: (1) vibe coders with a deployed URL and fear of a breach, (2) AI agents that need a ship-gate step
+via MCP, (3) agencies needing a white-label audit report.
+
+Three principles behind every change:
+- **Trust first.** Few, precise, defensible verdicts beat many noisy ones.
+- **Runtime + static**, not static only. The customer has a URL, not always a repo.
+- **Remediation > detection.** Detection is a commodity; people pay to have issues fixed. Distribution (free scan +
+  shareable badge) is what gets us found.
+
+## Rule / blocker discipline (this is what makes us trusted)
+- If a rule cannot be defended to a senior engineer in 30 seconds, it is a **warning or "review", never a blocker**.
+- A finding may block the ship only if it is BOTH high-severity AND high-confidence (see Phase 0 confidence model).
+- Keep total blocker rules at ~12 or fewer.
+- Never scan noise: test files, fixtures, and vendored code are excluded.
+- The product must pass its own scan: ShipReady self-scan = 0–2 blockers.
+
+## How roadmap work is structured
+- One phase = one branch = one PR = one focused session. Never implement multiple phases at once.
+- Specs live in `docs/roadmap/NN-*.md`. Follow their "Scope / Non-goals" and "Acceptance Criteria" exactly.
+- Reuse the code each spec lists under "Existing code to reuse". Do not invent new APIs.
+- Build order: 0 (trust) → 1 (URL scan) → 2 (autofix + AI security) → 6 (messaging, ongoing) → 3 (depth) → 4 (MCP) → 5 (monitoring).
+
+## Non-negotiable engineering constraints
+- **Next.js 16 has breaking changes.** Obey `apps/web/AGENTS.md`: read `node_modules/next/dist/docs/` before writing
+  Next code. Do not rely on pre-16 patterns from memory.
+- **Local-first is the product's identity.** Manual/browser scans run locally; never upload the user's source code to
+  a third party for analysis. (Runtime URL scanning of the user's own public URL is the one exception — read-only
+  probes only, per `docs/roadmap/01-url-runtime-scanner.md` safety rails.)
+- **One rule engine:** `@shipready/scanner-core`. Add rules there, not duplicated in web/CLI.
+- **API routes:** always `zod`-validate input and rate-limit via `apps/web/src/utils/apiSecurity.ts`.
+- **Types:** strict TypeScript, explicit return types, no `any`, no `@ts-ignore`.
+- **Design stays.** Change the engine, rules, and positioning — not the visual design. Reuse existing components
+  (e.g. `ShipGatePanel`) for new surfaces.
+
+## Definition of Done (every change, run from `apps/web` unless noted)
+- `npx tsc --noEmit` → 0 errors
+- `npm run lint` → 0 errors
+- `npm run test` (Vitest) → green, and new behavior has its own tests
+- `npm run test:e2e` (Playwright) → green
+
+## E2E gotcha
+Playwright starts its own dev server on port **3200** with `E2E_DASHBOARD_FIXTURE=1`. Next 16 refuses a second dev
+server in the same directory — kill any running `npm run dev` before `npm run test:e2e`, then restart it afterwards.
+
+## Commits
+Conventional Commits (`feat(scanner): ...`, `fix(web): ...`).
