@@ -13,7 +13,11 @@ import {
   scanEdgeRuntime,
   incompleteScanFinding,
   selectFiles,
+  buildScanScope,
+  isScannableFile,
+  rankFilesByRelevance,
   WebFinding,
+  type ScanScope,
 } from '../../../utils/browserScanner';
 import ManualChecker from './manual-checker/ManualChecker';
 import { UnauthenticatedDashboard } from './UnauthenticatedDashboard';
@@ -171,6 +175,7 @@ function DashboardContent({
   const [sharingScanId, setSharingScanId] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
   const [lastScanFileCount, setLastScanFileCount] = useState<number | null>(null);
+  const [lastScanScope, setLastScanScope] = useState<ScanScope | null>(null);
   const scanAbortRef = useRef<boolean>(false);
   const initialToast = useMemo<ToastNotification | null>(() => {
     const success = searchParams.get('success');
@@ -461,8 +466,9 @@ function DashboardContent({
     return buildShipGateFromScanFindings(displayedFindings, {
       scannedFileCount,
       cleanFileCount: Math.max(0, scannedFileCount - affectedPaths.size),
+      scanScope: lastScanScope ?? undefined,
     });
-  }, [displayedFindings, selectedScan, lastScanFileCount]);
+  }, [displayedFindings, selectedScan, lastScanFileCount, lastScanScope]);
 
   const selectedRepoScanCount = useMemo(() => {
     if (!selectedRepo) {
@@ -795,6 +801,7 @@ function DashboardContent({
 
       for (const node of tree) {
         if (node.type !== 'blob') continue;
+        if (!isScannableFile(node.path)) continue;
         const pathLower = node.path.toLowerCase();
 
         if (pathLower.endsWith('.sql')) {
@@ -806,19 +813,19 @@ function DashboardContent({
         ) {
           envFiles.push(node.path);
         } else if (/\.(js|ts|jsx|tsx)$/.test(pathLower)) {
-          if (
-            !node.path.includes('node_modules') &&
-            !node.path.includes('.next') &&
-            !node.path.startsWith('dist/') &&
-            !node.path.startsWith('build/')
-          ) {
-            codeFiles.push(node.path);
-          }
+          codeFiles.push(node.path);
         }
       }
 
-      const fileSelection = selectFiles([...new Set([...sqlFiles, ...codeFiles])], 250);
+      const rankedCandidates = rankFilesByRelevance(
+        [...new Set([...sqlFiles, ...codeFiles])],
+        (path) => path,
+      );
+      const fileSelection = selectFiles(rankedCandidates, 250);
       setLastScanFileCount(fileSelection.files.length);
+      setLastScanScope(
+        buildScanScope([...new Set([...sqlFiles, ...codeFiles])], fileSelection.files),
+      );
       const selectedFiles = new Set(fileSelection.files);
       const incompleteFinding = incompleteScanFinding(fileSelection);
       if (incompleteFinding) allFindings.push(incompleteFinding);
@@ -904,39 +911,58 @@ function DashboardContent({
 
       setScanProgress(65);
 
-      // Scan Environment Variables
-      const envExamplePath = envFiles.find((p) => p.endsWith('.env.example')) || envFiles[0];
-      if (envExamplePath) {
-        setScanLogs((prev) => [...prev, `⚙ Reading env configuration from ${envExamplePath}...`]);
+      // Scan Environment Variables (per-app-root .env.example matching)
+      const envExamplePaths = envFiles.filter((path) => path.endsWith('.env.example'));
+      if (envExamplePaths.length > 0) {
+        setScanLogs((prev) => [...prev, '⚙ Reading env configuration files...']);
         try {
-          const envRes = await fetchFileContent(envExamplePath);
-          if (envRes.ok) {
-            const envContent = await envRes.text();
-            let concatenatedCode = '';
-            const codeToScan = codeFiles.filter((path) => selectedFiles.has(path));
-            for (const codePath of codeToScan) {
-              try {
-                const codeRes = await fetchFileContent(codePath);
-                if (codeRes.ok) {
-                  concatenatedCode += `\n// --- File: ${codePath} ---\n` + (await codeRes.text());
-                }
-              } catch {
-                // Skip unreadable files
-              }
+          const allExamples: Array<{ file: string; content: string }> = [];
+          for (const examplePath of envExamplePaths) {
+            const envRes = await fetchFileContent(examplePath);
+            if (envRes.ok) {
+              allExamples.push({ file: examplePath, content: await envRes.text() });
             }
-
-            const scan = scanEnvVariables(
-              envContent,
-              concatenatedCode,
-              envExamplePath,
-              'Repository Codebase',
-            );
-            allFindings.push(...scan.findings);
-            setScanLogs((prev) => [
-              ...prev,
-              `  ✓ Checked env variables: ${scan.errorCount} errors.`,
-            ]);
           }
+
+          const rootExample =
+            allExamples.find((example) => example.file === '.env.example') ?? allExamples[0];
+          const codeToScan = codeFiles.filter((path) => selectedFiles.has(path));
+
+          for (const codePath of codeToScan) {
+            try {
+              const codeRes = await fetchFileContent(codePath);
+              if (!codeRes.ok) continue;
+              const codeContent = await codeRes.text();
+              const scan = scanEnvVariables(
+                rootExample.content,
+                codeContent,
+                rootExample.file,
+                codePath,
+                { allExamples },
+              );
+              allFindings.push(
+                ...scan.findings.filter((finding) => finding.ruleId === 'undocumented-env'),
+              );
+            } catch {
+              // Skip unreadable files
+            }
+          }
+
+          const secretScan = scanEnvVariables(
+            rootExample.content,
+            '',
+            rootExample.file,
+            'Repository Codebase',
+            { allExamples },
+          );
+          allFindings.push(
+            ...secretScan.findings.filter((finding) => finding.ruleId !== 'undocumented-env'),
+          );
+
+          setScanLogs((prev) => [
+            ...prev,
+            `  ✓ Checked env variables across ${envExamplePaths.length} example file(s).`,
+          ]);
         } catch {
           // Continue scanning
         }
@@ -974,16 +1000,33 @@ function DashboardContent({
         }
       }
 
-      // Check for missing GitHub Actions workflow
-      const hasCiWorkflow = tree.some((node) => {
-        const pathLower = node.path.toLowerCase();
-        return (
-          pathLower === '.github/workflows/shipready.yml' ||
-          pathLower === '.github/workflows/shipready.yaml'
-        );
-      });
+      // Check for missing GitHub Actions workflow with a ShipReady scan step
+      const workflowPaths = tree
+        .filter(
+          (node) =>
+            node.type === 'blob' &&
+            /^\.github\/workflows\/.*\.(ya?ml)$/i.test(node.path.replace(/\\/g, '/')),
+        )
+        .map((node) => node.path);
+      let hasScanWorkflow = false;
+      for (const workflowPath of workflowPaths) {
+        try {
+          const workflowRes = await fetchFileContent(workflowPath);
+          if (workflowRes.ok) {
+            const workflowContent = await workflowRes.text();
+            if (
+              /shipready|npm\s+run\s+scan(?::self)?|npx\s+shipready\s+scan/i.test(workflowContent)
+            ) {
+              hasScanWorkflow = true;
+              break;
+            }
+          }
+        } catch {
+          // Continue checking other workflows
+        }
+      }
 
-      if (!hasCiWorkflow) {
+      if (!hasScanWorkflow) {
         allFindings.push({
           ruleId: 'github-actions-integration',
           severity: 'warning',

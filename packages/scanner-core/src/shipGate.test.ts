@@ -103,10 +103,54 @@ describe('shipGate', () => {
     expect(report.status).toBe('blocked');
     expect(report.headline).toBe('NOT READY TO SHIP');
     expect(report.blockers).toHaveLength(3);
+    expect(report.reviews).toHaveLength(0);
     expect(report.warnings).toHaveLength(2);
     expect(report.shipScore).toBe(56);
     expect(report.cleanFileCount).toBe(168);
     expect(isShipGateBlocked(report)).toBe(true);
+  });
+
+  it('classifies low-confidence errors as review, not blockers', () => {
+    const report = buildShipGateReport([
+      {
+        ruleId: 'rsc-data-leaks',
+        severity: 'error',
+        confidence: 'low',
+        file: 'app/ui.tsx',
+        message: "Client Component imports server-side module '@/lib/db'.",
+      },
+    ]);
+
+    expect(report.blockers).toHaveLength(0);
+    expect(report.reviews).toHaveLength(1);
+    expect(report.status).toBe('review');
+    expect(isShipGateBlocked(report)).toBe(false);
+  });
+
+  it('keeps legacy error findings without confidence as blockers', () => {
+    const report = buildShipGateReport([
+      {
+        ruleId: 'supabase-rls',
+        severity: 'error',
+        file: 'schema.sql',
+        message: "Supabase table 'users' is created but Row-Level Security (RLS) is not enabled.",
+      },
+    ]);
+
+    expect(report.blockers).toHaveLength(1);
+    expect(report.reviews).toHaveLength(0);
+    expect(report.status).toBe('blocked');
+  });
+
+  it('populates scanScope on the report when provided in options', () => {
+    const report = buildShipGateReport([], {
+      scannedFileCount: 42,
+      cleanFileCount: 42,
+      scanScope: { scanned: 42, skipped: 18, roots: ['apps/web'] },
+    });
+
+    expect(report.scanScope).toEqual({ scanned: 42, skipped: 18, roots: ['apps/web'] });
+    expect(formatShipGatePlainText(report)).toContain('Scanned apps/web, 42 files');
   });
 
   it('marks warning-only scans as review with high score', () => {

@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactElement } from 'react';
+import { formatScanScopeSummary } from '../../../utils/browserScanner';
 import type { ShipGateReport } from '../../../utils/shipGate';
 import { getShipGateActionHint } from '../../../utils/shipGate';
 import { ShipGateGroupRow } from './ShipGateGroupRow';
@@ -63,7 +64,13 @@ export function ShipGatePanel({
         </div>
       </div>
 
-      {(report.blockers.length > 0 || report.warnings.length > 0) && (
+      {report.scanScope ? (
+        <p className="ship-gate-scope" role="status">
+          {formatScanScopeSummary(report.scanScope)}
+        </p>
+      ) : null}
+
+      {(report.blockers.length > 0 || report.reviews.length > 0 || report.warnings.length > 0) && (
         <div className="ship-gate-groups">
           {report.blockers.length > 0 ? (
             <div className="ship-gate-group ship-gate-group--blockers">
@@ -74,6 +81,21 @@ export function ShipGatePanel({
                     key={blocker.id}
                     group={blocker}
                     fileSuffix={fileSuffix(blocker.affectedFileCount)}
+                  />
+                ))}
+              </ol>
+            </div>
+          ) : null}
+
+          {report.reviews.length > 0 ? (
+            <div className="ship-gate-group ship-gate-group--reviews">
+              <h4 className="ship-gate-group-title">Review (heuristic)</h4>
+              <ol className="ship-gate-list">
+                {report.reviews.map((review) => (
+                  <ShipGateGroupRow
+                    key={review.id}
+                    group={review}
+                    fileSuffix={fileSuffix(review.affectedFileCount)}
                   />
                 ))}
               </ol>

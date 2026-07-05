@@ -1,5 +1,11 @@
 export {
+  buildScanScope,
+  collectTestOnlyEnvKeys,
+  formatScanScopeSummary,
   incompleteScanFinding,
+  isScannableFile,
+  rankFilesByRelevance,
+  resolveEnvExampleForPath,
   scanColdStart,
   scanEnvVariables,
   scanEdgeRuntime,
@@ -13,6 +19,7 @@ export {
 
 export type {
   FileSelection,
+  ScanScope,
   ScannerFinding as WebFinding,
   ScanResult,
 } from '@shipready/scanner-core';

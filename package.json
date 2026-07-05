@@ -21,6 +21,7 @@
     "pack:release": "npm pack -w packages/scanner-core -w packages/cli --dry-run && npm run package:vsix -w packages/vscode-extension",
     "test:action": "npm test -w packages/github-action",
     "test": "npm test --workspaces --if-present",
+    "scan:self": "npm run build:cli && SHIPREADY_DOGFOOD_MAX_BLOCKERS=2 node packages/cli/dist/index.js scan -p .",
     "prepare": "husky"
   },
   "keywords": [],

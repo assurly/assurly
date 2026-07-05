@@ -90,12 +90,23 @@ program
         );
 
         reportFindings(findings);
-        const shipGate = buildCliShipGateReport(findings, context.files.length);
+        const shipGate = buildCliShipGateReport(findings, context.files.length, context.scanScope);
         printShipGateSummary(shipGate);
+        const maxBlockers = process.env.SHIPREADY_DOGFOOD_MAX_BLOCKERS
+          ? Number.parseInt(process.env.SHIPREADY_DOGFOOD_MAX_BLOCKERS, 10)
+          : undefined;
+        if (maxBlockers !== undefined && shipGate.blockers.length > maxBlockers) {
+          console.error(
+            chalk.red(
+              `\nDogfood gate failed: ${shipGate.blockers.length} blockers (max ${maxBlockers}).\n`,
+            ),
+          );
+          process.exit(1);
+        }
         process.exit(shipGate.status === 'blocked' ? 1 : 0);
       }
 
-      const shipGate = buildCliShipGateReport(findings, context.files.length);
+      const shipGate = buildCliShipGateReport(findings, context.files.length, context.scanScope);
       process.exit(shipGate.status === 'blocked' ? 1 : 0);
     } catch (error: any) {
       spinner.stop();

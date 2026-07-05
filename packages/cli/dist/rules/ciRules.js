@@ -36,32 +36,39 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ciRules = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const WORKFLOW_PATTERN = /^\.github\/workflows\/.*\.(ya?ml)$/i;
+const SCAN_STEP_PATTERN = /shipready|npm\s+run\s+scan(?::self)?|npx\s+shipready\s+scan/i;
+function workflowRunsScanStep(content) {
+    return SCAN_STEP_PATTERN.test(content);
+}
 /**
- * CI/CD Rule to verify if the project has the GitHub Actions integration set up.
+ * CI/CD Rule — hints when no workflow runs a ShipReady scan; never blocks.
  */
 exports.ciRules = {
-    id: 'github-actions-cicd',
+    id: 'github-actions-integration',
     name: 'GitHub Actions CI/CD Integration',
     description: 'Ensures the project is configured with a GitHub Actions workflow for automatic ShipReady scans.',
     severity: 'warning',
     async run(context) {
-        const findings = [];
-        const workflowPath = path.join('.github', 'workflows', 'shipready.yml');
-        // Normalize slashes for cross-platform matching in context.files
-        const hasWorkflowInContext = context.files.some((file) => {
-            const normalized = file.replace(/\\/g, '/');
-            return normalized === '.github/workflows/shipready.yml';
-        });
-        // Fallback: direct filesystem check
-        const hasWorkflowOnFile = fs.existsSync(path.join(context.projectPath, workflowPath));
-        if (!hasWorkflowInContext && !hasWorkflowOnFile) {
-            findings.push({
+        const workflowFiles = context.files.filter((file) => WORKFLOW_PATTERN.test(file.replace(/\\/g, '/')));
+        for (const workflowFile of workflowFiles) {
+            try {
+                const content = fs.readFileSync(path.join(context.projectPath, workflowFile), 'utf8');
+                if (workflowRunsScanStep(content)) {
+                    return [];
+                }
+            }
+            catch {
+                // Ignore unreadable workflow files and keep checking others.
+            }
+        }
+        return [
+            {
                 ruleId: this.id,
                 severity: 'warning',
                 message: 'GitHub Actions workflow for ShipReady is missing.',
                 suggestion: 'Run "npx shipready init" to automatically generate the .github/workflows/shipready.yml workflow file.',
-            });
-        }
-        return findings;
+            },
+        ];
     },
 };

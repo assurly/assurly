@@ -61,10 +61,18 @@ function parseEnvFile(filePath) {
             }
         }
     }
-    catch (e) {
+    catch {
         // Ignore read errors
     }
     return keys;
+}
+function readFileContent(rootPath, relativePath) {
+    try {
+        return fs.readFileSync(path.join(rootPath, relativePath), 'utf8');
+    }
+    catch {
+        return null;
+    }
 }
 exports.envRules = {
     id: 'env-vars-validator',
@@ -74,9 +82,8 @@ exports.envRules = {
     async run(context) {
         const findings = [];
         const rootPath = context.projectPath;
-        const examplePath = path.join(rootPath, '.env.example');
-        const hasExample = fs.existsSync(examplePath);
-        if (!hasExample) {
+        const examplePaths = context.files.filter((file) => file.endsWith('.env.example'));
+        if (examplePaths.length === 0) {
             findings.push({
                 ruleId: this.id,
                 severity: 'warning',
@@ -84,9 +91,16 @@ exports.envRules = {
             });
             return findings;
         }
-        // Parse keys from .env.example
-        const exampleKeys = parseEnvFile(examplePath);
-        // Find local environment files (.env, .env.local, .env.development)
+        const allExamples = examplePaths.flatMap((file) => {
+            const content = readFileContent(rootPath, file);
+            return content ? [{ file, content }] : [];
+        });
+        const rootExamplePath = examplePaths.includes('.env.example')
+            ? '.env.example'
+            : examplePaths[0];
+        const rootExampleContent = readFileContent(rootPath, rootExamplePath) ?? '';
+        // Parse keys from root .env.example for local env consistency check
+        const exampleKeys = parseEnvFile(path.join(rootPath, rootExamplePath));
         const localEnvFiles = ['.env.local', '.env.development', '.env'];
         let localKeys = new Set();
         let foundLocalFile = '';
@@ -98,7 +112,6 @@ exports.envRules = {
                 break;
             }
         }
-        // Rule 1: Check if any key from .env.example is missing in local .env configuration
         for (const key of exampleKeys) {
             if (foundLocalFile && !localKeys.has(key)) {
                 findings.push({
@@ -110,22 +123,35 @@ exports.envRules = {
                 });
             }
         }
-        const exampleContent = fs.readFileSync(examplePath, 'utf8');
-        findings.push(...(0, scanner_core_1.scanEnvVariables)(exampleContent, '', '.env.example', 'code.ts').findings);
-        const srcFiles = context.files.filter((f) => (f.startsWith('src/') ||
-            f.startsWith('app/') ||
-            f.startsWith('pages/') ||
-            f.startsWith('components/')) &&
-            /\.(js|ts|jsx|tsx)$/.test(f));
+        findings.push(...(0, scanner_core_1.scanEnvVariables)(rootExampleContent, '', rootExamplePath, 'code.ts', {
+            allExamples,
+        }).findings);
+        const codeSources = [];
+        const srcFiles = context.files.filter((file) => (file.startsWith('src/') ||
+            file.startsWith('app/') ||
+            file.startsWith('apps/') ||
+            file.startsWith('pages/') ||
+            file.startsWith('components/')) &&
+            /\.(js|ts|jsx|tsx)$/.test(file));
         for (const file of srcFiles) {
-            try {
-                const fullPath = path.join(rootPath, file);
-                const content = fs.readFileSync(fullPath, 'utf8');
-                findings.push(...(0, scanner_core_1.scanEnvVariables)(exampleContent, content, '.env.example', file).findings.filter((finding) => finding.ruleId === 'undocumented-env'));
-            }
-            catch (e) {
-                // Ignore read errors
-            }
+            const content = readFileContent(rootPath, file);
+            if (content)
+                codeSources.push({ file, content });
+        }
+        const testOnlyKeys = (0, scanner_core_1.collectTestOnlyEnvKeys)([
+            ...codeSources,
+            ...context.files
+                .filter((file) => /\.(js|ts|jsx|tsx)$/.test(file) && !codeSources.some((s) => s.file === file))
+                .flatMap((file) => {
+                const content = readFileContent(rootPath, file);
+                return content ? [{ file, content }] : [];
+            }),
+        ]);
+        for (const source of codeSources) {
+            findings.push(...(0, scanner_core_1.scanEnvVariables)(rootExampleContent, source.content, rootExamplePath, source.file, {
+                allExamples,
+                testOnlyKeys,
+            }).findings.filter((finding) => finding.ruleId === 'undocumented-env'));
         }
         return findings;
     },

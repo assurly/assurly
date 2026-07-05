@@ -1,3 +1,4 @@
+import type { ScanScope } from '@shipready/scanner-core';
 /**
  * Represents the detected tech stack of the project.
  */
@@ -14,6 +15,7 @@ export interface ProjectContext {
     projectPath: string;
     detectedStack: TechStack;
     files: string[];
+    scanScope?: ScanScope;
 }
 /**
  * Represents a single issue found during code scanning.
@@ -21,6 +23,7 @@ export interface ProjectContext {
 export interface Finding {
     ruleId: string;
     severity: 'error' | 'warning';
+    confidence?: 'high' | 'medium' | 'low';
     file?: string;
     line?: number;
     message: string;

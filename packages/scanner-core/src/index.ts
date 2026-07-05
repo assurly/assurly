@@ -1,11 +1,24 @@
 import { parse } from '@babel/parser';
 import type { Node } from '@babel/types';
+import {
+  buildScanScope,
+  formatScanScopeSummary,
+  getFileRelevanceScore,
+  inferScanRoots,
+  isScannableFile,
+  rankFilesByRelevance,
+  type ScanScope,
+} from './fileRelevance';
 
 export type Severity = 'error' | 'warning';
+
+export type FindingConfidence = 'high' | 'medium' | 'low';
 
 export interface ScannerFinding {
   ruleId: string;
   severity: Severity;
+  /** Defaults to 'high' so existing high-precision rules stay blockers. */
+  confidence?: FindingConfidence;
   message: string;
   suggestion?: string;
   file?: string;
@@ -191,6 +204,8 @@ export function scanRscDataLeaks(content: string, file = 'component.tsx'): ScanR
         findings.push({
           ruleId: 'rsc-data-leaks',
           severity: 'error',
+          // Heuristic: cannot distinguish `import type` from runtime imports.
+          confidence: 'medium',
           file,
           line: lineOf(node),
           message: `Client Component imports server-side module '${source}'.`,
@@ -408,19 +423,120 @@ export function scanSupabaseClientLeaks(content: string, file = 'component.tsx')
   return result(findings);
 }
 
-export function scanEnvVariables(
-  exampleContent: string,
-  codeContent: string,
-  exampleFile = '.env.example',
-  codeFile = 'code.ts',
-): ScanResult {
-  const findings: ScannerFinding[] = [];
+const FRAMEWORK_ENV_KEYS = new Set([
+  'NODE_ENV',
+  'CI',
+  'VERCEL',
+  'VERCEL_ENV',
+  'NEXT_RUNTIME',
+  'PORT',
+]);
+
+/** Fallback names documented via their public NEXT_PUBLIC_* counterpart. */
+const DOCUMENTED_ENV_ALIASES: Record<string, readonly string[]> = {
+  SUPABASE_URL: ['NEXT_PUBLIC_SUPABASE_URL'],
+  SUPABASE_ANON_KEY: ['NEXT_PUBLIC_SUPABASE_ANON_KEY'],
+};
+
+function isEnvKeyDocumented(key: string, keys: Set<string>): boolean {
+  if (keys.has(key)) return true;
+  const aliases = DOCUMENTED_ENV_ALIASES[key];
+  return aliases?.some((alias) => keys.has(alias)) ?? false;
+}
+
+function isTestOrFixturePath(filePath: string): boolean {
+  if (!isScannableFile(filePath)) return true;
+  const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+  return (
+    normalized.includes('/testing/') ||
+    normalized.includes('/__mocks__/') ||
+    normalized.endsWith('playwright.config.ts')
+  );
+}
+
+export interface ScanEnvOptions {
+  /** All `.env.example` files in the repo; nearest ancestor wins for `codeFile`. */
+  allExamples?: readonly SourceInput[];
+  /** Keys referenced only from test/fixture files — never flagged as undocumented. */
+  testOnlyKeys?: ReadonlySet<string>;
+}
+
+function parseExampleKeys(content: string): Set<string> {
   const keys = new Set<string>();
-  exampleContent.split(/\r?\n/).forEach((raw, index) => {
+  content.split(/\r?\n/).forEach((raw) => {
     const line = raw.trim();
     if (!line || line.startsWith('#')) return;
     const key = line.split('=')[0]?.trim();
     if (key) keys.add(key);
+  });
+  return keys;
+}
+
+/** Resolve the nearest `.env.example` ancestor for a code path within a monorepo. */
+export function resolveEnvExampleForPath(
+  codePath: string,
+  examples: readonly SourceInput[],
+): SourceInput | null {
+  const normalizedCode = codePath.replace(/\\/g, '/');
+  const codeDir = normalizedCode.includes('/')
+    ? normalizedCode.slice(0, normalizedCode.lastIndexOf('/'))
+    : '';
+
+  let best: SourceInput | null = null;
+  let bestDirLength = -1;
+
+  for (const example of examples) {
+    const examplePath = example.file.replace(/\\/g, '/');
+    if (!examplePath.endsWith('.env.example')) continue;
+
+    const exampleDir = examplePath.includes('/')
+      ? examplePath.slice(0, examplePath.lastIndexOf('/'))
+      : '';
+
+    const isAncestor =
+      exampleDir === '' ||
+      codeDir === exampleDir ||
+      (exampleDir.length > 0 && codeDir.startsWith(`${exampleDir}/`));
+
+    if (isAncestor && exampleDir.length >= bestDirLength) {
+      best = example;
+      bestDirLength = exampleDir.length;
+    }
+  }
+
+  return best;
+}
+
+/** Collect env keys that appear exclusively in non-scannable (test/fixture) files. */
+export function collectTestOnlyEnvKeys(sources: readonly SourceInput[]): Set<string> {
+  const prodKeys = new Set<string>();
+  const testKeys = new Set<string>();
+
+  for (const source of sources) {
+    const isTestFile = isTestOrFixturePath(source.file);
+    for (const match of source.content.matchAll(/process\.env\.([A-Z0-9_]+)/g)) {
+      const key = match[1];
+      if (isTestFile) testKeys.add(key);
+      else prodKeys.add(key);
+    }
+  }
+
+  const testOnly = new Set<string>();
+  for (const key of testKeys) {
+    if (!prodKeys.has(key)) testOnly.add(key);
+  }
+  return testOnly;
+}
+
+function scanExampleFileSecrets(
+  exampleContent: string,
+  exampleFile: string,
+  findings: ScannerFinding[],
+): void {
+  exampleContent.split(/\r?\n/).forEach((raw, index) => {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) return;
+    const key = line.split('=')[0]?.trim();
     if (/^NEXT_PUBLIC_(?:SUPABASE_SERVICE_ROLE_KEY|STRIPE_(?:SECRET_KEY|SK))\s*=/.test(line))
       findings.push({
         ruleId: 'public-secret',
@@ -441,23 +557,67 @@ export function scanEnvVariables(
         suggestion: 'Use an empty example value and rotate the exposed key.',
       });
   });
-  const ignored = new Set(['NODE_ENV', 'PORT', 'VERCEL_ENV', 'NEXT_RUNTIME']);
+}
+
+export function scanEnvVariables(
+  exampleContent: string,
+  codeContent: string,
+  exampleFile = '.env.example',
+  codeFile = 'code.ts',
+  options: ScanEnvOptions = {},
+): ScanResult {
+  const findings: ScannerFinding[] = [];
+  const resolvedExample =
+    options.allExamples && options.allExamples.length > 0
+      ? resolveEnvExampleForPath(codeFile, options.allExamples)
+      : null;
+
+  const activeExample = resolvedExample ?? { file: exampleFile, content: exampleContent };
+  const keys = parseExampleKeys(activeExample.content);
+
+  if (options.allExamples && options.allExamples.length > 0) {
+    const scannedExampleFiles = new Set<string>();
+    for (const example of options.allExamples) {
+      if (!example.file.endsWith('.env.example') || scannedExampleFiles.has(example.file)) {
+        continue;
+      }
+      scannedExampleFiles.add(example.file);
+      scanExampleFileSecrets(example.content, example.file, findings);
+    }
+  } else {
+    scanExampleFileSecrets(exampleContent, exampleFile, findings);
+  }
+
   codeContent.split(/\r?\n/).forEach((line, index) => {
     for (const match of line.matchAll(/process\.env\.([A-Z0-9_]+)/g)) {
       const key = match[1];
-      if (!ignored.has(key) && !keys.has(key))
+      if (FRAMEWORK_ENV_KEYS.has(key)) continue;
+      if (options.testOnlyKeys?.has(key)) continue;
+      if (!isEnvKeyDocumented(key, keys)) {
+        const docPath = activeExample.file;
         findings.push({
           ruleId: 'undocumented-env',
           severity: 'error',
           file: codeFile,
           line: index + 1,
-          message: `Environment variable 'process.env.${key}' is used but not documented in '.env.example'.`,
-          suggestion: `Add ${key}= to .env.example.`,
+          message: `Environment variable 'process.env.${key}' is used but not documented in '${docPath}'.`,
+          suggestion: `Add ${key}= to ${docPath}.`,
         });
+      }
     }
   });
   return result(findings);
 }
+
+export {
+  buildScanScope,
+  formatScanScopeSummary,
+  getFileRelevanceScore,
+  inferScanRoots,
+  isScannableFile,
+  rankFilesByRelevance,
+  type ScanScope,
+};
 
 export {
   buildIssueGroups,

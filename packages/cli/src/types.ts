@@ -1,3 +1,5 @@
+import type { ScanScope } from '@shipready/scanner-core';
+
 /**
  * Represents the detected tech stack of the project.
  */
@@ -15,6 +17,7 @@ export interface ProjectContext {
   projectPath: string;
   detectedStack: TechStack;
   files: string[]; // List of relative file paths in the project
+  scanScope?: ScanScope;
 }
 
 /**
@@ -23,6 +26,7 @@ export interface ProjectContext {
 export interface Finding {
   ruleId: string;
   severity: 'error' | 'warning';
+  confidence?: 'high' | 'medium' | 'low';
   file?: string; // Relative path to the file containing the issue
   line?: number; // Line number, if applicable
   message: string; // Detail description of the finding

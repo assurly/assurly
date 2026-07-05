@@ -1,8 +1,10 @@
-import type { ScannerFinding, Severity } from './index';
+import type { FindingConfidence, ScannerFinding, Severity } from './index';
+import type { ScanScope } from './fileRelevance';
+import { formatScanScopeSummary } from './fileRelevance';
 
 export type ShipGateFindingInput = Pick<
   ScannerFinding,
-  'severity' | 'message' | 'file' | 'line' | 'ruleId' | 'suggestion'
+  'severity' | 'message' | 'file' | 'line' | 'ruleId' | 'suggestion' | 'confidence'
 >;
 
 export type ShipGateActionKind = 'command' | 'link' | 'hint';
@@ -33,20 +35,40 @@ export interface ShipGateReport {
   headline: string;
   statusEmoji: string;
   blockers: ShipGateGroup[];
+  /** Error-severity findings with medium/low confidence — review, not block. */
+  reviews: ShipGateGroup[];
   warnings: ShipGateGroup[];
   cleanFileCount: number;
   scannedFileCount: number;
   totalErrorFindings: number;
   totalWarningFindings: number;
+  scanScope?: ScanScope;
 }
 
 export interface ShipGateOptions {
   scannedFileCount?: number;
   cleanFileCount?: number;
+  scanScope?: ScanScope;
 }
 
 const BLOCKER_PENALTY = 12;
 const WARNING_PENALTY = 4;
+
+function effectiveConfidence(confidence: FindingConfidence | undefined): FindingConfidence {
+  return confidence ?? 'high';
+}
+
+function isBlockerFinding(finding: ShipGateFindingInput): boolean {
+  return finding.severity === 'error' && effectiveConfidence(finding.confidence) === 'high';
+}
+
+function isReviewFinding(finding: ShipGateFindingInput): boolean {
+  return finding.severity === 'error' && effectiveConfidence(finding.confidence) !== 'high';
+}
+
+function isWarningFinding(finding: ShipGateFindingInput): boolean {
+  return finding.severity === 'warning';
+}
 
 export function getFindingGroupKey(finding: ShipGateFindingInput): string {
   const message = (finding.message || '').toLowerCase();
@@ -294,14 +316,24 @@ export function buildShipGateReport(
   findings: ShipGateFindingInput[],
   options: ShipGateOptions = {},
 ): ShipGateReport {
-  const groups = buildIssueGroups(findings);
-  const blockers = groups.filter((group) => group.severity === 'error');
-  const warnings = groups.filter((group) => group.severity === 'warning');
+  const blockerFindings = findings.filter(isBlockerFinding);
+  const reviewFindings = findings.filter(isReviewFinding);
+  const warningFindings = findings.filter(isWarningFinding);
+
+  const blockers = buildIssueGroups(blockerFindings);
+  const reviews = buildIssueGroups(reviewFindings);
+  const warnings = buildIssueGroups(warningFindings);
   const { scannedFileCount, cleanFileCount } = resolveFileCounts(findings, options);
 
   const shipScore = Math.max(
     0,
-    Math.min(100, 100 - blockers.length * BLOCKER_PENALTY - warnings.length * WARNING_PENALTY),
+    Math.min(
+      100,
+      100 -
+        blockers.length * BLOCKER_PENALTY -
+        reviews.length * WARNING_PENALTY -
+        warnings.length * WARNING_PENALTY,
+    ),
   );
 
   let status: ShipGateStatus;
@@ -312,7 +344,7 @@ export function buildShipGateReport(
     status = 'blocked';
     headline = 'NOT READY TO SHIP';
     statusEmoji = '🚫';
-  } else if (warnings.length > 0) {
+  } else if (warnings.length > 0 || reviews.length > 0) {
     status = 'review';
     headline = 'REVIEW RECOMMENDED';
     statusEmoji = '⚠️';
@@ -328,11 +360,13 @@ export function buildShipGateReport(
     headline,
     statusEmoji,
     blockers,
+    reviews,
     warnings,
     cleanFileCount,
     scannedFileCount,
     totalErrorFindings: findings.filter((finding) => finding.severity === 'error').length,
     totalWarningFindings: findings.filter((finding) => finding.severity === 'warning').length,
+    scanScope: options.scanScope,
   };
 }
 
@@ -351,6 +385,10 @@ export function formatShipGatePlainText(report: ShipGateReport): string {
     `${report.statusEmoji} ${report.headline}${padLine('', `Ship Score: ${report.shipScore}/100`, 28)}`,
   );
 
+  if (report.scanScope) {
+    lines.push(formatScanScopeSummary(report.scanScope));
+  }
+
   if (report.blockers.length > 0) {
     lines.push('Blockers (must fix):');
     report.blockers.forEach((blocker, index) => {
@@ -359,6 +397,18 @@ export function formatShipGatePlainText(report: ShipGateReport): string {
       );
       if (blocker.action) {
         lines.push(`     ↳ ${formatActionPlainText(blocker.action)}`);
+      }
+    });
+  }
+
+  if (report.reviews.length > 0) {
+    lines.push('Review (heuristic — verify before blocking deploy):');
+    report.reviews.forEach((review, index) => {
+      lines.push(
+        `  ${index + 1}. ${padLine(review.label, formatFileSuffix(review.affectedFileCount))}`,
+      );
+      if (review.action) {
+        lines.push(`     ↳ ${formatActionPlainText(review.action)}`);
       }
     });
   }
@@ -399,6 +449,10 @@ export function formatShipGateMarkdown(
     lines.push(`Repository: \`${options.repositoryName}\``);
   }
 
+  if (report.scanScope) {
+    lines.push(formatScanScopeSummary(report.scanScope));
+  }
+
   lines.push('');
 
   if (report.blockers.length > 0) {
@@ -409,6 +463,19 @@ export function formatShipGateMarkdown(
       );
       if (blocker.action) {
         lines.push(`   - Action: ${formatActionMarkdown(blocker.action)}`);
+      }
+    });
+    lines.push('');
+  }
+
+  if (report.reviews.length > 0) {
+    lines.push('#### Review (heuristic)');
+    report.reviews.forEach((review, index) => {
+      lines.push(
+        `${index + 1}. ${review.label} → ${review.affectedFileCount} file${review.affectedFileCount === 1 ? '' : 's'}`,
+      );
+      if (review.action) {
+        lines.push(`   - Action: ${formatActionMarkdown(review.action)}`);
       }
     });
     lines.push('');
