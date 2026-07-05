@@ -5,6 +5,7 @@ import {
   resolveEnvExampleForPath,
   scanEdgeRuntime,
   scanEnvVariables,
+  scanMaxDuration,
   scanRscDataLeaks,
   scanSqlMigrations,
   scanStripeWebhook,
@@ -41,7 +42,37 @@ describe('shared scanner core', () => {
 
   it('uses AST exports and imports for Edge compatibility', () => {
     const code = `import { readFile } from\n'node:fs';\nexport const runtime = 'edge';`;
-    expect(scanEdgeRuntime(code, 'app/api/route.ts').errorCount).toBe(1);
+    const scan = scanEdgeRuntime(code, 'app/api/route.ts');
+    expect(scan.errorCount).toBe(1);
+    expect(scan.findings[0]).toMatchObject({
+      ruleId: 'vercel-edge-node-mismatch',
+      confidence: 'high',
+    });
+  });
+
+  it('warns on long-running routes missing maxDuration', () => {
+    const code = [
+      "import { streamText } from 'ai';",
+      'export async function POST() {',
+      '  return streamText({ model: "gpt-4o", prompt: "hi" });',
+      '}',
+    ].join('\n');
+    expect(scanMaxDuration(code, 'app/api/chat/route.ts').findings[0]).toMatchObject({
+      ruleId: 'vercel-maxduration-missing',
+      severity: 'warning',
+      confidence: 'low',
+    });
+  });
+
+  it('passes when maxDuration is exported on long-running routes', () => {
+    const code = [
+      "import { streamText } from 'ai';",
+      'export const maxDuration = 60;',
+      'export async function POST() {',
+      '  return streamText({ model: "gpt-4o", prompt: "hi" });',
+      '}',
+    ].join('\n');
+    expect(scanMaxDuration(code, 'app/api/chat/route.ts').findings).toEqual([]);
   });
 
   it('correlates RLS across migration files', () => {

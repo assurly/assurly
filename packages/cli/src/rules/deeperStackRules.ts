@@ -1,0 +1,78 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { execFileSync } from 'child_process';
+import { runDeeperStackScans, type SourceInput } from '@shipready/scanner-core';
+import { Finding, ProjectContext, Rule } from '../types';
+
+/**
+ * Returns the subset of `files` that are NOT gitignored. A pre-ship scan should
+ * analyze what actually ships, so gitignored files (e.g. a developer's local
+ * `.env.local` holding real secrets) must not produce blockers. Falls back to
+ * returning every file when the project is not a git repo or git is unavailable.
+ */
+function excludeGitIgnored(projectPath: string, files: string[]): string[] {
+  if (files.length === 0) return files;
+  try {
+    const ignored = new Set<string>();
+    // `git check-ignore --stdin` prints the paths it considers ignored and
+    // exits 1 when none match (which execFileSync surfaces as a thrown error
+    // carrying stdout), so read stdout in both the success and no-match cases.
+    let stdout = '';
+    try {
+      stdout = execFileSync('git', ['check-ignore', '--stdin'], {
+        cwd: projectPath,
+        input: files.join('\n'),
+        encoding: 'utf8',
+      });
+    } catch (error: unknown) {
+      const status = (error as { status?: number }).status;
+      // status 1 = "no paths ignored" (normal); anything else (e.g. 128 = not a
+      // git repo) means we can't determine ignore status, so scan everything.
+      if (status !== 1) return files;
+      stdout = (error as { stdout?: string }).stdout ?? '';
+    }
+    for (const line of stdout.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed) ignored.add(trimmed);
+    }
+    return files.filter((file) => !ignored.has(file));
+  } catch {
+    return files;
+  }
+}
+
+/**
+ * Phase 3 deeper-stack rules: auth boundaries, Supabase policy quality, Stripe
+ * lifecycle, and Vercel maxDuration. Edge-runtime detection is intentionally
+ * excluded here because `vercelRules` already runs it — see the
+ * `includeEdgeRuntime` option on `runDeeperStackScans`.
+ *
+ * Each scanner carries its own severity + confidence, which the Ship Gate uses
+ * to route findings (error+high → blocker, error+medium / warning → review), so
+ * the granular ruleIds are preserved rather than remapped to this wrapper id.
+ */
+export const deeperStackRules: Rule = {
+  id: 'deeper-stack-rules',
+  name: 'Deeper Stack Security (auth, Supabase, Stripe, Vercel)',
+  description:
+    'Detects unguarded server actions/route handlers, service-role bypasses, permissive Supabase policies, Stripe lifecycle gaps, and missing maxDuration.',
+  severity: 'error',
+  async run(context: ProjectContext): Promise<Finding[]> {
+    const candidates = context.files
+      .filter(
+        (file) =>
+          /\.(?:js|ts|jsx|tsx|sql)$/.test(file) ||
+          /(?:^|\/)\.env(?:\.(?:local|development|dev|test|staging))?$/.test(file),
+      )
+      .filter((file) => !/\.(?:test|spec)\./.test(file));
+
+    const sources: SourceInput[] = excludeGitIgnored(context.projectPath, candidates).map(
+      (file) => ({
+        file,
+        content: fs.readFileSync(path.join(context.projectPath, file), 'utf8'),
+      }),
+    );
+
+    return runDeeperStackScans(sources, { includeEdgeRuntime: false }).findings;
+  },
+};

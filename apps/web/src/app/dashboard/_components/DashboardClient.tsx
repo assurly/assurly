@@ -11,6 +11,13 @@ import {
   scanRscDataLeaks,
   scanColdStart,
   scanEdgeRuntime,
+  scanMaxDuration,
+  scanRouteHandlerAuth,
+  scanServerActionAuth,
+  scanServiceRoleBypass,
+  scanStripeMissingSubscriptionEvents,
+  scanStripeWebhookIdempotency,
+  scanSupabaseDeepPolicies,
   incompleteScanFinding,
   selectFiles,
   buildScanScope,
@@ -875,6 +882,9 @@ function DashboardContent({
             const content = await res.text();
             const scan = scanSqlMigration(content, sqlPath);
             allFindings.push(...scan.findings);
+            // Phase 3: deeper Supabase policy quality (permissive RLS, public
+            // storage defaults, auth-linked tables without RLS).
+            allFindings.push(...scanSupabaseDeepPolicies([{ file: sqlPath, content }]).findings);
             setScanLogs((prev) => [
               ...prev,
               `  ✓ Scanned ${sqlPath}: ${scan.errorCount} errors, ${scan.warningCount} warnings.`,
@@ -980,6 +990,15 @@ function DashboardContent({
             const content = await res.text();
 
             allFindings.push(...scanEdgeRuntime(content, codePath).findings);
+
+            // Phase 3: deeper-stack per-file scanners (edge runtime is already
+            // handled above; maxDuration + auth boundaries + Stripe lifecycle).
+            allFindings.push(...scanMaxDuration(content, codePath).findings);
+            allFindings.push(...scanServerActionAuth(content, codePath).findings);
+            allFindings.push(...scanRouteHandlerAuth(content, codePath).findings);
+            allFindings.push(...scanServiceRoleBypass(content, codePath).findings);
+            allFindings.push(...scanStripeWebhookIdempotency(content, codePath).findings);
+            allFindings.push(...scanStripeMissingSubscriptionEvents(content, codePath).findings);
 
             // RSC data leak check
             const rscScan = scanRscDataLeaks(content, codePath);

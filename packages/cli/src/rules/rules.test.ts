@@ -208,7 +208,7 @@ describe('ShipReady Verification Rules', () => {
       expect(findings.length).toBe(1);
       expect(findings[0].severity).toBe('error');
       expect(findings[0].message).toContain(
-        "is configured to run on the Edge Runtime, but imports incompatible Node.js core module 'fs'",
+        "declares Edge Runtime but imports Node-only module 'fs'",
       );
     });
   });

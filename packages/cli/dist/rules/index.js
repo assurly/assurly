@@ -11,6 +11,7 @@ const dbPoolRules_1 = require("./dbPoolRules");
 const rscRules_1 = require("./rscRules");
 const coldStartRules_1 = require("./coldStartRules");
 const sqlSafetyRules_1 = require("./sqlSafetyRules");
+const deeperStackRules_1 = require("./deeperStackRules");
 /**
  * Array containing all static analysis rules implemented in ShipReady.
  */
@@ -25,4 +26,5 @@ exports.allRules = [
     rscRules_1.rscRules,
     coldStartRules_1.coldStartRules,
     sqlSafetyRules_1.sqlSafetyRules,
+    deeperStackRules_1.deeperStackRules,
 ];
