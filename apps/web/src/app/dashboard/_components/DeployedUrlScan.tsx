@@ -3,6 +3,7 @@
 import { useState, type FormEvent, type ReactElement } from 'react';
 import type { WebFinding } from '../../../utils/browserScanner';
 import type { ShipGateReport } from '../../../utils/shipGate';
+import { isLikelyScannableUrl } from '../../../utils/urlValidation';
 import { ShipGatePanel } from '../../_components/ship-gate/ShipGatePanel';
 
 export interface DeployedUrlScanProps {
@@ -13,26 +14,6 @@ interface UrlScanResults {
   targetUrl: string;
   shipGate: ShipGateReport;
   findings: WebFinding[];
-}
-
-/**
- * Client-side shape check so the button reflects what the API will accept and
- * the user gets immediate feedback — NOT a security boundary. The server's
- * `assertScannableUrl` (private-IP/SSRF checks) remains the authority; it cannot
- * run here because it imports `node:net`.
- */
-function isLikelyScannableUrl(value: string): boolean {
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    return false;
-  }
-  return (
-    (parsed.protocol === 'https:' || parsed.protocol === 'http:') && parsed.hostname.includes('.')
-  );
 }
 
 async function readScanUrlError(response: Response): Promise<string> {
