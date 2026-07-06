@@ -9,7 +9,7 @@
  *   - 5-star rating
  *   - Verified-customer badge
  *   - Avatar image with a deterministic src (not a blank placeholder)
- *   - Metric highlight (quantified ROI proof)
+ *   - Avatar image with descriptive alt text and a deterministic src
  *
  * They also guard structural accessibility requirements and regression-test
  * that we never revert to the old initials-only avatar pattern.
@@ -27,11 +27,6 @@ function renderHtml(): string {
   return renderToStaticMarkup(<Testimonials />);
 }
 
-/** Returns true when the rendered HTML contains every string in `needles`. */
-function containsAll(html: string, needles: string[]): boolean {
-  return needles.every((n) => html.includes(n));
-}
-
 // ---------------------------------------------------------------------------
 // Section structure
 // ---------------------------------------------------------------------------
@@ -39,23 +34,16 @@ function containsAll(html: string, needles: string[]): boolean {
 describe('Testimonials — section structure', () => {
   it('renders the section heading', () => {
     const html = renderHtml();
-    expect(html).toContain('Trusted by Development Teams');
+    expect(html).toContain('Built for teams shipping AI-generated code');
   });
 
-  it('renders the subheading that sets realistic expectations', () => {
+  it('renders trust framing around real incident classes — not aggregate metrics', () => {
     const html = renderHtml();
-    expect(html).toContain('Real developers');
-    expect(html).toContain('Real companies');
-    expect(html).toContain('Real security incidents prevented');
-  });
-
-  it('renders a trust-bar with aggregate social-proof stats', () => {
-    const html = renderHtml();
-    expect(html).toContain('500+');
-    expect(html).toContain('teams protected');
-    expect(html).toContain('12,000+');
-    expect(html).toContain('scans run');
-    expect(html).toContain('4.9 / 5');
+    expect(html).toContain('exposed Supabase RLS');
+    expect(html).toContain('unverified Stripe webhooks');
+    expect(html).not.toContain('500+');
+    expect(html).not.toContain('12,000+');
+    expect(html).not.toContain('testimonials-trust-bar');
   });
 
   it('renders the exact number of testimonial cards defined in TESTIMONIALS', () => {
@@ -125,13 +113,6 @@ describe('Testimonials — per-card data integrity', () => {
   it('every testimonial is marked as verified', () => {
     TESTIMONIALS.forEach((t) => {
       expect(t.verified).toBe(true);
-    });
-  });
-
-  it('every testimonial has a metric highlight string', () => {
-    TESTIMONIALS.forEach((t) => {
-      expect(typeof t.metricHighlight).toBe('string');
-      expect((t.metricHighlight ?? '').trim().length).toBeGreaterThan(0);
     });
   });
 
@@ -258,38 +239,17 @@ describe('Testimonials — avatar images', () => {
     expect(lazyMatches.length).toBe(TESTIMONIALS.length);
   });
 
-  it('avatar images have empty alt="" (decorative — author name is nearby text)', () => {
+  it('avatar images include descriptive alt text with the author name', () => {
     const html = renderHtml();
-    // Each avatar img has alt=""
-    const altMatches = html.match(/class="testimonial-avatar-img"/g) ?? [];
-    const emptyAltMatches = html.match(/alt=""/g) ?? [];
-    expect(emptyAltMatches.length).toBeGreaterThanOrEqual(altMatches.length);
+    TESTIMONIALS.forEach((t) => {
+      expect(html).toContain(`alt="Avatar illustration for ${t.author.name}"`);
+    });
   });
 
   it('never renders the old initials-only avatar pattern', () => {
     const html = renderHtml();
     // Old pattern used class="testimonial-avatar" with two-letter initials content
     expect(html).not.toMatch(/class="testimonial-avatar">[A-Z]{2}/);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Metric highlights
-// ---------------------------------------------------------------------------
-
-describe('Testimonials — metric highlights', () => {
-  it('renders all metric highlight pills', () => {
-    const html = renderHtml();
-    const metricMatches = html.match(/class="testimonial-metric"/g) ?? [];
-    expect(metricMatches.length).toBe(TESTIMONIALS.length);
-  });
-
-  it('metric highlights contain quantified evidence (numbers or %)', () => {
-    const metrics = TESTIMONIALS.map((t) => t.metricHighlight ?? '');
-    metrics.forEach((metric) => {
-      // Must contain a digit, percentage, or a duration keyword
-      expect(metric).toMatch(/\d|%|minute/i);
-    });
   });
 });
 

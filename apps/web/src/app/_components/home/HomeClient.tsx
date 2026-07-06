@@ -27,6 +27,27 @@ interface HomeClientProps {
   loginUrl?: string;
 }
 
+async function readApiErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const data = (await response.json()) as {
+      error?: string | { message?: string };
+    };
+    if (typeof data.error === 'string' && data.error.length > 0) {
+      return data.error;
+    }
+    if (data.error && typeof data.error === 'object' && data.error.message) {
+      return data.error.message;
+    }
+  } catch {
+    // Keep the fallback when the body is not JSON.
+  }
+  return fallback;
+}
+
+function isRateLimitMessage(message: string): boolean {
+  return message.toLowerCase().includes('rate limit');
+}
+
 export default function HomeClient({
   initialAuthenticated,
   loginUrl = '/api/auth/login',
@@ -96,21 +117,21 @@ export default function HomeClient({
   const prices = {
     USD: {
       free: 0,
-      soloMonthly: 19,
-      soloYearly: 149,
-      soloMonthlyEquiv: 12.4,
+      guardMonthly: 19,
+      guardYearly: 149,
+      guardMonthlyEquiv: 12.4,
       agencyMonthly: 49,
       agencyYearly: 399,
       agencyMonthlyEquiv: 33.25,
     },
     EUR: {
       free: 0,
-      soloMonthly: 19,
-      soloYearly: 149,
-      soloMonthlyEquiv: 12.4,
-      agencyMonthly: 49,
-      agencyYearly: 399,
-      agencyMonthlyEquiv: 33.25,
+      guardMonthly: 17,
+      guardYearly: 130,
+      guardMonthlyEquiv: 10.8,
+      agencyMonthly: 43,
+      agencyYearly: 347,
+      agencyMonthlyEquiv: 28.9,
     },
   }[currency];
 
@@ -270,7 +291,10 @@ export default function HomeClient({
       if (!treeResponse.ok) {
         if (treeResponse.status === 429) {
           throw new Error(
-            'GitHub API rate limit exceeded. Please sign in to scan more repositories.',
+            await readApiErrorMessage(
+              treeResponse,
+              'GitHub API rate limit exceeded. Sign in with GitHub to scan more repositories.',
+            ),
           );
         }
         if (treeResponse.status === 404) {
@@ -279,11 +303,18 @@ export default function HomeClient({
           );
         }
         if (treeResponse.status === 403) {
-          throw new Error(
+          const message = await readApiErrorMessage(
+            treeResponse,
             'This repository is private. ShipReady can only scan public repositories.',
           );
+          throw new Error(message);
         }
-        throw new Error('GitHub is temporarily unavailable. Please try again later.');
+        throw new Error(
+          await readApiErrorMessage(
+            treeResponse,
+            'GitHub is temporarily unavailable. Please try again later.',
+          ),
+        );
       }
 
       const treeData = await treeResponse.json();
@@ -298,11 +329,20 @@ export default function HomeClient({
       ]);
 
       const fetchFileContent = async (filePath: string): Promise<Response> => {
-        return fetch(
+        const response = await fetch(
           `/api/github/public-scan?repo=${encodeURIComponent(repoFullName)}&branch=${encodeURIComponent(
             defaultBranch,
           )}&type=file&path=${encodeURIComponent(filePath)}`,
         );
+        if (response.status === 429) {
+          throw new Error(
+            await readApiErrorMessage(
+              response,
+              'GitHub API rate limit exceeded. Sign in with GitHub to scan more repositories.',
+            ),
+          );
+        }
+        return response;
       };
 
       const sqlFiles: string[] = [];
@@ -373,7 +413,7 @@ export default function HomeClient({
         `✓ Framework: ${detectedFramework}`,
         `✓ Supabase: ${hasSupabase ? 'Detected' : 'Not Detected'}`,
         `✓ Stripe: ${hasStripe ? 'Detected' : 'Not Detected'}`,
-        '🛡 Running static analysis scanner rules...',
+        '🛡 Running Ship Gate checks...',
       ]);
 
       const sqlToScan = sqlFiles.filter((path) => selectedFiles.has(path));
@@ -683,11 +723,14 @@ export default function HomeClient({
       <main className="container">
         {/* Hero Section */}
         <section className="hero">
-          <h1>Deploy to Production with Complete Confidence</h1>
+          <h1>
+            Before you ship your AI-built SaaS, ShipReady tells you in 60 seconds what will break in
+            production — and what you can safely ignore.
+          </h1>
           <p className="hero-subtitle">
-            ShipReady is a professional static analysis tool that scans Next.js, Supabase, and
-            Stripe configurations to catch silent integration and security flaws before they reach
-            production.
+            Scan your live URL or public repo, get a trusted Ship Score, fix blockers with one-click
+            PRs or AI prompts, and keep monitoring on every deploy — without uploading your source
+            code to a third party.
           </p>
           <div className="hero-ctas">
             {renderAuthButton('primary', {
@@ -721,6 +764,59 @@ export default function HomeClient({
               {copied ? 'Copied! ✓' : 'npx shipready scan'}
               {!copied && <span style={{ opacity: 0.6 }}>📋</span>}
             </code>
+          </div>
+        </section>
+
+        {/* How It Works */}
+        <section id="how-it-works" className="features">
+          <h2>How It Works</h2>
+          <p
+            style={{
+              textAlign: 'center',
+              marginBottom: '32px',
+              fontSize: '0.95rem',
+              color: 'var(--text-secondary)',
+              maxWidth: '720px',
+              marginLeft: 'auto',
+              marginRight: 'auto',
+            }}
+          >
+            From a deployed URL to a fix you can ship — four steps, under a minute for the first
+            scan.
+          </p>
+          <div className="features-grid">
+            <div className="feature-card">
+              <div className="feature-icon">🌐</div>
+              <h3>1. URL Scan</h3>
+              <p>
+                Paste your live app URL. ShipReady probes Supabase RLS exposure, secrets in the
+                production bundle, and security headers — no repository required.
+              </p>
+            </div>
+            <div className="feature-card">
+              <div className="feature-icon">📊</div>
+              <h3>2. Ship Score</h3>
+              <p>
+                One trusted verdict: blockers you must fix, warnings you can review, and noise you
+                can safely ignore — tuned for high-confidence production risks.
+              </p>
+            </div>
+            <div className="feature-card">
+              <div className="feature-icon">🔧</div>
+              <h3>3. One-Click Fix</h3>
+              <p>
+                Open an auto-fix pull request for common misconfigurations, or copy an AI fix prompt
+                straight into Cursor or Claude Code.
+              </p>
+            </div>
+            <div className="feature-card">
+              <div className="feature-icon">📡</div>
+              <h3>4. Continuous Monitoring</h3>
+              <p>
+                Connect GitHub to scan every deploy, catch regressions early, and keep your Ship
+                Score badge current.
+              </p>
+            </div>
           </div>
         </section>
 
@@ -928,6 +1024,19 @@ export default function HomeClient({
                 }}
               >
                 ❌ {scanError}
+                {isRateLimitMessage(scanError) && !isAuthenticated ? (
+                  <div style={{ marginTop: '12px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => {
+                        window.location.href = loginUrl;
+                      }}
+                    >
+                      Sign In with GitHub for Higher Limits
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
 
@@ -1281,9 +1390,9 @@ export default function HomeClient({
                 <span className="roi-results-header">Your Est. Monthly Savings</span>
                 <div className="roi-savings-amount">
                   {hoursSaved * hourlyRate -
-                    (billingPeriod === 'yearly' ? prices.soloMonthlyEquiv : prices.soloMonthly) >
+                    (billingPeriod === 'yearly' ? prices.guardMonthlyEquiv : prices.guardMonthly) >
                   0
-                    ? `${currencySymbol}${(hoursSaved * hourlyRate - (billingPeriod === 'yearly' ? prices.soloMonthlyEquiv : prices.soloMonthly)).toFixed(0)}`
+                    ? `${currencySymbol}${(hoursSaved * hourlyRate - (billingPeriod === 'yearly' ? prices.guardMonthlyEquiv : prices.guardMonthly)).toFixed(0)}`
                     : `${currencySymbol}0`}
                 </div>
                 <span
@@ -1291,9 +1400,9 @@ export default function HomeClient({
                 >
                   ROI:{' '}
                   {hoursSaved * hourlyRate -
-                    (billingPeriod === 'yearly' ? prices.soloMonthlyEquiv : prices.soloMonthly) >
+                    (billingPeriod === 'yearly' ? prices.guardMonthlyEquiv : prices.guardMonthly) >
                   0
-                    ? `${(((hoursSaved * hourlyRate) / (billingPeriod === 'yearly' ? prices.soloMonthlyEquiv : prices.soloMonthly)) * 100).toFixed(0)}%`
+                    ? `${(((hoursSaved * hourlyRate) / (billingPeriod === 'yearly' ? prices.guardMonthlyEquiv : prices.guardMonthly)) * 100).toFixed(0)}%`
                     : '0%'}
                 </span>
               </div>
@@ -1310,8 +1419,8 @@ export default function HomeClient({
                   <span>
                     {currencySymbol}
                     {billingPeriod === 'yearly'
-                      ? prices.soloMonthlyEquiv.toFixed(2)
-                      : prices.soloMonthly}
+                      ? prices.guardMonthlyEquiv.toFixed(2)
+                      : prices.guardMonthly}
                     /mo
                   </span>
                 </div>
@@ -1319,9 +1428,11 @@ export default function HomeClient({
                   <span>Net Monthly Savings</span>
                   <span>
                     {hoursSaved * hourlyRate -
-                      (billingPeriod === 'yearly' ? prices.soloMonthlyEquiv : prices.soloMonthly) >
+                      (billingPeriod === 'yearly'
+                        ? prices.guardMonthlyEquiv
+                        : prices.guardMonthly) >
                     0
-                      ? `${currencySymbol}${(hoursSaved * hourlyRate - (billingPeriod === 'yearly' ? prices.soloMonthlyEquiv : prices.soloMonthly)).toFixed(0)}`
+                      ? `${currencySymbol}${(hoursSaved * hourlyRate - (billingPeriod === 'yearly' ? prices.guardMonthlyEquiv : prices.guardMonthly)).toFixed(0)}`
                       : `${currencySymbol}0`}
                   </span>
                 </div>
@@ -1334,7 +1445,8 @@ export default function HomeClient({
         <section id="pricing" className="pricing-section">
           <h2>Simple, Transparent Pricing</h2>
           <p className="pricing-subtitle">
-            Start free. Upgrade when your team needs automated protection.
+            Start free with URL scan and MCP access. Upgrade for continuous monitoring and peace of
+            mind — not a longer rule list.
           </p>
 
           <div className="pricing-controls-container">
@@ -1372,10 +1484,10 @@ export default function HomeClient({
                 </div>
               </div>
               <ul className="pricing-features">
-                <li>✓ CLI scanner (unlimited local scans)</li>
-                <li>✓ Interactive web checker</li>
+                <li>✓ Deployed URL scan (limited preview)</li>
                 <li>✓ Public repository scanning</li>
-                <li>✓ 5 scan rules included</li>
+                <li>✓ MCP server access for AI agents</li>
+                <li>✓ CLI scanner (unlimited local scans)</li>
                 <li>✓ Community support</li>
               </ul>
               {renderAuthButton('secondary', {
@@ -1387,11 +1499,11 @@ export default function HomeClient({
             <div className="pricing-card featured">
               <div className="pricing-badge">Most Popular</div>
               <div className="pricing-card-header">
-                <h3>Solo Creator</h3>
+                <h3>Guard</h3>
                 <div className="pricing-price">
                   <span className="pricing-amount">
                     {currencySymbol}
-                    {billingPeriod === 'yearly' ? prices.soloYearly : prices.soloMonthly}
+                    {billingPeriod === 'yearly' ? prices.guardYearly : prices.guardMonthly}
                   </span>
                   <span className="pricing-period">
                     {billingPeriod === 'yearly' ? '/ year' : '/ month'}
@@ -1400,21 +1512,20 @@ export default function HomeClient({
               </div>
               <ul className="pricing-features">
                 <li>✓ Everything in Free</li>
+                <li>✓ Monitoring on every deploy</li>
                 <li>✓ Private repository scanning</li>
-                <li>✓ GitHub App integration (PR checks)</li>
-                <li>✓ 1-Click Auto-Fix Engine</li>
-                <li>✓ Scan history &amp; trend reports</li>
-                <li>✓ Priority email support</li>
+                <li>✓ Auto-fix pull requests</li>
+                <li>✓ Regression alerts</li>
               </ul>
               {renderAuthButton('primary', {
-                signIn: 'Start Pro Trial',
+                signIn: 'Start Guard Trial',
                 dashboard: 'Go to Dashboard',
               })}
             </div>
 
             <div className="pricing-card">
               <div className="pricing-card-header">
-                <h3>Dev Agency</h3>
+                <h3>Agency</h3>
                 <div className="pricing-price">
                   <span className="pricing-amount">
                     {currencySymbol}
@@ -1426,12 +1537,15 @@ export default function HomeClient({
                 </div>
               </div>
               <ul className="pricing-features">
-                <li>✓ Everything in Solo Creator</li>
-                <li>✓ Up to 5 team seats included</li>
-                <li>✓ Custom Rule Builder</li>
-                <li>✓ Client PDF Audit Reports</li>
-                <li>✓ Shared organization workspace</li>
-                <li>✓ 24/7 Priority chat support</li>
+                <li>✓ Everything in Guard</li>
+                <li>✓ White-label PDF audit reports</li>
+                <li>✓ 5 team seats included</li>
+                <li>✓ Shareable Ship Score badge</li>
+                <li>✓ Priority support</li>
+                <li>
+                  ✓ Bill the {currencySymbol}
+                  {prices.agencyMonthly}/mo audit fee to your client
+                </li>
               </ul>
               {renderAuthButton('secondary', {
                 signIn: 'Start Agency Trial',
@@ -1568,7 +1682,7 @@ export default function HomeClient({
       {/* Footer */}
       <footer>
         <div className="container footer-container">
-          <p>© 2026 ShipReady. Prepared for B2B SaaS Exit Readiness. Licensed under MIT.</p>
+          <p>© 2026 ShipReady. Pre-deploy Ship Gate for AI-built SaaS. Licensed under MIT.</p>
           <div className="footer-links">
             <Link href="/privacy">Privacy Policy</Link>
             <Link href="/privacy#cookies">Cookies</Link>

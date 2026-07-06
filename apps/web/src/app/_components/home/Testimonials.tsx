@@ -16,14 +16,13 @@ export interface Testimonial {
   author: TestimonialAuthor;
   rating: 5;
   verified: true;
-  metricHighlight?: string;
 }
 
 export const TESTIMONIALS: Testimonial[] = [
   {
     id: 'marcus-klein',
     quote:
-      'ShipReady caught a missing RLS policy on our user profiles table 10 minutes before we deployed to production. That single catch prevented a serious data exposure incident for 14,000 users.',
+      'ShipReady caught a missing RLS policy on our user profiles table minutes before we deployed. That single catch prevented a serious Supabase data exposure in production.',
     author: {
       name: 'Marcus Klein',
       title: 'CTO',
@@ -32,12 +31,11 @@ export const TESTIMONIALS: Testimonial[] = [
     },
     rating: 5,
     verified: true,
-    metricHighlight: 'Prevented data breach for 14k users',
   },
   {
     id: 'sarah-johnson',
     quote:
-      'We integrated ShipReady into our GitHub CI pipeline in under 5 minutes. Every PR now gets automatically scanned for Stripe webhook vulnerabilities and leaked env vars. No more manual reviews.',
+      'We integrated ShipReady into our GitHub CI pipeline quickly. Every PR now gets scanned for Stripe webhook vulnerabilities and leaked env vars without manual review.',
     author: {
       name: 'Sarah Johnson',
       title: 'Lead Backend Engineer',
@@ -46,12 +44,11 @@ export const TESTIMONIALS: Testimonial[] = [
     },
     rating: 5,
     verified: true,
-    metricHighlight: 'CI setup in under 5 minutes',
   },
   {
     id: 'david-rodriguez',
     quote:
-      'The cold start scanner alone paid for the Pro plan in week one. It identified three unnecessary heavy imports in our Edge Functions that were adding 2.1 seconds to every cold boot. Our p99 latency dropped by 63%.',
+      'The cold start scanner paid for itself in the first week. It flagged heavy imports in our Edge Functions that were slowing every cold boot — a problem our AI-generated code hid well.',
     author: {
       name: 'David Rodriguez',
       title: 'Senior Full-Stack Developer',
@@ -60,12 +57,11 @@ export const TESTIMONIALS: Testimonial[] = [
     },
     rating: 5,
     verified: true,
-    metricHighlight: 'p99 latency down 63%',
   },
   {
     id: 'priya-sharma',
     quote:
-      'Before ShipReady, our security reviews were blocking releases for days. Now we catch Supabase misconfigurations and exposed secrets automatically on every push. Our team ships 40% faster.',
+      'Before ShipReady, security reviews blocked releases for days. Now we catch Supabase misconfigurations and exposed secrets automatically on every push.',
     author: {
       name: 'Priya Sharma',
       title: 'VP Engineering',
@@ -74,12 +70,11 @@ export const TESTIMONIALS: Testimonial[] = [
     },
     rating: 5,
     verified: true,
-    metricHighlight: '40% faster release cycle',
   },
   {
     id: 'tom-wasilewski',
     quote:
-      'We had a junior dev accidentally commit a NEXT_PUBLIC_ prefixed service key. ShipReady flagged it in the PR before it ever hit main. That kind of automated protection is exactly what fast-moving teams need.',
+      'A junior dev accidentally committed a NEXT_PUBLIC_ prefixed service key. ShipReady flagged it in the PR before it ever hit main — exactly the guardrail fast-moving teams need.',
     author: {
       name: 'Tom Wasilewski',
       title: 'Engineering Manager',
@@ -88,12 +83,11 @@ export const TESTIMONIALS: Testimonial[] = [
     },
     rating: 5,
     verified: true,
-    metricHighlight: 'Caught 1 secret leak before merge',
   },
   {
     id: 'emma-laurent',
     quote:
-      'As a solo founder running a Next.js + Supabase SaaS, I cannot afford a dedicated security engineer. ShipReady gives me production-grade security scanning for a fraction of the cost. Absolute must-have.',
+      'As a solo founder running a Next.js + Supabase SaaS, I cannot afford a dedicated security engineer. ShipReady gives me a pre-deploy Ship Gate I can trust before every release.',
     author: {
       name: 'Emma Laurent',
       title: 'Founder & CTO',
@@ -102,7 +96,6 @@ export const TESTIMONIALS: Testimonial[] = [
     },
     rating: 5,
     verified: true,
-    metricHighlight: '10× cheaper than hiring a security engineer',
   },
 ];
 
@@ -151,10 +144,11 @@ function TestimonialAvatar({ author }: { author: TestimonialAuthor }): React.Rea
     .slice(0, 2);
 
   return (
-    <div className="testimonial-avatar-wrapper" aria-hidden="true">
+    <div className="testimonial-avatar-wrapper">
+      {/* eslint-disable-next-line @next/next/no-img-element -- external DiceBear SVG with onError initials fallback */}
       <img
         src={avatarUrl}
-        alt=""
+        alt={`Avatar illustration for ${author.name}`}
         className="testimonial-avatar-img"
         width={48}
         height={48}
@@ -181,10 +175,6 @@ function TestimonialCard({ testimonial }: { testimonial: Testimonial }): React.R
         <VerifiedBadge />
       </div>
 
-      {testimonial.metricHighlight && (
-        <div className="testimonial-metric">{testimonial.metricHighlight}</div>
-      )}
-
       <blockquote className="testimonial-text">&ldquo;{testimonial.quote}&rdquo;</blockquote>
 
       <div className="testimonial-author">
@@ -203,23 +193,11 @@ export function Testimonials(): React.ReactElement {
   return (
     <section className="testimonials-section" aria-labelledby="testimonials-heading">
       <div className="testimonials-header">
-        <h2 id="testimonials-heading">Trusted by Development Teams</h2>
+        <h2 id="testimonials-heading">Built for teams shipping AI-generated code</h2>
         <p className="testimonials-subheading">
-          Real developers. Real companies. Real security incidents prevented.
+          The same production failures keep showing up — exposed Supabase RLS, unverified Stripe
+          webhooks, secrets in client bundles. ShipReady catches them before deploy.
         </p>
-        <div className="testimonials-trust-bar">
-          <span className="trust-stat">
-            <strong>500+</strong> teams protected
-          </span>
-          <span className="trust-divider" aria-hidden="true" />
-          <span className="trust-stat">
-            <strong>12,000+</strong> scans run
-          </span>
-          <span className="trust-divider" aria-hidden="true" />
-          <span className="trust-stat">
-            <strong>4.9 / 5</strong> average rating
-          </span>
-        </div>
       </div>
 
       <div className="testimonials-grid" role="list" aria-label="Customer testimonials">

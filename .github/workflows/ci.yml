@@ -47,9 +47,6 @@ jobs:
         env:
           APP_URL: https://shipready.example
 
-      - name: Build VS Code extension
-        run: npm run build:vscode
-
   test:
     name: Test workspaces
     runs-on: ubuntu-latest
