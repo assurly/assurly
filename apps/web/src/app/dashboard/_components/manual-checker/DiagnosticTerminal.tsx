@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, type ReactElement } from 'react';
 import { ShipGatePanel } from '../../../_components/ship-gate/ShipGatePanel';
 import type { WebFinding } from '../../../../utils/browserScanner';
 import { buildShipGateFromWebFindings } from '../../../../utils/shipGate';
+import { formatCount } from '../../../../utils/pluralize';
 import type { ManualCheckerTab } from './useManualScan';
 import {
   buildIssueGroupSummaries,
@@ -49,18 +50,18 @@ function ProjectMetrics({ metrics }: { metrics: ScanMetricSummary }): ReactEleme
   return (
     <div className="diagnostic-summary-metrics" aria-live="polite">
       <span className="scan-metric error" title="Distinct blocking issue types">
-        {metrics.uniqueErrorCount} unique errors
+        {formatCount(metrics.uniqueErrorCount, 'unique error', 'unique errors')}
       </span>
       <span className="scan-metric metric-secondary" title="Total error findings across files">
         {metrics.totalErrorFindings} total
       </span>
       {metrics.uniqueWarningCount > 0 ? (
         <span className="scan-metric warning" title="Distinct warning types">
-          {metrics.uniqueWarningCount} warnings
+          {formatCount(metrics.uniqueWarningCount, 'warning')}
         </span>
       ) : null}
       <span className="scan-metric metric-neutral" title="Files with at least one finding">
-        {metrics.affectedFileCount} files affected
+        {formatCount(metrics.affectedFileCount, 'file affected', 'files affected')}
       </span>
       {metrics.testAffectedFileCount > 0 ? (
         <span className="scan-metric metric-neutral" title="Affected test/spec files">
@@ -216,8 +217,10 @@ export function DiagnosticTerminal({
           <ProjectMetrics metrics={projectScan.metrics} />
         ) : (
           <div className="diagnostic-summary-metrics" aria-live="polite">
-            <span className="scan-metric error">{results.errorCount} Errors</span>
-            <span className="scan-metric warning">{results.warningCount} Warnings</span>
+            <span className="scan-metric error">{formatCount(results.errorCount, 'Error')}</span>
+            <span className="scan-metric warning">
+              {formatCount(results.warningCount, 'Warning')}
+            </span>
           </div>
         )}
       </div>

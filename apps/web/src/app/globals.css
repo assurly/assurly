@@ -3400,6 +3400,20 @@ footer .footer-links a:hover {
   line-height: 1.4;
 }
 
+.dashboard-public-connect__hint {
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.dashboard-public-connect__error {
+  margin: 10px 0 0;
+  font-size: 0.8rem;
+  color: var(--color-danger-text);
+  line-height: 1.4;
+}
+
 .dashboard-public-connect__form {
   display: flex;
   flex-direction: column;

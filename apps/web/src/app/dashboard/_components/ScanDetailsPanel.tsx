@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { ShipGatePanel, type ShipGateBillingPlan } from '../../_components/ship-gate/ShipGatePanel';
 import type { Scan, ScanFinding } from '../../../utils/dbAdapter';
 import { buildAiFixPrompt } from '../../../utils/aiFixPrompt';
+import { formatCount, pluralize } from '../../../utils/pluralize';
 import type { ScanFixSummary } from '../../../utils/fixSummary';
 import type { ShipGateReport } from '../../../utils/shipGate';
 import { DashboardToast, type DashboardToastData } from './DashboardToast';
@@ -169,7 +170,7 @@ export function ScanDetailsPanel({
             </strong>
             <p className="scan-fix-summary__hint">
               {fixSummary.remainingCount > 0
-                ? `${fixSummary.remainingCount} auto-fixes can still be opened as pull requests.`
+                ? `${formatCount(fixSummary.remainingCount, 'auto-fix', 'auto-fixes')} can still be opened as ${pluralize(fixSummary.remainingCount, 'a pull request', 'pull requests')}.`
                 : fixSummary.fixableCount > 0
                   ? 'All auto-fixable findings already have linked pull requests.'
                   : 'No auto-fixable findings in this scan.'}
