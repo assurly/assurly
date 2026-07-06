@@ -15,6 +15,7 @@ import {
 } from '../../../utils/browserScanner';
 import { clientApi, githubApi, type GitHubRepository } from '../../../utils/clientApi';
 import { sanitizeGitHubOwner } from '../../../utils/scanProxy';
+import { isLikelyScannableUrl } from '../../../utils/urlValidation';
 import { ShipGatePanel } from '../ship-gate/ShipGatePanel';
 import { buildShipGateFromWebFindings, type ShipGateReport } from '../../../utils/shipGate';
 import { AuthButton } from './AuthButton';
@@ -177,7 +178,7 @@ export default function HomeClient({
 
   const handleStartUrlScan = async (): Promise<void> => {
     const trimmed = urlInput.trim();
-    if (!trimmed) return;
+    if (!isLikelyScannableUrl(trimmed) || isUrlScanning) return;
 
     setIsUrlScanning(true);
     setUrlScanFinished(false);
@@ -702,6 +703,9 @@ export default function HomeClient({
     );
   };
 
+  const isDeployedUrlValid = isLikelyScannableUrl(urlInput);
+  const showDeployedUrlHint = urlInput.trim().length > 0 && !isDeployedUrlValid;
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Toast Notification */}
@@ -851,6 +855,8 @@ export default function HomeClient({
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
                   disabled={isUrlScanning}
+                  aria-invalid={showDeployedUrlHint}
+                  aria-describedby={showDeployedUrlHint ? 'deployed-url-hint' : undefined}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') void handleStartUrlScan();
                   }}
@@ -859,11 +865,25 @@ export default function HomeClient({
               <button
                 className="scanner-btn"
                 onClick={() => void handleStartUrlScan()}
-                disabled={isUrlScanning || !urlInput.trim()}
+                disabled={isUrlScanning || !isDeployedUrlValid}
               >
                 {isUrlScanning ? 'Scanning...' : 'Scan URL'}
               </button>
             </div>
+
+            {showDeployedUrlHint && (
+              <p
+                id="deployed-url-hint"
+                style={{
+                  color: 'var(--color-text-muted)',
+                  fontSize: '0.85rem',
+                  marginTop: '10px',
+                  textAlign: 'center',
+                }}
+              >
+                Enter a full URL including https:// — for example https://myapp.lovable.app
+              </p>
+            )}
 
             {urlScanError && (
               <div
