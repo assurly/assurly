@@ -349,10 +349,22 @@ function DashboardContent({
     fetchScans();
 
     const interval = setInterval(() => {
+      // Don't poll /api/scans while the tab is in the background — a hidden or
+      // forgotten dashboard tab should not keep hitting the database every 5s.
+      // Returning to the tab triggers an immediate refresh via the listener below.
+      if (document.visibilityState === 'hidden') return;
       fetchScans();
     }, 5000);
 
-    return () => clearInterval(interval);
+    const refreshWhenVisible = (): void => {
+      if (document.visibilityState === 'visible') void fetchScans();
+    };
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [selectedRepo, localScan]);
 
   // Prefetch scan counts for every connected repository so the sidebar can surface

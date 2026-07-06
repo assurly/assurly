@@ -15,6 +15,26 @@ interface UrlScanResults {
   findings: WebFinding[];
 }
 
+/**
+ * Client-side shape check so the button reflects what the API will accept and
+ * the user gets immediate feedback — NOT a security boundary. The server's
+ * `assertScannableUrl` (private-IP/SSRF checks) remains the authority; it cannot
+ * run here because it imports `node:net`.
+ */
+function isLikelyScannableUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return false;
+  }
+  return (
+    (parsed.protocol === 'https:' || parsed.protocol === 'http:') && parsed.hostname.includes('.')
+  );
+}
+
 async function readScanUrlError(response: Response): Promise<string> {
   try {
     const data = (await response.json()) as { error?: { message?: unknown } };
@@ -34,10 +54,13 @@ export function DeployedUrlScan({
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanResults, setScanResults] = useState<UrlScanResults | null>(null);
 
+  const isValidUrl = isLikelyScannableUrl(urlInput);
+  const showInvalidHint = urlInput.trim().length > 0 && !isValidUrl;
+
   const handleSubmit = async (event?: FormEvent): Promise<void> => {
     event?.preventDefault();
     const trimmed = urlInput.trim();
-    if (!trimmed || isScanning) return;
+    if (!isValidUrl || isScanning) return;
 
     setIsScanning(true);
     setScanError(null);
@@ -89,16 +112,24 @@ export function DeployedUrlScan({
           value={urlInput}
           onChange={(event) => setUrlInput(event.target.value)}
           disabled={isScanning}
+          aria-invalid={showInvalidHint}
+          aria-describedby={showInvalidHint ? 'dashboard-deployed-url-hint' : undefined}
         />
         <button
           type="submit"
           className="dashboard-public-connect__submit"
-          disabled={isScanning || !urlInput.trim()}
+          disabled={isScanning || !isValidUrl}
           aria-busy={isScanning}
         >
           {isScanning ? 'Scanning...' : 'Scan URL'}
         </button>
       </form>
+
+      {showInvalidHint ? (
+        <p id="dashboard-deployed-url-hint" className="dashboard-public-connect__hint">
+          Enter a full URL including https:// — for example https://myapp.lovable.app
+        </p>
+      ) : null}
 
       {scanError ? <p className="dashboard-public-connect__error">{scanError}</p> : null}
 
