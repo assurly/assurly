@@ -14,10 +14,27 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
+const SITE_TITLE = 'ShipReady | Pre-deploy Ship Gate for AI-built SaaS';
+const SITE_DESCRIPTION =
+  'Scan your deployed URL in 60 seconds, get a Ship Score, fix blockers with one click, and monitor every deploy — before you ship to Vercel, Supabase, and Stripe.';
+
 export const metadata: Metadata = {
-  title: 'ShipReady | Production-Readiness Verifier for B2B SaaS & Next.js',
-  description:
-    'Detect integration errors, environment misconfigurations, and security vulnerabilities in your Next.js, Supabase, and Stripe apps before deploying.',
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  openGraph: {
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    type: 'website',
+    url: '/',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  alternates: {
+    canonical: '/',
+  },
   other: {
     google: 'notranslate',
   },
