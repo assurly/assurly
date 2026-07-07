@@ -1,5 +1,5 @@
 /** HttpOnly session cookie name — safe to import from client and server modules. */
-export const COOKIE_NAME = 'shipready-session';
+export const COOKIE_NAME = 'assurly-session';
 
 export interface SupabaseSessionPayload {
   accessToken: string;
@@ -9,7 +9,7 @@ export interface SupabaseSessionPayload {
   githubAccessToken?: string;
 }
 
-/** Serializes the session payload for the HttpOnly `shipready-session` cookie. */
+/** Serializes the session payload for the HttpOnly `assurly-session` cookie. */
 export function serializeSessionCookiePayload(session: SupabaseSessionPayload): string {
   return encodeURIComponent(JSON.stringify(session));
 }

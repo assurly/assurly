@@ -128,7 +128,7 @@ describe('CLI Auto-Fixer & Git Rollback Backup', () => {
 
       const backup = setupBackup('.');
       expect(backup.type).toBe('stash');
-      expect(backup.reference).toContain('shipready-backup-');
+      expect(backup.reference).toContain('assurly-backup-');
       expect(execSync).toHaveBeenCalledWith(
         expect.stringContaining('git stash push'),
         expect.any(Object),

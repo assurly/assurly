@@ -82,7 +82,7 @@ describe('buildAiFixPrompt determinism', () => {
         severity: 'warning',
         file: 'Global Configs',
         line: 1,
-        message: 'GitHub Actions workflow for ShipReady is missing.',
+        message: 'GitHub Actions workflow for Assurly is missing.',
       }),
       finding({
         ruleId: 'supabase-rls',

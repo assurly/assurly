@@ -4,7 +4,7 @@ import {
   scanEnvVariables,
   scanSqlMigrations,
   scanSupabaseClientLeaks,
-} from '@shipready/scanner-core';
+} from '@assurly/scanner-core';
 import { Finding, ProjectContext, Rule } from '../types';
 
 export const supabaseRules: Rule = {

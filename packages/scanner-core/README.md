@@ -1,11 +1,11 @@
-# @shipready/scanner-core
+# @assurly/scanner-core
 
-The browser-safe static-analysis engine behind [ShipReady](https://shipready.dev) — the rules that decide whether a Next.js + Supabase + Stripe + Vercel app is ready to ship. Shared by the web scanner, the CLI, the GitHub integration, and the MCP server so every surface produces the same Ship Gate verdict.
+The browser-safe static-analysis engine behind [Assurly](https://assurly.dev) — the rules that decide whether a Next.js + Supabase + Stripe + Vercel app is ready to ship. Shared by the web scanner, the CLI, the GitHub integration, and the MCP server so every surface produces the same Ship Gate verdict.
 
 > **Most people don't install this directly.** If you want to _run_ a scan, use one of these instead:
 >
-> - **CLI:** [`@shipready/cli`](https://www.npmjs.com/package/@shipready/cli) — `npx @shipready/cli scan --path .`
-> - **AI agents (Cursor / Claude Code):** [`@shipready/mcp-server`](https://www.npmjs.com/package/@shipready/mcp-server) — see [shipready.dev/mcp](https://shipready.dev/mcp)
+> - **CLI:** [`assurly`](https://www.npmjs.com/package/assurly) — `npx assurly scan --path .`
+> - **AI agents (Cursor / Claude Code):** [`@assurly/mcp-server`](https://www.npmjs.com/package/@assurly/mcp-server) — see [assurly.dev/mcp](https://assurly.dev/mcp)
 >
 > This package is the reusable rule engine those tools are built on.
 
@@ -22,7 +22,7 @@ Detection is intentionally **precise over exhaustive**: a rule that can't be def
 ## Usage
 
 ```ts
-import { scanSqlMigration, buildShipGateReport } from '@shipready/scanner-core';
+import { scanSqlMigration, buildShipGateReport } from '@assurly/scanner-core';
 
 const { findings } = scanSqlMigration(sqlSource, 'supabase/migrations/init.sql');
 const report = buildShipGateReport(findings, { scannedFileCount: 1, cleanFileCount: 0 });

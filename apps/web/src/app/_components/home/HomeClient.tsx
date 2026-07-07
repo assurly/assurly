@@ -277,7 +277,7 @@ export default function HomeClient({
     setScanError(null);
     setScanProgress(0);
     setScanLogs([
-      '⚙ Initializing ShipReady Scanner...',
+      '⚙ Initializing Assurly Scanner...',
       `📥 Fetching repository tree for "${repoFullName}"...`,
     ]);
 
@@ -306,7 +306,7 @@ export default function HomeClient({
         if (treeResponse.status === 403) {
           const message = await readApiErrorMessage(
             treeResponse,
-            'This repository is private. ShipReady can only scan public repositories.',
+            'This repository is private. Assurly can only scan public repositories.',
           );
           throw new Error(message);
         }
@@ -574,8 +574,8 @@ export default function HomeClient({
       const hasCiWorkflow = tree.some((node) => {
         const pathLower = node.path.toLowerCase();
         return (
-          pathLower === '.github/workflows/shipready.yml' ||
-          pathLower === '.github/workflows/shipready.yaml'
+          pathLower === '.github/workflows/assurly.yml' ||
+          pathLower === '.github/workflows/assurly.yaml'
         );
       });
 
@@ -583,7 +583,7 @@ export default function HomeClient({
         allFindings.push({
           severity: 'warning',
           file: 'Global Configs',
-          message: 'GitHub Actions workflow for ShipReady is missing.',
+          message: 'GitHub Actions workflow for Assurly is missing.',
         });
       }
 
@@ -647,7 +647,7 @@ export default function HomeClient({
 
   const handleCopyCommand = async (): Promise<void> => {
     try {
-      await navigator.clipboard.writeText('npx shipready scan');
+      await navigator.clipboard.writeText('npx assurly scan');
       setCopied(true);
       setToast({ message: 'Command copied to clipboard!', type: 'success' });
       setTimeout(() => setCopied(false), 2000);
@@ -728,7 +728,7 @@ export default function HomeClient({
         {/* Hero Section */}
         <section className="hero">
           <h1>
-            Before you ship your AI-built SaaS, ShipReady tells you in 60 seconds what will break in
+            Before you ship your AI-built SaaS, Assurly tells you in 60 seconds what will break in
             production — and what you can safely ignore.
           </h1>
           <p className="hero-subtitle">
@@ -753,7 +753,7 @@ export default function HomeClient({
                   handleCopyCommand();
                 }
               }}
-              aria-label="Copy npx shipready scan command to clipboard"
+              aria-label="Copy npx assurly scan command to clipboard"
               style={{
                 fontFamily: 'var(--font-mono)',
                 fontSize: '0.85rem',
@@ -765,7 +765,7 @@ export default function HomeClient({
                 transition: 'var(--transition-smooth)',
               }}
             >
-              {copied ? 'Copied! ✓' : 'npx shipready scan'}
+              {copied ? 'Copied! ✓' : 'npx assurly scan'}
               {!copied && <span style={{ opacity: 0.6 }}>📋</span>}
             </code>
           </div>
@@ -793,7 +793,7 @@ export default function HomeClient({
               <div className="feature-icon">🌐</div>
               <h3>1. URL Scan</h3>
               <p>
-                Paste your live app URL. ShipReady probes Supabase RLS exposure, secrets in the
+                Paste your live app URL. Assurly probes Supabase RLS exposure, secrets in the
                 production bundle, and security headers — no repository required.
               </p>
             </div>
@@ -1143,8 +1143,7 @@ export default function HomeClient({
               color: 'var(--text-secondary)',
             }}
           >
-            ShipReady catches critical security misconfigurations that ship undetected to
-            production.
+            Assurly catches critical security misconfigurations that ship undetected to production.
           </p>
 
           <div className="demo-terminal">
@@ -1159,18 +1158,18 @@ export default function HomeClient({
                   color: 'var(--text-muted)',
                 }}
               >
-                terminal — shipready scan
+                terminal — assurly scan
               </span>
             </div>
 
             <div
               className="demo-terminal-body"
               role="region"
-              aria-label="Example ShipReady diagnostic output"
+              aria-label="Example Assurly diagnostic output"
               tabIndex={0}
             >
               <div className="log-line" style={{ color: 'var(--text-muted)' }}>
-                <span>$ npx shipready scan --path ./my-saas-app</span>
+                <span>$ npx assurly scan --path ./my-saas-app</span>
               </div>
               <div className="log-line">
                 <span className="log-badge ok">OK</span>
@@ -1254,7 +1253,7 @@ export default function HomeClient({
 
         {/* Features Section */}
         <section id="features" className="features">
-          <h2>Why ShipReady?</h2>
+          <h2>Why Assurly?</h2>
           <div className="features-grid">
             <div className="feature-card">
               <div className="feature-icon">🛡️</div>
@@ -1269,7 +1268,7 @@ export default function HomeClient({
               <div className="feature-icon">⚡</div>
               <h3>Zero-Bundle Overhead</h3>
               <p>
-                ShipReady runs as a development-only tool. It adds exactly 0kb to your final
+                Assurly runs as a development-only tool. It adds exactly 0kb to your final
                 production bundle size.
               </p>
             </div>
@@ -1435,7 +1434,7 @@ export default function HomeClient({
                   </span>
                 </div>
                 <div className="roi-breakdown-row">
-                  <span>ShipReady Cost</span>
+                  <span>Assurly Cost</span>
                   <span>
                     {currencySymbol}
                     {billingPeriod === 'yearly'
@@ -1583,7 +1582,7 @@ export default function HomeClient({
           <div className="section-header">
             <h2>Support &amp; Contact</h2>
             <p>
-              Have questions, found a bug, or need help with your ShipReady integration? Drop us a
+              Have questions, found a bug, or need help with your Assurly integration? Drop us a
               line.
             </p>
           </div>
@@ -1593,8 +1592,8 @@ export default function HomeClient({
               <div className="info-card">
                 <h3>Developer Support</h3>
                 <p>
-                  Get direct technical assistance for integrating ShipReady with your CI/CD
-                  pipelines, custom configurations, or custom rules.
+                  Get direct technical assistance for integrating Assurly with your CI/CD pipelines,
+                  custom configurations, or custom rules.
                 </p>
 
                 <div className="info-links">
@@ -1602,7 +1601,7 @@ export default function HomeClient({
                     <span className="info-icon">✉</span>
                     <div>
                       <strong>Email Us</strong>
-                      <p>support@shipready.dev</p>
+                      <p>support@assurly.dev</p>
                     </div>
                   </div>
                   <div className="info-item">
@@ -1618,7 +1617,7 @@ export default function HomeClient({
                       <strong>Privacy Assurance</strong>
                       <p>
                         Local file scans stay in your browser. GitHub-connected scans pass code
-                        through ShipReady servers transiently; source code is not retained.
+                        through Assurly servers transiently; source code is not retained.
                       </p>
                     </div>
                   </div>
@@ -1702,7 +1701,7 @@ export default function HomeClient({
       {/* Footer */}
       <footer>
         <div className="container footer-container">
-          <p>© 2026 ShipReady. Pre-deploy Ship Gate for AI-built SaaS. Licensed under MIT.</p>
+          <p>© 2026 Assurly. Pre-deploy Ship Gate for AI-built SaaS. Licensed under MIT.</p>
           <div className="footer-links">
             <Link href="/privacy">Privacy Policy</Link>
             <Link href="/privacy#cookies">Cookies</Link>

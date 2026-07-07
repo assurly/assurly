@@ -9,7 +9,7 @@ export default function RootError({
   return (
     <main className="route-state" role="alert">
       <div className="route-state-card route-state-error">
-        <h1>ShipReady could not load</h1>
+        <h1>Assurly could not load</h1>
         <p>The request failed safely. No project data was exposed.</p>
         <button className="btn btn-primary" type="button" onClick={reset}>
           Try again

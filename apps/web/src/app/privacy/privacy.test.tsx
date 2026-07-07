@@ -30,7 +30,7 @@ describe('Legal Pages Component Structure', () => {
       }),
     ).toBeTruthy();
     expect(within(cookiesSection!).getByRole('table')).toBeTruthy();
-    expect(within(cookiesSection!).getAllByText(/shipready-session/).length).toBeGreaterThan(0);
+    expect(within(cookiesSection!).getAllByText(/assurly-session/).length).toBeGreaterThan(0);
   });
 
   it('TermsPage returns a valid React structure with warranty disclaimer headings', () => {

@@ -31,7 +31,7 @@
 | Show details reset         | `key={selectedScan.id}` on findings                  | `details-reset.interaction.test.tsx`, `ScanFindingsDetails.test.tsx`     |
 | Repo filter                | `filterRepositories()`                               | `repoListFilter.test.ts`, `repo-filter.interaction.test.tsx`             |
 | Dedup env/RLS findings     | `dedupeScanFindingsForDisplay()`                     | `scanFindingsDisplay.test.ts`, `ScanFindingsDetails.test.tsx`            |
-| Emoji → SVG (navigácia)    | `DashboardIcons`, `ShipReadyLogo`                    | `DashboardIcons.test.tsx`, `RepoListPanel.test.tsx`, E2E chrome          |
+| Emoji → SVG (navigácia)    | `DashboardIcons`, `AssurlyLogo`                      | `DashboardIcons.test.tsx`, `RepoListPanel.test.tsx`, E2E chrome          |
 | CSS refactor dashboard     | BEM `.dashboard-*`, extrahované komponenty           | ESLint rule, `WorkspaceHeader.test.tsx`                                  |
 | Workspace mobile strip     | collapsible `<details>` @ `<768px`                   | `WorkspaceHeader.test.tsx`, QA gate overflow                             |
 

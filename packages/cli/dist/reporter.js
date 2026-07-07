@@ -10,7 +10,7 @@ const chalk_1 = __importDefault(require("chalk"));
  */
 function reportFindings(findings) {
     console.log('\n' + chalk_1.default.bold.cyan('=================================================='));
-    console.log(chalk_1.default.bold.cyan('             ShipReady Scan Results               '));
+    console.log(chalk_1.default.bold.cyan('             Assurly Scan Results               '));
     console.log(chalk_1.default.bold.cyan('==================================================') + '\n');
     if (findings.length === 0) {
         console.log(chalk_1.default.bold.green('  ✔ Success! No configuration or security issues found.'));

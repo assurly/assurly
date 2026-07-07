@@ -1,9 +1,9 @@
-# @shipready/cli
+# assurly
 
 **A pre-deploy ship gate for AI-built SaaS.** Scan a Next.js + Supabase + Stripe + Vercel project locally and get one trusted verdict — what will break in production, and what you can safely ignore — before you ship.
 
 ```sh
-npx @shipready/cli scan --path .
+npx assurly scan --path .
 ```
 
 No sign-up, no upload. **Your source code is analyzed on your machine and is never sent anywhere.**
@@ -33,21 +33,21 @@ Findings come with concrete remediation (the exact SQL or config change), and th
 
 ```sh
 # scan the current project
-npx @shipready/cli scan --path .
+npx assurly scan --path .
 
 # JSON output for CI / tooling
-npx @shipready/cli scan --path . --json
+npx assurly scan --path . --json
 
 # scaffold a GitHub Actions workflow
-npx @shipready/cli init
+npx assurly init
 ```
 
 Requires Node.js >= 20.9.
 
 ## Related
 
-- **Run it from your AI agent (Cursor / Claude Code):** [`@shipready/mcp-server`](https://www.npmjs.com/package/@shipready/mcp-server) — the same gate over MCP. See [shipready.dev/mcp](https://shipready.dev/mcp).
-- **Full product (URL scan, auto-fix PRs, continuous monitoring):** [shipready.dev](https://shipready.dev).
+- **Run it from your AI agent (Cursor / Claude Code):** [`@assurly/mcp-server`](https://www.npmjs.com/package/@assurly/mcp-server) — the same gate over MCP. See [assurly.dev/mcp](https://assurly.dev/mcp).
+- **Full product (URL scan, auto-fix PRs, continuous monitoring):** [assurly.dev](https://assurly.dev).
 
 ## License
 

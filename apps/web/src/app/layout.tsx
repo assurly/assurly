@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
-const SITE_TITLE = 'ShipReady | Pre-deploy Ship Gate for AI-built SaaS';
+const SITE_TITLE = 'Assurly | Pre-deploy Ship Gate for AI-built SaaS';
 const SITE_DESCRIPTION =
   'Scan your deployed URL in 60 seconds, get a Ship Score, fix blockers with one click, and monitor every deploy — before you ship to Vercel, Supabase, and Stripe.';
 

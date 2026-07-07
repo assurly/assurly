@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-const WORKFLOW_TEMPLATE = `name: ShipReady Security & Config Scan
+const WORKFLOW_TEMPLATE = `name: Assurly Security & Config Scan
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
 
 jobs:
   scan:
-    name: ShipReady Static Analysis
+    name: Assurly Static Analysis
     runs-on: ubuntu-latest
 
     steps:
@@ -27,12 +27,12 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefer-offline --no-audit
 
-      - name: Run ShipReady Scan
-        run: npx --yes @shipready/cli@1.0.0 scan
+      - name: Run Assurly Scan
+        run: npx --yes assurly@1.0.0 scan
 `;
 
 /**
- * Creates the .github/workflows/shipready.yml file inside target directory.
+ * Creates the .github/workflows/assurly.yml file inside target directory.
  */
 export function setupGitHubAction(targetPath: string): {
   success: boolean;
@@ -42,7 +42,7 @@ export function setupGitHubAction(targetPath: string): {
   try {
     const githubDir = path.join(targetPath, '.github');
     const workflowsDir = path.join(githubDir, 'workflows');
-    const workflowFile = path.join(workflowsDir, 'shipready.yml');
+    const workflowFile = path.join(workflowsDir, 'assurly.yml');
 
     if (!fs.existsSync(githubDir)) {
       fs.mkdirSync(githubDir, { recursive: true });
@@ -55,7 +55,7 @@ export function setupGitHubAction(targetPath: string): {
 
     return {
       success: true,
-      message: 'GitHub Actions workflow successfully created at .github/workflows/shipready.yml!',
+      message: 'GitHub Actions workflow successfully created at .github/workflows/assurly.yml!',
       filePath: workflowFile,
     };
   } catch (error: unknown) {

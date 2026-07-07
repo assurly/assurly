@@ -13,7 +13,7 @@ import { setupGitHubAction } from './ci';
 const program = new Command();
 
 program
-  .name('shipready')
+  .name('assurly')
   .description('Production-Readiness Verifier for B2B SaaS and Indie Hackers projects')
   .version('1.0.0');
 
@@ -65,8 +65,8 @@ program
 
         reportFindings(findings);
         printShipGateSummary(shipGate);
-        const maxBlockers = process.env.SHIPREADY_DOGFOOD_MAX_BLOCKERS
-          ? Number.parseInt(process.env.SHIPREADY_DOGFOOD_MAX_BLOCKERS, 10)
+        const maxBlockers = process.env.ASSURLY_DOGFOOD_MAX_BLOCKERS
+          ? Number.parseInt(process.env.ASSURLY_DOGFOOD_MAX_BLOCKERS, 10)
           : undefined;
         if (maxBlockers !== undefined && shipGate.blockers.length > maxBlockers) {
           console.error(
@@ -90,7 +90,7 @@ program
 program
   .command('init')
   .description(
-    'Initializes a GitHub Actions workflow (.github/workflows/shipready.yml) in your repository',
+    'Initializes a GitHub Actions workflow (.github/workflows/assurly.yml) in your repository',
   )
   .option('-p, --path <dir>', 'Root directory of the project to initialize', '.')
   .action((options) => {

@@ -1,4 +1,4 @@
-import { type ShipGateReport } from '@shipready/scanner-core';
+import { type ShipGateReport } from '@assurly/scanner-core';
 import type { Finding, ProjectContext } from './types';
 export interface ScanProjectResult {
     findings: Finding[];

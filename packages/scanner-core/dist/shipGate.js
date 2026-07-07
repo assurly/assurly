@@ -41,7 +41,7 @@ function getFindingGroupKey(finding) {
     }
     if (message.includes('edge runtime'))
         return 'edge:runtime';
-    if (message.includes('github actions workflow') && message.includes('shipready')) {
+    if (message.includes('github actions workflow') && message.includes('assurly')) {
         return 'rule:github-actions-integration';
     }
     if (finding.ruleId)
@@ -81,7 +81,7 @@ function resolveGroupAction(key, suggestion, ruleId) {
         return {
             label: 'Initialize CI workflow',
             kind: 'command',
-            command: 'npx shipready init',
+            command: 'npx assurly init',
             hint: suggestion,
         };
     }
@@ -372,7 +372,7 @@ function formatShipGateMarkdown(report, options = {}) {
     }
     if (options.reportUrl) {
         lines.push('');
-        lines.push(`[View full ShipReady report](${options.reportUrl})`);
+        lines.push(`[View full Assurly report](${options.reportUrl})`);
     }
     return lines.join('\n');
 }

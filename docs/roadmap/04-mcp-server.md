@@ -4,8 +4,8 @@
 
 ## Goal
 
-Build an **MCP (Model Context Protocol) server** over `@shipready/scanner-core` so AI agents (Cursor, Claude Code,
-Copilot) can call ShipReady as a **pre-deploy step** — "verify this app is ready to ship." New package
+Build an **MCP (Model Context Protocol) server** over `@assurly/scanner-core` so AI agents (Cursor, Claude Code,
+Copilot) can call Assurly as a **pre-deploy step** — "verify this app is ready to ship." New package
 `packages/mcp-server`.
 
 ## Why
@@ -39,7 +39,7 @@ already exists; we wrap it into MCP tools.
 
 ## Existing code to reuse
 
-- **Scan core:** `@shipready/scanner-core` (all `scan*` functions + `buildShipGateReport`), and the Phase 0
+- **Scan core:** `@assurly/scanner-core` (all `scan*` functions + `buildShipGateReport`), and the Phase 0
   `fileRelevance` filter so the MCP scan matches CLI/web behavior.
 - **CLI orchestration:** `packages/cli/src/` — `detector`, `rules/`, `shipGateReporter`. Extract
   "scan directory → ShipGateReport" into a shared function used by both CLI and MCP.
@@ -47,13 +47,13 @@ already exists; we wrap it into MCP tools.
 
 ## Proposed MCP tools
 
-| Tool                     | Input                                  | Output                                                               |
-| ------------------------ | -------------------------------------- | -------------------------------------------------------------------- |
-| `shipready_scan_path`    | `{ path: string }` (local project dir) | Ship Gate report (JSON + human summary), verdict, ship score         |
-| `shipready_scan_files`   | `{ files: {path, content}[] }`         | Same, from provided files (the agent already has content in context) |
-| `shipready_explain_rule` | `{ ruleId: string }`                   | Explanation of the rule + how to fix it (so the agent can remediate) |
+| Tool                   | Input                                  | Output                                                               |
+| ---------------------- | -------------------------------------- | -------------------------------------------------------------------- |
+| `assurly_scan_path`    | `{ path: string }` (local project dir) | Ship Gate report (JSON + human summary), verdict, ship score         |
+| `assurly_scan_files`   | `{ files: {path, content}[] }`         | Same, from provided files (the agent already has content in context) |
+| `assurly_explain_rule` | `{ ruleId: string }`                   | Explanation of the rule + how to fix it (so the agent can remediate) |
 
-> Typical agent flow: write code → call `shipready_scan_path` → get blockers → fix → re-scan until `READY TO SHIP`.
+> Typical agent flow: write code → call `assurly_scan_path` → get blockers → fix → re-scan until `READY TO SHIP`.
 > That loop is the "ship gate" we sell.
 
 ## Tasks
@@ -83,9 +83,9 @@ packages/cli/src/... or packages/scanner-core/src/...   (change — extracted sh
 
 - [ ] `packages/mcp-server` builds (`npm run build` in the package) with no errors.
 - [ ] The MCP server starts over stdio and lists the three tools.
-- [ ] `shipready_scan_files` with a fixture (e.g. SQL without RLS) returns verdict `NOT READY TO SHIP` + a blocker.
-- [ ] `shipready_scan_files` with clean fixtures returns `READY TO SHIP`.
-- [ ] `shipready_explain_rule('supabase-rls')` returns a meaningful explanation + fix.
+- [ ] `assurly_scan_files` with a fixture (e.g. SQL without RLS) returns verdict `NOT READY TO SHIP` + a blocker.
+- [ ] `assurly_scan_files` with clean fixtures returns `READY TO SHIP`.
+- [ ] `assurly_explain_rule('supabase-rls')` returns a meaningful explanation + fix.
 - [ ] The CLI still behaves identically (the extracted shared function broke nothing — CLI tests green).
 - [ ] The README contains a working `.cursor/mcp.json` example and a Claude Code command.
 
@@ -99,7 +99,7 @@ packages/cli/src/... or packages/scanner-core/src/...   (change — extracted sh
 
 ```bash
 # from repo root
-npm run build -w @shipready/mcp-server
-npm run test -w @shipready/mcp-server
+npm run build -w @assurly/mcp-server
+npm run test -w @assurly/mcp-server
 # manual: add to .cursor/mcp.json and confirm Cursor sees the tools
 ```

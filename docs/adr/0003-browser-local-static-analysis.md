@@ -6,7 +6,7 @@
 
 ## Context and Problem Statement
 
-The ShipReady web application includes a "drag & drop" scanner allowing users to instantly check their project's configuration and security readiness. If the code is uploaded to our servers, it introduces significant security, regulatory (e.g., GDPR, SOC 2), and data-privacy concerns for the user. We must decide how to architecture this scanning capability.
+The Assurly web application includes a "drag & drop" scanner allowing users to instantly check their project's configuration and security readiness. If the code is uploaded to our servers, it introduces significant security, regulatory (e.g., GDPR, SOC 2), and data-privacy concerns for the user. We must decide how to architecture this scanning capability.
 
 ## Decision Drivers
 

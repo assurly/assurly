@@ -54,7 +54,7 @@ function assertRlsFindingInDetails(): void {
   const panel = screen.getByTestId('scan-details-findings');
   expect(within(panel).getByText(RLS_FINDING_TEXT)).toBeTruthy();
 }
-const CI_FINDING_TEXT = /GitHub Actions workflow for ShipReady is missing/i;
+const CI_FINDING_TEXT = /GitHub Actions workflow for Assurly is missing/i;
 
 const baseOrganization: Organization = {
   id: 'org-1',
@@ -446,10 +446,7 @@ describe('Run Secure Scan — installation proxy fallback & error reporting', ()
     const fetchMock = stubRoutedFetch({
       // Installation has no access to this repository.
       proxyTree: () =>
-        jsonError(
-          404,
-          'This repository is not accessible to the ShipReady GitHub App installation.',
-        ),
+        jsonError(404, 'This repository is not accessible to the Assurly GitHub App installation.'),
       // But it is a public repo, so the public-scan proxy succeeds.
       publicTree: () =>
         new Response(
@@ -489,10 +486,7 @@ describe('Run Secure Scan — installation proxy fallback & error reporting', ()
   it('surfaces the structured error message when both proxies reject the repository', async () => {
     const fetchMock = stubRoutedFetch({
       proxyTree: () =>
-        jsonError(
-          404,
-          'This repository is not accessible to the ShipReady GitHub App installation.',
-        ),
+        jsonError(404, 'This repository is not accessible to the Assurly GitHub App installation.'),
       publicTree: () =>
         jsonError(
           404,
@@ -524,7 +518,7 @@ describe('Run Secure Scan — installation proxy fallback & error reporting', ()
         proxyTree: () =>
           jsonError(
             404,
-            'This repository is not accessible to the ShipReady GitHub App installation.',
+            'This repository is not accessible to the Assurly GitHub App installation.',
           ),
         publicTree: () =>
           jsonError(

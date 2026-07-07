@@ -39,7 +39,7 @@ export async function sendRegressionAlert(
 
   const apiKey = getResendApiKey();
   if (!apiKey) {
-    console.warn('[ShipReady] RESEND_API_KEY is not configured; regression alert skipped.');
+    console.warn('[Assurly] RESEND_API_KEY is not configured; regression alert skipped.');
     return;
   }
 
@@ -54,8 +54,8 @@ export async function sendRegressionAlert(
     body: JSON.stringify({
       from: getResendFromAddress(),
       to: recipients,
-      subject: `[ShipReady] New blocker in ${repo.name}`,
-      html: `<h2>New Ship Gate blocker detected</h2><p>A new blocker appeared in <strong>${repoName}</strong> since the previous scan.</p><ul>${formatRegressionList(regressions)}</ul><p>Review the latest scan in your ShipReady dashboard.</p>`,
+      subject: `[Assurly] New blocker in ${repo.name}`,
+      html: `<h2>New Ship Gate blocker detected</h2><p>A new blocker appeared in <strong>${repoName}</strong> since the previous scan.</p><ul>${formatRegressionList(regressions)}</ul><p>Review the latest scan in your Assurly dashboard.</p>`,
     }),
   });
 

@@ -7,19 +7,19 @@
 Make the MCP server built in Phase 4 **reachable and installable by a real user**, not just runnable by someone who
 clones the repo and builds it locally. Two halves, both required:
 
-1. **Publish** `@shipready/scanner-core`, `@shipready/cli`, and `@shipready/mcp-server` to the public npm registry so
-   `npx @shipready/mcp-server` works for a stranger.
+1. **Publish** `@assurly/scanner-core`, `assurly`, and `@assurly/mcp-server` to the public npm registry so
+   `npx @assurly/mcp-server` works for a stranger.
 2. **Position** the MCP server where a real visitor can find it — a public page reachable from the homepage, and an
    explicit place in the pricing story — instead of only in `packages/mcp-server/README.md`, which no one outside
    this repo will ever open.
 
 ## Why
 
-Phase 4 shipped a working MCP server (`shipready_scan_path`, `shipready_scan_files`, `shipready_explain_rule`), fully
+Phase 4 shipped a working MCP server (`assurly_scan_path`, `assurly_scan_files`, `assurly_explain_rule`), fully
 tested end-to-end with a real stdio client. But three things were verified true after shipping it, and none are
 addressed anywhere else in the roadmap:
 
-- **Nothing is published.** `npm view @shipready/cli|scanner-core|mcp-server` all return `404`. Today the only way
+- **Nothing is published.** `npm view assurly|scanner-core|mcp-server` all return `404`. Today the only way
   to use the server is to clone the repo, build it, and point `.cursor/mcp.json` at an absolute local path — that is
   a workflow for a contributor, not a customer.
 - **The landing site never mentions MCP.** A full search of `apps/web/src/app` for "mcp" / "model context protocol"
@@ -58,9 +58,9 @@ distribution and messaging only.
 
 ## Verify before writing (Cursor: do this first)
 
-- Confirm who owns (or will create) the `@shipready` npm org, and that npm 2FA is configured for the account that
+- Confirm who owns (or will create) the `@assurly` npm org, and that npm 2FA is configured for the account that
   will run the publish — required for provenance-signed scoped packages.
-- Confirm the `repository.url` already set in each package (`https://github.com/shipready/shipready.git`) is the
+- Confirm the `repository.url` already set in each package (`https://github.com/assurly/assurly.git`) is the
   real, current repository. `publishConfig.provenance: true` (already set in `packages/mcp-server/package.json`)
   requires the publish to run from a GitHub Actions workflow tied to that exact repository, or provenance
   verification fails at publish time.
@@ -75,7 +75,7 @@ distribution and messaging only.
 - `packages/mcp-server/package.json` — already has `bin`, `files`, and `publishConfig: { access: "public",
 provenance: true }`. Reuse as-is; do not restructure it.
 - `packages/mcp-server/README.md` — existing tool table and Cursor/Claude Code config blocks to upgrade in place
-  (absolute local path → `npx @shipready/mcp-server`), not rewrite from scratch.
+  (absolute local path → `npx @assurly/mcp-server`), not rewrite from scratch.
 - `.github/workflows/package-release.yml` — extend the pack step to include `packages/mcp-server`; add the publish
   step as a separate, explicitly confirmed `workflow_dispatch` input, following the same "candidates vs. publish are
   different operations" split already documented in its trailing comment.
@@ -100,7 +100,7 @@ provenance: true }`. Reuse as-is; do not restructure it.
      a required `confirm: "publish"` string), that runs `npm publish --provenance` for each package in that same
      order. Never trigger this on push, PR, or schedule.
 3. **Docs upgrade.** Rewrite the "Cursor" and "Claude Code" sections of `packages/mcp-server/README.md` around
-   `npx -y @shipready/mcp-server` as the primary path once published; keep the current build-from-source steps as a
+   `npx -y @assurly/mcp-server` as the primary path once published; keep the current build-from-source steps as a
    clearly labeled fallback for contributors working on this repo directly.
 4. **Public page.** Add `apps/web/src/app/mcp/page.tsx` (or `apps/web/src/app/docs/mcp/page.tsx` if a `/docs` root
    is preferred) presenting: the one-sentence framing already in the root roadmap README ("a ship gate AI agents
@@ -132,7 +132,7 @@ docs/roadmap/06-positioning-pricing-cleanup.md          (change, if already land
       writing.
 - [ ] `npm publish` is never executed automatically by CI or by an agent — only via manual `workflow_dispatch` with
       an explicit confirmation input, matching the existing `package-release.yml` philosophy.
-- [ ] `packages/mcp-server/README.md` shows `npx @shipready/mcp-server` as the primary install path, with a clearly
+- [ ] `packages/mcp-server/README.md` shows `npx @assurly/mcp-server` as the primary install path, with a clearly
       separated "build from source" section for contributors.
 - [ ] A public page exists and is reachable from the homepage in **at most one click**, showing the tool table and
       working copy-paste configs for both Cursor and Claude Code.

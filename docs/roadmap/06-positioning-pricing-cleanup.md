@@ -25,7 +25,7 @@ structure, and metadata only.
 ### A) Messaging (landing — `HomeClient.tsx` and related)
 
 - Rework the primary hook from "detection" to **remediation + runtime + trust**. Recommended headline:
-  > "Before you ship your AI-built SaaS, ShipReady tells you in 60 seconds what will break in production — and what
+  > "Before you ship your AI-built SaaS, Assurly tells you in 60 seconds what will break in production — and what
   > you can safely ignore."
 - Add a "How it works" section: URL scan → Ship Score → 1-click fix / AI fix prompt → continuous monitoring.
 - Add trust framing relevant to vibe coders (reference real 2025–2026 incident classes such as exposed Supabase RLS)

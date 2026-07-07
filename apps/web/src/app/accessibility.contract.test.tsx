@@ -86,9 +86,9 @@ describe('accessibility and responsive UI contracts', () => {
   it('states the server transit boundary consistently on both legal pages', () => {
     const privacy = renderToStaticMarkup(<PrivacyPage />);
     const terms = renderToStaticMarkup(<TermsPage />);
-    expect(privacy).toContain('passes transiently through ShipReady');
+    expect(privacy).toContain('passes transiently through Assurly');
     expect(privacy).toContain('do not store complete repository source files');
     expect(privacy).not.toContain('never leave your device');
-    expect(terms).toContain('transmit repository content through ShipReady');
+    expect(terms).toContain('transmit repository content through Assurly');
   });
 });

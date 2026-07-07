@@ -22,7 +22,7 @@ export const TESTIMONIALS: Testimonial[] = [
   {
     id: 'marcus-klein',
     quote:
-      'ShipReady caught a missing RLS policy on our user profiles table minutes before we deployed. That single catch prevented a serious Supabase data exposure in production.',
+      'Assurly caught a missing RLS policy on our user profiles table minutes before we deployed. That single catch prevented a serious Supabase data exposure in production.',
     author: {
       name: 'Marcus Klein',
       title: 'CTO',
@@ -35,7 +35,7 @@ export const TESTIMONIALS: Testimonial[] = [
   {
     id: 'sarah-johnson',
     quote:
-      'We integrated ShipReady into our GitHub CI pipeline quickly. Every PR now gets scanned for Stripe webhook vulnerabilities and leaked env vars without manual review.',
+      'We integrated Assurly into our GitHub CI pipeline quickly. Every PR now gets scanned for Stripe webhook vulnerabilities and leaked env vars without manual review.',
     author: {
       name: 'Sarah Johnson',
       title: 'Lead Backend Engineer',
@@ -61,7 +61,7 @@ export const TESTIMONIALS: Testimonial[] = [
   {
     id: 'priya-sharma',
     quote:
-      'Before ShipReady, security reviews blocked releases for days. Now we catch Supabase misconfigurations and exposed secrets automatically on every push.',
+      'Before Assurly, security reviews blocked releases for days. Now we catch Supabase misconfigurations and exposed secrets automatically on every push.',
     author: {
       name: 'Priya Sharma',
       title: 'VP Engineering',
@@ -74,7 +74,7 @@ export const TESTIMONIALS: Testimonial[] = [
   {
     id: 'tom-wasilewski',
     quote:
-      'A junior dev accidentally committed a NEXT_PUBLIC_ prefixed service key. ShipReady flagged it in the PR before it ever hit main — exactly the guardrail fast-moving teams need.',
+      'A junior dev accidentally committed a NEXT_PUBLIC_ prefixed service key. Assurly flagged it in the PR before it ever hit main — exactly the guardrail fast-moving teams need.',
     author: {
       name: 'Tom Wasilewski',
       title: 'Engineering Manager',
@@ -87,7 +87,7 @@ export const TESTIMONIALS: Testimonial[] = [
   {
     id: 'emma-laurent',
     quote:
-      'As a solo founder running a Next.js + Supabase SaaS, I cannot afford a dedicated security engineer. ShipReady gives me a pre-deploy Ship Gate I can trust before every release.',
+      'As a solo founder running a Next.js + Supabase SaaS, I cannot afford a dedicated security engineer. Assurly gives me a pre-deploy Ship Gate I can trust before every release.',
     author: {
       name: 'Emma Laurent',
       title: 'Founder & CTO',
@@ -196,7 +196,7 @@ export function Testimonials(): React.ReactElement {
         <h2 id="testimonials-heading">Built for teams shipping AI-generated code</h2>
         <p className="testimonials-subheading">
           The same production failures keep showing up — exposed Supabase RLS, unverified Stripe
-          webhooks, secrets in client bundles. ShipReady catches them before deploy.
+          webhooks, secrets in client bundles. Assurly catches them before deploy.
         </p>
       </div>
 

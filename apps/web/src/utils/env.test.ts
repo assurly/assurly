@@ -260,8 +260,8 @@ describe('getApplicationUrl', () => {
 
   it('returns the origin for a valid https URL in production', () => {
     vi.stubEnv('NODE_ENV', 'production');
-    vi.stubEnv('APP_URL', 'https://app.shipready.dev');
-    expect(getApplicationUrl()).toBe('https://app.shipready.dev');
+    vi.stubEnv('APP_URL', 'https://app.assurly.dev');
+    expect(getApplicationUrl()).toBe('https://app.assurly.dev');
   });
 
   it('strips a trailing slash from APP_URL', () => {
@@ -293,7 +293,7 @@ describe('getApplicationUrl', () => {
   });
 
   it('throws ConfigurationError for a plain hostname without a scheme', () => {
-    vi.stubEnv('APP_URL', 'app.shipready.dev');
+    vi.stubEnv('APP_URL', 'app.assurly.dev');
     expect(() => getApplicationUrl()).toThrow(ConfigurationError);
   });
 
@@ -305,7 +305,7 @@ describe('getApplicationUrl', () => {
   // ── protocol enforcement ───────────────────────────────────────────────
 
   it('rejects a ftp:// scheme', () => {
-    vi.stubEnv('APP_URL', 'ftp://files.shipready.dev');
+    vi.stubEnv('APP_URL', 'ftp://files.assurly.dev');
     expect(() => getApplicationUrl()).toThrow(ConfigurationError);
     expect(() => getApplicationUrl()).toThrow(/HTTP/i);
   });
@@ -324,7 +324,7 @@ describe('getApplicationUrl', () => {
 
   it('rejects http:// in production to prevent mixed-content and MITM risk', () => {
     vi.stubEnv('NODE_ENV', 'production');
-    vi.stubEnv('APP_URL', 'http://insecure.shipready.dev');
+    vi.stubEnv('APP_URL', 'http://insecure.assurly.dev');
     expect(() => getApplicationUrl()).toThrow(ConfigurationError);
     expect(() => getApplicationUrl()).toThrow(/HTTPS/i);
   });
@@ -391,9 +391,9 @@ describe('resolveApplicationUrl', () => {
 
   it('falls back to APP_URL in production even for LAN hosts', () => {
     vi.stubEnv('NODE_ENV', 'production');
-    vi.stubEnv('APP_URL', 'https://app.shipready.dev');
+    vi.stubEnv('APP_URL', 'https://app.assurly.dev');
     expect(resolveApplicationUrl('http://192.168.1.245:3000/api/auth/login')).toBe(
-      'https://app.shipready.dev',
+      'https://app.assurly.dev',
     );
   });
 });

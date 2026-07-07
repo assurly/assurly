@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { scanSqlMigration } from '@shipready/scanner-core';
+import { scanSqlMigration } from '@assurly/scanner-core';
 import { Rule, ProjectContext, Finding } from '../types';
 
 export const sqlSafetyRules: Rule = {

@@ -88,7 +88,7 @@ export function getFindingGroupKey(finding: ShipGateFindingInput): string {
     return 'perf:cold-start';
   }
   if (message.includes('edge runtime')) return 'edge:runtime';
-  if (message.includes('github actions workflow') && message.includes('shipready')) {
+  if (message.includes('github actions workflow') && message.includes('assurly')) {
     return 'rule:github-actions-integration';
   }
 
@@ -134,7 +134,7 @@ export function resolveGroupAction(
     return {
       label: 'Initialize CI workflow',
       kind: 'command',
-      command: 'npx shipready init',
+      command: 'npx assurly init',
       hint: suggestion,
     };
   }
@@ -511,7 +511,7 @@ export function formatShipGateMarkdown(
 
   if (options.reportUrl) {
     lines.push('');
-    lines.push(`[View full ShipReady report](${options.reportUrl})`);
+    lines.push(`[View full Assurly report](${options.reportUrl})`);
   }
 
   return lines.join('\n');

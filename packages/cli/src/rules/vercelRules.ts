@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { scanEdgeRuntime } from '@shipready/scanner-core';
+import { scanEdgeRuntime } from '@assurly/scanner-core';
 import { Finding, ProjectContext, Rule } from '../types';
 
 export const vercelRules: Rule = {

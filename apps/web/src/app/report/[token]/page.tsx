@@ -31,7 +31,7 @@ export default async function ReportPage({ params }: ReportPageProps): Promise<R
     <main className="report-page">
       <div className="report-page-inner">
         <header className="report-page-header">
-          <p className="report-page-eyebrow">ShipReady Ship Gate Report</p>
+          <p className="report-page-eyebrow">Assurly Ship Gate Report</p>
           <h1>{repositoryName ?? 'Repository scan'}</h1>
           <p className="report-page-meta">
             Commit <code>{scan.commit_sha.slice(0, 7)}</code> on branch{' '}

@@ -24,7 +24,7 @@ function triggerBrowserDownload(blob: Blob, filename: string): void {
 export async function downloadProjectZip(
   files: ProjectFile[],
   projectName: string,
-  suffix = 'shipready-project',
+  suffix = 'assurly-project',
 ): Promise<void> {
   const zip = new JSZip();
   for (const file of files) {
@@ -88,5 +88,5 @@ export function downloadProjectPatch(
   const patchBody = sections.length > 0 ? sections.join('\n\n') : '# No file changes to export.\n';
 
   const blob = new Blob([patchBody], { type: 'text/plain;charset=utf-8' });
-  triggerBrowserDownload(blob, `${sanitizeDownloadName(projectName)}-shipready.patch`);
+  triggerBrowserDownload(blob, `${sanitizeDownloadName(projectName)}-assurly.patch`);
 }

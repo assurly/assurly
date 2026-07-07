@@ -1,11 +1,11 @@
-# ShipReady 2026 — Roadmap & Transformation Plan
+# Assurly 2026 — Roadmap & Transformation Plan
 
-This directory contains **execution specs** that turn ShipReady from a static CLI analyzer into a product
+This directory contains **execution specs** that turn Assurly from a static CLI analyzer into a product
 that has real value, sticky revenue, and a defensible position in 2026.
 
 Every spec is written so a **Cursor Agent can implement it phase by phase without drifting**.
 
-> **Cursor: read this file first, then read `.cursor/rules/shipready-2026.mdc`. Both are load-bearing.**
+> **Cursor: read this file first, then read `.cursor/rules/assurly-2026.mdc`. Both are load-bearing.**
 
 ---
 
@@ -119,7 +119,7 @@ The product wins on trust and outcomes, never on how many rules it has.
 | Metric                                         | Target                                |
 | ---------------------------------------------- | ------------------------------------- |
 | Blocker false-positive rate on reference repos | < 5%                                  |
-| ShipReady self-scan (dogfood)                  | 0–2 blockers, not 19                  |
+| Assurly self-scan (dogfood)                    | 0–2 blockers, not 19                  |
 | Time to first actionable fix                   | < 2 min                               |
 | "Would deploy after fixing blockers" (Pro NPS) | high                                  |
 | Free → Guard conversion                        | track as the north-star funnel metric |
@@ -128,14 +128,14 @@ The product wins on trust and outcomes, never on how many rules it has.
 
 ## 7. Immutable constraints (read BEFORE the first change)
 
-These also live in `.cursor/rules/shipready-2026.mdc` (Cursor sees them automatically). Repeated here:
+These also live in `.cursor/rules/assurly-2026.mdc` (Cursor sees them automatically). Repeated here:
 
 - **Next.js 16 has breaking changes.** Obey `apps/web/AGENTS.md`: read `node_modules/next/dist/docs/` before
   writing Next code. Do not rely on pre-16 patterns from memory.
 - **Local-first is the product's identity.** Manual/browser scans run locally; the user's source code is never
   uploaded to a third party for analysis. (Runtime URL scanning of the user's own public URL is the one
   exception — read-only probes only, see `01-url-runtime-scanner.md` safety rails.)
-- **One rule engine:** `@shipready/scanner-core`. Add rules there, not duplicated in web/CLI.
+- **One rule engine:** `@assurly/scanner-core`. Add rules there, not duplicated in web/CLI.
 - **Blocker discipline:** if a rule cannot be defended to a senior in 30 seconds, it is a warning or "review",
   never a blocker. Max ~12 blocker rules total.
 - **API routes:** always `zod`-validate input and rate-limit via `apps/web/src/utils/apiSecurity.ts`.

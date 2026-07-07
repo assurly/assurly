@@ -1,7 +1,7 @@
 {
-  "name": "@shipready/scanner-core",
+  "name": "@assurly/scanner-core",
   "version": "1.0.0",
-  "description": "Browser-safe static analysis rules shared by ShipReady surfaces",
+  "description": "Browser-safe static analysis rules shared by Assurly surfaces",
   "keywords": [
     "static-analysis",
     "security",
@@ -13,7 +13,7 @@
     "rls",
     "code-scanner"
   ],
-  "homepage": "https://shipready.dev",
+  "homepage": "https://assurly.dev",
   "license": "MIT",
   "type": "commonjs",
   "main": "dist/index.js",
@@ -27,7 +27,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/shipready/shipready.git",
+    "url": "https://github.com/assurly/assurly.git",
     "directory": "packages/scanner-core"
   },
   "scripts": {

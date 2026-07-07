@@ -1,6 +1,6 @@
-# Project Requirements: ShipReady (Senior Specifications)
+# Project Requirements: Assurly (Senior Specifications)
 
-This document defines the development, quality, and design standards for the ShipReady project. All files, code, and documentation must meet the criteria of a **top senior developer / architect** to ensure the project is ready for professional audits and a successful exit.
+This document defines the development, quality, and design standards for the Assurly project. All files, code, and documentation must meet the criteria of a **top senior developer / architect** to ensure the project is ready for professional audits and a successful exit.
 
 ---
 

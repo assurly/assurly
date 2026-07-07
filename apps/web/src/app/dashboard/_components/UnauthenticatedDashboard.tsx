@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ShipReadyLogo } from './icons/ShipReadyLogo';
+import { AssurlyLogo } from './icons/AssurlyLogo';
 import { DashboardLockIcon } from './icons/DashboardIcons';
 
 interface UnauthenticatedDashboardProps {
@@ -13,14 +13,14 @@ export function UnauthenticatedDashboard({
     <main className="unauth-grid">
       <section className="unauth-left">
         <div>
-          <Link href="/" className="unauth-brand" aria-label="ShipReady home">
-            <ShipReadyLogo />
+          <Link href="/" className="unauth-brand" aria-label="Assurly home">
+            <AssurlyLogo />
           </Link>
           <h1>
             Secure your code before it reaches <span>production.</span>
           </h1>
           <p>
-            ShipReady runs local static analysis for Next.js, Supabase, and Stripe projects while
+            Assurly runs local static analysis for Next.js, Supabase, and Stripe projects while
             keeping repository access scoped to your workspace.
           </p>
           <a href={loginUrl} className="btn btn-primary">
@@ -32,7 +32,7 @@ export function UnauthenticatedDashboard({
           </p>
         </div>
       </section>
-      <aside className="unauth-right" aria-label="ShipReady benefits">
+      <aside className="unauth-right" aria-label="Assurly benefits">
         <div className="login-card">
           <h2>Production readiness, in one workspace</h2>
           <ul>

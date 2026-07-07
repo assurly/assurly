@@ -7,7 +7,7 @@ import {
   type ScanResult,
   type WebFinding,
 } from '../../../../utils/browserScanner';
-import { buildIssueGroups, type ShipGateGroup } from '@shipready/scanner-core';
+import { buildIssueGroups, type ShipGateGroup } from '@assurly/scanner-core';
 import type { ProjectFile } from './useManualScan';
 
 export type FileScanStatus = 'error' | 'warning' | 'clean';

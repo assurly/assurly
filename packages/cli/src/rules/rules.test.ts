@@ -21,7 +21,7 @@ function ensureDir(dirPath: string) {
   }
 }
 
-describe('ShipReady Verification Rules', () => {
+describe('Assurly Verification Rules', () => {
   beforeAll(() => {
     // Setup test fixture folder structure
     ensureDir(FIXTURE_DIR);
@@ -214,7 +214,7 @@ describe('ShipReady Verification Rules', () => {
   });
 
   describe('GitHub Actions CI/CD Integration (ciRules)', () => {
-    it('should flag warning when .github/workflows/shipready.yml is missing', async () => {
+    it('should flag warning when .github/workflows/assurly.yml is missing', async () => {
       const context: ProjectContext = {
         projectPath: FIXTURE_DIR,
         detectedStack: {
@@ -229,14 +229,14 @@ describe('ShipReady Verification Rules', () => {
       const findings = await ciRules.run(context);
       expect(findings.length).toBe(1);
       expect(findings[0].severity).toBe('warning');
-      expect(findings[0].message).toContain('GitHub Actions workflow for ShipReady is missing');
-      expect(findings[0].suggestion).toContain('npx shipready init');
+      expect(findings[0].message).toContain('GitHub Actions workflow for Assurly is missing');
+      expect(findings[0].suggestion).toContain('npx assurly init');
     });
 
-    it('should pass (no warnings) when .github/workflows/shipready.yml is present', async () => {
+    it('should pass (no warnings) when .github/workflows/assurly.yml is present', async () => {
       const githubDir = path.join(FIXTURE_DIR, '.github');
       const workflowsDir = path.join(githubDir, 'workflows');
-      const workflowFile = path.join(workflowsDir, 'shipready.yml');
+      const workflowFile = path.join(workflowsDir, 'assurly.yml');
 
       if (!fs.existsSync(githubDir)) {
         fs.mkdirSync(githubDir, { recursive: true });
@@ -246,7 +246,7 @@ describe('ShipReady Verification Rules', () => {
       }
       fs.writeFileSync(
         workflowFile,
-        'name: ShipReady\njobs:\n  scan:\n    steps:\n      - run: npx shipready scan\n',
+        'name: Assurly\njobs:\n  scan:\n    steps:\n      - run: npx assurly scan\n',
         'utf8',
       );
 
@@ -258,7 +258,7 @@ describe('ShipReady Verification Rules', () => {
           payments: 'none',
           deployment: 'vercel',
         },
-        files: ['.github/workflows/shipready.yml'],
+        files: ['.github/workflows/assurly.yml'],
       };
 
       const findings = await ciRules.run(context);

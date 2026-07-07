@@ -115,7 +115,7 @@ export async function requireUser(req: Request): Promise<AuthContext> {
 }
 
 /**
- * Parses the full canonical session payload from the `shipready-session` cookie.
+ * Parses the full canonical session payload from the `assurly-session` cookie.
  * Returns null unless every field required to act on the session (access token,
  * refresh token and expiry) is present and well-formed. Used by logout to revoke
  * the underlying Supabase session, which is stored only in this cookie.
@@ -181,7 +181,7 @@ const LEGACY_SUPABASE_AUTH_COOKIE = /^sb-.+-auth-token(\.\d+)?$/;
 /**
  * Produces Set-Cookie headers that expire any legacy Supabase `sb-*-auth-token`
  * cookies still present on the request. The session is now stored solely in
- * `shipready-session`; these duplicates are inert but are cleared on the next
+ * `assurly-session`; these duplicates are inert but are cleared on the next
  * login/logout so a stale second session store cannot linger in the browser.
  */
 export function clearLegacySupabaseAuthCookies(req: Request): string[] {

@@ -21,7 +21,7 @@ import {
   readLimitedResponseText,
   verifyGitHubWebhookSignature,
 } from '../../../../utils/githubApp';
-import { buildShipGateReport, formatShipGateMarkdown } from '@shipready/scanner-core';
+import { buildShipGateReport, formatShipGateMarkdown } from '@assurly/scanner-core';
 import { notifyIfRegressionBlockers } from '../../../../utils/scanRegression';
 import {
   incompleteScanFinding,
@@ -116,7 +116,7 @@ async function createCheckRun(
     {
       method: 'POST',
       body: JSON.stringify({
-        name: 'ShipReady Exit Readiness Scan',
+        name: 'Assurly Exit Readiness Scan',
         head_sha: commitSha,
         status: 'in_progress',
         started_at: new Date().toISOString(),
@@ -155,7 +155,7 @@ async function completeCheckRun(
   const summary = formatShipGateMarkdown(shipGate, { repositoryName: options.repositoryName });
   const annotationNote =
     findings.length > 50
-      ? `\n\nGitHub displays the first 50 of ${findings.length} annotations; the complete result is stored in ShipReady.`
+      ? `\n\nGitHub displays the first 50 of ${findings.length} annotations; the complete result is stored in Assurly.`
       : '';
 
   await githubJson(
@@ -366,7 +366,7 @@ export const POST = secureRoute(
         const message = error instanceof Error ? error.message : String(error);
         console.error(
           JSON.stringify({
-            service: 'shipready-api',
+            service: 'assurly-api',
             requestId,
             route: 'github:webhook:background',
             status: 'failed',
@@ -376,7 +376,7 @@ export const POST = secureRoute(
         await db.finishGitHubDelivery(deliveryId, false, message).catch((finishError) => {
           console.error(
             JSON.stringify({
-              service: 'shipready-api',
+              service: 'assurly-api',
               requestId,
               route: 'github:webhook:finalize',
               status: 'failed',

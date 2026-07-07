@@ -12,7 +12,7 @@ async function loadDashboardSession(): Promise<SessionResult> {
   }
 
   const requestHeaders = await headers();
-  const request = new Request('http://shipready.local/dashboard', {
+  const request = new Request('http://assurly.local/dashboard', {
     headers: { cookie: requestHeaders.get('cookie') ?? '' },
   });
 

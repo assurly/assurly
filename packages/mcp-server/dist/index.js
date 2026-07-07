@@ -21,8 +21,8 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
-  SHIPREADY_MCP_TOOL_NAMES: () => SHIPREADY_MCP_TOOL_NAMES,
-  createShipReadyMcpServer: () => createShipReadyMcpServer
+  ASSURLY_MCP_TOOL_NAMES: () => ASSURLY_MCP_TOOL_NAMES,
+  createAssurlyMcpServer: () => createAssurlyMcpServer
 });
 module.exports = __toCommonJS(index_exports);
 var import_mcp = require("@modelcontextprotocol/sdk/server/mcp.js");
@@ -30,12 +30,12 @@ var import_stdio = require("@modelcontextprotocol/sdk/server/stdio.js");
 var import_zod = require("zod");
 
 // src/tools.ts
-var import_ruleExplainer = require("@shipready/cli/ruleExplainer");
-var import_scanProject = require("@shipready/cli/scanProject");
-var SHIPREADY_MCP_TOOL_NAMES = [
-  "shipready_scan_path",
-  "shipready_scan_files",
-  "shipready_explain_rule"
+var import_ruleExplainer = require("assurly/ruleExplainer");
+var import_scanProject = require("assurly/scanProject");
+var ASSURLY_MCP_TOOL_NAMES = [
+  "assurly_scan_path",
+  "assurly_scan_files",
+  "assurly_explain_rule"
 ];
 function formatScanToolResult(result) {
   const payload = {
@@ -117,21 +117,21 @@ function handleExplainRule(input) {
 }
 
 // src/index.ts
-function createShipReadyMcpServer() {
+function createAssurlyMcpServer() {
   const server = new import_mcp.McpServer(
     {
-      name: "shipready",
+      name: "assurly",
       version: "1.0.0"
     },
     {
-      instructions: "ShipReady Ship Gate MCP server. Scan local projects before deploy and explain blockers so agents can remediate until READY TO SHIP."
+      instructions: "Assurly Ship Gate MCP server. Scan local projects before deploy and explain blockers so agents can remediate until READY TO SHIP."
     }
   );
   server.registerTool(
-    "shipready_scan_path",
+    "assurly_scan_path",
     {
       title: "Scan project directory",
-      description: "Run the full ShipReady Ship Gate scan on a local project directory (same rules as `shipready scan`).",
+      description: "Run the full Assurly Ship Gate scan on a local project directory (same rules as `assurly scan`).",
       inputSchema: {
         path: import_zod.z.string().describe("Absolute or relative path to the project root to scan")
       }
@@ -139,10 +139,10 @@ function createShipReadyMcpServer() {
     async ({ path: projectPath }) => handleScanPath({ path: projectPath })
   );
   server.registerTool(
-    "shipready_scan_files",
+    "assurly_scan_files",
     {
       title: "Scan provided files",
-      description: "Run the ShipReady Ship Gate scan on in-memory file contents (for agents that already have project files in context).",
+      description: "Run the Assurly Ship Gate scan on in-memory file contents (for agents that already have project files in context).",
       inputSchema: {
         files: import_zod.z.array(
           import_zod.z.object({
@@ -155,12 +155,12 @@ function createShipReadyMcpServer() {
     async ({ files }) => handleScanFiles({ files })
   );
   server.registerTool(
-    "shipready_explain_rule",
+    "assurly_explain_rule",
     {
-      title: "Explain a ShipReady rule",
-      description: "Return a human-readable explanation and remediation steps for a ShipReady rule id (e.g. supabase-rls).",
+      title: "Explain a Assurly rule",
+      description: "Return a human-readable explanation and remediation steps for a Assurly rule id (e.g. supabase-rls).",
       inputSchema: {
-        ruleId: import_zod.z.string().describe("ShipReady rule identifier")
+        ruleId: import_zod.z.string().describe("Assurly rule identifier")
       }
     },
     async ({ ruleId }) => handleExplainRule({ ruleId })
@@ -168,19 +168,19 @@ function createShipReadyMcpServer() {
   return server;
 }
 async function main() {
-  const server = createShipReadyMcpServer();
+  const server = createAssurlyMcpServer();
   const transport = new import_stdio.StdioServerTransport();
   await server.connect(transport);
 }
 if (require.main === module) {
   main().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`ShipReady MCP server failed: ${message}`);
+    console.error(`Assurly MCP server failed: ${message}`);
     process.exit(1);
   });
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  SHIPREADY_MCP_TOOL_NAMES,
-  createShipReadyMcpServer
+  ASSURLY_MCP_TOOL_NAMES,
+  createAssurlyMcpServer
 });

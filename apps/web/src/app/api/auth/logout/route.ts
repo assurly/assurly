@@ -28,7 +28,7 @@ export const POST = secureRoute(
   async ({ request }) => {
     // Revoke the Supabase session server-side so the refresh token is
     // invalidated immediately. The canonical session lives only in the
-    // `shipready-session` cookie, so we bind those tokens to a stateless client
+    // `assurly-session` cookie, so we bind those tokens to a stateless client
     // and sign out globally. A stale, un-revoked refresh token would otherwise
     // remain usable until natural expiry even after the user logs out.
     const session = parseSessionCookie(request);

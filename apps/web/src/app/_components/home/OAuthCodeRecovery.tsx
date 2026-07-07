@@ -16,7 +16,7 @@ export function OAuthCodeRecovery({ callbackUrl }: OAuthCodeRecoveryProps): Reac
       <div className="route-state-card">
         <span className="route-state-spinner" aria-hidden="true" />
         <h1>Completing secure sign-in</h1>
-        <p>Returning to the canonical ShipReady callback…</p>
+        <p>Returning to the canonical Assurly callback…</p>
         <a className="btn btn-primary" href={callbackUrl}>
           Continue sign-in
         </a>

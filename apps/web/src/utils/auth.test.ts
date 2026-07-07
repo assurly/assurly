@@ -28,7 +28,7 @@ describe('authentication boundary', () => {
   it('rejects the former unsigned mock session cookie', async () => {
     const cookie = encodeURIComponent(JSON.stringify({ userId: 'attacker', name: 'Admin' }));
     const request = new Request('http://localhost/api/scans', {
-      headers: { cookie: `shipready-session=${cookie}` },
+      headers: { cookie: `assurly-session=${cookie}` },
     });
 
     await expect(requireUser(request)).rejects.toBeInstanceOf(AuthenticationError);
@@ -67,7 +67,7 @@ describe('authentication boundary', () => {
       }),
     );
     const request = new Request('http://localhost/api/scans', {
-      headers: { cookie: `shipready-session=${cookie}` },
+      headers: { cookie: `assurly-session=${cookie}` },
     });
 
     const context = await requireUser(request);
@@ -87,7 +87,7 @@ describe('authentication boundary', () => {
       refreshToken: 'refresh',
       expiresAt: Math.floor(Date.now() / 1000) + 60,
     });
-    expect(cookie).toContain('shipready-session=');
+    expect(cookie).toContain('assurly-session=');
     expect(cookie).toContain('HttpOnly');
     expect(cookie).toContain('SameSite=Lax');
     expect(clearSessionCookie()).toContain('Max-Age=0');
@@ -99,7 +99,7 @@ describe('authentication boundary', () => {
     );
     const parsed = parseSessionCookie(
       new Request('http://localhost/api/auth/logout', {
-        headers: { cookie: `shipready-session=${complete}` },
+        headers: { cookie: `assurly-session=${complete}` },
       }),
     );
     expect(parsed).toEqual({ accessToken: 'a', refreshToken: 'r', expiresAt: 123 });
@@ -108,7 +108,7 @@ describe('authentication boundary', () => {
     expect(
       parseSessionCookie(
         new Request('http://localhost/api/auth/logout', {
-          headers: { cookie: `shipready-session=${accessOnly}` },
+          headers: { cookie: `assurly-session=${accessOnly}` },
         }),
       ),
     ).toBeNull();
@@ -118,7 +118,7 @@ describe('authentication boundary', () => {
     const request = new Request('http://localhost/api/auth/callback', {
       headers: {
         cookie:
-          'sb-abc-auth-token=x; sb-abc-auth-token.0=y; sb-abc-auth-token-code-verifier=keep; shipready-session=z',
+          'sb-abc-auth-token=x; sb-abc-auth-token.0=y; sb-abc-auth-token-code-verifier=keep; assurly-session=z',
       },
     });
 
@@ -129,7 +129,7 @@ describe('authentication boundary', () => {
     expect(cleared).toContain('sb-abc-auth-token=;');
     expect(cleared).toContain('sb-abc-auth-token.0=;');
     expect(cleared).not.toContain('code-verifier');
-    expect(cleared).not.toContain('shipready-session=;');
+    expect(cleared).not.toContain('assurly-session=;');
     headers.forEach((header) => expect(header).toContain('Max-Age=0'));
   });
 });

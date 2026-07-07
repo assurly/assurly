@@ -16,10 +16,15 @@ import {
 import { resolveGitHubAccessToken } from '../../../../utils/auth';
 import {
   buildGitHubAutoFix,
-  buildGitHubAutoFixBatch,
+  buildGitHubAutoFixPlan,
   isAutoFixableFinding,
+  resolveFindingAutoFixTargetPath,
+  summarizeAutoFixPlan,
 } from '../../../../utils/githubAutoFix';
-import { executeGitHubFixPullRequest } from '../../../../utils/githubFixPipeline';
+import {
+  executeGitHubBatchFixPullRequest,
+  executeGitHubFixPullRequest,
+} from '../../../../utils/githubFixPipeline';
 import {
   AutoFixAlreadyAppliedError,
   GitHubWriteAccessError,
@@ -122,13 +127,13 @@ export const POST = secureRoute(
         throw new ApiError(400, 'not_fixable', 'No auto-fixable findings remain for this scan.');
       }
 
-      let batchFix;
+      let plan;
       try {
-        batchFix = buildGitHubAutoFixBatch(pendingFindings);
+        plan = buildGitHubAutoFixPlan(pendingFindings);
       } catch {
         throw new ApiError(400, 'unsafe_fix_input', 'Findings cannot be fixed safely.');
       }
-      if (!batchFix) {
+      if (!plan) {
         throw new ApiError(
           400,
           'not_fixable',
@@ -138,19 +143,17 @@ export const POST = secureRoute(
 
       const githubAccessToken =
         context.githubAccessToken ?? (await resolveGitHubAccessToken(request));
-      const filePath = pendingFindings[0]?.file_path;
-      if (!filePath) {
-        throw new ApiError(400, 'not_fixable', 'No auto-fixable findings remain for this scan.');
-      }
+      const { prTitle, prDescription } = summarizeAutoFixPlan(plan);
 
-      let prUrl: string;
+      let batchResult;
       try {
-        prUrl = await executeGitHubFixPullRequest({
+        batchResult = await executeGitHubBatchFixPullRequest({
           repositoryName: access.repository.name,
           baseBranch: access.scan.branch || 'main',
-          filePath,
-          fix: batchFix,
+          files: plan,
           branchSeed: `batch:${body.scanId}`,
+          prTitle,
+          prDescription,
           userGitHubToken: githubAccessToken,
           installationId: access.organization.github_installation_id,
           repositoryId: access.repository.github_repo_id,
@@ -163,11 +166,24 @@ export const POST = secureRoute(
         throw new ApiError(502, 'github_unavailable', 'GitHub is temporarily unavailable.');
       }
 
-      const findingIds = pendingFindings.map((finding) => finding.id);
-      await persistFixPullRequest(context, findingIds, prUrl);
+      // Only mark findings whose target file actually landed in the pull request.
+      const committedPaths = new Set(batchResult.committedFilePaths);
+      const findingIds = pendingFindings
+        .filter((finding) => committedPaths.has(resolveFindingAutoFixTargetPath(finding)))
+        .map((finding) => finding.id);
+
+      if (findingIds.length === 0) {
+        throw new ApiError(
+          502,
+          'github_unavailable',
+          'No fixes could be committed. GitHub may be temporarily unavailable.',
+        );
+      }
+
+      await persistFixPullRequest(context, findingIds, batchResult.prUrl);
       return NextResponse.json(
         {
-          prUrl: assertTrustedRedirect(prUrl, ['https://github.com']),
+          prUrl: assertTrustedRedirect(batchResult.prUrl, ['https://github.com']),
           findingIds,
         },
         { status: 201 },

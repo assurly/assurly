@@ -1,14 +1,14 @@
 import type { ReactElement } from 'react';
 
-interface ShipReadyLogoProps {
+interface AssurlyLogoProps {
   className?: string;
 }
 
-export function ShipReadyLogo({ className }: ShipReadyLogoProps): ReactElement {
+export function AssurlyLogo({ className }: AssurlyLogoProps): ReactElement {
   return (
-    <span className={['shipready-logo', className].filter(Boolean).join(' ')}>
+    <span className={['assurly-logo', className].filter(Boolean).join(' ')}>
       <svg
-        className="shipready-logo__mark"
+        className="assurly-logo__mark"
         aria-hidden="true"
         viewBox="0 0 24 24"
         fill="none"
@@ -27,8 +27,8 @@ export function ShipReadyLogo({ className }: ShipReadyLogoProps): ReactElement {
           strokeLinejoin="round"
         />
       </svg>
-      <span className="shipready-logo__text">
-        Ship<span className="shipready-logo__accent">Ready</span>
+      <span className="assurly-logo__text">
+        Assur<span className="assurly-logo__accent">ly</span>
       </span>
     </span>
   );

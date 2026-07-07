@@ -48,7 +48,7 @@ const fixer_1 = require("./fixer");
 const ci_1 = require("./ci");
 const program = new commander_1.Command();
 program
-    .name('shipready')
+    .name('assurly')
     .description('Production-Readiness Verifier for B2B SaaS and Indie Hackers projects')
     .version('1.0.0');
 program
@@ -93,8 +93,8 @@ program
             console.log(`  Deployment: ${chalk_1.default.green(context.detectedStack.deployment.toUpperCase())}\n`);
             (0, reporter_1.reportFindings)(findings);
             (0, shipGateReporter_1.printShipGateSummary)(shipGate);
-            const maxBlockers = process.env.SHIPREADY_DOGFOOD_MAX_BLOCKERS
-                ? Number.parseInt(process.env.SHIPREADY_DOGFOOD_MAX_BLOCKERS, 10)
+            const maxBlockers = process.env.ASSURLY_DOGFOOD_MAX_BLOCKERS
+                ? Number.parseInt(process.env.ASSURLY_DOGFOOD_MAX_BLOCKERS, 10)
                 : undefined;
             if (maxBlockers !== undefined && shipGate.blockers.length > maxBlockers) {
                 console.error(chalk_1.default.red(`\nDogfood gate failed: ${shipGate.blockers.length} blockers (max ${maxBlockers}).\n`));
@@ -112,7 +112,7 @@ program
 });
 program
     .command('init')
-    .description('Initializes a GitHub Actions workflow (.github/workflows/shipready.yml) in your repository')
+    .description('Initializes a GitHub Actions workflow (.github/workflows/assurly.yml) in your repository')
     .option('-p, --path <dir>', 'Root directory of the project to initialize', '.')
     .action((options) => {
     const targetDir = path.resolve(options.path);

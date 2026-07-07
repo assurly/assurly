@@ -5,7 +5,7 @@ import {
   formatShipGateMarkdown,
   formatShipGatePlainText,
   type ShipGateReport,
-} from '@shipready/scanner-core';
+} from '@assurly/scanner-core';
 import { buildContext } from './detector';
 import { allRules } from './rules';
 import { buildCliShipGateReport } from './shipGateReporter';
@@ -67,7 +67,7 @@ export interface ScanProjectFileInput {
 export async function scanProjectFiles(
   files: readonly ScanProjectFileInput[],
 ): Promise<ScanProjectResult> {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shipready-scan-'));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'assurly-scan-'));
   try {
     for (const file of files) {
       const normalizedPath = file.path.replace(/\\/g, '/');

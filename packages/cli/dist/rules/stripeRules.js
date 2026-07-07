@@ -36,7 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.stripeRules = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-const scanner_core_1 = require("@shipready/scanner-core");
+const scanner_core_1 = require("@assurly/scanner-core");
 const secretKeyPattern = /sk_(?:live|test)_[a-zA-Z0-9]{24,}/g;
 exports.stripeRules = {
     id: 'stripe-integration-security',

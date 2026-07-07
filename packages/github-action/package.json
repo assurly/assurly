@@ -1,5 +1,5 @@
 {
-  "name": "@shipready/github-action",
+  "name": "@assurly/github-action",
   "version": "1.0.0",
   "description": "GitHub Action to scan projects for B2B SaaS and Indie Hackers production-readiness",
   "main": "dist/index.js",
@@ -23,7 +23,7 @@
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/shipready/shipready.git",
+    "url": "https://github.com/assurly/assurly.git",
     "directory": "packages/github-action"
   },
   "license": "MIT"

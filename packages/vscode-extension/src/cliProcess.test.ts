@@ -6,7 +6,7 @@ describe('VS Code CLI process', () => {
     const process = createScanProcess('/extension', '/tmp/project; touch owned', '/node');
     expect(process.executable).toBe('/node');
     expect(process.args).toEqual([
-      '/extension/vendor/shipready-cli.js',
+      '/extension/vendor/assurly-cli.js',
       'scan',
       '--path',
       '/tmp/project; touch owned',

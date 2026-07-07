@@ -8,7 +8,7 @@ import {
   resolveE2eScansForRepo,
 } from '../../../src/testing/e2eDashboardFixture';
 
-const SESSION_COOKIE_NAME = 'shipready-session';
+const SESSION_COOKIE_NAME = 'assurly-session';
 
 export async function installDashboardSession(context: BrowserContext): Promise<void> {
   await context.addCookies([

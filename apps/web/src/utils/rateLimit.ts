@@ -20,7 +20,7 @@ const memoryBuckets = new Map<string, { count: number; resetAt: number }>();
 function getRateLimitSecret(): string {
   const secret = process.env.RATE_LIMIT_SECRET?.trim();
   if (secret) return secret;
-  if (process.env.NODE_ENV !== 'production') return 'shipready-development-rate-limit-secret';
+  if (process.env.NODE_ENV !== 'production') return 'assurly-development-rate-limit-secret';
   throw new ConfigurationError('RATE_LIMIT_SECRET is required in production.');
 }
 

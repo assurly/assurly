@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { scanColdStart } from '@shipready/scanner-core';
+import { scanColdStart } from '@assurly/scanner-core';
 import { Rule, ProjectContext, Finding } from '../types';
 
 export const coldStartRules: Rule = {

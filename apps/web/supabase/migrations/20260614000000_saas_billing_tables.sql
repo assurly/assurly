@@ -1,5 +1,5 @@
 -- B2B SaaS Tenancy, Billing, and Scans Schema
--- Upgrades ShipReady database to support Organizations, Memberships, Repositories, Scans, and Stripe billing.
+-- Upgrades Assurly database to support Organizations, Memberships, Repositories, Scans, and Stripe billing.
 
 -- Create organizations table
 CREATE TABLE IF NOT EXISTS organizations (

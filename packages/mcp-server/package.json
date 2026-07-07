@@ -1,7 +1,7 @@
 {
-  "name": "@shipready/mcp-server",
+  "name": "@assurly/mcp-server",
   "version": "1.0.0",
-  "description": "MCP server exposing ShipReady Ship Gate scans to AI agents — a pre-deploy ship gate Cursor and Claude Code call before shipping",
+  "description": "MCP server exposing Assurly Ship Gate scans to AI agents — a pre-deploy ship gate Cursor and Claude Code call before shipping",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -16,11 +16,11 @@
     "nextjs",
     "supabase"
   ],
-  "homepage": "https://shipready.dev/mcp",
+  "homepage": "https://assurly.dev/mcp",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "shipready-mcp": "./dist/index.js"
+    "assurly-mcp": "./dist/index.js"
   },
   "files": [
     "dist",
@@ -37,8 +37,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@shipready/cli": "1.0.0",
-    "@shipready/scanner-core": "1.0.0",
+    "assurly": "1.0.0",
+    "@assurly/scanner-core": "1.0.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
@@ -53,7 +53,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/shipready/shipready.git",
+    "url": "https://github.com/assurly/assurly.git",
     "directory": "packages/mcp-server"
   },
   "license": "MIT"

@@ -5,7 +5,7 @@
 
 ## Context
 
-ShipReady runs Next.js Route Handlers on horizontally scaled serverless instances. Per-process counters are therefore neither consistent nor reliable for production rate limiting. Repeated route-local parsing and error handling also made it possible for security behavior to drift between endpoints.
+Assurly runs Next.js Route Handlers on horizontally scaled serverless instances. Per-process counters are therefore neither consistent nor reliable for production rate limiting. Repeated route-local parsing and error handling also made it possible for security behavior to drift between endpoints.
 
 ## Decision
 

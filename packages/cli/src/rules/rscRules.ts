@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { scanRscDataLeaks } from '@shipready/scanner-core';
+import { scanRscDataLeaks } from '@assurly/scanner-core';
 import { Rule, ProjectContext, Finding } from '../types';
 
 export const rscRules: Rule = {

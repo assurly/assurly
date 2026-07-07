@@ -212,7 +212,7 @@ export function DiagnosticTerminal({
   return (
     <div className="editor-box diagnostic-terminal">
       <div className="editor-label diagnostic-terminal-header">
-        <span>ShipReady Diagnostic Logs</span>
+        <span>Assurly Diagnostic Logs</span>
         {isProjectMode ? (
           <ProjectMetrics metrics={projectScan.metrics} />
         ) : (
@@ -242,7 +242,7 @@ export function DiagnosticTerminal({
         </div>
 
         <div className="log-line log-command">
-          <span>$ shipready scan --browser-mode</span>
+          <span>$ assurly scan --browser-mode</span>
         </div>
 
         <div className="log-line">
@@ -261,7 +261,7 @@ export function DiagnosticTerminal({
                 aria-label="Bulk auto-fix actions"
               >
                 <p className="project-bulk-fix-bar__copy">
-                  ShipReady can auto-fix {fixableCount} local issue
+                  Assurly can auto-fix {fixableCount} local issue
                   {fixableCount === 1 ? '' : 's'} in your workspace (env docs, RLS SQL, webhook/RSC
                   patterns). Secrets and manual review items still need human action.
                 </p>

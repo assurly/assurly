@@ -39,7 +39,7 @@ exports.scanProjectFiles = scanProjectFiles;
 const fs = __importStar(require("fs"));
 const os = __importStar(require("os"));
 const path = __importStar(require("path"));
-const scanner_core_1 = require("@shipready/scanner-core");
+const scanner_core_1 = require("@assurly/scanner-core");
 const detector_1 = require("./detector");
 const rules_1 = require("./rules");
 const shipGateReporter_1 = require("./shipGateReporter");
@@ -82,7 +82,7 @@ async function scanProjectDirectory(projectPath) {
     return buildScanProjectResult(findings, context);
 }
 async function scanProjectFiles(files) {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shipready-scan-'));
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'assurly-scan-'));
     try {
         for (const file of files) {
             const normalizedPath = file.path.replace(/\\/g, '/');

@@ -18,23 +18,23 @@ describe('GitHub Actions Integration Setup (ci)', () => {
     }
   });
 
-  it('should successfully create .github/workflows/shipready.yml file', () => {
+  it('should successfully create .github/workflows/assurly.yml file', () => {
     const result = setupGitHubAction(TEST_DIR);
 
     expect(result.success).toBe(true);
     expect(result.message).toContain('workflow successfully created');
     expect(result.filePath).toBeDefined();
 
-    const expectedPath = path.join(TEST_DIR, '.github', 'workflows', 'shipready.yml');
+    const expectedPath = path.join(TEST_DIR, '.github', 'workflows', 'assurly.yml');
     expect(fs.existsSync(expectedPath)).toBe(true);
 
     const content = fs.readFileSync(expectedPath, 'utf8');
-    expect(content).toContain('name: ShipReady Security & Config Scan');
-    expect(content).toContain('npx --yes @shipready/cli@1.0.0 scan');
+    expect(content).toContain('name: Assurly Security & Config Scan');
+    expect(content).toContain('npx --yes assurly@1.0.0 scan');
   });
 
   it('should fail gracefully if writing to path is invalid', () => {
-    const invalidPath = path.join(TEST_DIR, '.github', 'workflows', 'shipready.yml');
+    const invalidPath = path.join(TEST_DIR, '.github', 'workflows', 'assurly.yml');
     // Ensure parent folders exist, then write a file
     const workflowsDir = path.dirname(invalidPath);
     if (!fs.existsSync(workflowsDir)) {

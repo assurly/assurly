@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { scanStripeWebhook } from '@shipready/scanner-core';
+import { scanStripeWebhook } from '@assurly/scanner-core';
 import { Rule, ProjectContext, Finding } from '../types';
 
 const secretKeyPattern = /sk_(?:live|test)_[a-zA-Z0-9]{24,}/g;

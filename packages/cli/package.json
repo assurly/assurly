@@ -1,7 +1,7 @@
 {
-  "name": "@shipready/cli",
+  "name": "assurly",
   "version": "1.0.0",
-  "description": "Core CLI for ShipReady production readiness verification",
+  "description": "Core CLI for Assurly production readiness verification",
   "keywords": [
     "cli",
     "security",
@@ -14,7 +14,7 @@
     "vercel",
     "ai-generated-code"
   ],
-  "homepage": "https://shipready.dev",
+  "homepage": "https://assurly.dev",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -32,7 +32,7 @@
     }
   },
   "bin": {
-    "shipready": "./dist/index.js"
+    "assurly": "./dist/index.js"
   },
   "files": [
     "dist",
@@ -47,7 +47,7 @@
     "test": "vitest run src"
   },
   "dependencies": {
-    "@shipready/scanner-core": "1.0.0",
+    "@assurly/scanner-core": "1.0.0",
     "chalk": "^4.1.2",
     "commander": "^11.1.0",
     "ora": "^5.4.1",
@@ -65,7 +65,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/shipready/shipready.git",
+    "url": "https://github.com/assurly/assurly.git",
     "directory": "packages/cli"
   },
   "license": "MIT"

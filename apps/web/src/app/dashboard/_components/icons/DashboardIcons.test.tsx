@@ -8,7 +8,7 @@ import {
   DashboardSearchIcon,
   DashboardZapIcon,
 } from './DashboardIcons';
-import { ShipReadyLogo } from './ShipReadyLogo';
+import { AssurlyLogo } from './AssurlyLogo';
 
 afterEach(() => {
   cleanup();
@@ -30,12 +30,12 @@ describe('dashboard icon system', () => {
     expect(screen.getByTestId('folder-icon').getAttribute('class')).toContain('dashboard-icon');
   });
 
-  it('renders the ShipReady logo mark without emoji copy', () => {
-    const { container } = render(<ShipReadyLogo />);
+  it('renders the Assurly logo mark without emoji copy', () => {
+    const { container } = render(<AssurlyLogo />);
 
     expect(screen.getByText('Ship')).toBeTruthy();
     expect(screen.getByText('Ready')).toBeTruthy();
-    expect(container.querySelector('.shipready-logo__mark')).toBeTruthy();
+    expect(container.querySelector('.assurly-logo__mark')).toBeTruthy();
     expect(container.textContent).not.toMatch(/📦/);
   });
 });

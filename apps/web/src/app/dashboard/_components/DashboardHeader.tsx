@@ -4,7 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import type { RefObject, ReactElement } from 'react';
 import type { Organization, User } from '../../../utils/dbAdapter';
-import { ShipReadyLogo } from './icons/ShipReadyLogo';
+import { AssurlyLogo } from './icons/AssurlyLogo';
 import { DashboardRocketIcon, DashboardSettingsIcon } from './icons/DashboardIcons';
 
 export interface DashboardHeaderProps {
@@ -36,7 +36,7 @@ export function DashboardHeader({
     <header className={`dashboard-header${isProfileOpen ? ' dashboard-header-menu-open' : ''}`}>
       <div className="dashboard-header-brand">
         <Link href="/" className="dashboard-header-brand-link">
-          <ShipReadyLogo />
+          <AssurlyLogo />
         </Link>
       </div>
 

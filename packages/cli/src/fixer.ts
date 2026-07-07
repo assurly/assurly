@@ -46,7 +46,7 @@ export function setupBackup(projectPath: string): {
 
   try {
     const timestamp = Math.floor(Date.now() / 1000);
-    const stashName = `shipready-backup-${timestamp}`;
+    const stashName = `assurly-backup-${timestamp}`;
 
     // Stash all changes (including untracked files)
     execSync(`git stash push --include-untracked -m "${stashName}"`, {

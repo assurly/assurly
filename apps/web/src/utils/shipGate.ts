@@ -3,16 +3,16 @@ import {
   type ShipGateFindingInput,
   type ShipGateOptions,
   type ShipGateReport,
-} from '@shipready/scanner-core';
+} from '@assurly/scanner-core';
 import type { ScanFinding } from './dbAdapter';
 import type { WebFinding } from './browserScanner';
 
-export type { ShipGateReport, ShipGateGroup, ShipGateAction } from '@shipready/scanner-core';
+export type { ShipGateReport, ShipGateGroup, ShipGateAction } from '@assurly/scanner-core';
 export {
   formatShipGateMarkdown,
   formatShipGatePlainText,
   isShipGateBlocked,
-} from '@shipready/scanner-core';
+} from '@assurly/scanner-core';
 
 export function toShipGateFinding(
   finding: Pick<

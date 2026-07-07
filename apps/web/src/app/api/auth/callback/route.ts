@@ -51,8 +51,8 @@ export const GET = secureRoute(
     const response = NextResponse.redirect(`${appUrl}/dashboard`);
     // Use append so the PKCE code-verifier clearing cookie emitted by
     // exchangeCodeForSession above is preserved. Using set() would replace all
-    // Set-Cookie headers with only shipready-session. The session itself is
-    // stored solely in shipready-session (see utils/supabase for why the SSR
+    // Set-Cookie headers with only assurly-session. The session itself is
+    // stored solely in assurly-session (see utils/supabase for why the SSR
     // client no longer persists its own sb-*-auth-token cookie).
     response.headers.append(
       'Set-Cookie',

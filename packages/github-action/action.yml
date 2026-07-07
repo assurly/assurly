@@ -1,6 +1,6 @@
-name: 'ShipReady Production-Readiness Scanner'
+name: 'Assurly Production-Readiness Scanner'
 description: 'Statically scans Next.js, Supabase, and Stripe projects for security leaks, serverless DB client leaks, and missing configurations.'
-author: 'ShipReady'
+author: 'Assurly'
 inputs:
   path:
     description: 'The root directory of the project to scan'

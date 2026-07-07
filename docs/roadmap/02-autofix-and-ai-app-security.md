@@ -4,7 +4,7 @@
 
 ## Goal
 
-Two moves that together make ShipReady worth paying for:
+Two moves that together make Assurly worth paying for:
 
 1. **Make remediation the core product** — from "we find issues" to "we find AND fix them for you":
    1-click Fix PR, batch Fix PR, and a **"copy fix prompt for AI"** output for users without a GitHub PR flow.
@@ -116,7 +116,7 @@ apps/web/src/app/dashboard/_components/ScanFindingCard.tsx    (change — emphas
 
 ```bash
 # scanner-core
-npm run test -w @shipready/scanner-core
+npm run test -w @assurly/scanner-core
 # apps/web
 npx tsc --noEmit && npm run lint
 npm run test -- aiFixPrompt

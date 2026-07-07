@@ -1,4 +1,4 @@
-import { HIGH_CONFIDENCE_BLOCKER_RULE_IDS } from '@shipready/scanner-core';
+import { HIGH_CONFIDENCE_BLOCKER_RULE_IDS } from '@assurly/scanner-core';
 import { allRules } from './rules';
 
 export interface RuleExplanation {
@@ -96,10 +96,10 @@ const SCANNER_RULE_EXPLANATIONS: Record<
       'Remove Node-only imports, switch the route to the Node runtime, or refactor to edge-compatible APIs.',
   },
   'github-actions-integration': {
-    title: 'Missing ShipReady CI workflow',
+    title: 'Missing Assurly CI workflow',
     explanation:
-      'No GitHub Actions workflow runs ShipReady before deploy, so regressions can ship unnoticed.',
-    howToFix: 'Run `npx shipready init` to add `.github/workflows/shipready.yml` with a scan step.',
+      'No GitHub Actions workflow runs Assurly before deploy, so regressions can ship unnoticed.',
+    howToFix: 'Run `npx assurly init` to add `.github/workflows/assurly.yml` with a scan step.',
   },
   'auth-service-role-bypass': {
     title: 'Service role used without authorization guard',

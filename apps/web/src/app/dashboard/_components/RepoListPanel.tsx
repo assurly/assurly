@@ -100,7 +100,7 @@ export function RepoListPanel({
               repositories.
             </p>
             <a className="repo-list-panel__install-link" href="/api/github/install/start">
-              Install ShipReady App
+              Install Assurly App
             </a>
           </div>
         ) : null}

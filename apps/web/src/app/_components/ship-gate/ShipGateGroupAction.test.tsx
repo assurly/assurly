@@ -14,13 +14,13 @@ describe('ShipGateGroupAction', () => {
     const action: ShipGateAction = {
       label: 'Initialize CI workflow',
       kind: 'command',
-      command: 'npx shipready init',
+      command: 'npx assurly init',
     };
 
     render(<ShipGateGroupAction action={action} />);
 
     const label = screen.getByText('Initialize CI workflow');
-    const command = screen.getByText('npx shipready init');
+    const command = screen.getByText('npx assurly init');
 
     expect(label.className).toContain('ship-gate-action-label');
     expect(label.compareDocumentPosition(command) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

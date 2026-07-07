@@ -4,7 +4,7 @@ import { isAutoFixableFinding } from './githubAutoFix';
 export interface ScanFixSummary {
   /** Errors reported by the static scan against upstream code. */
   issueCount: number;
-  /** Findings that ShipReady can auto-fix with a PR. */
+  /** Findings that Assurly can auto-fix with a PR. */
   fixableCount: number;
   /** Fixable findings that already have a linked pull request. */
   proposedCount: number;
