@@ -6,7 +6,7 @@ import {
   type ShipGateFindingInput,
   type ShipGateOptions,
   type ShipGateReport,
-} from '@shipready/scanner-core';
+} from '@assurly/scanner-core';
 import type { Finding } from './types';
 
 function toShipGateFinding(finding: Finding): ShipGateFindingInput {

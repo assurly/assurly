@@ -36,7 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.rscRules = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-const scanner_core_1 = require("@shipready/scanner-core");
+const scanner_core_1 = require("@assurly/scanner-core");
 exports.rscRules = {
     id: 'rsc-data-leaks',
     name: 'React Server Components Data Leak check',

@@ -1,6 +1,6 @@
 import { COOKIE_POLICY_VERSION } from './cookieInventory';
 
-export const COOKIE_NOTICE_STORAGE_KEY = 'shipready-cookie-notice-dismissed';
+export const COOKIE_NOTICE_STORAGE_KEY = 'assurly-cookie-notice-dismissed';
 
 export interface CookieNoticeDismissState {
   version: string;

@@ -22,11 +22,11 @@ export {
   scanSupabaseClientLeaks,
   scanSupabaseDeepPolicies,
   selectFiles,
-} from '@shipready/scanner-core';
+} from '@assurly/scanner-core';
 
 export type {
   FileSelection,
   ScanScope,
   ScannerFinding as WebFinding,
   ScanResult,
-} from '@shipready/scanner-core';
+} from '@assurly/scanner-core';

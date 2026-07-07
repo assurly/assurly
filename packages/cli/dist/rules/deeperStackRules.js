@@ -37,7 +37,7 @@ exports.deeperStackRules = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const child_process_1 = require("child_process");
-const scanner_core_1 = require("@shipready/scanner-core");
+const scanner_core_1 = require("@assurly/scanner-core");
 /**
  * Returns the subset of `files` that are NOT gitignored. A pre-ship scan should
  * analyze what actually ships, so gitignored files (e.g. a developer's local

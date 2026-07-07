@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 import {
-  SHIPREADY_MCP_TOOL_NAMES,
+  ASSURLY_MCP_TOOL_NAMES,
   handleExplainRule,
   handleScanFiles,
   handleScanPath,
@@ -19,30 +19,30 @@ function textBlocks(result: { content: Array<{ type: string; text?: string }> })
     .join('\n');
 }
 
-describe('ShipReady MCP tool handlers', () => {
+describe('Assurly MCP tool handlers', () => {
   it('exports the three MCP tool names', () => {
-    expect(SHIPREADY_MCP_TOOL_NAMES).toEqual([
-      'shipready_scan_path',
-      'shipready_scan_files',
-      'shipready_explain_rule',
+    expect(ASSURLY_MCP_TOOL_NAMES).toEqual([
+      'assurly_scan_path',
+      'assurly_scan_files',
+      'assurly_explain_rule',
     ]);
   });
 
-  it('shipready_scan_path returns NOT READY TO SHIP for broken-project', async () => {
+  it('assurly_scan_path returns NOT READY TO SHIP for broken-project', async () => {
     const result = await handleScanPath({ path: BROKEN_PROJECT });
     const output = textBlocks(result);
     expect(output).toContain('NOT READY TO SHIP');
     expect(result.isError).not.toBe(true);
   });
 
-  it('shipready_scan_path returns no blockers for clean-project', async () => {
+  it('assurly_scan_path returns no blockers for clean-project', async () => {
     const result = await handleScanPath({ path: CLEAN_PROJECT });
     const output = textBlocks(result);
     expect(output).not.toContain('NOT READY TO SHIP');
     expect(result.isError).not.toBe(true);
   });
 
-  it('shipready_scan_files returns NOT READY TO SHIP for SQL without RLS', async () => {
+  it('assurly_scan_files returns NOT READY TO SHIP for SQL without RLS', async () => {
     const sql = fs.readFileSync(path.join(BROKEN_PROJECT, 'supabase/migrations/init.sql'), 'utf8');
     const packageJson = fs.readFileSync(path.join(BROKEN_PROJECT, 'package.json'), 'utf8');
 
@@ -58,7 +58,7 @@ describe('ShipReady MCP tool handlers', () => {
     expect(output).toMatch(/blocker|Blockers/i);
   });
 
-  it('shipready_scan_files returns READY TO SHIP for minimal clean fixtures', async () => {
+  it('assurly_scan_files returns READY TO SHIP for minimal clean fixtures', async () => {
     const result = await handleScanFiles({
       files: [
         {
@@ -103,15 +103,15 @@ describe('ShipReady MCP tool handlers', () => {
           ),
         },
         {
-          path: '.github/workflows/shipready.yml',
+          path: '.github/workflows/assurly.yml',
           content: [
-            'name: ShipReady',
+            'name: Assurly',
             'on: push',
             'jobs:',
             '  scan:',
             '    runs-on: ubuntu-latest',
             '    steps:',
-            '      - run: npx shipready scan',
+            '      - run: npx assurly scan',
           ].join('\n'),
         },
       ],
@@ -122,7 +122,7 @@ describe('ShipReady MCP tool handlers', () => {
     expect(output).not.toContain('NOT READY TO SHIP');
   });
 
-  it('shipready_explain_rule returns guidance for supabase-rls', () => {
+  it('assurly_explain_rule returns guidance for supabase-rls', () => {
     const result = handleExplainRule({ ruleId: 'supabase-rls' });
     const output = textBlocks(result);
     expect(output).toMatch(/Row-Level Security|RLS/i);

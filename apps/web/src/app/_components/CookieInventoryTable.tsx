@@ -21,7 +21,7 @@ export function CookieInventoryTable(): ReactElement {
       </p>
       <table className="legal-cookie-table">
         <caption className="visually-hidden">
-          ShipReady cookie and essential storage inventory
+          Assurly cookie and essential storage inventory
         </caption>
         <thead>
           <tr>

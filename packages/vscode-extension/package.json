@@ -1,9 +1,9 @@
 {
-  "name": "shipready-vscode",
-  "displayName": "ShipReady",
+  "name": "assurly-vscode",
+  "displayName": "Assurly",
   "description": "Production-Readiness Verifier for Next.js, Supabase, and Stripe",
   "version": "1.0.0",
-  "publisher": "shipready",
+  "publisher": "assurly",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -23,14 +23,14 @@
   "contributes": {
     "commands": [
       {
-        "command": "shipready.scan",
-        "title": "ShipReady: Scan Workspace"
+        "command": "assurly.scan",
+        "title": "Assurly: Scan Workspace"
       }
     ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package:cli && npm run compile",
-    "package:cli": "esbuild ../cli/src/index.ts --bundle --minify --legal-comments=external --platform=node --target=node20 --outfile=vendor/shipready-cli.js",
+    "package:cli": "esbuild ../cli/src/index.ts --bundle --minify --legal-comments=external --platform=node --target=node20 --outfile=vendor/assurly-cli.js",
     "compile": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test": "vitest run src",
@@ -46,9 +46,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/shipready/shipready.git"
+    "url": "https://github.com/assurly/assurly.git"
   },
   "license": "MIT",
-  "homepage": "https://shipready.dev",
-  "bugs": "https://github.com/shipready/shipready/issues"
+  "homepage": "https://assurly.dev",
+  "bugs": "https://github.com/assurly/assurly/issues"
 }

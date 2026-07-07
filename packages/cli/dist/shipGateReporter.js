@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildCliShipGateReport = buildCliShipGateReport;
 exports.printShipGateSummary = printShipGateSummary;
 const chalk_1 = __importDefault(require("chalk"));
-const scanner_core_1 = require("@shipready/scanner-core");
+const scanner_core_1 = require("@assurly/scanner-core");
 function toShipGateFinding(finding) {
     return {
         ruleId: finding.ruleId,

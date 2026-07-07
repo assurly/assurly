@@ -37,7 +37,7 @@ describe('shipGate web adapter', () => {
     expect(getShipGateActionHint(report)).toContain('blockers');
   });
 
-  it('maps CI workflow warnings to a shipready init command action', () => {
+  it('maps CI workflow warnings to a assurly init command action', () => {
     const report = buildShipGateFromScanFindings(
       [
         {
@@ -47,7 +47,7 @@ describe('shipGate web adapter', () => {
           severity: 'warning',
           file_path: 'Global Configs',
           line_number: 1,
-          message: 'GitHub Actions workflow for ShipReady is missing.',
+          message: 'GitHub Actions workflow for Assurly is missing.',
           created_at: '2026-01-01T00:00:00Z',
         },
       ],
@@ -57,7 +57,7 @@ describe('shipGate web adapter', () => {
     expect(report.warnings[0]?.action).toEqual({
       label: 'Initialize CI workflow',
       kind: 'command',
-      command: 'npx shipready init',
+      command: 'npx assurly init',
       hint: undefined,
     });
   });
@@ -72,9 +72,9 @@ describe('shipGate web adapter', () => {
           severity: 'warning',
           file_path: 'Global Configs',
           line_number: 1,
-          message: 'GitHub Actions workflow for ShipReady is missing.',
+          message: 'GitHub Actions workflow for Assurly is missing.',
           suggestion:
-            'Run "npx shipready init" in your repository to automatically configure the CI/CD pipeline.',
+            'Run "npx assurly init" in your repository to automatically configure the CI/CD pipeline.',
           created_at: '2026-01-01T00:00:00Z',
         },
       ],
@@ -83,6 +83,6 @@ describe('shipGate web adapter', () => {
 
     expect(report.warnings[0]?.action?.label).toBe('Initialize CI workflow');
     expect(report.warnings[0]?.action?.kind).toBe('command');
-    expect(report.warnings[0]?.action?.command).toBe('npx shipready init');
+    expect(report.warnings[0]?.action?.command).toBe('npx assurly init');
   });
 });

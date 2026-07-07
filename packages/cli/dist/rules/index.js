@@ -13,7 +13,7 @@ const coldStartRules_1 = require("./coldStartRules");
 const sqlSafetyRules_1 = require("./sqlSafetyRules");
 const deeperStackRules_1 = require("./deeperStackRules");
 /**
- * Array containing all static analysis rules implemented in ShipReady.
+ * Array containing all static analysis rules implemented in Assurly.
  */
 exports.allRules = [
     envRules_1.envRules,

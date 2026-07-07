@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ShipGatePanel, getShareReportButtonLabel } from './ShipGatePanel';
-import { buildShipGateReport } from '@shipready/scanner-core';
+import { buildShipGateReport } from '@assurly/scanner-core';
 
 const writeText = vi.fn().mockResolvedValue(undefined);
 
@@ -25,9 +25,9 @@ describe('ShipGatePanel warning actions', () => {
           severity: 'warning',
           file: 'Global Configs',
           line: 1,
-          message: 'GitHub Actions workflow for ShipReady is missing.',
+          message: 'GitHub Actions workflow for Assurly is missing.',
           suggestion:
-            'Run "npx shipready init" in your repository to automatically configure the CI/CD pipeline.',
+            'Run "npx assurly init" in your repository to automatically configure the CI/CD pipeline.',
         },
       ],
       { scannedFileCount: 12, cleanFileCount: 11 },
@@ -35,14 +35,14 @@ describe('ShipGatePanel warning actions', () => {
 
     render(<ShipGatePanel report={report} />);
 
-    expect(screen.getByText('GitHub Actions workflow for ShipReady is missing.')).toBeTruthy();
+    expect(screen.getByText('GitHub Actions workflow for Assurly is missing.')).toBeTruthy();
     expect(screen.getByText('Initialize CI workflow')).toBeTruthy();
     expect(screen.queryByText('Run locally')).toBeNull();
-    expect(screen.getByText('npx shipready init')).toBeTruthy();
+    expect(screen.getByText('npx assurly init')).toBeTruthy();
     expect(screen.getByRole('button', { name: /copy command/i })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /copy command/i }));
-    expect(writeText).toHaveBeenCalledWith('npx shipready init');
+    expect(writeText).toHaveBeenCalledWith('npx assurly init');
   });
 
   it('renders a hint action directly under a blocker row', () => {

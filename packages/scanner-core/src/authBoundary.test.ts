@@ -120,7 +120,7 @@ describe('scanServiceRoleBypass', () => {
   });
 
   it('does not flag a mere mention of service_role without client construction', () => {
-    // Regression fixtures for real false positives found on the ShipReady
+    // Regression fixtures for real false positives found on the Assurly
     // codebase: a detector comparing a JWT role, and env-var declarations in
     // test config — none of which build a service_role client.
     const detector = "export const isServiceRole = (p) => p?.role === 'service_role';";

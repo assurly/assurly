@@ -45,7 +45,7 @@ jobs:
       - name: Build web application
         run: npm run build:web
         env:
-          APP_URL: https://shipready.example
+          APP_URL: https://assurly.example
 
   test:
     name: Test workspaces
@@ -69,7 +69,7 @@ jobs:
         run: npm test
 
   dogfood:
-    name: ShipReady self-scan (dogfood gate)
+    name: Assurly self-scan (dogfood gate)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

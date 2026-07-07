@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { serializeSessionCookiePayload } from './utils/sessionCookie';
 
-const COOKIE_NAME = 'shipready-session';
+const COOKIE_NAME = 'assurly-session';
 
 /**
  * Route prefixes that require an authenticated session. Anonymous requests to

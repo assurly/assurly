@@ -9,7 +9,7 @@ export default function TermsPage() {
           ← Back to Home
         </Link>
         <div className="logo">
-          📦 Ship<span>Ready</span>
+          📦 Assur<span>ly</span>
         </div>
       </header>
 
@@ -20,7 +20,7 @@ export default function TermsPage() {
         <section className="legal-section">
           <h2>1. Agreement to Terms</h2>
           <p>
-            By accessing or using the ShipReady website, CLI scanner, or web-based sandbox checker,
+            By accessing or using the Assurly website, CLI scanner, or web-based sandbox checker,
             you agree to be bound by these Terms of Service (“Terms”). If you do not agree to these
             Terms, please do not use our services.
           </p>
@@ -30,7 +30,7 @@ export default function TermsPage() {
           <h2>2. License and Permitted Use</h2>
           <p>
             We grant you a limited, revocable, non-exclusive, non-transferable license to use the
-            ShipReady static analyzer (CLI and Web interfaces) for personal, internal business, or
+            Assurly static analyzer (CLI and Web interfaces) for personal, internal business, or
             educational evaluation of codebases.
           </p>
           <p>
@@ -42,14 +42,14 @@ export default function TermsPage() {
         <section className="legal-section">
           <h2>3. Intellectual Property</h2>
           <p>
-            All code, UI designs, brand assets, and algorithms contained in the ShipReady repository
-            and website are owned by ShipReady and licensed under the MIT License unless otherwise
+            All code, UI designs, brand assets, and algorithms contained in the Assurly repository
+            and website are owned by Assurly and licensed under the MIT License unless otherwise
             specified.
           </p>
           <p>
             <strong>Your Code:</strong> You retain 100% ownership of any source code, migration
             scripts, or configurations you analyze. Manual web and CLI scans run locally. GitHub web
-            integrations transmit repository content through ShipReady&apos;s servers transiently as
+            integrations transmit repository content through Assurly&apos;s servers transiently as
             described in our Privacy Policy; complete source files are not retained.
           </p>
         </section>
@@ -98,7 +98,7 @@ export default function TermsPage() {
         <section className="legal-section">
           <h2>6. Limitation of Liability</h2>
           <p>
-            To the maximum extent permitted by applicable law, in no event shall ShipReady or its
+            To the maximum extent permitted by applicable law, in no event shall Assurly or its
             maintainers be liable for any direct, indirect, incidental, special, consequential, or
             punitive damages, including but not limited to:
           </p>
@@ -127,7 +127,7 @@ export default function TermsPage() {
           <h2>8. Contact</h2>
           <p>
             If you have any questions about these Terms of Service, please contact us at{' '}
-            <a href="mailto:support@shipready.dev">support@shipready.dev</a>.
+            <a href="mailto:support@assurly.dev">support@assurly.dev</a>.
           </p>
         </section>
       </main>

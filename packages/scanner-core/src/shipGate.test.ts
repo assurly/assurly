@@ -57,9 +57,9 @@ const warnings: ShipGateFindingInput[] = [
     severity: 'warning',
     file: 'Global Configs',
     line: 1,
-    message: 'GitHub Actions workflow for ShipReady is missing.',
+    message: 'GitHub Actions workflow for Assurly is missing.',
     suggestion:
-      'Run "npx shipready init" in your repository to automatically configure the CI/CD pipeline.',
+      'Run "npx assurly init" in your repository to automatically configure the CI/CD pipeline.',
   },
 ];
 
@@ -82,7 +82,7 @@ describe('shipGate', () => {
         ruleId: 'general',
         severity: 'warning',
         file: 'Global Configs',
-        message: 'GitHub Actions workflow for ShipReady is missing.',
+        message: 'GitHub Actions workflow for Assurly is missing.',
       }),
     ).toBe('rule:github-actions-integration');
   });
@@ -170,7 +170,7 @@ describe('shipGate', () => {
     expect(ciGroup?.action).toEqual({
       label: 'Initialize CI workflow',
       kind: 'command',
-      command: 'npx shipready init',
+      command: 'npx assurly init',
       hint: warnings[1]?.suggestion,
     });
   });
@@ -189,15 +189,15 @@ describe('shipGate', () => {
   it('extracts commands from suggestion text when rule is unknown', () => {
     const action = resolveGroupAction(
       'rule:custom',
-      'Run "npx shipready init" in your repository root.',
+      'Run "npx assurly init" in your repository root.',
       'custom',
     );
 
     expect(action).toEqual({
       label: 'Run locally',
       kind: 'command',
-      command: 'npx shipready init',
-      hint: 'Run "npx shipready init" in your repository root.',
+      command: 'npx assurly init',
+      hint: 'Run "npx assurly init" in your repository root.',
     });
   });
 
@@ -209,18 +209,18 @@ describe('shipGate', () => {
     const plain = formatShipGatePlainText(report);
     const markdown = formatShipGateMarkdown(report, {
       repositoryName: 'acme/saas',
-      reportUrl: 'https://shipready.dev/report/abc123',
+      reportUrl: 'https://assurly.dev/report/abc123',
     });
 
     expect(plain).toContain('NOT READY TO SHIP');
     expect(plain).toContain('Ship Score: 56/100');
     expect(plain).toContain('Missing RLS on table: users');
     expect(plain).toContain('✓ 168 files clean');
-    expect(plain).toContain('Run: npx shipready init');
+    expect(plain).toContain('Run: npx assurly init');
 
     expect(markdown).toContain('NOT READY TO SHIP');
     expect(markdown).toContain('Stripe webhook signature missing');
-    expect(markdown).toContain('https://shipready.dev/report/abc123');
-    expect(markdown).toContain('`npx shipready init`');
+    expect(markdown).toContain('https://assurly.dev/report/abc123');
+    expect(markdown).toContain('`npx assurly init`');
   });
 });

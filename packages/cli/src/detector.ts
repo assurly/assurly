@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildScanScope, isScannableFile, type ScanScope } from '@shipready/scanner-core';
+import { buildScanScope, isScannableFile, type ScanScope } from '@assurly/scanner-core';
 import { TechStack, ProjectContext } from './types';
 
 /**

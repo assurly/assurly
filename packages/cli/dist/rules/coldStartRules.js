@@ -36,7 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.coldStartRules = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-const scanner_core_1 = require("@shipready/scanner-core");
+const scanner_core_1 = require("@assurly/scanner-core");
 exports.coldStartRules = {
     id: 'cold-start-optimization',
     name: 'Serverless Cold Start Optimization check',

@@ -25,7 +25,7 @@ export default async function HomePage({ searchParams }: HomePageProps): Promise
   }
 
   const user = await getSessionUser(
-    new Request('http://shipready.local/', {
+    new Request('http://assurly.local/', {
       headers: { cookie: requestHeaders.get('cookie') ?? '' },
     }),
   );

@@ -21,7 +21,7 @@ vi.mock('../../../../utils/authorization', () => ({
 }));
 
 vi.mock('../../../../utils/env', () => ({
-  getApplicationUrl: () => 'https://shipready.dev',
+  getApplicationUrl: () => 'https://assurly.dev',
 }));
 
 describe('POST /api/scans/share', () => {

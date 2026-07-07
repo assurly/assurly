@@ -8,7 +8,7 @@ Let a user **paste the URL of their deployed app** (e.g. `https://myapp.lovable.
 source code, get a Ship Gate report from the **live runtime**: exposed Supabase tables (RLS probe), secrets/keys
 in the production JS bundle, missing security headers, and exposed API surface.
 
-This is a new entry point into the product — it opens ShipReady to the customer who has a URL, not a repo.
+This is a new entry point into the product — it opens Assurly to the customer who has a URL, not a repo.
 
 ## Why
 

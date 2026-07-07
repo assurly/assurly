@@ -36,12 +36,12 @@ vi.mock('fs', async (importOriginal) => {
   };
 });
 
-describe('ShipReady GitHub Action', () => {
+describe('Assurly GitHub Action', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('runs npx @shipready/cli when no custom cli-path is provided and succeeds with no findings', async () => {
+  it('runs npx assurly when no custom cli-path is provided and succeeds with no findings', async () => {
     vi.mocked(core.getInput).mockImplementation((name: string) => {
       if (name === 'path') return '.';
       return '';
@@ -59,7 +59,7 @@ describe('ShipReady GitHub Action', () => {
     expect(core.getInput).toHaveBeenCalledWith('path');
     expect(exec.exec).toHaveBeenCalledWith(
       'npx',
-      ['--yes', '@shipready/cli@1.0.0', 'scan', '--json', '--path', expect.any(String)],
+      ['--yes', 'assurly@1.0.0', 'scan', '--json', '--path', expect.any(String)],
       expect.any(Object),
     );
     expect(core.setOutput).toHaveBeenCalledWith('findings-count', '0');
@@ -119,7 +119,7 @@ describe('ShipReady GitHub Action', () => {
     expect(core.error).toHaveBeenCalledWith(
       expect.stringContaining('CRITICAL SECURITY RISK: Service role key prefix leak.'),
       expect.objectContaining({
-        title: 'ShipReady: env-secrets',
+        title: 'Assurly: env-secrets',
         startLine: 5,
       }),
     );
@@ -127,13 +127,13 @@ describe('ShipReady GitHub Action', () => {
     expect(core.warning).toHaveBeenCalledWith(
       expect.stringContaining('Strict typechecking is disabled.'),
       expect.objectContaining({
-        title: 'ShipReady: tsconfig-strict',
+        title: 'Assurly: tsconfig-strict',
       }),
     );
 
     // Verify that the build is set to failed due to the critical error
     expect(core.setFailed).toHaveBeenCalledWith(
-      expect.stringContaining('ShipReady scan failed with 1 critical error(s).'),
+      expect.stringContaining('Assurly scan failed with 1 critical error(s).'),
     );
   });
 

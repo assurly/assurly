@@ -20,7 +20,7 @@ describe('shared API security layer', () => {
   beforeEach(() => {
     resetRateLimitsForTests();
     vi.clearAllMocks();
-    process.env.APP_URL = 'https://app.shipready.example';
+    process.env.APP_URL = 'https://app.assurly.example';
     mocks.requireUser.mockResolvedValue(authenticated);
   });
 
@@ -40,7 +40,7 @@ describe('shared API security layer', () => {
       handler,
     );
     const response = await route(
-      new Request('https://app.shipready.example/api/test?unexpected=true'),
+      new Request('https://app.assurly.example/api/test?unexpected=true'),
     );
     expect(response.status).toBe(400);
     expect(handler).not.toHaveBeenCalled();
@@ -61,7 +61,7 @@ describe('shared API security layer', () => {
       async () => Response.json({ ok: true }),
     );
     const response = await route(
-      new Request('https://app.shipready.example/api/test', {
+      new Request('https://app.assurly.example/api/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{"too":"large"}',
@@ -85,7 +85,7 @@ describe('shared API security layer', () => {
       },
       async () => Response.json({ ok: true }),
     );
-    expect((await route(new Request('https://app.shipready.example/api/test'))).status).toBe(401);
+    expect((await route(new Request('https://app.assurly.example/api/test'))).status).toBe(401);
   });
 
   it('rate limits by IP and returns a safe request ID', async () => {
@@ -103,7 +103,7 @@ describe('shared API security layer', () => {
       async () => Response.json({ ok: true }),
     );
     const request = () =>
-      new Request('https://app.shipready.example/api/test', {
+      new Request('https://app.assurly.example/api/test', {
         headers: { 'x-forwarded-for': '203.0.113.9' },
       });
     expect((await route(request())).status).toBe(200);
@@ -129,12 +129,12 @@ describe('shared API security layer', () => {
       async () => Response.json({ ok: true }),
     );
     const first = await route(
-      new Request('https://app.shipready.example/api/test', {
+      new Request('https://app.assurly.example/api/test', {
         headers: { 'x-forwarded-for': '203.0.113.10' },
       }),
     );
     const second = await route(
-      new Request('https://app.shipready.example/api/test', {
+      new Request('https://app.assurly.example/api/test', {
         headers: { 'x-forwarded-for': '203.0.113.11' },
       }),
     );
@@ -158,7 +158,7 @@ describe('shared API security layer', () => {
       async () => Response.json({ ok: true }),
     );
     const blocked = await route(
-      new Request('https://app.shipready.example/api/test', {
+      new Request('https://app.assurly.example/api/test', {
         method: 'POST',
         headers: { cookie: `${COOKIE_NAME}=session` },
       }),
@@ -166,11 +166,11 @@ describe('shared API security layer', () => {
     expect(blocked.status).toBe(403);
 
     const allowed = await route(
-      new Request('https://app.shipready.example/api/test', {
+      new Request('https://app.assurly.example/api/test', {
         method: 'POST',
         headers: {
           cookie: `${COOKIE_NAME}=session`,
-          origin: 'https://app.shipready.example',
+          origin: 'https://app.assurly.example',
           'sec-fetch-site': 'same-origin',
         },
       }),
@@ -194,7 +194,7 @@ describe('shared API security layer', () => {
         throw new Error('database-password=secret');
       },
     );
-    const response = await route(new Request('https://app.shipready.example/api/test'));
+    const response = await route(new Request('https://app.assurly.example/api/test'));
     expect(response.status).toBe(500);
     expect(JSON.stringify(await response.json())).not.toContain('database-password');
   });

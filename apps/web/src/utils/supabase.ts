@@ -49,7 +49,7 @@ export function createStatelessSupabaseClient(): SupabaseClient {
  * a stateless PKCE/OAuth helper for the login and callback routes.
  *
  * SINGLE SOURCE OF TRUTH: the canonical session lives exclusively in the
- * `shipready-session` cookie (see utils/auth). We therefore persist ONLY the
+ * `assurly-session` cookie (see utils/auth). We therefore persist ONLY the
  * transient PKCE code-verifier cookie and deliberately drop the Supabase
  * `sb-*-auth-token` session cookies this client would otherwise write.
  *

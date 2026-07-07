@@ -20,7 +20,7 @@ const RULE_INSTRUCTIONS: Record<string, string> = {
   'undocumented-env':
     'Add the missing variable to the nearest .env.example with an empty placeholder value.',
   'github-actions-integration':
-    'Add .github/workflows/shipready.yml using the ShipReady CI workflow template.',
+    'Add .github/workflows/assurly.yml using the Assurly CI workflow template.',
   'supabase-rls': 'Enable row-level security on the affected table and add policies for each role.',
   'stripe-webhook-signature':
     'Verify Stripe webhook payloads with stripe.webhooks.constructEvent before processing events.',
@@ -60,7 +60,7 @@ function formatFindingBlock(finding: WebFinding): string {
 export function buildAiFixPrompt(findings: WebFinding[]): string {
   if (findings.length === 0) {
     return [
-      'ShipReady fix prompt',
+      'Assurly fix prompt',
       '',
       'No issues to fix.',
       'The scan passed with no findings that need remediation.',
@@ -72,7 +72,7 @@ export function buildAiFixPrompt(findings: WebFinding[]): string {
   );
 
   const header = [
-    'ShipReady fix prompt',
+    'Assurly fix prompt',
     '',
     'Apply the following deterministic fixes in order. Do not delete unrelated code.',
     `Findings: ${ordered.length}`,

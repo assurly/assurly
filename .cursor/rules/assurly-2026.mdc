@@ -1,10 +1,10 @@
 ---
-description: ShipReady 2026 product direction, trust-first rule discipline, and non-negotiable engineering guardrails. Applies to all work.
+description: Assurly 2026 product direction, trust-first rule discipline, and non-negotiable engineering guardrails. Applies to all work.
 globs:
 alwaysApply: true
 ---
 
-# ShipReady — 2026 direction & guardrails
+# Assurly — 2026 direction & guardrails
 
 Read `docs/roadmap/README.md` before starting roadmap work. This rule is the short, always-on version.
 
@@ -14,7 +14,7 @@ Read `docs/roadmap/README.md` before starting roadmap work. This rule is the sho
   commit messages, docs, and `.md` files. Never mix languages inside the codebase.
 
 ## Product north star
-ShipReady is moving from "a static code analyzer for developers with a terminal" to
+Assurly is moving from "a static code analyzer for developers with a terminal" to
 "a trustworthy pre-deploy Ship Gate for people who had their SaaS built by AI."
 The one question it answers: "Can I ship this to Vercel + Supabase + Stripe right now without leaking data?"
 
@@ -32,7 +32,7 @@ Three principles behind every change:
 - A finding may block the ship only if it is BOTH high-severity AND high-confidence (see Phase 0 confidence model).
 - Keep total blocker rules at ~12 or fewer.
 - Never scan noise: test files, fixtures, and vendored code are excluded.
-- The product must pass its own scan: ShipReady self-scan = 0–2 blockers.
+- The product must pass its own scan: Assurly self-scan = 0–2 blockers.
 
 ## How roadmap work is structured
 - One phase = one branch = one PR = one focused session. Never implement multiple phases at once.
@@ -46,7 +46,7 @@ Three principles behind every change:
 - **Local-first is the product's identity.** Manual/browser scans run locally; never upload the user's source code to
   a third party for analysis. (Runtime URL scanning of the user's own public URL is the one exception — read-only
   probes only, per `docs/roadmap/01-url-runtime-scanner.md` safety rails.)
-- **One rule engine:** `@shipready/scanner-core`. Add rules there, not duplicated in web/CLI.
+- **One rule engine:** `@assurly/scanner-core`. Add rules there, not duplicated in web/CLI.
 - **API routes:** always `zod`-validate input and rate-limit via `apps/web/src/utils/apiSecurity.ts`.
 - **Types:** strict TypeScript, explicit return types, no `any`, no `@ts-ignore`.
 - **Design stays.** Change the engine, rules, and positioning — not the visual design. Reuse existing components

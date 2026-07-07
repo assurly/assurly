@@ -177,7 +177,7 @@ function normalizeError(error: unknown): { status: number; code: string; message
         status: 404,
         code: 'repository_unavailable',
         message:
-          'This repository is not accessible to the ShipReady GitHub App installation. Re-install the app or grant it access to this repository, then try again.',
+          'This repository is not accessible to the Assurly GitHub App installation. Re-install the app or grant it access to this repository, then try again.',
       };
     }
     if (error.status === 401) {
@@ -218,7 +218,7 @@ function normalizeError(error: unknown): { status: number; code: string; message
 }
 
 function logRequest(details: Record<string, unknown>): void {
-  console.info(JSON.stringify({ service: 'shipready-api', ...details }));
+  console.info(JSON.stringify({ service: 'assurly-api', ...details }));
 }
 
 export function secureRoute<Query, Body, Params = Record<string, never>>(

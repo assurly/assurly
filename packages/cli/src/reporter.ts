@@ -6,7 +6,7 @@ import { Finding } from './types';
  */
 export function reportFindings(findings: Finding[]): void {
   console.log('\n' + chalk.bold.cyan('=================================================='));
-  console.log(chalk.bold.cyan('             ShipReady Scan Results               '));
+  console.log(chalk.bold.cyan('             Assurly Scan Results               '));
   console.log(chalk.bold.cyan('==================================================') + '\n');
 
   if (findings.length === 0) {

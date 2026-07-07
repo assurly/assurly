@@ -60,7 +60,7 @@ export function HomeHeader({
     <header className={joinClasses(menuOpen && 'site-header-menu-open')}>
       <div className="container nav-container">
         <div className="logo" id="header-logo">
-          📦 Ship<span>Ready</span>
+          📦 Assur<span>ly</span>
         </div>
         <button
           type="button"

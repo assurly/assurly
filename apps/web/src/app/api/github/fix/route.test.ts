@@ -6,6 +6,7 @@ import { resetRateLimitsForTests } from '../../../../utils/rateLimit';
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
   executeGitHubFixPullRequest: vi.fn(),
+  executeGitHubBatchFixPullRequest: vi.fn(),
 }));
 
 vi.mock('../../../../utils/auth', async (importOriginal) => ({
@@ -15,6 +16,7 @@ vi.mock('../../../../utils/auth', async (importOriginal) => ({
 
 vi.mock('../../../../utils/githubFixPipeline', () => ({
   executeGitHubFixPullRequest: mocks.executeGitHubFixPullRequest,
+  executeGitHubBatchFixPullRequest: mocks.executeGitHubBatchFixPullRequest,
 }));
 
 const repoId = '11000000-0000-4000-8000-000000000001';
@@ -158,7 +160,11 @@ describe('GitHub fix auto-fix flow (POST /api/github/fix)', () => {
         message: "Supabase table 'config' is created but Row-Level Security (RLS) is not enabled.",
       },
     ]);
-    mocks.executeGitHubFixPullRequest.mockResolvedValue('https://github.com/acme/app/pull/8');
+    mocks.executeGitHubBatchFixPullRequest.mockResolvedValue({
+      prUrl: 'https://github.com/acme/app/pull/8',
+      committedFilePaths: ['database.sql'],
+      skippedFilePaths: [],
+    });
 
     const response = await POST(fixRequest({ repoId, scanId, batch: true }));
     const body = await response.json();
@@ -166,11 +172,115 @@ describe('GitHub fix auto-fix flow (POST /api/github/fix)', () => {
     expect(response.status).toBe(201);
     expect(body.prUrl).toBe('https://github.com/acme/app/pull/8');
     expect(body.findingIds).toEqual([findingId, findingTwo]);
-    expect(mocks.executeGitHubFixPullRequest).toHaveBeenCalledWith(
+    expect(mocks.executeGitHubBatchFixPullRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         branchSeed: `batch:${scanId}`,
       }),
     );
+  });
+
+  it('creates one combined pull request across multiple files', async () => {
+    const findingTwo = '44000000-0000-4000-8000-000000000004';
+    db.getScanFindings.mockResolvedValue([
+      {
+        id: findingId,
+        scan_id: scanId,
+        severity: 'error',
+        file_path: 'database.sql',
+        message:
+          "Supabase table 'attempts' is created but Row-Level Security (RLS) is not enabled.",
+      },
+      {
+        id: findingTwo,
+        scan_id: scanId,
+        severity: 'error',
+        file_path: 'apps/web/src/lib/stripe.ts',
+        rule_id: 'undocumented-env',
+        message:
+          "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
+      },
+    ]);
+    mocks.executeGitHubBatchFixPullRequest.mockResolvedValue({
+      prUrl: 'https://github.com/acme/app/pull/9',
+      committedFilePaths: ['database.sql', 'apps/web/.env.example'],
+      skippedFilePaths: [],
+    });
+
+    const response = await POST(fixRequest({ repoId, scanId, batch: true }));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.prUrl).toBe('https://github.com/acme/app/pull/9');
+    expect(body.findingIds).toEqual([findingId, findingTwo]);
+    expect(mocks.executeGitHubBatchFixPullRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        files: expect.arrayContaining([
+          expect.objectContaining({ filePath: 'database.sql' }),
+          expect.objectContaining({ filePath: 'apps/web/.env.example' }),
+        ]),
+      }),
+    );
+  });
+
+  it('only marks findings whose files were committed and skips the rest', async () => {
+    const rlsFinding = findingId;
+    const workflowFinding = '55000000-0000-4000-8000-000000000005';
+    db.getScanFindings.mockResolvedValue([
+      {
+        id: rlsFinding,
+        scan_id: scanId,
+        severity: 'error',
+        file_path: 'database.sql',
+        message:
+          "Supabase table 'attempts' is created but Row-Level Security (RLS) is not enabled.",
+      },
+      {
+        id: workflowFinding,
+        scan_id: scanId,
+        severity: 'warning',
+        file_path: 'Global Configs',
+        rule_id: 'github-actions-integration',
+        message: 'GitHub Actions workflow for Assurly is missing.',
+      },
+    ]);
+    mocks.executeGitHubBatchFixPullRequest.mockResolvedValue({
+      prUrl: 'https://github.com/acme/app/pull/10',
+      committedFilePaths: ['database.sql'],
+      skippedFilePaths: ['.github/workflows/assurly.yml'],
+    });
+
+    const response = await POST(fixRequest({ repoId, scanId, batch: true }));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.findingIds).toEqual([rlsFinding]);
+    expect(db.updateFindingFixPrUrls).toHaveBeenCalledWith([
+      { findingId: rlsFinding, fixPrUrl: 'https://github.com/acme/app/pull/10' },
+    ]);
+  });
+
+  it('returns 502 when no files could be committed', async () => {
+    db.getScanFindings.mockResolvedValue([
+      {
+        id: findingId,
+        scan_id: scanId,
+        severity: 'warning',
+        file_path: 'Global Configs',
+        rule_id: 'github-actions-integration',
+        message: 'GitHub Actions workflow for Assurly is missing.',
+      },
+    ]);
+    mocks.executeGitHubBatchFixPullRequest.mockResolvedValue({
+      prUrl: 'https://github.com/acme/app/pull/11',
+      committedFilePaths: [],
+      skippedFilePaths: ['.github/workflows/assurly.yml'],
+    });
+
+    const response = await POST(fixRequest({ repoId, scanId, batch: true }));
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body.error.code).toBe('github_unavailable');
   });
 
   it('maps an already-applied batch fix to a 409 with an accurate message', async () => {
@@ -184,7 +294,7 @@ describe('GitHub fix auto-fix flow (POST /api/github/fix)', () => {
           "Supabase table 'attempts' is created but Row-Level Security (RLS) is not enabled.",
       },
     ]);
-    mocks.executeGitHubFixPullRequest.mockRejectedValue(new AutoFixAlreadyAppliedError());
+    mocks.executeGitHubBatchFixPullRequest.mockRejectedValue(new AutoFixAlreadyAppliedError());
 
     const response = await POST(fixRequest({ repoId, scanId, batch: true }));
     const body = await response.json();

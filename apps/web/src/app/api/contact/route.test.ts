@@ -9,7 +9,7 @@ describe('Contact API Route Handler', () => {
     name: 'Jane Doe',
     email: 'jane@example.com',
     subject: 'technical',
-    message: 'Hello, I need help configuring ShipReady on my Vercel project.',
+    message: 'Hello, I need help configuring Assurly on my Vercel project.',
   } as const;
 
   beforeEach(() => {
@@ -48,13 +48,13 @@ describe('Contact API Route Handler', () => {
   });
 
   it('blocks cookie-authenticated submissions without a trusted Origin before sending email', async () => {
-    process.env.APP_URL = 'https://app.shipready.example';
+    process.env.APP_URL = 'https://app.assurly.example';
     process.env.RESEND_API_KEY = 'resend-test-key';
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     const response = await POST(
-      new Request('https://app.shipready.example/api/contact', {
+      new Request('https://app.assurly.example/api/contact', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -70,17 +70,17 @@ describe('Contact API Route Handler', () => {
   });
 
   it('allows cookie-authenticated same-origin contact submissions', async () => {
-    process.env.APP_URL = 'https://app.shipready.example';
+    process.env.APP_URL = 'https://app.assurly.example';
     delete process.env.RESEND_API_KEY;
     process.env.CONTACT_SIMULATION_ENABLED = 'true';
 
     const response = await POST(
-      new Request('https://app.shipready.example/api/contact', {
+      new Request('https://app.assurly.example/api/contact', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           cookie: `${COOKIE_NAME}=session`,
-          origin: 'https://app.shipready.example',
+          origin: 'https://app.assurly.example',
           'sec-fetch-site': 'same-origin',
         },
         body: JSON.stringify(validContactBody),

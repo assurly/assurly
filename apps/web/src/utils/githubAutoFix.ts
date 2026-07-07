@@ -11,7 +11,7 @@ export interface GitHubAutoFix {
 const POSTGRES_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_$]{0,62}$/;
 const ENVIRONMENT_VARIABLE = /^[A-Z_][A-Z0-9_]{0,127}$/;
 
-const SHIPREADY_WORKFLOW_TEMPLATE = `name: ShipReady Security & Config Scan
+const ASSURLY_WORKFLOW_TEMPLATE = `name: Assurly Security & Config Scan
 
 on:
   push:
@@ -21,7 +21,7 @@ on:
 
 jobs:
   scan:
-    name: ShipReady Static Analysis
+    name: Assurly Static Analysis
     runs-on: ubuntu-latest
 
     steps:
@@ -37,8 +37,8 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefer-offline --no-audit
 
-      - name: Run ShipReady Scan
-        run: npx --yes @shipready/cli@1.0.0 scan
+      - name: Run Assurly Scan
+        run: npx --yes assurly@1.0.0 scan
 `;
 
 function quotePostgresIdentifier(value: string): string {
@@ -98,7 +98,7 @@ function isUndocumentedEnvMessage(message: string): boolean {
 function isGithubActionsIntegrationFinding(message: string, ruleId?: string): boolean {
   if (ruleId === 'github-actions-integration') return true;
   const lowerMessage = message.toLowerCase();
-  return lowerMessage.includes('github actions workflow') && lowerMessage.includes('shipready');
+  return lowerMessage.includes('github actions workflow') && lowerMessage.includes('assurly');
 }
 
 export function buildGitHubAutoFix(
@@ -139,11 +139,10 @@ export function buildGitHubAutoFix(
 
   if (isGithubActionsIntegrationFinding(message, ruleId)) {
     return {
-      statement: SHIPREADY_WORKFLOW_TEMPLATE,
-      description:
-        'Add the ShipReady GitHub Actions workflow at `.github/workflows/shipready.yml`.',
-      title: 'ci(shipready): add security scan workflow',
-      targetFilePath: '.github/workflows/shipready.yml',
+      statement: ASSURLY_WORKFLOW_TEMPLATE,
+      description: 'Add the Assurly GitHub Actions workflow at `.github/workflows/assurly.yml`.',
+      title: 'ci(assurly): add security scan workflow',
+      targetFilePath: '.github/workflows/assurly.yml',
       applyMode: 'create',
     };
   }
@@ -192,6 +191,106 @@ export function buildGitHubAutoFixBatch(
     description: `Enable Row-Level Security (RLS) on ${tableList}.`,
     title: `security(rls): enable row level security on ${tableNames.length} tables`,
   };
+}
+
+/** A single repository file together with the ordered fixes that target it. */
+export interface GitHubAutoFixFileGroup {
+  filePath: string;
+  fixes: GitHubAutoFix[];
+}
+
+/** High-level metadata for the combined pull request produced from a plan. */
+export interface GitHubAutoFixPlanSummary {
+  prTitle: string;
+  prDescription: string;
+}
+
+/**
+ * Groups allowlisted fixes by their resolved target file so multiple findings
+ * spread across several files can be committed into a single pull request.
+ * Returns `null` when any finding cannot be turned into a safe fix.
+ */
+export function buildGitHubAutoFixPlan(
+  findings: readonly AutoFixFindingInput[],
+): GitHubAutoFixFileGroup[] | null {
+  if (findings.length === 0) return null;
+
+  const groups = new Map<string, GitHubAutoFix[]>();
+  const order: string[] = [];
+
+  for (const finding of findings) {
+    const fix = buildGitHubAutoFix(finding.file_path, finding.message, finding.rule_id);
+    if (!fix) return null;
+
+    const targetPath = fix.targetFilePath ?? finding.file_path;
+    let bucket = groups.get(targetPath);
+    if (!bucket) {
+      bucket = [];
+      groups.set(targetPath, bucket);
+      order.push(targetPath);
+    }
+    if (!bucket.some((existing) => existing.statement === fix.statement)) {
+      bucket.push(fix);
+    }
+  }
+
+  const plan: GitHubAutoFixFileGroup[] = [];
+  for (const filePath of order) {
+    const fixes = groups.get(filePath);
+    if (fixes && fixes.length > 0) plan.push({ filePath, fixes });
+  }
+
+  return plan.length > 0 ? plan : null;
+}
+
+/**
+ * Resolves the repository file that a finding's fix targets, matching how
+ * {@link buildGitHubAutoFixPlan} groups fixes. Falls back to the finding's own
+ * path when the fix does not redirect to another file.
+ */
+export function resolveFindingAutoFixTargetPath(finding: AutoFixFindingInput): string {
+  let fix: GitHubAutoFix | null = null;
+  try {
+    fix = buildGitHubAutoFix(finding.file_path, finding.message, finding.rule_id);
+  } catch {
+    return finding.file_path;
+  }
+  return fix?.targetFilePath ?? finding.file_path;
+}
+
+/** Builds a per-file commit message for a group of fixes. */
+export function autoFixGroupCommitMessage(group: GitHubAutoFixFileGroup): string {
+  const [first] = group.fixes;
+  if (group.fixes.length === 1 && first) return first.title;
+  return `fix(assurly): apply ${group.fixes.length} automated fixes to ${group.filePath}`;
+}
+
+/** Builds the title and description for the combined pull request. */
+export function summarizeAutoFixPlan(
+  plan: readonly GitHubAutoFixFileGroup[],
+): GitHubAutoFixPlanSummary {
+  const fixCount = plan.reduce((total, group) => total + group.fixes.length, 0);
+  const fileCount = plan.length;
+  const prTitle = `fix(assurly): apply ${fixCount} automated ${fixCount === 1 ? 'fix' : 'fixes'}`;
+
+  const details = plan
+    .map((group) => {
+      const bullets = group.fixes.map((fix) => `  - ${fix.description}`).join('\n');
+      return `- \`${group.filePath}\`\n${bullets}`;
+    })
+    .join('\n');
+
+  const prDescription = [
+    `Assurly grouped ${fixCount} automated ${fixCount === 1 ? 'fix' : 'fixes'} across ${fileCount} ${
+      fileCount === 1 ? 'file' : 'files'
+    } into a single pull request.`,
+    '',
+    details,
+    '',
+    'Applied automatically by Assurly.',
+  ].join('\n');
+
+  return { prTitle, prDescription };
 }
 
 export function isAutoFixableFinding(finding: {

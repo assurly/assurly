@@ -11,7 +11,7 @@ export default function PrivacyPage() {
           ← Back to Home
         </Link>
         <div className="logo">
-          📦 Ship<span>Ready</span>
+          📦 Assur<span>ly</span>
         </div>
       </header>
 
@@ -22,7 +22,7 @@ export default function PrivacyPage() {
         <section className="legal-section">
           <h2>1. Introduction</h2>
           <p>
-            ShipReady (“we”, “our”, or “us”) provides a static code analysis tool designed to verify
+            Assurly (“we”, “our”, or “us”) provides a static code analysis tool designed to verify
             the production-readiness of B2B SaaS and Next.js projects. We are committed to
             protecting your privacy and security.
           </p>
@@ -40,18 +40,18 @@ export default function PrivacyPage() {
           <ul>
             <li>
               <strong>Manual Web Checker:</strong> Pasted snippets, selected folders, and ZIP files
-              are parsed and analyzed in your browser. ShipReady does not upload their contents to
-              its application server.
+              are parsed and analyzed in your browser. Assurly does not upload their contents to its
+              application server.
             </li>
             <li>
               <strong>Public GitHub Web Scan:</strong> Your browser requests repository trees and
-              selected files through ShipReady&apos;s server API. The server retrieves that content
+              selected files through Assurly&apos;s server API. The server retrieves that content
               from GitHub and returns it to your browser for analysis. Source content therefore
-              passes transiently through ShipReady&apos;s server, but is not written to our database
+              passes transiently through Assurly&apos;s server, but is not written to our database
               or retained as source files.
             </li>
             <li>
-              <strong>Connected and Private GitHub Scans:</strong> ShipReady&apos;s server retrieves
+              <strong>Connected and Private GitHub Scans:</strong> Assurly&apos;s server retrieves
               repository content with a short-lived GitHub installation token. Webhook-triggered
               scans may analyze that content server-side. We store scan status, scores, file paths,
               and findings needed for scan history; we do not store complete repository source
@@ -66,7 +66,7 @@ export default function PrivacyPage() {
           <p>
             Do not intentionally submit live secrets. Although source files are not retained, code
             used by GitHub web integrations is transmitted over encrypted connections between your
-            browser, ShipReady, and GitHub as described above.
+            browser, Assurly, and GitHub as described above.
           </p>
         </section>
 
@@ -132,8 +132,7 @@ export default function PrivacyPage() {
             <li>
               <strong>Payments (Stripe):</strong> When you manage billing, your browser is
               redirected to Stripe-hosted pages. Stripe may set its own cookies on{' '}
-              <code>stripe.com</code>; ShipReady does not place Stripe tracking cookies on our
-              domain.
+              <code>stripe.com</code>; Assurly does not place Stripe tracking cookies on our domain.
             </li>
             <li>
               <strong>Email Delivery (Resend):</strong> We use Resend to deliver support requests
@@ -152,7 +151,7 @@ export default function PrivacyPage() {
           <h2>6. Cookies and Similar Technologies</h2>
           <p>
             Under the EU ePrivacy rules and UK PECR, cookies that are not strictly necessary require
-            your prior consent. ShipReady&apos;s current web application sets{' '}
+            your prior consent. Assurly&apos;s current web application sets{' '}
             <strong>only strictly necessary cookies</strong> required for sign-in, session
             management, and secure GitHub OAuth. We do not use advertising, marketing, retargeting,
             or product-analytics cookies (such as Google Analytics, Meta Pixel, PostHog, or Hotjar).
@@ -168,7 +167,7 @@ export default function PrivacyPage() {
           <p>When you choose &quot;Sign in with GitHub&quot;:</p>
           <ol>
             <li>
-              ShipReady sets a short-lived PKCE verifier cookie (
+              Assurly sets a short-lived PKCE verifier cookie (
               <code>sb-*-auth-token-code-verifier</code>) to secure the OAuth exchange.
             </li>
             <li>
@@ -176,8 +175,8 @@ export default function PrivacyPage() {
               under GitHub&apos;s privacy policy.
             </li>
             <li>
-              After approval, ShipReady sets the <code>{COOKIE_NAME}</code> HttpOnly cookie with
-              your Supabase session (and optional GitHub token for connected repository features).
+              After approval, Assurly sets the <code>{COOKIE_NAME}</code> HttpOnly cookie with your
+              Supabase session (and optional GitHub token for connected repository features).
             </li>
             <li>
               Legacy Supabase <code>sb-*-auth-token</code> cookies from older builds are cleared on
@@ -227,7 +226,7 @@ export default function PrivacyPage() {
           </ul>
           <p>
             To exercise any of these rights, please contact us at{' '}
-            <a href="mailto:support@shipready.dev">support@shipready.dev</a>.
+            <a href="mailto:support@assurly.dev">support@assurly.dev</a>.
           </p>
         </section>
 
@@ -235,7 +234,7 @@ export default function PrivacyPage() {
           <h2>8. Contact Us</h2>
           <p>For any questions about this Privacy Policy, please reach out to us at:</p>
           <p>
-            Email: <a href="mailto:support@shipready.dev">support@shipready.dev</a>
+            Email: <a href="mailto:support@assurly.dev">support@assurly.dev</a>
           </p>
         </section>
       </main>

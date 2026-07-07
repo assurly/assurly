@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-import { runDeeperStackScans, type SourceInput } from '@shipready/scanner-core';
+import { runDeeperStackScans, type SourceInput } from '@assurly/scanner-core';
 import { Finding, ProjectContext, Rule } from '../types';
 
 /**

@@ -33,7 +33,7 @@ const adminDb = { connectGitHubInstallation: vi.fn() };
 describe('GitHub installation callback mapping', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.APP_URL = 'https://shipready.example';
+    process.env.APP_URL = 'https://assurly.example';
     process.env.GITHUB_STATE_SECRET = 'state-secret-with-at-least-thirty-two-bytes';
     mocks.requireUser.mockResolvedValue({ user: { id: 'user-a' }, db: userDb });
     userDb.getOrganization.mockResolvedValue({ id: 'org-a' });
@@ -52,7 +52,7 @@ describe('GitHub installation callback mapping', () => {
     const state = createGitHubInstallationState('user-b', 'org-b');
     const response = await GET(
       new Request(
-        `https://shipready.example/api/github/install?installation_id=456&state=${encodeURIComponent(state)}`,
+        `https://assurly.example/api/github/install?installation_id=456&state=${encodeURIComponent(state)}`,
       ),
     );
     expect(response.status).toBe(403);
@@ -71,11 +71,11 @@ describe('GitHub installation callback mapping', () => {
     );
     const response = await GET(
       new Request(
-        'https://shipready.example/api/github/install?installation_id=456&setup_action=update',
+        'https://assurly.example/api/github/install?installation_id=456&setup_action=update',
       ),
     );
     expect(response.headers.get('location')).toBe(
-      'https://shipready.example/dashboard?success=github_app_installed',
+      'https://assurly.example/dashboard?success=github_app_installed',
     );
     expect(adminDb.connectGitHubInstallation).toHaveBeenCalledWith('org-a', 9001, '456', [
       { id: 42, fullName: 'owner/private-repo' },
@@ -85,7 +85,7 @@ describe('GitHub installation callback mapping', () => {
   it('rejects setup redirects for a different installation on the same workspace', async () => {
     const response = await GET(
       new Request(
-        'https://shipready.example/api/github/install?installation_id=999&setup_action=update',
+        'https://assurly.example/api/github/install?installation_id=999&setup_action=update',
       ),
     );
     expect(response.status).toBe(403);
@@ -104,11 +104,11 @@ describe('GitHub installation callback mapping', () => {
     const state = createGitHubInstallationState('user-a', 'org-a');
     const response = await GET(
       new Request(
-        `https://shipready.example/api/github/install?installation_id=456&state=${encodeURIComponent(state)}`,
+        `https://assurly.example/api/github/install?installation_id=456&state=${encodeURIComponent(state)}`,
       ),
     );
     expect(response.headers.get('location')).toBe(
-      'https://shipready.example/dashboard?success=github_app_installed',
+      'https://assurly.example/dashboard?success=github_app_installed',
     );
     expect(mocks.getGitHubInstallation).toHaveBeenCalledWith('456');
     expect(adminDb.connectGitHubInstallation).toHaveBeenCalledWith('org-a', 9001, '456', [

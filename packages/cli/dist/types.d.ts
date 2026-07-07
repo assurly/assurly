@@ -1,4 +1,4 @@
-import type { ScanScope } from '@shipready/scanner-core';
+import type { ScanScope } from '@assurly/scanner-core';
 /**
  * Represents the detected tech stack of the project.
  */

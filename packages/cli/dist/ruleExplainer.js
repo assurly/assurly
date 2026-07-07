@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.explainRule = explainRule;
-const scanner_core_1 = require("@shipready/scanner-core");
+const scanner_core_1 = require("@assurly/scanner-core");
 const rules_1 = require("./rules");
 const SCANNER_RULE_EXPLANATIONS = {
     'supabase-rls': {
@@ -65,9 +65,9 @@ const SCANNER_RULE_EXPLANATIONS = {
         howToFix: 'Remove Node-only imports, switch the route to the Node runtime, or refactor to edge-compatible APIs.',
     },
     'github-actions-integration': {
-        title: 'Missing ShipReady CI workflow',
-        explanation: 'No GitHub Actions workflow runs ShipReady before deploy, so regressions can ship unnoticed.',
-        howToFix: 'Run `npx shipready init` to add `.github/workflows/shipready.yml` with a scan step.',
+        title: 'Missing Assurly CI workflow',
+        explanation: 'No GitHub Actions workflow runs Assurly before deploy, so regressions can ship unnoticed.',
+        howToFix: 'Run `npx assurly init` to add `.github/workflows/assurly.yml` with a scan step.',
     },
     'auth-service-role-bypass': {
         title: 'Service role used without authorization guard',

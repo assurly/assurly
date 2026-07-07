@@ -4,7 +4,7 @@
 
 ## Goal
 
-Add the high-value, stack-native rules that make ShipReady deeper than a generic scanner — the checks a senior
+Add the high-value, stack-native rules that make Assurly deeper than a generic scanner — the checks a senior
 engineer would actually run before shipping a Next.js + Supabase + Stripe app: auth/session boundaries, deeper
 Supabase misconfigurations, Stripe lifecycle correctness, and Vercel deploy readiness.
 
@@ -108,7 +108,7 @@ packages/scanner-core/src/vercelRules(...)             (change — edge/node + m
 - [ ] High-precision rules are blockers; heuristic rules (`stripe-missing-subscription-events`,
       `vercel-maxduration-missing`, etc.) are review/warning.
 - [ ] Total blocker rules across the product stay at ~12 or fewer (count them; document the list in a code comment).
-- [ ] ShipReady self-scan still reports 0–2 blockers (Phase 0 gate not regressed).
+- [ ] Assurly self-scan still reports 0–2 blockers (Phase 0 gate not regressed).
 
 ## Tests
 
@@ -119,6 +119,6 @@ packages/scanner-core/src/vercelRules(...)             (change — edge/node + m
 ## How to verify
 
 ```bash
-npm run test -w @shipready/scanner-core
+npm run test -w @assurly/scanner-core
 npm run scan:self          # must still be 0–2 blockers
 ```

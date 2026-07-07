@@ -36,7 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.envRules = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-const scanner_core_1 = require("@shipready/scanner-core");
+const scanner_core_1 = require("@assurly/scanner-core");
 /**
  * Parses a standard key-value .env file format.
  * Verified by unit tests.

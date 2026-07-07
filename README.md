@@ -1,13 +1,13 @@
-# ShipReady Monorepo
+# Assurly Monorepo
 
-ShipReady is a professional production-readiness verifier designed to scan B2B SaaS applications for configuration, security, and integration errors, especially those introduced by AI code generators.
+Assurly is a professional production-readiness verifier designed to scan B2B SaaS applications for configuration, security, and integration errors, especially those introduced by AI code generators.
 
 ## Structure
 
 This project is organized as a monorepo utilizing npm workspaces:
 
-- `packages/cli`: The core local static analysis CLI tool (`npx shipready`).
-- `packages/mcp-server`: MCP server exposing ShipReady Ship Gate scans to AI agents (`npx @shipready/mcp-server`). See [the MCP page](https://shipready.dev/mcp) or `packages/mcp-server/README.md`.
+- `packages/cli`: The core local static analysis CLI tool (`npx assurly`).
+- `packages/mcp-server`: MCP server exposing Assurly Ship Gate scans to AI agents (`npx @assurly/mcp-server`). See [the MCP page](https://assurly.dev/mcp) or `packages/mcp-server/README.md`.
 - `packages/vscode-extension`: **Paused** — VS Code editor integration (not actively maintained; target users scan via URL, MCP, or dashboard).
 - `apps/web`: The Next.js landing page, documentation, and web audit portal.
 

@@ -1,4 +1,4 @@
-import { getFindingGroupKey, type ShipGateFindingInput } from '@shipready/scanner-core';
+import { getFindingGroupKey, type ShipGateFindingInput } from '@assurly/scanner-core';
 import type { ScanFinding } from './dbAdapter';
 
 export interface DisplayScanFinding extends ScanFinding {

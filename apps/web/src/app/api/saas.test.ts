@@ -28,7 +28,7 @@ vi.mock('../../utils/dbAdapter', async (importOriginal) => ({
 
 vi.mock('../../utils/stripe', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../utils/stripe')>()),
-  getAppUrl: () => 'https://app.shipready.example',
+  getAppUrl: () => 'https://app.assurly.example',
   getStripePriceId: (plan: string) =>
     plan === 'yearly' ? 'price_yearly_server' : 'price_monthly_server',
   getStripeClient: () => ({
@@ -92,8 +92,8 @@ describe('billing API ownership and request safety', () => {
     expect(mocks.checkoutCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: 'subscription',
-        success_url: 'https://app.shipready.example/dashboard?success=stripe_upgrade',
-        cancel_url: 'https://app.shipready.example/dashboard?cancel=stripe_cancelled',
+        success_url: 'https://app.assurly.example/dashboard?success=stripe_upgrade',
+        cancel_url: 'https://app.assurly.example/dashboard?cancel=stripe_cancelled',
         client_reference_id: 'org-a',
         line_items: [{ price: 'price_yearly_server', quantity: 1 }],
       }),
@@ -146,7 +146,7 @@ describe('billing API ownership and request safety', () => {
     expect(response.status).toBe(200);
     expect(mocks.portalCreate).toHaveBeenCalledWith({
       customer: 'cus_org_a',
-      return_url: 'https://app.shipready.example/dashboard',
+      return_url: 'https://app.assurly.example/dashboard',
     });
     expect(mocks.customerCreate).not.toHaveBeenCalled();
   });
@@ -204,7 +204,7 @@ describe('billing API ownership and request safety', () => {
     expect(mocks.setOrganizationStripeCustomerId).toHaveBeenCalledWith('org-a', 'cus_reconciled');
     expect(mocks.portalCreate).toHaveBeenCalledWith({
       customer: 'cus_reconciled',
-      return_url: 'https://app.shipready.example/dashboard',
+      return_url: 'https://app.assurly.example/dashboard',
     });
   });
 
@@ -241,7 +241,7 @@ describe('billing API ownership and request safety', () => {
     expect(mocks.setOrganizationStripeCustomerId).toHaveBeenCalledWith('org-a', 'cus_live');
     expect(mocks.portalCreate).toHaveBeenCalledWith({
       customer: 'cus_live',
-      return_url: 'https://app.shipready.example/dashboard',
+      return_url: 'https://app.assurly.example/dashboard',
     });
   });
 

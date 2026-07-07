@@ -45,7 +45,7 @@ export function setOutput(name: string, value: string): void {
   if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) throw new Error('Invalid output name.');
   const outputFile = process.env.GITHUB_OUTPUT;
   if (outputFile) {
-    const delimiter = `shipready_${randomUUID()}`;
+    const delimiter = `assurly_${randomUUID()}`;
     fs.appendFileSync(outputFile, `${name}<<${delimiter}\n${value}\n${delimiter}\n`, 'utf8');
   } else {
     process.stdout.write(`::set-output name=${escapeProperty(name)}::${escapeData(value)}\n`);

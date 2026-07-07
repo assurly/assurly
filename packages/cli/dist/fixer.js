@@ -82,7 +82,7 @@ function setupBackup(projectPath) {
     }
     try {
         const timestamp = Math.floor(Date.now() / 1000);
-        const stashName = `shipready-backup-${timestamp}`;
+        const stashName = `assurly-backup-${timestamp}`;
         // Stash all changes (including untracked files)
         (0, child_process_1.execSync)(`git stash push --include-untracked -m "${stashName}"`, {
             cwd: projectPath,

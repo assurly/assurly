@@ -11,13 +11,13 @@ describe('GitHub workflow runtime', () => {
   });
 
   it('writes multiline outputs without workflow-file injection', () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'shipready-action-'));
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'assurly-action-'));
     const output = path.join(directory, 'output');
     process.env.GITHUB_OUTPUT = output;
     setOutput('findings-count', '1\nforged=1');
     const value = fs.readFileSync(output, 'utf8');
-    expect(value).toMatch(/^findings-count<<shipready_/);
-    expect(value).toContain('\n1\nforged=1\nshipready_');
+    expect(value).toMatch(/^findings-count<<assurly_/);
+    expect(value).toContain('\n1\nforged=1\nassurly_');
     fs.rmSync(directory, { recursive: true, force: true });
   });
 

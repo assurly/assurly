@@ -6,7 +6,7 @@
 
 ## Context and Problem Statement
 
-The ShipReady CLI scanner must analyze TypeScript and JavaScript files to verify production readiness. Simple regular expression matching is brittle and prone to false positives/negatives (e.g., matching strings inside comments, failing on complex code layout, or multiline declarations). We need a parsing solution to parse code files into an Abstract Syntax Tree (AST) to run robust rules and perform auto-fixes.
+The Assurly CLI scanner must analyze TypeScript and JavaScript files to verify production readiness. Simple regular expression matching is brittle and prone to false positives/negatives (e.g., matching strings inside comments, failing on complex code layout, or multiline declarations). We need a parsing solution to parse code files into an Abstract Syntax Tree (AST) to run robust rules and perform auto-fixes.
 
 ## Decision Drivers
 

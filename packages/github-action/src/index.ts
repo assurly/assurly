@@ -24,7 +24,7 @@ export async function run(): Promise<void> {
     core.info(`Scanning project path: ${absoluteScanPath}`);
 
     let command = 'npx';
-    let args = ['--yes', '@shipready/cli@1.0.0', 'scan', '--json', '--path', absoluteScanPath];
+    let args = ['--yes', 'assurly@1.0.0', 'scan', '--json', '--path', absoluteScanPath];
 
     if (cliPathInput) {
       const absoluteCliPath = path.resolve(cliPathInput);
@@ -97,7 +97,7 @@ export async function run(): Promise<void> {
         ? path.relative(process.cwd(), path.resolve(absoluteScanPath, finding.file))
         : undefined;
       const annotation: core.AnnotationProperties = {
-        title: `ShipReady: ${finding.ruleId}`,
+        title: `Assurly: ${finding.ruleId}`,
         file: fileRelative,
         startLine: finding.line,
       };
@@ -112,7 +112,7 @@ export async function run(): Promise<void> {
     }
 
     // 2. Generate Job Summary (Markdown Report)
-    const summary = core.summary.addHeading('🚀 ShipReady Production-Readiness Scan Results', 2);
+    const summary = core.summary.addHeading('🚀 Assurly Production-Readiness Scan Results', 2);
 
     if (findings.length === 0) {
       summary.addRaw(`
@@ -165,13 +165,13 @@ No configuration, integration, or security issues were found. Your project is pr
 
     if (errors.length > 0) {
       core.setFailed(
-        `ShipReady scan failed with ${errors.length} critical error(s). Please resolve them before merging.`,
+        `Assurly scan failed with ${errors.length} critical error(s). Please resolve them before merging.`,
       );
     } else {
-      core.info('ShipReady scan passed successfully!');
+      core.info('Assurly scan passed successfully!');
     }
   } catch (error: unknown) {
-    core.setFailed(`ShipReady Action failed: ${errorMessage(error)}`);
+    core.setFailed(`Assurly Action failed: ${errorMessage(error)}`);
   }
 }
 

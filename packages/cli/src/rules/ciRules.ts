@@ -3,20 +3,20 @@ import * as path from 'path';
 import { Rule, ProjectContext, Finding } from '../types';
 
 const WORKFLOW_PATTERN = /^\.github\/workflows\/.*\.(ya?ml)$/i;
-const SCAN_STEP_PATTERN = /shipready|npm\s+run\s+scan(?::self)?|npx\s+shipready\s+scan/i;
+const SCAN_STEP_PATTERN = /assurly|npm\s+run\s+scan(?::self)?|npx\s+assurly\s+scan/i;
 
 function workflowRunsScanStep(content: string): boolean {
   return SCAN_STEP_PATTERN.test(content);
 }
 
 /**
- * CI/CD Rule — hints when no workflow runs a ShipReady scan; never blocks.
+ * CI/CD Rule — hints when no workflow runs a Assurly scan; never blocks.
  */
 export const ciRules: Rule = {
   id: 'github-actions-integration',
   name: 'GitHub Actions CI/CD Integration',
   description:
-    'Ensures the project is configured with a GitHub Actions workflow for automatic ShipReady scans.',
+    'Ensures the project is configured with a GitHub Actions workflow for automatic Assurly scans.',
   severity: 'warning',
 
   async run(context: ProjectContext): Promise<Finding[]> {
@@ -39,9 +39,9 @@ export const ciRules: Rule = {
       {
         ruleId: this.id,
         severity: 'warning',
-        message: 'GitHub Actions workflow for ShipReady is missing.',
+        message: 'GitHub Actions workflow for Assurly is missing.',
         suggestion:
-          'Run "npx shipready init" to automatically generate the .github/workflows/shipready.yml workflow file.',
+          'Run "npx assurly init" to automatically generate the .github/workflows/assurly.yml workflow file.',
       },
     ];
   },

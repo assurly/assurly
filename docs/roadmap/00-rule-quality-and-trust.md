@@ -4,17 +4,17 @@
 
 ## Goal
 
-Make ShipReady's verdicts **trustworthy** before we expand its surface area. Concretely:
+Make Assurly's verdicts **trustworthy** before we expand its surface area. Concretely:
 
 1. Stop scanning noise (test files, fixtures, vendored code).
 2. Reclassify findings so **blockers are high-confidence only**; everything heuristic becomes a warning or "review".
 3. Make rules **monorepo-correct** (per-app `.env.example`, accept existing CI).
-4. Prove quality by **dogfooding**: ShipReady scanning itself must produce 0–2 blockers, not 19.
+4. Prove quality by **dogfooding**: Assurly scanning itself must produce 0–2 blockers, not 19.
 5. Make the scan **transparent** (report what was scanned and what was skipped).
 
 ## Why
 
-Trust is the entry ticket. If ShipReady flags its own test files, reports 19 blockers on a clean app, or blocks a
+Trust is the entry ticket. If Assurly flags its own test files, reports 19 blockers on a clean app, or blocks a
 deploy over a heuristic guess, the user stops believing the verdict — and then no feature matters. Detection is a
 commodity in 2026 (Supabase Security Advisor detects RLS for free); our only durable edge is **being right, quietly**.
 This phase is the cheapest work with the highest impact on trust, so it ships before anything else.
@@ -28,7 +28,7 @@ This phase is the cheapest work with the highest impact on trust, so it ships be
 - A **confidence** dimension on findings and a blocker/warning/review classification derived from it.
 - Monorepo-aware `.env.example` matching and CI-rule relaxation.
 - A scan-scope summary in the report.
-- A dogfood CI gate (ShipReady scans itself).
+- A dogfood CI gate (Assurly scans itself).
 
 **Not in scope (do NOT do here):**
 
@@ -90,7 +90,7 @@ nothing regresses). Then change Ship Gate classification to:
 5. **Monorepo-correct `.env.example`** in `scanEnvVariables`:
    - Match a `.env.example` per app root (nearest ancestor), not one global file for the whole monorepo.
    - Ignore framework/CI vars: `NODE_ENV`, `CI`, `VERCEL`, `NEXT_RUNTIME`, and anything only referenced in test files.
-6. **Relax the CI rule** (`github-actions-integration`): if a workflow exists that runs a ShipReady/scan step,
+6. **Relax the CI rule** (`github-actions-integration`): if a workflow exists that runs a Assurly/scan step,
    pass; otherwise emit an onboarding **hint (warning)**, never a blocker.
 7. **Scan-scope summary:** extend the report with `scanScope: { scanned: number; skipped: number; roots: string[] }`
    and surface a one-line summary ("Scanned apps/web, 312 files, skipped tests & fixtures") in CLI output and the
@@ -140,8 +140,8 @@ package.json (root)                                     (change — scan:self sc
 
 ```bash
 # from repo root
-npm run build -w @shipready/scanner-core
-npm run test -w @shipready/scanner-core
+npm run build -w @assurly/scanner-core
+npm run test -w @assurly/scanner-core
 npm run scan:self          # must report 0–2 blockers
 # from apps/web
 npx tsc --noEmit && npm run lint && npm run test

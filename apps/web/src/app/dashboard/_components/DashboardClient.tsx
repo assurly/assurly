@@ -189,7 +189,7 @@ function DashboardContent({
     const success = searchParams.get('success');
     const cancel = searchParams.get('cancel');
     if (success === 'stripe_upgrade')
-      return { message: 'Success! Upgraded to ShipReady Pro Plan. 🚀', type: 'success' };
+      return { message: 'Success! Upgraded to Assurly Pro Plan. 🚀', type: 'success' };
     if (success === 'stripe_downgrade')
       return { message: 'Subscription cancelled. Downgraded to Free Plan.', type: 'info' };
     if (success === 'github_app_installed')
@@ -740,7 +740,7 @@ function DashboardContent({
     setScanProgress(0);
     setScanError(null);
     setScanLogs([
-      '⚙ Initializing ShipReady Scanner...',
+      '⚙ Initializing Assurly Scanner...',
       `📥 Fetching repository tree for "${selectedRepo.name}"...`,
     ]);
     scanAbortRef.current = false;
@@ -1046,7 +1046,7 @@ function DashboardContent({
         }
       }
 
-      // Check for missing GitHub Actions workflow with a ShipReady scan step
+      // Check for missing GitHub Actions workflow with a Assurly scan step
       const workflowPaths = tree
         .filter(
           (node) =>
@@ -1060,9 +1060,7 @@ function DashboardContent({
           const workflowRes = await fetchFileContent(workflowPath);
           if (workflowRes.ok) {
             const workflowContent = await workflowRes.text();
-            if (
-              /shipready|npm\s+run\s+scan(?::self)?|npx\s+shipready\s+scan/i.test(workflowContent)
-            ) {
+            if (/assurly|npm\s+run\s+scan(?::self)?|npx\s+assurly\s+scan/i.test(workflowContent)) {
               hasScanWorkflow = true;
               break;
             }
@@ -1077,9 +1075,9 @@ function DashboardContent({
           ruleId: 'github-actions-integration',
           severity: 'warning',
           file: 'Global Configs',
-          message: 'GitHub Actions workflow for ShipReady is missing.',
+          message: 'GitHub Actions workflow for Assurly is missing.',
           suggestion:
-            'Run "npx shipready init" in your repository to automatically configure the CI/CD pipeline.',
+            'Run "npx assurly init" in your repository to automatically configure the CI/CD pipeline.',
         });
       }
 

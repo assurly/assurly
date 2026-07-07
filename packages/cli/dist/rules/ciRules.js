@@ -37,17 +37,17 @@ exports.ciRules = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const WORKFLOW_PATTERN = /^\.github\/workflows\/.*\.(ya?ml)$/i;
-const SCAN_STEP_PATTERN = /shipready|npm\s+run\s+scan(?::self)?|npx\s+shipready\s+scan/i;
+const SCAN_STEP_PATTERN = /assurly|npm\s+run\s+scan(?::self)?|npx\s+assurly\s+scan/i;
 function workflowRunsScanStep(content) {
     return SCAN_STEP_PATTERN.test(content);
 }
 /**
- * CI/CD Rule — hints when no workflow runs a ShipReady scan; never blocks.
+ * CI/CD Rule — hints when no workflow runs a Assurly scan; never blocks.
  */
 exports.ciRules = {
     id: 'github-actions-integration',
     name: 'GitHub Actions CI/CD Integration',
-    description: 'Ensures the project is configured with a GitHub Actions workflow for automatic ShipReady scans.',
+    description: 'Ensures the project is configured with a GitHub Actions workflow for automatic Assurly scans.',
     severity: 'warning',
     async run(context) {
         const workflowFiles = context.files.filter((file) => WORKFLOW_PATTERN.test(file.replace(/\\/g, '/')));
@@ -66,8 +66,8 @@ exports.ciRules = {
             {
                 ruleId: this.id,
                 severity: 'warning',
-                message: 'GitHub Actions workflow for ShipReady is missing.',
-                suggestion: 'Run "npx shipready init" to automatically generate the .github/workflows/shipready.yml workflow file.',
+                message: 'GitHub Actions workflow for Assurly is missing.',
+                suggestion: 'Run "npx assurly init" to automatically generate the .github/workflows/assurly.yml workflow file.',
             },
         ];
     },

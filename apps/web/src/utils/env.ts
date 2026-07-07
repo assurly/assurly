@@ -63,7 +63,7 @@ export function assertStripeConfig(): void {
   if (secretKey.startsWith('sk_live_') && process.env.NODE_ENV !== 'production') {
     // Warn loudly but do not block – developer may intentionally test against live mode.
     console.warn(
-      '[ShipReady] WARNING: STRIPE_SECRET_KEY is a live key but NODE_ENV is not "production". ' +
+      '[Assurly] WARNING: STRIPE_SECRET_KEY is a live key but NODE_ENV is not "production". ' +
         'Use a test key (sk_test_...) for local development.',
     );
   }
@@ -98,7 +98,7 @@ export function getResendApiKey(): string | undefined {
 
 export function getResendFromAddress(): string {
   const value = process.env.RESEND_FROM_EMAIL?.trim();
-  return value || 'ShipReady Alerts <onboarding@resend.dev>';
+  return value || 'Assurly Alerts <onboarding@resend.dev>';
 }
 
 export function assertResendApiKey(): string {

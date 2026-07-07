@@ -244,7 +244,7 @@ export function buildBatchFixToastMessage(
       `${remainingErrorCount} blocking error${remainingErrorCount === 1 ? '' : 's'} still require manual review.`,
     );
   } else {
-    parts.push('All blocking errors that ShipReady can auto-fix locally are resolved.');
+    parts.push('All blocking errors that Assurly can auto-fix locally are resolved.');
   }
 
   return parts.join(' ');

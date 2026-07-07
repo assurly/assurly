@@ -65,7 +65,7 @@ export const POST = secureRoute(
     const supportEmail = z
       .string()
       .email()
-      .parse(process.env.SUPPORT_EMAIL || 'support@shipready.dev');
+      .parse(process.env.SUPPORT_EMAIL || 'support@assurly.dev');
     const name = escapeHtml(body.name);
     const email = escapeHtml(body.email);
     const subject = escapeHtml(body.subject.toUpperCase());
@@ -74,11 +74,11 @@ export const POST = secureRoute(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        from: 'ShipReady Support <onboarding@resend.dev>',
+        from: 'Assurly Support <onboarding@resend.dev>',
         to: supportEmail,
         reply_to: body.email,
-        subject: `[ShipReady Support] ${body.subject.toUpperCase()} from ${body.name}`,
-        html: `<h2>New ShipReady support request</h2><p><strong>Name:</strong> ${name}</p><p><strong>Email:</strong> ${email}</p><p><strong>Subject:</strong> ${subject}</p><hr><p><strong>Message:</strong></p><p style="white-space:pre-wrap">${message}</p>`,
+        subject: `[Assurly Support] ${body.subject.toUpperCase()} from ${body.name}`,
+        html: `<h2>New Assurly support request</h2><p><strong>Name:</strong> ${name}</p><p><strong>Email:</strong> ${email}</p><p><strong>Subject:</strong> ${subject}</p><hr><p><strong>Message:</strong></p><p style="white-space:pre-wrap">${message}</p>`,
       }),
     });
     if (!response.ok)

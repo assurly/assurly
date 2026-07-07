@@ -1,4 +1,4 @@
-# ADR 0005: Share scanner rules across all ShipReady surfaces
+# ADR 0005: Share scanner rules across all Assurly surfaces
 
 ## Status
 
@@ -6,7 +6,7 @@ Accepted
 
 ## Decision
 
-ShipReady uses `@shipready/scanner-core` as its browser-safe rule implementation. Web scans,
+Assurly uses `@assurly/scanner-core` as its browser-safe rule implementation. Web scans,
 GitHub webhooks, and filesystem-backed CLI adapters consume the same functions. JavaScript and
 TypeScript security decisions use Babel AST nodes rather than text or comment matching.
 

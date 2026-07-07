@@ -19,7 +19,7 @@ function MobileMenuHarness({
 
   return (
     <div>
-      <div id="header-logo">ShipReady</div>
+      <div id="header-logo">Assurly</div>
       <button
         type="button"
         className="hamburger-btn"

@@ -24,14 +24,14 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run build:cli
-      - run: npm run build -w @shipready/mcp-server
+      - run: npm run build -w @assurly/mcp-server
       - run: npm run build:action
       - run: npm pack -w packages/scanner-core -w packages/cli -w packages/mcp-server
       - uses: actions/upload-artifact@v4
         with:
-          name: shipready-release-candidates
+          name: assurly-release-candidates
           path: |
-            shipready-*.tgz
+            assurly-*.tgz
             packages/github-action/action.yml
             packages/github-action/dist/index.js
           if-no-files-found: error
@@ -58,7 +58,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci --no-audit --no-fund
       - run: npm run build:cli
-      - run: npm run build -w @shipready/mcp-server
+      - run: npm run build -w @assurly/mcp-server
       - name: Publish scanner-core, CLI, and MCP server (dependency order)
         run: |
           npm publish --provenance -w packages/scanner-core
@@ -70,7 +70,7 @@ jobs:
 # Release candidates (package job) and npm publish (publish job) are intentionally separate operations.
 # The publish job runs only when a human dispatches this workflow with confirm set to "publish".
 # Prerequisites before the first publish:
-# - Create the @shipready npm org and configure 2FA on the publishing account.
+# - Create the @assurly npm org and configure 2FA on the publishing account.
 # - Add NPM_TOKEN (Automation token with publish access) to repository secrets.
 # - Align each package repository.url with this GitHub repository (required for publishConfig.provenance).
 # - Choose and tag the first public version (currently 1.0.0 in all three packages).

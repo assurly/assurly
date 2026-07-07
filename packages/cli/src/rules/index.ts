@@ -12,7 +12,7 @@ import { sqlSafetyRules } from './sqlSafetyRules';
 import { deeperStackRules } from './deeperStackRules';
 
 /**
- * Array containing all static analysis rules implemented in ShipReady.
+ * Array containing all static analysis rules implemented in Assurly.
  */
 export const allRules: Rule[] = [
   envRules,

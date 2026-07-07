@@ -159,7 +159,7 @@ describe('Proxy Middleware', () => {
     expect(mockCookieSet).toHaveBeenCalled();
 
     const setArgs = mockCookieSet.mock.calls[0];
-    expect(setArgs[0]).toBe('shipready-session');
+    expect(setArgs[0]).toBe('assurly-session');
     const parsedCookie = JSON.parse(decodeURIComponent(setArgs[1]));
     expect(parsedCookie.accessToken).toBe('new-access-token');
     expect(parsedCookie.refreshToken).toBe('new-refresh-token');
@@ -282,7 +282,7 @@ describe('Proxy route protection (/dashboard)', () => {
 
   it('clears the session cookie when redirecting an anonymous request', async () => {
     const res = await proxy(makeRequest(undefined, '/dashboard'));
-    const cookie = res.cookies.get('shipready-session');
+    const cookie = res.cookies.get('assurly-session');
     expect(cookie?.value).toBe('');
     expect(cookie?.maxAge).toBe(0);
   });

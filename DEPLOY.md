@@ -116,7 +116,7 @@ curl -sI https://<your-domain>/api/badge/00000000000000000000000000000000
 # expect: HTTP 404, empty body (unknown token must not leak whether a repo/scan exists)
 
 curl -s https://<your-domain>/mcp | grep -o '<h1>[^<]*</h1>'
-# expect: <h1>ShipReady MCP Server</h1>
+# expect: <h1>Assurly MCP Server</h1>
 ```
 
 Then manually trigger one GitHub PR webhook against a connected test repo and confirm:
@@ -136,12 +136,12 @@ it never runs on push, PR, or schedule.
 
 **Prerequisites (one-time, do these before the first dispatch):**
 
-- [ ] Create the `shipready` **GitHub org** and transfer this repository into it, so the origin becomes
-      `github.com/shipready/shipready` (path A, chosen). All three `package.json` files already declare
-      `repository.url = https://github.com/shipready/shipready.git` — after the transfer they match reality, which
+- [ ] Create the `assurly` **GitHub org** and transfer this repository into it, so the origin becomes
+      `github.com/assurly/assurly` (path A, chosen). All three `package.json` files already declare
+      `repository.url = https://github.com/assurly/assurly.git` — after the transfer they match reality, which
       `publishConfig.provenance: true` **requires** (provenance verifies the publish ran from Actions on this exact
       repo). Update the local `git remote set-url origin` and the GitHub App / webhook URLs after the move.
-- [ ] Create the `@shipready` **npm org** (or confirm you own it) and enable 2FA on the publishing account.
+- [ ] Create the `@assurly` **npm org** (or confirm you own it) and enable 2FA on the publishing account.
 - [ ] Add `NPM_TOKEN` (an Automation token with publish access) to the repository's GitHub Actions secrets.
 - [ ] Confirm the first public version number. All three packages are `1.0.0`.
 - [ ] After publishing, work through `docs/mcp-directory-submissions.md` — listing the MCP server in the MCP
@@ -156,11 +156,11 @@ it never runs on push, PR, or schedule.
 **Verify:**
 
 ```bash
-npm view @shipready/scanner-core version
-npm view @shipready/cli version
-npm view @shipready/mcp-server version
+npm view @assurly/scanner-core version
+npm view assurly version
+npm view @assurly/mcp-server version
 
-npx -y @shipready/mcp-server &
+npx -y @assurly/mcp-server &
 sleep 2 && kill %1 2>/dev/null
 # the server is stdio-only (no CLI flags) and blocks waiting for an MCP client,
 # so this just confirms npx can resolve and start it without a module error —

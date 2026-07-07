@@ -1,19 +1,19 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { explainRule } from '@shipready/cli/ruleExplainer';
+import { explainRule } from 'assurly/ruleExplainer';
 import {
   scanProjectDirectory,
   scanProjectFiles,
   type ScanProjectFileInput,
   type ScanProjectResult,
-} from '@shipready/cli/scanProject';
+} from 'assurly/scanProject';
 
-export const SHIPREADY_MCP_TOOL_NAMES = [
-  'shipready_scan_path',
-  'shipready_scan_files',
-  'shipready_explain_rule',
+export const ASSURLY_MCP_TOOL_NAMES = [
+  'assurly_scan_path',
+  'assurly_scan_files',
+  'assurly_explain_rule',
 ] as const;
 
-export type ShipReadyMcpToolName = (typeof SHIPREADY_MCP_TOOL_NAMES)[number];
+export type AssurlyMcpToolName = (typeof ASSURLY_MCP_TOOL_NAMES)[number];
 
 export interface ScanPathInput {
   path: string;

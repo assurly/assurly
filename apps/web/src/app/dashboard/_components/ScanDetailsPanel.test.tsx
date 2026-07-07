@@ -41,7 +41,7 @@ const findings: ScanFinding[] = [
     severity: 'warning',
     file_path: 'Global Configs',
     line_number: 1,
-    message: 'GitHub Actions workflow for ShipReady is missing.',
+    message: 'GitHub Actions workflow for Assurly is missing.',
     created_at: '2026-06-26T09:52:00Z',
   },
 ];
@@ -114,7 +114,7 @@ describe('ScanDetailsPanel information architecture', () => {
     render(<ScanDetailsPanel {...buildProps()} />);
 
     expect(screen.getByText('Initialize CI workflow')).toBeTruthy();
-    expect(screen.getByText('npx shipready init')).toBeTruthy();
+    expect(screen.getByText('npx assurly init')).toBeTruthy();
     expect(screen.getByRole('button', { name: /copy command/i })).toBeTruthy();
   });
 
@@ -201,7 +201,7 @@ describe('ScanDetailsPanel information architecture', () => {
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledTimes(1);
     });
-    expect(writeText.mock.calls[0]?.[0]).toContain('ShipReady fix prompt');
+    expect(writeText.mock.calls[0]?.[0]).toContain('Assurly fix prompt');
     expect(screen.getByText('Fix prompt copied to clipboard.')).toBeTruthy();
   });
 });

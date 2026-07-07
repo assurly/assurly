@@ -286,7 +286,9 @@ header .logo {
   letter-spacing: -0.03em;
   display: flex;
   align-items: center;
-  gap: 8px;
+  /* No flex gap: the wordmark "Assur" + accented "ly" must read as one word.
+     The space after the 📦 emoji is a literal space in the markup. */
+  gap: 0;
 }
 
 header .logo span {
@@ -2177,7 +2179,7 @@ footer {
   color: var(--text-muted);
 }
 
-.shipready-logo-icon {
+.assurly-logo-icon {
   font-size: 2.2rem;
 }
 
@@ -3157,7 +3159,7 @@ footer .footer-links a:hover {
   height: 2.5rem;
 }
 
-.shipready-logo {
+.assurly-logo {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -3167,16 +3169,16 @@ footer .footer-links a:hover {
   line-height: 1;
 }
 
-.shipready-logo__mark {
+.assurly-logo__mark {
   width: 1.25em;
   height: 1.25em;
 }
 
-.shipready-logo__text {
+.assurly-logo__text {
   color: var(--color-accent);
 }
 
-.shipready-logo__accent {
+.assurly-logo__accent {
   color: var(--color-text);
 }
 

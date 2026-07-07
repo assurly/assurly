@@ -3,7 +3,7 @@ import { ConfigurationError } from './env';
 
 const GITHUB_API_URL = 'https://api.github.com';
 const GITHUB_API_VERSION = '2026-03-10';
-const GITHUB_USER_AGENT = 'ShipReady-App';
+const GITHUB_USER_AGENT = 'Assurly-App';
 
 export interface GitHubAppConfig {
   appId: string;
@@ -64,7 +64,7 @@ export function resolveGitHubReadToken(userGitHubToken?: string): string | undef
 }
 
 const RELOGIN_FOR_WRITE_MESSAGE =
-  'ShipReady needs permission to create pull requests on GitHub. Sign out, sign in again, and approve repository access when prompted.';
+  'Assurly needs permission to create pull requests on GitHub. Sign out, sign in again, and approve repository access when prompted.';
 
 interface RepositoryPermissionsResponse {
   permissions?: {
@@ -155,7 +155,7 @@ async function ensureUserFork(token: string, upstreamName: string): Promise<stri
 }
 
 /**
- * Resolves where ShipReady should commit and open a fix PR. Uses direct write
+ * Resolves where Assurly should commit and open a fix PR. Uses direct write
  * access when available, otherwise forks a public upstream repo into the user's
  * account and opens a cross-repository pull request.
  */
