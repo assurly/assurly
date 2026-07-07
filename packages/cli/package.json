@@ -2,6 +2,19 @@
   "name": "@shipready/cli",
   "version": "1.0.0",
   "description": "Core CLI for ShipReady production readiness verification",
+  "keywords": [
+    "cli",
+    "security",
+    "static-analysis",
+    "pre-deploy",
+    "ship-gate",
+    "nextjs",
+    "supabase",
+    "stripe",
+    "vercel",
+    "ai-generated-code"
+  ],
+  "homepage": "https://shipready.dev",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

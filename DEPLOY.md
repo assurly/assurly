@@ -136,15 +136,16 @@ it never runs on push, PR, or schedule.
 
 **Prerequisites (one-time, do these before the first dispatch):**
 
-- [ ] Create the `@shipready` npm org (or confirm you already own it) and enable 2FA on the publishing account.
+- [ ] Create the `shipready` **GitHub org** and transfer this repository into it, so the origin becomes
+      `github.com/shipready/shipready` (path A, chosen). All three `package.json` files already declare
+      `repository.url = https://github.com/shipready/shipready.git` — after the transfer they match reality, which
+      `publishConfig.provenance: true` **requires** (provenance verifies the publish ran from Actions on this exact
+      repo). Update the local `git remote set-url origin` and the GitHub App / webhook URLs after the move.
+- [ ] Create the `@shipready` **npm org** (or confirm you own it) and enable 2FA on the publishing account.
 - [ ] Add `NPM_TOKEN` (an Automation token with publish access) to the repository's GitHub Actions secrets.
-- [ ] Decide the canonical GitHub repository and align `repository.url` in `packages/cli/package.json` and
-      `packages/mcp-server/package.json` (currently `shipready/shipready`; the actual origin is
-      `tibco87/ShipReady` at the time of writing — this was deliberately left as an open decision in Phase 4b).
-      `packages/scanner-core/package.json` has no `repository` field at all yet and needs one added.
-      **This step is required** — `publishConfig.provenance: true` verifies the publish came from Actions running
-      against this exact repository, and will fail otherwise.
-- [ ] Confirm the first public version number. All three packages are currently `1.0.0`.
+- [ ] Confirm the first public version number. All three packages are `1.0.0`.
+- [ ] After publishing, work through `docs/mcp-directory-submissions.md` — listing the MCP server in the MCP
+      directories is what makes it discoverable to Cursor / Claude Code users (free, high-leverage distribution).
 
 **Publish (in this exact order — `mcp-server` depends on the other two):**
 

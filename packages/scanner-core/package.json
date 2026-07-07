@@ -2,13 +2,34 @@
   "name": "@shipready/scanner-core",
   "version": "1.0.0",
   "description": "Browser-safe static analysis rules shared by ShipReady surfaces",
+  "keywords": [
+    "static-analysis",
+    "security",
+    "ship-gate",
+    "nextjs",
+    "supabase",
+    "stripe",
+    "vercel",
+    "rls",
+    "code-scanner"
+  ],
+  "homepage": "https://shipready.dev",
   "license": "MIT",
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "engines": {
+    "node": ">=20.9"
+  },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shipready/shipready.git",
+    "directory": "packages/scanner-core"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run src",
