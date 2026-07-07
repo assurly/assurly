@@ -1,7 +1,22 @@
 {
   "name": "@shipready/mcp-server",
   "version": "1.0.0",
-  "description": "MCP server exposing ShipReady Ship Gate scans to AI agents",
+  "description": "MCP server exposing ShipReady Ship Gate scans to AI agents — a pre-deploy ship gate Cursor and Claude Code call before shipping",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "cursor",
+    "claude-code",
+    "ai-agents",
+    "security",
+    "ship-gate",
+    "static-analysis",
+    "pre-deploy",
+    "nextjs",
+    "supabase"
+  ],
+  "homepage": "https://shipready.dev/mcp",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {

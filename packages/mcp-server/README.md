@@ -1,8 +1,10 @@
 # @shipready/mcp-server
 
-Local stdio MCP server that exposes ShipReady Ship Gate scans to AI agents (Cursor, Claude Code, and other MCP clients).
+**A pre-deploy ship gate your AI agent calls before shipping.** A local stdio [MCP](https://modelcontextprotocol.io) server that lets Cursor, Claude Code, and other MCP clients scan a Next.js + Supabase + Stripe + Vercel project and get one trusted verdict — blockers to fix, warnings to review — _before_ the agent ships to production.
 
-Tools mirror the CLI scan pipeline (`allRules` + detector + Ship Gate report) — findings match `shipready scan` on the same project.
+The agent that wrote your app can now check it: **write code → `shipready_scan_path` → fix blockers → re-scan until READY TO SHIP.**
+
+Everything runs locally over stdio. Your source code is never uploaded — the tools mirror the `shipready scan` pipeline exactly (`allRules` + detector + Ship Gate report), so an agent scan matches the CLI on the same project.
 
 ## Tools
 
