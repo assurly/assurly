@@ -1084,7 +1084,7 @@ function setOutput(name, value) {
   if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) throw new Error("Invalid output name.");
   const outputFile = process.env.GITHUB_OUTPUT;
   if (outputFile) {
-    const delimiter = `shipready_${(0, import_crypto.randomUUID)()}`;
+    const delimiter = `assurly_${(0, import_crypto.randomUUID)()}`;
     fs.appendFileSync(outputFile, `${name}<<${delimiter}
 ${value}
 ${delimiter}
@@ -1144,7 +1144,7 @@ async function run() {
     const absoluteScanPath = path.resolve(scanPath);
     info(`Scanning project path: ${absoluteScanPath}`);
     let command2 = "npx";
-    let args = ["--yes", "@shipready/cli@1.0.0", "scan", "--json", "--path", absoluteScanPath];
+    let args = ["--yes", "assurly@1.0.0", "scan", "--json", "--path", absoluteScanPath];
     if (cliPathInput) {
       const absoluteCliPath = path.resolve(cliPathInput);
       if (fs2.existsSync(absoluteCliPath)) {
@@ -1201,7 +1201,7 @@ async function run() {
     for (const finding of findings) {
       const fileRelative = finding.file ? path.relative(process.cwd(), path.resolve(absoluteScanPath, finding.file)) : void 0;
       const annotation = {
-        title: `ShipReady: ${finding.ruleId}`,
+        title: `Assurly: ${finding.ruleId}`,
         file: fileRelative,
         startLine: finding.line
       };
@@ -1213,7 +1213,7 @@ async function run() {
         warning(msg, annotation);
       }
     }
-    const summary2 = summary.addHeading("\u{1F680} ShipReady Production-Readiness Scan Results", 2);
+    const summary2 = summary.addHeading("\u{1F680} Assurly Production-Readiness Scan Results", 2);
     if (findings.length === 0) {
       summary2.addRaw(`
 ### \u2714 Success!
@@ -1262,13 +1262,13 @@ ${summaryText}`);
     }
     if (errors.length > 0) {
       setFailed(
-        `ShipReady scan failed with ${errors.length} critical error(s). Please resolve them before merging.`
+        `Assurly scan failed with ${errors.length} critical error(s). Please resolve them before merging.`
       );
     } else {
-      info("ShipReady scan passed successfully!");
+      info("Assurly scan passed successfully!");
     }
   } catch (error2) {
-    setFailed(`ShipReady Action failed: ${errorMessage(error2)}`);
+    setFailed(`Assurly Action failed: ${errorMessage(error2)}`);
   }
 }
 if (process.env.NODE_ENV !== "test") {

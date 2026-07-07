@@ -33,8 +33,9 @@ describe('dashboard icon system', () => {
   it('renders the Assurly logo mark without emoji copy', () => {
     const { container } = render(<AssurlyLogo />);
 
-    expect(screen.getByText('Ship')).toBeTruthy();
-    expect(screen.getByText('Ready')).toBeTruthy();
+    // Two-tone wordmark: "Assur" + accented "ly" reads as the single word "Assurly".
+    expect(container.querySelector('.assurly-logo__text')?.textContent).toBe('Assurly');
+    expect(container.querySelector('.assurly-logo__accent')?.textContent).toBe('ly');
     expect(container.querySelector('.assurly-logo__mark')).toBeTruthy();
     expect(container.textContent).not.toMatch(/📦/);
   });
