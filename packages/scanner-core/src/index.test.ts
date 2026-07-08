@@ -95,6 +95,11 @@ describe('shared scanner core', () => {
     const finding = scanRscDataLeaks(code).findings[0];
     expect(finding?.confidence).toBe('medium');
   });
+
+  it('does not flag type-only imports from server modules', () => {
+    const code = `'use client';\nimport type { User } from '../../utils/dbAdapter';`;
+    expect(scanRscDataLeaks(code).findings).toEqual([]);
+  });
 });
 
 describe('scanEnvVariables monorepo matching', () => {

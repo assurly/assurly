@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useEffectEvent, useRef, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { User, Organization, Repository, Scan, ScanFinding } from '../../../utils/dbAdapter';
+import type { User, Organization, Repository, Scan, ScanFinding } from '../../../utils/dbAdapter';
 import {
   scanSqlMigration,
   scanStripeWebhook,

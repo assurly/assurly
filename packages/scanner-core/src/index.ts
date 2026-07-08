@@ -197,7 +197,7 @@ export function scanRscDataLeaks(content: string, file = 'component.tsx'): ScanR
     program?.directives?.some((directive) => directive.value?.value === 'use client') ?? false;
 
   walk(ast, (node) => {
-    if (isClient && node.type === 'ImportDeclaration') {
+    if (isClient && node.type === 'ImportDeclaration' && node.importKind !== 'type') {
       const source = String((node.source as { value?: unknown } | undefined)?.value ?? '');
       const lower = source.toLowerCase();
       const unsafe =
