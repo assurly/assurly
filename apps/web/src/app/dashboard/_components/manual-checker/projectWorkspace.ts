@@ -166,7 +166,7 @@ export interface ScanMetricSummary {
   scannedFileCount: number;
 }
 
-export interface IssueGroupSummary extends ShipGateGroup {}
+export type IssueGroupSummary = ShipGateGroup;
 
 function isTestFilePath(path: string): boolean {
   return /\.(?:test|spec)\.[jt]sx?$/i.test(path) || /(?:^|\/)__tests__\//.test(path);

@@ -402,6 +402,11 @@ function DashboardContent({
     // scans whose full result — including findings beyond the persisted cap — is
     // kept in memory so it is not truncated mid-session.
     if (isLocalScanId(selectedScan.id) || localScan?.id === selectedScan.id) {
+      // Intentional immediate status transition: this scan's findings are already
+      // in memory, so we deliberately skip the DB fetch and mark the detail ready
+      // now. Deriving this from render would mean rebuilding the component's
+      // async status machine for no behavioral gain.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRepoDetailStatus(markRepoDetailReady);
       return;
     }
