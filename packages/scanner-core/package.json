@@ -15,6 +15,7 @@
   ],
   "homepage": "https://assurly.dev",
   "license": "MIT",
+  "author": "Assurly",
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,7 +24,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "repository": {
     "type": "git",

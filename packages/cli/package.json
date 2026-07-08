@@ -36,7 +36,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20.9"
@@ -68,5 +69,6 @@
     "url": "https://github.com/assurly/assurly.git",
     "directory": "packages/cli"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "author": "Assurly"
 }
