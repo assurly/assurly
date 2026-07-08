@@ -168,7 +168,7 @@ function scanRscDataLeaks(content, file = 'component.tsx') {
     const program = ast.program;
     const isClient = program?.directives?.some((directive) => directive.value?.value === 'use client') ?? false;
     walk(ast, (node) => {
-        if (isClient && node.type === 'ImportDeclaration') {
+        if (isClient && node.type === 'ImportDeclaration' && node.importKind !== 'type') {
             const source = String(node.source?.value ?? '');
             const lower = source.toLowerCase();
             const unsafe = [...serverPackages].some((pkg) => lower === pkg || lower.startsWith(`${pkg}/`)) ||
