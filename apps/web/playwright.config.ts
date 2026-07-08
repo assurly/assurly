@@ -25,6 +25,10 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       E2E_DASHBOARD_FIXTURE: '1',
+      // The app requires APP_URL to boot (getApplicationUrl throws otherwise).
+      // Set it here so E2E is self-contained and runs in CI without a local
+      // .env file — the dev server is served from 127.0.0.1:3200.
+      APP_URL: 'http://127.0.0.1:3200',
     },
   },
 });
