@@ -5,8 +5,6 @@ import { buildShipGateFromWebFindings } from '../../../../utils/shipGate';
 import { formatCount } from '../../../../utils/pluralize';
 import type { ManualCheckerTab } from './useManualScan';
 import {
-  buildIssueGroupSummaries,
-  buildScanMetricSummary,
   getScanActionLabel,
   type IssueGroupSummary,
   type ProjectFileStats,
