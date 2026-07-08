@@ -1,6 +1,6 @@
 {
   "name": "@assurly/scanner-core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Browser-safe static analysis rules shared by Assurly surfaces",
   "keywords": [
     "static-analysis",

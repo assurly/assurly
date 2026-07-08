@@ -1,6 +1,6 @@
 {
   "name": "@assurly/mcp-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server exposing Assurly Ship Gate scans to AI agents — a pre-deploy ship gate Cursor and Claude Code call before shipping",
   "keywords": [
     "mcp",
@@ -38,8 +38,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "assurly": "1.0.0",
-    "@assurly/scanner-core": "1.0.0",
+    "assurly": "1.0.1",
+    "@assurly/scanner-core": "1.0.1",
     "zod": "^3.22.4"
   },
   "devDependencies": {

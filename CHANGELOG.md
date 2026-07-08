@@ -7,7 +7,18 @@ these packages follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 Published packages: `@assurly/scanner-core`, `assurly`,
 `@assurly/mcp-server`. They are released together and share a version.
 
-## [1.0.0] — Unreleased
+## [1.0.1] — 2026-07-08
+
+### Fixed
+
+- **`@assurly/scanner-core`** — the `rsc-data-leaks` rule no longer flags
+  TypeScript `import type` statements as client-side imports of server modules.
+  Type-only imports are erased at compile time and never reach the browser
+  bundle, so treating them as leaks produced false positives (surfaced by
+  dogfooding `assurly scan` on the Assurly repo itself). Detection now skips
+  `ImportDeclaration` nodes whose Babel `importKind` is `type`.
+
+## [1.0.0] — 2026-07-08
 
 First public release.
 
@@ -32,4 +43,5 @@ First public release.
   GitHub Actions, so the published artifacts are cryptographically linked to the
   source commit and build.
 
+[1.0.1]: https://github.com/assurly/assurly/releases/tag/v1.0.1
 [1.0.0]: https://github.com/assurly/assurly/releases/tag/v1.0.0
