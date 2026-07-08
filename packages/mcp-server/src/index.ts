@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -10,11 +12,25 @@ import {
   ASSURLY_MCP_TOOL_NAMES,
 } from './tools';
 
+// Read the version from package.json at runtime so it never drifts from the
+// published npm version. In the bundled CJS output, __dirname is the dist/
+// directory, so ../package.json resolves to the installed package manifest.
+function getPackageVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8')) as {
+      version?: string;
+    };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
 export function createAssurlyMcpServer(): McpServer {
   const server = new McpServer(
     {
       name: 'assurly',
-      version: '1.0.0',
+      version: getPackageVersion(),
     },
     {
       instructions:
@@ -59,9 +75,9 @@ export function createAssurlyMcpServer(): McpServer {
   server.registerTool(
     'assurly_explain_rule',
     {
-      title: 'Explain a Assurly rule',
+      title: 'Explain an Assurly rule',
       description:
-        'Return a human-readable explanation and remediation steps for a Assurly rule id (e.g. supabase-rls).',
+        'Return a human-readable explanation and remediation steps for an Assurly Ship Gate rule id (e.g. supabase-rls).',
       inputSchema: {
         ruleId: z.string().describe('Assurly rule identifier'),
       },

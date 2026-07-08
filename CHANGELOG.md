@@ -7,6 +7,24 @@ these packages follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 Published packages: `@assurly/scanner-core`, `assurly`,
 `@assurly/mcp-server`. They are released together and share a version.
 
+## [1.0.2] — 2026-07-08
+
+### Fixed
+
+- **`@assurly/mcp-server`** — the server now reports its real package version in
+  the MCP `initialize` handshake instead of a hardcoded `1.0.0`. The version is
+  read from `package.json` at runtime, so it can no longer drift from the
+  published npm version.
+- **`@assurly/mcp-server`** — corrected the `assurly_explain_rule` tool title and
+  description grammar ("Explain an Assurly Ship Gate rule").
+
+### Changed
+
+- **GitHub Action** — the Assurly action now runs on the Node.js 24 runtime
+  (`using: node24`) instead of the deprecated Node.js 20, so consumers no longer
+  see a runtime-deprecation warning in their workflow logs. CI workflows pin
+  `actions/upload-artifact` to a Node 24 release as well.
+
 ## [1.0.1] — 2026-07-08
 
 ### Fixed
@@ -43,5 +61,6 @@ First public release.
   GitHub Actions, so the published artifacts are cryptographically linked to the
   source commit and build.
 
+[1.0.2]: https://github.com/assurly/assurly/releases/tag/v1.0.2
 [1.0.1]: https://github.com/assurly/assurly/releases/tag/v1.0.1
 [1.0.0]: https://github.com/assurly/assurly/releases/tag/v1.0.0

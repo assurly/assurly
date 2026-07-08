@@ -1051,7 +1051,7 @@ function DashboardContent({
         }
       }
 
-      // Check for missing GitHub Actions workflow with a Assurly scan step
+      // Check for missing GitHub Actions workflow with an Assurly scan step
       const workflowPaths = tree
         .filter(
           (node) =>

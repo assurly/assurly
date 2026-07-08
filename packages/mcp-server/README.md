@@ -16,7 +16,7 @@ Everything runs locally over stdio. Your source code is never uploaded — the t
 
 ## Install (npm)
 
-After the package is published to the public npm registry:
+Run the server directly with npx — no global install needed:
 
 ```bash
 npx -y @assurly/mcp-server

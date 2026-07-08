@@ -90,7 +90,7 @@ nothing regresses). Then change Ship Gate classification to:
 5. **Monorepo-correct `.env.example`** in `scanEnvVariables`:
    - Match a `.env.example` per app root (nearest ancestor), not one global file for the whole monorepo.
    - Ignore framework/CI vars: `NODE_ENV`, `CI`, `VERCEL`, `NEXT_RUNTIME`, and anything only referenced in test files.
-6. **Relax the CI rule** (`github-actions-integration`): if a workflow exists that runs a Assurly/scan step,
+6. **Relax the CI rule** (`github-actions-integration`): if a workflow exists that runs an Assurly/scan step,
    pass; otherwise emit an onboarding **hint (warning)**, never a blocker.
 7. **Scan-scope summary:** extend the report with `scanScope: { scanned: number; skipped: number; roots: string[] }`
    and surface a one-line summary ("Scanned apps/web, 312 files, skipped tests & fixtures") in CLI output and the

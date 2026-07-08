@@ -25,6 +25,8 @@ __export(index_exports, {
   createAssurlyMcpServer: () => createAssurlyMcpServer
 });
 module.exports = __toCommonJS(index_exports);
+var import_fs = require("fs");
+var import_path = require("path");
 var import_mcp = require("@modelcontextprotocol/sdk/server/mcp.js");
 var import_stdio = require("@modelcontextprotocol/sdk/server/stdio.js");
 var import_zod = require("zod");
@@ -117,11 +119,19 @@ function handleExplainRule(input) {
 }
 
 // src/index.ts
+function getPackageVersion() {
+  try {
+    const pkg = JSON.parse((0, import_fs.readFileSync)((0, import_path.join)(__dirname, "../package.json"), "utf8"));
+    return pkg.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
 function createAssurlyMcpServer() {
   const server = new import_mcp.McpServer(
     {
       name: "assurly",
-      version: "1.0.0"
+      version: getPackageVersion()
     },
     {
       instructions: "Assurly Ship Gate MCP server. Scan local projects before deploy and explain blockers so agents can remediate until READY TO SHIP."
@@ -157,8 +167,8 @@ function createAssurlyMcpServer() {
   server.registerTool(
     "assurly_explain_rule",
     {
-      title: "Explain a Assurly rule",
-      description: "Return a human-readable explanation and remediation steps for a Assurly rule id (e.g. supabase-rls).",
+      title: "Explain an Assurly rule",
+      description: "Return a human-readable explanation and remediation steps for an Assurly Ship Gate rule id (e.g. supabase-rls).",
       inputSchema: {
         ruleId: import_zod.z.string().describe("Assurly rule identifier")
       }

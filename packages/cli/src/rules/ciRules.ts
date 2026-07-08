@@ -10,7 +10,7 @@ function workflowRunsScanStep(content: string): boolean {
 }
 
 /**
- * CI/CD Rule — hints when no workflow runs a Assurly scan; never blocks.
+ * CI/CD Rule — hints when no workflow runs an Assurly scan; never blocks.
  */
 export const ciRules: Rule = {
   id: 'github-actions-integration',
