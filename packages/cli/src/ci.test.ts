@@ -30,7 +30,11 @@ describe('GitHub Actions Integration Setup (ci)', () => {
 
     const content = fs.readFileSync(expectedPath, 'utf8');
     expect(content).toContain('name: Assurly Security & Config Scan');
-    expect(content).toContain('npx --yes assurly@1.0.0 scan');
+    expect(content).toContain('npx --yes assurly@1 scan');
+    // The scan is static analysis: no dependency install and no lockfile-bound
+    // npm cache, so the workflow works on repos with package.json in a subdir.
+    expect(content).not.toContain('npm ci');
+    expect(content).not.toContain("cache: 'npm'");
   });
 
   it('should fail gracefully if writing to path is invalid', () => {

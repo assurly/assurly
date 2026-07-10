@@ -11,6 +11,10 @@ export interface GitHubAutoFix {
 const POSTGRES_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_$]{0,62}$/;
 const ENVIRONMENT_VARIABLE = /^[A-Z_][A-Z0-9_]{0,127}$/;
 
+// Assurly scans source files statically — it needs neither the project's
+// dependencies installed nor a lockfile, so the workflow does not run `npm ci`
+// (which would fail on repos whose package.json lives in a subdirectory) and
+// omits setup-node's `cache: 'npm'` (which itself requires a root lockfile).
 const ASSURLY_WORKFLOW_TEMPLATE = `name: Assurly Security & Config Scan
 
 on:
@@ -32,13 +36,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit
 
       - name: Run Assurly Scan
-        run: npx --yes assurly@1.0.0 scan
+        run: npx --yes assurly@1 scan
 `;
 
 function quotePostgresIdentifier(value: string): string {

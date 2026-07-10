@@ -42,7 +42,7 @@ function workflowRunsScanStep(content) {
     return SCAN_STEP_PATTERN.test(content);
 }
 /**
- * CI/CD Rule — hints when no workflow runs a Assurly scan; never blocks.
+ * CI/CD Rule — hints when no workflow runs an Assurly scan; never blocks.
  */
 exports.ciRules = {
     id: 'github-actions-integration',
