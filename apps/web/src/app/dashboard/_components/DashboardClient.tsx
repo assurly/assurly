@@ -302,8 +302,16 @@ function DashboardContent({
       return;
     }
     const repoId = selectedRepo.id;
+    let interval: ReturnType<typeof setInterval> | undefined;
+    let sessionExpired = false;
+
+    const stopPolling = (): void => {
+      if (interval !== undefined) clearInterval(interval);
+      interval = undefined;
+    };
 
     const fetchScans = async (): Promise<void> => {
+      if (sessionExpired) return;
       try {
         const { scans: repoScans } = await clientApi.scans(repoId);
 
@@ -341,6 +349,15 @@ function DashboardContent({
           );
         });
       } catch (e) {
+        // Polling cannot recover a dead session — it would just retry every 5s
+        // forever. Stop, and tell the user the one thing that fixes it.
+        if (e instanceof ClientApiError && e.status === 401) {
+          sessionExpired = true;
+          stopPolling();
+          setScanError('Your session expired. Sign in again to continue.');
+          setRepoDetailStatus((current) => (current === 'loading' ? 'empty' : current));
+          return;
+        }
         console.error(e);
         setRepoDetailStatus((current) => (current === 'loading' ? 'empty' : current));
       }
@@ -348,7 +365,7 @@ function DashboardContent({
 
     fetchScans();
 
-    const interval = setInterval(() => {
+    interval = setInterval(() => {
       // Don't poll /api/scans while the tab is in the background — a hidden or
       // forgotten dashboard tab should not keep hitting the database every 5s.
       // Returning to the tab triggers an immediate refresh via the listener below.
@@ -362,7 +379,7 @@ function DashboardContent({
     document.addEventListener('visibilitychange', refreshWhenVisible);
 
     return () => {
-      clearInterval(interval);
+      stopPolling();
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
   }, [selectedRepo, localScan]);

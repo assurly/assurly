@@ -27,9 +27,74 @@ import {
 } from '../../../../utils/githubFixPipeline';
 import {
   AutoFixAlreadyAppliedError,
+  GitHubApiError,
   GitHubWriteAccessError,
   isGitHubRepositoryName,
 } from '../../../../utils/githubApp';
+
+const WORKFLOW_DIRECTORY_PREFIX = '.github/workflows/';
+
+function isWorkflowPath(filePath: string): boolean {
+  return filePath.startsWith(WORKFLOW_DIRECTORY_PREFIX);
+}
+
+// GitHub answers 404 — not 403 — when a token may not write under
+// .github/workflows/, so this is a permission problem, not a missing repository.
+function workflowPermissionError(filePaths: string[]): ApiError {
+  return new ApiError(
+    403,
+    'github_workflow_permission_required',
+    `Assurly is not allowed to write ${filePaths.join(', ')}. GitHub requires an explicit "Workflows" permission for files under ${WORKFLOW_DIRECTORY_PREFIX}. Grant it to the Assurly GitHub App, or create the workflow yourself by running "npx assurly init".`,
+  );
+}
+
+// The batch pipeline skips files it cannot commit rather than failing the whole
+// pull request, so an empty commit list is a permission or state problem — never
+// evidence that GitHub is down.
+function nothingCommittedError(skippedFilePaths: string[]): ApiError {
+  const workflowFiles = skippedFilePaths.filter(isWorkflowPath);
+  if (workflowFiles.length > 0) return workflowPermissionError(workflowFiles);
+  return new ApiError(
+    502,
+    'github_unavailable',
+    'No fixes could be committed. GitHub may be temporarily unavailable.',
+  );
+}
+
+// Auto-fix failures funnel through here. The security wrapper only logs
+// error.name, so without logging the real cause the underlying GitHub failure
+// is invisible in the server logs.
+function rethrowAutoFixError(operation: string, error: unknown, targetFilePath?: string): never {
+  if (error instanceof GitHubWriteAccessError) throw error;
+  if (error instanceof AutoFixAlreadyAppliedError) {
+    throw new ApiError(409, 'fix_already_applied', error.message);
+  }
+  console.error(`[github/fix] ${operation} failed:`, error);
+  if (error instanceof GitHubApiError) {
+    if (error.status === 404) {
+      if (targetFilePath && isWorkflowPath(targetFilePath)) {
+        throw workflowPermissionError([targetFilePath]);
+      }
+      throw new ApiError(
+        404,
+        'repository_unavailable',
+        'This repository is not accessible to the Assurly GitHub App installation. Re-install the app or grant it access to this repository, then try again.',
+      );
+    }
+    // A 422 here is a git state conflict, not an access problem — telling the
+    // user to re-install the app (the generic GitHubApiError mapping) would be
+    // wrong advice.
+    if (error.status === 422) {
+      throw new ApiError(
+        409,
+        'fix_pull_request_conflict',
+        'GitHub rejected this fix. An open fix pull request may already exist, or the branch changed since this scan. Re-scan the repository and try again.',
+      );
+    }
+    throw error;
+  }
+  throw new ApiError(502, 'github_unavailable', 'GitHub is temporarily unavailable.');
+}
 
 const singleFixBody = z
   .object({
@@ -159,11 +224,7 @@ export const POST = secureRoute(
           repositoryId: access.repository.github_repo_id,
         });
       } catch (error) {
-        if (error instanceof GitHubWriteAccessError) throw error;
-        if (error instanceof AutoFixAlreadyAppliedError) {
-          throw new ApiError(409, 'fix_already_applied', error.message);
-        }
-        throw new ApiError(502, 'github_unavailable', 'GitHub is temporarily unavailable.');
+        rethrowAutoFixError('batch fix pull request', error);
       }
 
       // Only mark findings whose target file actually landed in the pull request.
@@ -173,11 +234,7 @@ export const POST = secureRoute(
         .map((finding) => finding.id);
 
       if (findingIds.length === 0) {
-        throw new ApiError(
-          502,
-          'github_unavailable',
-          'No fixes could be committed. GitHub may be temporarily unavailable.',
-        );
+        throw nothingCommittedError(batchResult.skippedFilePaths);
       }
 
       await persistFixPullRequest(context, findingIds, batchResult.prUrl);
@@ -242,11 +299,11 @@ export const POST = secureRoute(
         repositoryId: access.repository.github_repo_id,
       });
     } catch (error) {
-      if (error instanceof GitHubWriteAccessError) throw error;
-      if (error instanceof AutoFixAlreadyAppliedError) {
-        throw new ApiError(409, 'fix_already_applied', error.message);
-      }
-      throw new ApiError(502, 'github_unavailable', 'GitHub is temporarily unavailable.');
+      rethrowAutoFixError(
+        'single fix pull request',
+        error,
+        resolveFindingAutoFixTargetPath(access.finding),
+      );
     }
 
     await persistFixPullRequest(context, [access.finding.id], prUrl);

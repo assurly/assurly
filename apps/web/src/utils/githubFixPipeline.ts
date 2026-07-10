@@ -9,7 +9,9 @@ import {
 import {
   AutoFixAlreadyAppliedError,
   encodeGitHubPath,
+  GitHubApiError,
   githubContentsApiUrl,
+  getInstallationAccessToken,
   githubHeaders,
   githubRepositoryApiUrl,
   GitHubWriteAccessError,
@@ -18,6 +20,33 @@ import {
   resolveGitHubWriteTarget,
   type GitHubWriteTarget,
 } from './githubApp';
+
+const WORKFLOW_DIRECTORY_PREFIX = '.github/workflows/';
+
+function isWorkflowFilePath(filePath: string): boolean {
+  return filePath.startsWith(WORKFLOW_DIRECTORY_PREFIX);
+}
+
+// GitHub blocks user-to-server (OAuth) tokens from writing files under
+// .github/workflows/ even when the App installation holds the Workflows
+// permission. Those files must be committed with an installation token — which
+// is only possible on the upstream repo (an installation token cannot push to a
+// user's fork). Returns undefined when no installation token applies; the caller
+// then falls back to the default token, which 404s and is surfaced as a clear
+// "grant the Workflows permission / run npx assurly init" message.
+async function resolveWorkflowCommitToken(options: {
+  needed: boolean;
+  isUpstreamCommit: boolean;
+  installationId?: string;
+  repositoryId?: number;
+}): Promise<string | undefined> {
+  if (!options.needed || !options.isUpstreamCommit || !options.installationId) return undefined;
+  try {
+    return await getInstallationAccessToken(options.installationId, options.repositoryId);
+  } catch {
+    return undefined;
+  }
+}
 
 const referenceSchema = z.object({
   object: z.object({ sha: z.string().regex(/^[a-f0-9]{40,64}$/i) }),
@@ -67,7 +96,15 @@ async function requireOk(response: Response, operation: string): Promise<Respons
       'Your GitHub account cannot create branches in this repository. Sign out, sign in again, and approve repository access when GitHub prompts you.',
     );
   }
-  throw new Error(`${operation} is unavailable.`);
+  // Preserve the real GitHub status (and a short body excerpt) so the API layer
+  // can return an actionable message — e.g. 404/422 → "repository not accessible,
+  // re-install the app" — instead of a generic "temporarily unavailable", and so
+  // the failure is diagnosable in the server logs.
+  const detail = await response.text().catch(() => '');
+  throw new GitHubApiError(
+    response.status,
+    `${operation} failed (GitHub ${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`,
+  );
 }
 
 async function ensureFixBranch(
@@ -145,6 +182,12 @@ export async function executeGitHubFixPullRequest(input: ExecuteGitHubFixInput):
 
   const fixBranch = buildFixBranch(input.branchSeed);
   const targetFilePath = resolveAutoFixTargetPath(input.filePath, input.fix);
+  const workflowToken = await resolveWorkflowCommitToken({
+    needed: isWorkflowFilePath(targetFilePath),
+    isUpstreamCommit: writeTarget.commitRepositoryName === repositoryName,
+    installationId: input.installationId,
+    repositoryId: input.repositoryId,
+  });
   const prUrl = await commitFixAndOpenPullRequest({
     writeTarget,
     repositoryName,
@@ -152,6 +195,7 @@ export async function executeGitHubFixPullRequest(input: ExecuteGitHubFixInput):
     filePath: targetFilePath,
     fix: input.fix,
     fixBranch,
+    commitToken: workflowToken,
   });
   return prUrl;
 }
@@ -163,6 +207,9 @@ async function commitFixAndOpenPullRequest(options: {
   filePath: string;
   fix: GitHubAutoFix;
   fixBranch: string;
+  // Optional installation token used only for the file write, when the user
+  // token may not write the target (e.g. .github/workflows/ files).
+  commitToken?: string;
 }): Promise<string> {
   const {
     writeTarget: { token, commitRepositoryName, pullRequestRepositoryName, pullRequestHeadOwner },
@@ -172,6 +219,7 @@ async function commitFixAndOpenPullRequest(options: {
     fix,
     fixBranch,
   } = options;
+  const commitToken = options.commitToken ?? token;
 
   const refResponse = await requireOk(
     await githubRequest(
@@ -227,7 +275,7 @@ async function commitFixAndOpenPullRequest(options: {
   if (commitFileSha) putBody.sha = commitFileSha;
 
   await requireOk(
-    await githubRequest(githubContentsApiUrl(commitRepositoryName, filePath), token, {
+    await githubRequest(githubContentsApiUrl(commitRepositoryName, filePath), commitToken, {
       method: 'PUT',
       body: JSON.stringify(putBody),
     }),
@@ -320,6 +368,13 @@ export async function executeGitHubBatchFixPullRequest(
   const { token, commitRepositoryName, pullRequestRepositoryName, pullRequestHeadOwner } =
     writeTarget;
 
+  const workflowToken = await resolveWorkflowCommitToken({
+    needed: input.files.some((group) => isWorkflowFilePath(group.filePath)),
+    isUpstreamCommit: commitRepositoryName === repositoryName,
+    installationId: input.installationId,
+    repositoryId: input.repositoryId,
+  });
+
   const refResponse = await requireOk(
     await githubRequest(
       githubRepositoryApiUrl(repositoryName, 'git', 'ref', 'heads', baseBranch),
@@ -336,12 +391,14 @@ export async function executeGitHubBatchFixPullRequest(
   let lastCommitError: unknown = null;
 
   for (const group of input.files) {
+    const commitToken = isWorkflowFilePath(group.filePath) && workflowToken ? workflowToken : token;
     try {
-      await commitFileGroupToBranch({ token, commitRepositoryName, fixBranch, group });
+      await commitFileGroupToBranch({ token: commitToken, commitRepositoryName, fixBranch, group });
       committedFilePaths.push(group.filePath);
     } catch (error) {
       // A revoked or unauthorized token is fatal for the whole batch.
       if (error instanceof GitHubWriteAccessError) throw error;
+      console.error(`[github/fix] skipped ${group.filePath}:`, error);
       lastCommitError = error;
       skippedFilePaths.push(group.filePath);
     }

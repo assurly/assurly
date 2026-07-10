@@ -259,7 +259,7 @@ describe('GitHub fix auto-fix flow (POST /api/github/fix)', () => {
     ]);
   });
 
-  it('returns 502 when no files could be committed', async () => {
+  it('reports a workflow permission problem when only workflow files were skipped', async () => {
     db.getScanFindings.mockResolvedValue([
       {
         id: findingId,
@@ -274,6 +274,34 @@ describe('GitHub fix auto-fix flow (POST /api/github/fix)', () => {
       prUrl: 'https://github.com/acme/app/pull/11',
       committedFilePaths: [],
       skippedFilePaths: ['.github/workflows/assurly.yml'],
+    });
+
+    const response = await POST(fixRequest({ repoId, scanId, batch: true }));
+    const body = await response.json();
+
+    // GitHub answers 404 on a contents PUT under .github/workflows/ when the
+    // token lacks the Workflows permission, so this is never a GitHub outage.
+    expect(response.status).toBe(403);
+    expect(body.error.code).toBe('github_workflow_permission_required');
+    expect(body.error.message).toContain('.github/workflows/assurly.yml');
+    expect(body.error.message).toContain('npx assurly init');
+  });
+
+  it('returns 502 when non-workflow files could not be committed', async () => {
+    db.getScanFindings.mockResolvedValue([
+      {
+        id: findingId,
+        scan_id: scanId,
+        severity: 'warning',
+        file_path: 'Global Configs',
+        rule_id: 'github-actions-integration',
+        message: 'GitHub Actions workflow for Assurly is missing.',
+      },
+    ]);
+    mocks.executeGitHubBatchFixPullRequest.mockResolvedValue({
+      prUrl: 'https://github.com/acme/app/pull/11',
+      committedFilePaths: [],
+      skippedFilePaths: ['src/app/api/stripe/webhook/route.ts'],
     });
 
     const response = await POST(fixRequest({ repoId, scanId, batch: true }));
