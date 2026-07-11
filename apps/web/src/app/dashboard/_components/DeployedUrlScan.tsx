@@ -127,11 +127,13 @@ export function DeployedUrlScan({
             <ShipGatePanel report={scanResults.shipGate} compact />
           </div>
           <p className="dashboard-url-scan-hint">
-            Need the repo scan too?{' '}
+            This is a runtime probe of your live URL — fix the items above on your host or in your
+            deploy config. To also scan your source code (RLS, exposed secrets, undocumented env
+            vars, CI) and open auto-fix pull requests for those,{' '}
             <a href={loginUrl} className="dashboard-url-scan-link">
-              Sign in with GitHub
+              sign in with GitHub
             </a>{' '}
-            to connect repositories and unlock auto-fix.
+            and connect a repository.
           </p>
         </div>
       ) : null}

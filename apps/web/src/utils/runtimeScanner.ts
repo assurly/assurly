@@ -66,10 +66,45 @@ const SECRET_PATTERNS: Array<{ ruleId: 'runtime-secret-in-bundle'; regex: RegExp
   ];
 
 const REQUIRED_SECURITY_HEADERS = [
-  { name: 'strict-transport-security', label: 'Strict-Transport-Security' },
-  { name: 'x-content-type-options', label: 'X-Content-Type-Options' },
-  { name: 'content-security-policy', label: 'Content-Security-Policy' },
+  {
+    name: 'strict-transport-security',
+    label: 'Strict-Transport-Security',
+    value: 'max-age=63072000',
+  },
+  { name: 'x-content-type-options', label: 'X-Content-Type-Options', value: 'nosniff' },
+  {
+    name: 'content-security-policy',
+    label: 'Content-Security-Policy',
+    // A CSP is app-specific; `default-src 'self'` is a strict starting point the
+    // user must widen to the origins their app actually loads, so it is flagged
+    // as needing tuning rather than handed over as a drop-in value.
+    value: "default-src 'self'",
+    needsTuning: true,
+  },
 ] as const;
+
+type MissingSecurityHeader = (typeof REQUIRED_SECURITY_HEADERS)[number];
+
+/** The only platform we tailor remediation for; everything else gets generic guidance. */
+function detectDeployPlatform(headers: Headers): 'vercel' | 'unknown' {
+  return (headers.get('server') ?? '').toLowerCase().includes('vercel') ? 'vercel' : 'unknown';
+}
+
+/** Turns the missing headers into a concrete, copy-friendly fix for the detected platform. */
+function buildSecurityHeaderRemediation(
+  missing: readonly MissingSecurityHeader[],
+  platform: 'vercel' | 'unknown',
+): string {
+  const pairs = missing.map((header) => `${header.label}: ${header.value}`).join('; ');
+  const cspNote = missing.some((header) => header.needsTuning)
+    ? " Widen the Content-Security-Policy to the origins your app actually loads before you rely on it — 'self' alone will block external scripts, styles, and images."
+    : '';
+
+  if (platform === 'vercel') {
+    return `Detected Vercel. Add the missing header(s) to vercel.json under "headers" (source "/(.*)") — ${pairs} — then redeploy.${cspNote}`;
+  }
+  return `Set the missing header(s) on the deployed app — ${pairs}. For Next.js return them from headers() in next.config.js; behind a CDN or reverse proxy add them as response headers.${cspNote}`;
+}
 
 export function maskSecretValue(secret: string): string {
   const suffix = secret.slice(-4);
@@ -133,13 +168,14 @@ export function checkSecurityHeaders(headers: Headers): WebFinding[] {
 
   if (missing.length === 0) return [];
 
+  const platform = detectDeployPlatform(headers);
+
   return [
     {
       ruleId: 'runtime-missing-security-headers',
       severity: 'warning',
       message: `Missing security headers: ${missing.map((header) => header.label).join(', ')}.`,
-      suggestion:
-        'Configure Strict-Transport-Security, X-Content-Type-Options, and Content-Security-Policy on the deployed app.',
+      suggestion: buildSecurityHeaderRemediation(missing, platform),
       file: 'HTTP response',
     },
   ];

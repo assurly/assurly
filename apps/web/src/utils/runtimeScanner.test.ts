@@ -94,6 +94,29 @@ describe('runtimeScanner', () => {
       const findings = checkSecurityHeaders(headers);
       expect(findings[0]?.message).toContain('Content-Security-Policy');
     });
+
+    it('gives a Vercel-specific remediation with concrete values when the host is Vercel', () => {
+      const headers = new Headers({
+        server: 'Vercel',
+        'strict-transport-security': 'max-age=63072000',
+      });
+      const suggestion = checkSecurityHeaders(headers)[0]?.suggestion ?? '';
+      expect(suggestion).toContain('Detected Vercel');
+      expect(suggestion).toContain('vercel.json');
+      // Only the actually-missing headers, with concrete values.
+      expect(suggestion).toContain('X-Content-Type-Options: nosniff');
+      expect(suggestion).not.toContain('Strict-Transport-Security'); // present, not flagged
+      // The CSP is disclosed as needing tuning, not handed over as a safe drop-in.
+      expect(suggestion).toContain('Widen the Content-Security-Policy');
+    });
+
+    it('falls back to generic (Next.js / proxy) guidance for unknown hosts', () => {
+      const headers = new Headers({ server: 'nginx' });
+      const suggestion = checkSecurityHeaders(headers)[0]?.suggestion ?? '';
+      expect(suggestion).not.toContain('Detected Vercel');
+      expect(suggestion).toContain('next.config.js');
+      expect(suggestion).toContain('X-Content-Type-Options: nosniff');
+    });
   });
 
   describe('probeSupabaseRls', () => {
