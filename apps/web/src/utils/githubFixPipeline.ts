@@ -5,6 +5,7 @@ import {
   applyAutoFixToFileContent,
   autoFixGroupCommitMessage,
   resolveAutoFixTargetPath,
+  summarizeAutoFixPlan,
 } from './githubAutoFix';
 import {
   AutoFixAlreadyAppliedError,
@@ -319,8 +320,6 @@ export interface ExecuteGitHubBatchFixInput {
   baseBranch: string;
   files: readonly GitHubAutoFixFileGroup[];
   branchSeed: string;
-  prTitle: string;
-  prDescription: string;
   userGitHubToken?: string;
   installationId?: string;
   repositoryId?: number;
@@ -418,13 +417,21 @@ export async function executeGitHubBatchFixPullRequest(
     throw new AutoFixAlreadyAppliedError();
   }
 
+  // Describe the pull request from what actually committed, not the full plan,
+  // so the body never lists a file that was skipped (e.g. a workflow file GitHub
+  // blocks in a fork pull request).
+  const committedSet = new Set(committedFilePaths);
+  const committedGroups = input.files.filter((group) => committedSet.has(group.filePath));
+  const skippedGroups = input.files.filter((group) => !committedSet.has(group.filePath));
+  const { prTitle, prDescription } = summarizeAutoFixPlan(committedGroups, skippedGroups);
+
   const prUrl = await openPullRequest({
     repositoryName: pullRequestRepositoryName,
     headOwner: pullRequestHeadOwner,
     baseBranch,
     fixBranch,
-    title: input.prTitle,
-    body: input.prDescription,
+    title: prTitle,
+    body: prDescription,
     token,
   });
 

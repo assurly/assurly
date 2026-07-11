@@ -19,7 +19,6 @@ import {
   buildGitHubAutoFixPlan,
   isAutoFixableFinding,
   resolveFindingAutoFixTargetPath,
-  summarizeAutoFixPlan,
 } from '../../../../utils/githubAutoFix';
 import {
   executeGitHubBatchFixPullRequest,
@@ -208,7 +207,6 @@ export const POST = secureRoute(
 
       const githubAccessToken =
         context.githubAccessToken ?? (await resolveGitHubAccessToken(request));
-      const { prTitle, prDescription } = summarizeAutoFixPlan(plan);
 
       let batchResult;
       try {
@@ -217,8 +215,6 @@ export const POST = secureRoute(
           baseBranch: access.scan.branch || 'main',
           files: plan,
           branchSeed: `batch:${body.scanId}`,
-          prTitle,
-          prDescription,
           userGitHubToken: githubAccessToken,
           installationId: access.organization.github_installation_id,
           repositoryId: access.repository.github_repo_id,

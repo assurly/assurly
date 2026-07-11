@@ -272,32 +272,52 @@ export function autoFixGroupCommitMessage(group: GitHubAutoFixFileGroup): string
   return `fix(assurly): apply ${group.fixes.length} automated fixes to ${group.filePath}`;
 }
 
-/** Builds the title and description for the combined pull request. */
+/**
+ * Builds the title and description for the combined pull request. `committed`
+ * is the set of file groups that actually landed; `skipped` (default none) is
+ * listed in a separate section so the description never claims a file the pull
+ * request does not contain — e.g. a `.github/workflows/` file that GitHub blocks
+ * in a fork pull request.
+ */
 export function summarizeAutoFixPlan(
-  plan: readonly GitHubAutoFixFileGroup[],
+  committed: readonly GitHubAutoFixFileGroup[],
+  skipped: readonly GitHubAutoFixFileGroup[] = [],
 ): GitHubAutoFixPlanSummary {
-  const fixCount = plan.reduce((total, group) => total + group.fixes.length, 0);
-  const fileCount = plan.length;
+  const fixCount = committed.reduce((total, group) => total + group.fixes.length, 0);
+  const fileCount = committed.length;
   const prTitle = `fix(assurly): apply ${fixCount} automated ${fixCount === 1 ? 'fix' : 'fixes'}`;
 
-  const details = plan
+  const details = committed
     .map((group) => {
       const bullets = group.fixes.map((fix) => `  - ${fix.description}`).join('\n');
       return `- \`${group.filePath}\`\n${bullets}`;
     })
     .join('\n');
 
-  const prDescription = [
+  const lines = [
     `Assurly grouped ${fixCount} automated ${fixCount === 1 ? 'fix' : 'fixes'} across ${fileCount} ${
       fileCount === 1 ? 'file' : 'files'
     } into a single pull request.`,
     '',
     details,
-    '',
-    'Applied automatically by Assurly.',
-  ].join('\n');
+  ];
 
-  return { prTitle, prDescription };
+  if (skipped.length > 0) {
+    const skippedList = skipped.map((group) => `- \`${group.filePath}\``).join('\n');
+    const hasWorkflow = skipped.some((group) => group.filePath.startsWith('.github/workflows/'));
+    lines.push('', '### Not applied in this pull request', skippedList);
+    if (hasWorkflow) {
+      lines.push(
+        '',
+        'Files under `.github/workflows/` can only be committed by an installed Assurly ' +
+          'GitHub App — GitHub blocks workflow files in pull requests from forks. Install the ' +
+          'app on this repository and re-run the fix, or add the file manually.',
+      );
+    }
+  }
+
+  lines.push('', 'Applied automatically by Assurly.');
+  return { prTitle, prDescription: lines.join('\n') };
 }
 
 export function isAutoFixableFinding(finding: {

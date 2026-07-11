@@ -263,4 +263,33 @@ describe('summarizeAutoFixPlan', () => {
     expect(summary.prDescription).toContain('`supabase/99999999999999_assurly_enable_rls.sql`');
     expect(summary.prDescription).toContain('`apps/web/.env.example`');
   });
+
+  it('counts only committed files and lists skipped files separately', () => {
+    const committed = buildGitHubAutoFixPlan([
+      {
+        file_path: 'supabase/schema.sql',
+        message:
+          "Supabase table 'attempts' is created but Row-Level Security (RLS) is not enabled.",
+      },
+    ]);
+    const skipped = buildGitHubAutoFixPlan([
+      {
+        file_path: 'Global Configs',
+        message: 'GitHub Actions workflow for Assurly is missing.',
+        rule_id: 'github-actions-integration',
+      },
+    ]);
+    expect(committed).not.toBeNull();
+    expect(skipped).not.toBeNull();
+    if (!committed || !skipped) return;
+
+    const summary = summarizeAutoFixPlan(committed, skipped);
+    // Title/count reflect only what committed — not the skipped workflow file.
+    expect(summary.prTitle).toBe('fix(assurly): apply 1 automated fix');
+    expect(summary.prDescription).toContain('across 1 file');
+    // The skipped workflow file is disclosed, not presented as applied.
+    expect(summary.prDescription).toContain('Not applied in this pull request');
+    expect(summary.prDescription).toContain('`.github/workflows/assurly.yml`');
+    expect(summary.prDescription).toContain('blocks workflow files in pull requests from forks');
+  });
 });
