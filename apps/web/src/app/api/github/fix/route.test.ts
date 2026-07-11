@@ -162,7 +162,7 @@ describe('GitHub fix auto-fix flow (POST /api/github/fix)', () => {
     ]);
     mocks.executeGitHubBatchFixPullRequest.mockResolvedValue({
       prUrl: 'https://github.com/acme/app/pull/8',
-      committedFilePaths: ['database.sql'],
+      committedFilePaths: ['99999999999999_assurly_enable_rls.sql'],
       skippedFilePaths: [],
     });
 
@@ -202,7 +202,7 @@ describe('GitHub fix auto-fix flow (POST /api/github/fix)', () => {
     ]);
     mocks.executeGitHubBatchFixPullRequest.mockResolvedValue({
       prUrl: 'https://github.com/acme/app/pull/9',
-      committedFilePaths: ['database.sql', 'apps/web/.env.example'],
+      committedFilePaths: ['99999999999999_assurly_enable_rls.sql', 'apps/web/.env.example'],
       skippedFilePaths: [],
     });
 
@@ -215,7 +215,7 @@ describe('GitHub fix auto-fix flow (POST /api/github/fix)', () => {
     expect(mocks.executeGitHubBatchFixPullRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         files: expect.arrayContaining([
-          expect.objectContaining({ filePath: 'database.sql' }),
+          expect.objectContaining({ filePath: '99999999999999_assurly_enable_rls.sql' }),
           expect.objectContaining({ filePath: 'apps/web/.env.example' }),
         ]),
       }),
@@ -245,7 +245,7 @@ describe('GitHub fix auto-fix flow (POST /api/github/fix)', () => {
     ]);
     mocks.executeGitHubBatchFixPullRequest.mockResolvedValue({
       prUrl: 'https://github.com/acme/app/pull/10',
-      committedFilePaths: ['database.sql'],
+      committedFilePaths: ['99999999999999_assurly_enable_rls.sql'],
       skippedFilePaths: ['.github/workflows/assurly.yml'],
     });
 

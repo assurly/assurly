@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   applyAutoFixToFileContent,
   buildGitHubAutoFix,
-  buildGitHubAutoFixBatch,
   buildGitHubAutoFixPlan,
   isAutoFixableFinding,
   resolveEnvExamplePath,
   resolveFindingAutoFixTargetPath,
+  resolveRlsMigrationTarget,
   summarizeAutoFixPlan,
 } from './githubAutoFix';
 
@@ -111,23 +111,31 @@ describe('resolveEnvExamplePath', () => {
   });
 });
 
-describe('buildGitHubAutoFixBatch', () => {
-  it('combines multiple RLS fixes in the same SQL file', () => {
-    const fix = buildGitHubAutoFixBatch([
-      {
-        file_path: 'database.sql',
-        message:
-          "Supabase table 'attempts' is created but Row-Level Security (RLS) is not enabled.",
-      },
-      {
-        file_path: 'database.sql',
-        message: "Supabase table 'config' is created but Row-Level Security (RLS) is not enabled.",
-      },
-    ]);
+describe('RLS auto-fix', () => {
+  it('enables RLS in a new migration with a policy scaffold, not the applied file', () => {
+    const fix = buildGitHubAutoFix(
+      'db/migrations/003_create_auth_schema.up.sql',
+      "Supabase table 'organizations' is created but Row-Level Security (RLS) is not enabled.",
+    );
 
-    expect(fix?.title).toBe('security(rls): enable row level security on 2 tables');
-    expect(fix?.statement).toContain('ALTER TABLE "attempts" ENABLE ROW LEVEL SECURITY;');
-    expect(fix?.statement).toContain('ALTER TABLE "config" ENABLE ROW LEVEL SECURITY;');
+    // Written to a NEW migration (99999999999999 sorts last), not appended to
+    // the already-applied 003 file, so it reaches a live database.
+    expect(fix?.targetFilePath).toBe('db/migrations/99999999999999_assurly_enable_rls.up.sql');
+    expect(fix?.applyMode).toBe('append');
+    expect(fix?.statement).toContain('ALTER TABLE "organizations" ENABLE ROW LEVEL SECURITY;');
+    // Loud about deny-all + a commented, deliberately-incomplete policy scaffold.
+    expect(fix?.statement).toContain('returns zero rows');
+    expect(fix?.statement).toContain('-- CREATE POLICY "assurly_organizations"');
+    expect(fix?.statement).toContain('TODO(assurly)');
+  });
+
+  it('sorts the migration after sequential and timestamp naming, matching extension', () => {
+    // ".up.sql" convention preserved; 99999999999999 > 003 and > 20260101000000.
+    expect(resolveRlsMigrationTarget('db/migrations/003_x.up.sql')).toBe(
+      'db/migrations/99999999999999_assurly_enable_rls.up.sql',
+    );
+    // Plain ".sql" convention preserved; no directory prefix.
+    expect(resolveRlsMigrationTarget('schema.sql')).toBe('99999999999999_assurly_enable_rls.sql');
   });
 });
 
@@ -161,7 +169,7 @@ describe('buildGitHubAutoFixPlan', () => {
     expect(plan).not.toBeNull();
     const paths = plan?.map((group) => group.filePath) ?? [];
     expect(paths).toEqual([
-      'supabase/schema.sql',
+      'supabase/99999999999999_assurly_enable_rls.sql',
       'apps/web/.env.example',
       '.github/workflows/assurly.yml',
     ]);
@@ -221,13 +229,13 @@ describe('resolveFindingAutoFixTargetPath', () => {
     ).toBe('.github/workflows/assurly.yml');
   });
 
-  it('keeps the finding path for RLS findings', () => {
+  it('redirects RLS findings to a new migration file', () => {
     expect(
       resolveFindingAutoFixTargetPath({
         file_path: 'db/schema.sql',
         message: "Supabase table 'users' is created but Row-Level Security (RLS) is not enabled.",
       }),
-    ).toBe('db/schema.sql');
+    ).toBe('db/99999999999999_assurly_enable_rls.sql');
   });
 });
 
@@ -252,7 +260,7 @@ describe('summarizeAutoFixPlan', () => {
     const summary = summarizeAutoFixPlan(plan);
     expect(summary.prTitle).toBe('fix(assurly): apply 2 automated fixes');
     expect(summary.prDescription).toContain('across 2 files');
-    expect(summary.prDescription).toContain('`supabase/schema.sql`');
+    expect(summary.prDescription).toContain('`supabase/99999999999999_assurly_enable_rls.sql`');
     expect(summary.prDescription).toContain('`apps/web/.env.example`');
   });
 });

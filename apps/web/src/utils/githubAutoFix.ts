@@ -53,6 +53,48 @@ function quotePostgresIdentifier(value: string): string {
   return segments.map((part) => `"${part.replaceAll('"', '""')}"`).join('.');
 }
 
+/**
+ * Resolves the migration file an RLS fix is written to. RLS must be enabled in a
+ * NEW migration rather than appended to an already-applied one: migration
+ * runners do not re-run a modified historical file, so appending would never
+ * reach a live database. The name uses a 14-digit `99999999999999` prefix, which
+ * string-sorts after both zero-padded sequential names (`001_`, `002_`, …) and
+ * timestamp names (`YYYYMMDDHHMMSS_…`), so it always runs after the schema it
+ * secures. The name is fixed so re-running the fix updates one file instead of
+ * creating duplicates.
+ */
+export function resolveRlsMigrationTarget(findingFilePath: string): string {
+  const normalized = findingFilePath.replace(/\\/g, '/');
+  const slash = normalized.lastIndexOf('/');
+  const directory = slash >= 0 ? normalized.slice(0, slash) : '';
+  const extension = normalized.toLowerCase().endsWith('.up.sql') ? '.up.sql' : '.sql';
+  const fileName = `99999999999999_assurly_enable_rls${extension}`;
+  return directory ? `${directory}/${fileName}` : fileName;
+}
+
+/**
+ * Builds the SQL for one table: enable RLS plus a commented policy scaffold.
+ * Enabling RLS without a policy denies all access through the anon/authenticated
+ * roles, so the scaffold and warning make that explicit. The example policy is
+ * commented and deliberately incomplete (empty USING) so it cannot be applied
+ * blindly — the user must fill in their own row-ownership condition.
+ */
+function buildRlsStatement(tableName: string, quotedTableName: string): string {
+  const lastSegment = tableName.includes('.')
+    ? tableName.slice(tableName.lastIndexOf('.') + 1)
+    : tableName;
+  const policyName = `"assurly_${lastSegment.replaceAll('"', '""')}"`;
+  return [
+    `-- Assurly: enable Row-Level Security on ${quotedTableName}. With RLS on and no`,
+    `-- policy, every query through the anon/authenticated roles returns zero rows —`,
+    `-- add a policy for your tenancy model before you deploy.`,
+    `ALTER TABLE ${quotedTableName} ENABLE ROW LEVEL SECURITY;`,
+    `-- TODO(assurly): complete and uncomment a policy that scopes rows to the caller:`,
+    `-- CREATE POLICY ${policyName} ON ${quotedTableName}`,
+    `--   FOR ALL USING ( /* e.g. organization_id = auth.jwt() ->> 'org_id' */ );`,
+  ].join('\n');
+}
+
 export function resolveEnvExamplePath(sourceFilePath: string): string {
   const normalized = sourceFilePath.replace(/\\/g, '/');
   const appsMatch = normalized.match(/^apps\/[^/]+/);
@@ -115,9 +157,11 @@ export function buildGitHubAutoFix(
     if (!tableName) throw new Error('The finding does not contain a PostgreSQL table name.');
     const quotedTableName = quotePostgresIdentifier(tableName);
     return {
-      statement: `ALTER TABLE ${quotedTableName} ENABLE ROW LEVEL SECURITY;`,
-      description: `Enable Row-Level Security (RLS) on table \`${tableName}\`.`,
+      statement: buildRlsStatement(tableName, quotedTableName),
+      description: `Enable Row-Level Security (RLS) on table \`${tableName}\` (with a policy scaffold to complete).`,
       title: `security(rls): enable row level security on ${tableName}`,
+      targetFilePath: resolveRlsMigrationTarget(filePath),
+      applyMode: 'append',
     };
   }
 
@@ -154,43 +198,6 @@ export interface AutoFixFindingInput {
   file_path: string;
   message: string;
   rule_id?: string;
-}
-
-/** Combines multiple allowlisted fixes in the same file into one commit/PR. */
-export function buildGitHubAutoFixBatch(
-  findings: readonly AutoFixFindingInput[],
-): GitHubAutoFix | null {
-  if (findings.length === 0) return null;
-
-  const filePath = findings[0]?.file_path;
-  if (!filePath || !findings.every((finding) => finding.file_path === filePath)) return null;
-
-  const statements: string[] = [];
-  const tableNames: string[] = [];
-
-  for (const finding of findings) {
-    const fix = buildGitHubAutoFix(finding.file_path, finding.message, finding.rule_id);
-    if (!fix) return null;
-    if (statements.includes(fix.statement)) continue;
-    statements.push(fix.statement);
-    const tableName =
-      finding.message.match(/table\s+'([^']+)'/i)?.[1] ??
-      finding.message.match(/supabase table\s+'([^']+)'/i)?.[1];
-    if (tableName) tableNames.push(tableName);
-  }
-
-  if (statements.length === 0) return null;
-
-  if (statements.length === 1 && tableNames[0]) {
-    return buildGitHubAutoFix(filePath, findings[0]?.message ?? '', findings[0]?.rule_id);
-  }
-
-  const tableList = tableNames.map((name) => `\`${name}\``).join(', ');
-  return {
-    statement: statements.join('\n'),
-    description: `Enable Row-Level Security (RLS) on ${tableList}.`,
-    title: `security(rls): enable row level security on ${tableNames.length} tables`,
-  };
 }
 
 /** A single repository file together with the ordered fixes that target it. */
