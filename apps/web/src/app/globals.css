@@ -6350,6 +6350,37 @@ button.dashboard-repo-selector-item {
   line-height: 1.45;
 }
 
+/* Suggestion text + its copy button: side by side on wide screens, the button
+   wraps below the text on narrow ones. */
+.ship-gate-action-hint-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ship-gate-action-hint-row .ship-gate-action-hint {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.ship-gate-action-hint-row .ship-gate-action-copy {
+  flex-shrink: 0;
+}
+
+/* Keep the label swap ("Copy fix" ⇄ "✓ Copied!") from jumping the layout. */
+.ship-gate-action-copy {
+  min-width: 6.5rem;
+  text-align: center;
+}
+
+.ship-gate-action-copy--copied,
+.ship-gate-action-copy--copied:hover {
+  background-color: color-mix(in srgb, var(--color-accent) 55%, #16a34a);
+  border-color: transparent;
+  cursor: default;
+}
+
 .ship-gate-group--blockers .ship-gate-list {
   counter-reset: ship-gate-blocker;
 }
