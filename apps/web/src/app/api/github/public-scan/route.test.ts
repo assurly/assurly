@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import * as authModule from '../../../../utils/auth';
-import { GET } from './route';
+import { GET, POST } from './route';
 
 // Setup mock fetch
 const mockFetch = vi.fn();
@@ -348,5 +348,99 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
     const res = await GET(req);
     expect(res.status).toBe(200);
     requireUserSpy.mockRestore();
+  });
+});
+
+describe('GitHub Public Scan batch read (POST /api/github/public-scan)', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFetch.mockReset();
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  function batchRequest(body: unknown): Request {
+    return new Request('http://localhost/api/github/public-scan', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('fetches every requested file in one response', async () => {
+    const contents: Record<string, string> = {
+      'package.json': '{"name":"app"}',
+      'schema.sql': 'CREATE TABLE users (id uuid);',
+    };
+    // URL-routed mock so it is robust to the batch's concurrent fetch order.
+    mockFetch.mockImplementation((url: string | URL) => {
+      const href = String(url);
+      if (href === 'https://api.github.com/repos/owner/app') {
+        return Promise.resolve(mockMetadata('main'));
+      }
+      const match = href.match(/\/contents\/(.+)\?ref=main$/);
+      if (match) {
+        const path = decodeURIComponent(match[1]);
+        return Promise.resolve({ ok: true, text: () => Promise.resolve(contents[path] ?? '') });
+      }
+      return Promise.resolve({ ok: false, status: 404 });
+    });
+
+    const res = await POST(batchRequest({ repo: 'owner/app', paths: Object.keys(contents) }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.default_branch).toBe('main');
+    const byPath = Object.fromEntries(
+      (data.files as Array<{ path: string; content: string | null }>).map((f) => [
+        f.path,
+        f.content,
+      ]),
+    );
+    expect(byPath['package.json']).toBe('{"name":"app"}');
+    expect(byPath['schema.sql']).toBe('CREATE TABLE users (id uuid);');
+  });
+
+  it('returns null for an unreadable file instead of failing the batch', async () => {
+    mockFetch.mockImplementation((url: string | URL) => {
+      const href = String(url);
+      if (href === 'https://api.github.com/repos/owner/app') {
+        return Promise.resolve(mockMetadata('main'));
+      }
+      if (href.includes('/contents/ok.ts?ref=main')) {
+        return Promise.resolve({ ok: true, text: () => Promise.resolve('export const ok = 1;') });
+      }
+      // gone.ts fails the GitHub fetch.
+      return Promise.resolve({ ok: false, status: 404 });
+    });
+
+    const res = await POST(batchRequest({ repo: 'owner/app', paths: ['ok.ts', 'gone.ts'] }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const byPath = Object.fromEntries(
+      (data.files as Array<{ path: string; content: string | null }>).map((f) => [
+        f.path,
+        f.content,
+      ]),
+    );
+    expect(byPath['ok.ts']).toBe('export const ok = 1;');
+    expect(byPath['gone.ts']).toBeNull();
+  });
+
+  it('rejects a private repository', async () => {
+    mockFetch.mockImplementation(() => Promise.resolve(mockMetadata('main', true)));
+    const res = await POST(batchRequest({ repo: 'owner/private', paths: ['a.ts'] }));
+    expect(res.status).toBe(403);
+    const data = await res.json();
+    expect(data.error.code).toBe('private_repository');
+  });
+
+  it('rejects a malformed body', async () => {
+    const res = await POST(batchRequest({ repo: 'owner/app' }));
+    expect(res.status).toBe(400);
   });
 });

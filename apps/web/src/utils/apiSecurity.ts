@@ -300,6 +300,16 @@ export function secureRoute<Query, Body, Params = Record<string, never>>(
         status: normalized.status,
         durationMs: Date.now() - startedAt,
         errorType: error instanceof Error ? error.name : 'UnknownError',
+        // The client only ever receives the sanitized `normalized.message`
+        // (see safeError). For unexpected 5xx we additionally record the real
+        // error server-side so failures are diagnosable instead of vanishing
+        // behind a generic "Internal server error." — never exposed to callers.
+        ...(normalized.status >= 500
+          ? {
+              errorMessage: error instanceof Error ? error.message : String(error),
+              errorStack: error instanceof Error ? error.stack : undefined,
+            }
+          : {}),
       });
       return safeError(id, normalized.status, normalized.code, normalized.message, retryHeaders);
     }

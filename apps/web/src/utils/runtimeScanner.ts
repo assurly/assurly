@@ -65,7 +65,22 @@ const SECRET_PATTERNS: Array<{ ruleId: 'runtime-secret-in-bundle'; regex: RegExp
     },
   ];
 
-const REQUIRED_SECURITY_HEADERS = [
+interface RequiredSecurityHeader {
+  /** Lower-cased response-header name to probe for. */
+  name: string;
+  /** Human-readable header name for messages and remediation. */
+  label: string;
+  /** Recommended value to set. */
+  value: string;
+  /**
+   * When true the value is a strict starting point the user must widen before
+   * relying on it (currently only the CSP), so remediation appends a caveat
+   * instead of presenting it as a drop-in value.
+   */
+  needsTuning?: boolean;
+}
+
+const REQUIRED_SECURITY_HEADERS: readonly RequiredSecurityHeader[] = [
   {
     name: 'strict-transport-security',
     label: 'Strict-Transport-Security',
@@ -75,15 +90,12 @@ const REQUIRED_SECURITY_HEADERS = [
   {
     name: 'content-security-policy',
     label: 'Content-Security-Policy',
-    // A CSP is app-specific; `default-src 'self'` is a strict starting point the
-    // user must widen to the origins their app actually loads, so it is flagged
-    // as needing tuning rather than handed over as a drop-in value.
     value: "default-src 'self'",
     needsTuning: true,
   },
-] as const;
+];
 
-type MissingSecurityHeader = (typeof REQUIRED_SECURITY_HEADERS)[number];
+type MissingSecurityHeader = RequiredSecurityHeader;
 
 /** The only platform we tailor remediation for; everything else gets generic guidance. */
 function detectDeployPlatform(headers: Headers): 'vercel' | 'unknown' {

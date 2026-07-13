@@ -808,6 +808,75 @@ function DashboardContent({
         );
       };
 
+      // File contents are fetched once and memoised. Several scanner passes
+      // below (SQL, Stripe, env, RSC/cold-start) inspect overlapping file sets,
+      // and fetching each file serially per pass turned a large repository into
+      // minutes of latency — every code file was even fetched twice. A single
+      // bounded-concurrency prefetch keeps every unique file to one round trip
+      // and lets the passes read from memory.
+      const contentCache = new Map<string, string | null>();
+
+      const loadFileContent = async (filePath: string): Promise<string | null> => {
+        const cached = contentCache.get(filePath);
+        if (cached !== undefined) return cached;
+        let text: string | null = null;
+        try {
+          const res = await fetchFileContent(filePath);
+          text = res.ok ? await res.text() : null;
+        } catch {
+          text = null;
+        }
+        contentCache.set(filePath, text);
+        return text;
+      };
+
+      const prefetchContents = async (paths: string[]): Promise<void> => {
+        const pending = paths.filter((path) => !contentCache.has(path));
+        if (pending.length === 0) return;
+
+        // Public repositories: one batch request pulls every file at once. This
+        // is the fast path — hundreds of per-file requests otherwise trip the
+        // public rate limit and take minutes.
+        if (!usePrivateProxy) {
+          try {
+            const res = await fetch('/api/github/public-scan', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+              body: JSON.stringify({ repo: repoFullName, branch: defaultBranch, paths: pending }),
+            });
+            if (res.ok) {
+              const data: unknown = await res.json();
+              const files =
+                (data as { files?: Array<{ path?: unknown; content?: unknown }> }).files ?? [];
+              for (const entry of files) {
+                if (typeof entry?.path === 'string') {
+                  contentCache.set(
+                    entry.path,
+                    typeof entry.content === 'string' ? entry.content : null,
+                  );
+                }
+              }
+              // Mark any path the server omitted as absent so callers don't refetch.
+              for (const path of pending) {
+                if (!contentCache.has(path)) contentCache.set(path, null);
+              }
+              return;
+            }
+          } catch {
+            // Fall through to per-file fetching below.
+          }
+        }
+
+        // Private-proxy path (installations) or batch failure: fetch serially so
+        // we never exceed the proxy rate limit. De-duplication above already
+        // halves the request count versus the previous per-pass fetching.
+        for (const path of pending) {
+          if (scanAbortRef.current) break;
+          await loadFileContent(path);
+        }
+      };
+
       let treeResponse = await fetch(treeRequestUrl());
 
       // Graceful fallback: when a private installation has no access to the
@@ -919,92 +988,89 @@ function DashboardContent({
         '🛡 Running static analysis scanner rules...',
       ]);
 
-      // Scan SQL Migrations
+      // Resolve every file this scan will read, then fetch them all in one
+      // bounded-concurrency batch. Doing this up front (instead of serially
+      // inside each pass) is the difference between seconds and minutes on a
+      // large repository.
       const sqlToScan = sqlFiles.filter((path) => selectedFiles.has(path));
+      const codeToScan = codeFiles.filter((path) => selectedFiles.has(path));
+      const stripeToScan = codeToScan.filter(
+        (p) => p.toLowerCase().includes('stripe') || p.toLowerCase().includes('webhook'),
+      );
+      const envExamplePaths = envFiles.filter((path) => path.endsWith('.env.example'));
+      const workflowPaths = tree
+        .filter(
+          (node) =>
+            node.type === 'blob' &&
+            /^\.github\/workflows\/.*\.(ya?ml)$/i.test(node.path.replace(/\\/g, '/')),
+        )
+        .map((node) => node.path);
+
+      const filesToFetch = [
+        ...new Set([...sqlToScan, ...codeToScan, ...envExamplePaths, ...workflowPaths]),
+      ];
+      setScanLogs((prev) => [...prev, `📥 Fetching ${filesToFetch.length} file(s) in parallel...`]);
+      await prefetchContents(filesToFetch);
+      setScanProgress(45);
+
+      // Scan SQL Migrations
       for (const sqlPath of sqlToScan) {
         if (scanAbortRef.current) break;
-        setScanLogs((prev) => [...prev, `⚙ Reading ${sqlPath}...`]);
-        try {
-          const res = await fetchFileContent(sqlPath);
-          if (res.ok) {
-            const content = await res.text();
-            const scan = scanSqlMigration(content, sqlPath);
-            allFindings.push(...scan.findings);
-            // Phase 3: deeper Supabase policy quality (permissive RLS, public
-            // storage defaults, auth-linked tables without RLS).
-            allFindings.push(...scanSupabaseDeepPolicies([{ file: sqlPath, content }]).findings);
-            setScanLogs((prev) => [
-              ...prev,
-              `  ✓ Scanned ${sqlPath}: ${scan.errorCount} errors, ${scan.warningCount} warnings.`,
-            ]);
-          }
-        } catch {
-          // Continue scanning other files
-        }
+        const content = await loadFileContent(sqlPath);
+        if (content === null) continue;
+        const scan = scanSqlMigration(content, sqlPath);
+        allFindings.push(...scan.findings);
+        // Phase 3: deeper Supabase policy quality (permissive RLS, public
+        // storage defaults, auth-linked tables without RLS).
+        allFindings.push(...scanSupabaseDeepPolicies([{ file: sqlPath, content }]).findings);
+        setScanLogs((prev) => [
+          ...prev,
+          `  ✓ Scanned ${sqlPath}: ${scan.errorCount} errors, ${scan.warningCount} warnings.`,
+        ]);
       }
 
       setScanProgress(50);
 
       // Scan Stripe Webhooks
-      const stripeToScan = codeFiles
-        .filter((p) => p.toLowerCase().includes('stripe') || p.toLowerCase().includes('webhook'))
-        .filter((path) => selectedFiles.has(path));
       for (const webhookPath of stripeToScan) {
         if (scanAbortRef.current) break;
-        setScanLogs((prev) => [...prev, `⚙ Reading ${webhookPath}...`]);
-        try {
-          const res = await fetchFileContent(webhookPath);
-          if (res.ok) {
-            const content = await res.text();
-            const scan = scanStripeWebhook(content, webhookPath);
-            allFindings.push(...scan.findings);
-            setScanLogs((prev) => [
-              ...prev,
-              `  ✓ Scanned ${webhookPath}: ${scan.errorCount} errors.`,
-            ]);
-          }
-        } catch {
-          // Continue scanning
-        }
+        const content = await loadFileContent(webhookPath);
+        if (content === null) continue;
+        const scan = scanStripeWebhook(content, webhookPath);
+        allFindings.push(...scan.findings);
+        setScanLogs((prev) => [...prev, `  ✓ Scanned ${webhookPath}: ${scan.errorCount} errors.`]);
       }
 
       setScanProgress(65);
 
       // Scan Environment Variables (per-app-root .env.example matching)
-      const envExamplePaths = envFiles.filter((path) => path.endsWith('.env.example'));
       if (envExamplePaths.length > 0) {
         setScanLogs((prev) => [...prev, '⚙ Reading env configuration files...']);
-        try {
-          const allExamples: Array<{ file: string; content: string }> = [];
-          for (const examplePath of envExamplePaths) {
-            const envRes = await fetchFileContent(examplePath);
-            if (envRes.ok) {
-              allExamples.push({ file: examplePath, content: await envRes.text() });
-            }
+        const allExamples: Array<{ file: string; content: string }> = [];
+        for (const examplePath of envExamplePaths) {
+          const envContent = await loadFileContent(examplePath);
+          if (envContent !== null) {
+            allExamples.push({ file: examplePath, content: envContent });
           }
+        }
 
+        if (allExamples.length > 0) {
           const rootExample =
             allExamples.find((example) => example.file === '.env.example') ?? allExamples[0];
-          const codeToScan = codeFiles.filter((path) => selectedFiles.has(path));
 
           for (const codePath of codeToScan) {
-            try {
-              const codeRes = await fetchFileContent(codePath);
-              if (!codeRes.ok) continue;
-              const codeContent = await codeRes.text();
-              const scan = scanEnvVariables(
-                rootExample.content,
-                codeContent,
-                rootExample.file,
-                codePath,
-                { allExamples },
-              );
-              allFindings.push(
-                ...scan.findings.filter((finding) => finding.ruleId === 'undocumented-env'),
-              );
-            } catch {
-              // Skip unreadable files
-            }
+            const codeContent = await loadFileContent(codePath);
+            if (codeContent === null) continue;
+            const scan = scanEnvVariables(
+              rootExample.content,
+              codeContent,
+              rootExample.file,
+              codePath,
+              { allExamples },
+            );
+            allFindings.push(
+              ...scan.findings.filter((finding) => finding.ruleId === 'undocumented-env'),
+            );
           }
 
           const secretScan = scanEnvVariables(
@@ -1022,73 +1088,54 @@ function DashboardContent({
             ...prev,
             `  ✓ Checked env variables across ${envExamplePaths.length} example file(s).`,
           ]);
-        } catch {
-          // Continue scanning
         }
       }
 
       setScanProgress(80);
 
       // Scan for RSC leaks and Cold Start issues
-      for (const codePath of codeFiles.filter((path) => selectedFiles.has(path))) {
+      for (const codePath of codeToScan) {
         if (scanAbortRef.current) break;
-        try {
-          const res = await fetchFileContent(codePath);
-          if (res.ok) {
-            const content = await res.text();
+        const content = await loadFileContent(codePath);
+        if (content === null) continue;
 
-            allFindings.push(...scanEdgeRuntime(content, codePath).findings);
+        allFindings.push(...scanEdgeRuntime(content, codePath).findings);
 
-            // Phase 3: deeper-stack per-file scanners (edge runtime is already
-            // handled above; maxDuration + auth boundaries + Stripe lifecycle).
-            allFindings.push(...scanMaxDuration(content, codePath).findings);
-            allFindings.push(...scanServerActionAuth(content, codePath).findings);
-            allFindings.push(...scanRouteHandlerAuth(content, codePath).findings);
-            allFindings.push(...scanServiceRoleBypass(content, codePath).findings);
-            allFindings.push(...scanStripeWebhookIdempotency(content, codePath).findings);
-            allFindings.push(...scanStripeMissingSubscriptionEvents(content, codePath).findings);
+        // Phase 3: deeper-stack per-file scanners (edge runtime is already
+        // handled above; maxDuration + auth boundaries + Stripe lifecycle).
+        allFindings.push(...scanMaxDuration(content, codePath).findings);
+        allFindings.push(...scanServerActionAuth(content, codePath).findings);
+        allFindings.push(...scanRouteHandlerAuth(content, codePath).findings);
+        allFindings.push(...scanServiceRoleBypass(content, codePath).findings);
+        allFindings.push(...scanStripeWebhookIdempotency(content, codePath).findings);
+        allFindings.push(...scanStripeMissingSubscriptionEvents(content, codePath).findings);
 
-            // RSC data leak check
-            const rscScan = scanRscDataLeaks(content, codePath);
-            if (rscScan.findings.length > 0) {
-              allFindings.push(...rscScan.findings);
-            }
-            allFindings.push(...scanSupabaseClientLeaks(content, codePath).findings);
+        // RSC data leak check
+        const rscScan = scanRscDataLeaks(content, codePath);
+        if (rscScan.findings.length > 0) {
+          allFindings.push(...rscScan.findings);
+        }
+        allFindings.push(...scanSupabaseClientLeaks(content, codePath).findings);
 
-            // Cold Start check for API routes
-            if (codePath.includes('/api/')) {
-              const csScan = scanColdStart(content, codePath);
-              if (csScan.findings.length > 0) {
-                allFindings.push(...csScan.findings);
-              }
-            }
+        // Cold Start check for API routes
+        if (codePath.includes('/api/')) {
+          const csScan = scanColdStart(content, codePath);
+          if (csScan.findings.length > 0) {
+            allFindings.push(...csScan.findings);
           }
-        } catch {
-          // Skip unreadable files
         }
       }
 
       // Check for missing GitHub Actions workflow with an Assurly scan step
-      const workflowPaths = tree
-        .filter(
-          (node) =>
-            node.type === 'blob' &&
-            /^\.github\/workflows\/.*\.(ya?ml)$/i.test(node.path.replace(/\\/g, '/')),
-        )
-        .map((node) => node.path);
       let hasScanWorkflow = false;
       for (const workflowPath of workflowPaths) {
-        try {
-          const workflowRes = await fetchFileContent(workflowPath);
-          if (workflowRes.ok) {
-            const workflowContent = await workflowRes.text();
-            if (/assurly|npm\s+run\s+scan(?::self)?|npx\s+assurly\s+scan/i.test(workflowContent)) {
-              hasScanWorkflow = true;
-              break;
-            }
-          }
-        } catch {
-          // Continue checking other workflows
+        const workflowContent = await loadFileContent(workflowPath);
+        if (
+          workflowContent !== null &&
+          /assurly|npm\s+run\s+scan(?::self)?|npx\s+assurly\s+scan/i.test(workflowContent)
+        ) {
+          hasScanWorkflow = true;
+          break;
         }
       }
 

@@ -88,13 +88,24 @@ function stubGitHubFetch(
 ): void {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('type=tree')) {
         return new Response(JSON.stringify({ default_branch: 'main', tree }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
+      }
+      // Batch file read (public repositories): POST with a list of paths.
+      if (init?.method === 'POST' && url.includes('/api/github/public-scan')) {
+        const requestedPaths = (JSON.parse(String(init.body ?? '{}')).paths ?? []) as string[];
+        return new Response(
+          JSON.stringify({
+            default_branch: 'main',
+            files: requestedPaths.map((path) => ({ path, content: files[path] ?? null })),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
       }
       if (url.includes('type=file')) {
         const path = decodeURIComponent(

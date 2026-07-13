@@ -354,9 +354,25 @@ export class SupabaseDbAdapter implements DbAdapter {
     const scan = rows[0];
 
     if (findings.length) {
+      // PostgREST rejects a bulk insert whose objects do not all share the same
+      // key set (error PGRST102 "All object keys must match"). Callers legitimately
+      // omit optional fields — e.g. `confidence` is undefined for rules that do not
+      // set it — and JSON.stringify drops undefined keys, producing a mismatched
+      // array. Normalise every row to the same explicit shape, coercing absent
+      // optionals to null so the key set is always identical.
+      const findingRows = findings.map((finding) => ({
+        scan_id: scan.id,
+        rule_id: finding.rule_id,
+        severity: finding.severity,
+        confidence: finding.confidence ?? null,
+        file_path: finding.file_path,
+        line_number: finding.line_number ?? null,
+        message: finding.message,
+        suggestion: finding.suggestion ?? null,
+      }));
       await this.fetchDb('scan_findings', {
         method: 'POST',
-        body: JSON.stringify(findings.map((finding) => ({ ...finding, scan_id: scan.id }))),
+        body: JSON.stringify(findingRows),
       });
     }
 
