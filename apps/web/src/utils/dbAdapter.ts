@@ -65,6 +65,53 @@ export interface ScanFinding {
   created_at: string;
 }
 
+export type TargetKind = 'repo' | 'url';
+export type TargetVerdict = 'ready' | 'review' | 'blocked' | 'unknown';
+export type TargetOwnershipMethod = 'github_app' | 'dns_txt' | 'meta_tag' | 'file' | 'deploy_link';
+
+/**
+ * The persistent "current verdict" for one monitored app. Scans remain the
+ * source of truth; a target is the current-state projection plus metadata scans
+ * don't carry (generator fingerprint, ownership, badge token). See the Phase 1
+ * section of docs/roadmap/10-genius-rebuild-master-plan.md.
+ */
+export interface Target {
+  id: string;
+  organization_id: string;
+  kind: TargetKind;
+  identifier: string;
+  display_name: string | null;
+  repository_id: string | null;
+  generator_fingerprint: string | null;
+  ownership_verified: boolean;
+  ownership_method: TargetOwnershipMethod | null;
+  current_verdict: TargetVerdict | null;
+  current_ship_score: number | null;
+  verdict_evidence: unknown | null;
+  last_checked_at: string | null;
+  badge_token: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Partial upsert: only the provided fields are written. On conflict with an
+ * existing (organization_id, kind, identifier) target, unspecified columns
+ * (e.g. a previously detected fingerprint, or ownership) are preserved.
+ */
+export interface UpsertTargetInput {
+  organizationId: string;
+  kind: TargetKind;
+  identifier: string;
+  displayName?: string | null;
+  repositoryId?: string | null;
+  generatorFingerprint?: string | null;
+  currentVerdict?: TargetVerdict | null;
+  currentShipScore?: number | null;
+  verdictEvidence?: unknown;
+  lastCheckedAt?: string | null;
+}
+
 export interface StripeBillingEvent {
   eventId: string;
   eventType: string;
@@ -139,6 +186,9 @@ export interface DbAdapter {
   getOrganizationAdminEmails(organizationId: string): Promise<string[]>;
   updateFindingFixPrUrl(findingId: string, fixPrUrl: string): Promise<void>;
   updateFindingFixPrUrls(updates: { findingId: string; fixPrUrl: string }[]): Promise<void>;
+  getTargets(organizationId: string): Promise<Target[]>;
+  getTargetById(id: string): Promise<Target | null>;
+  upsertTarget(input: UpsertTargetInput): Promise<Target>;
 }
 
 function eq(value: string | number): string {
@@ -449,6 +499,48 @@ export class SupabaseDbAdapter implements DbAdapter {
     await Promise.all(
       updates.map((update) => this.updateFindingFixPrUrl(update.findingId, update.fixPrUrl)),
     );
+  }
+
+  getTargets(organizationId: string): Promise<Target[]> {
+    return this.fetchDb(
+      `targets?select=*&organization_id=eq.${eq(organizationId)}&order=updated_at.desc`,
+    );
+  }
+
+  getTargetById(id: string): Promise<Target | null> {
+    return this.first(`targets?select=*&id=eq.${eq(id)}`);
+  }
+
+  async upsertTarget(input: UpsertTargetInput): Promise<Target> {
+    // Only send the fields the caller specified. PostgREST's merge-duplicates
+    // upsert updates exactly the columns present in the payload, so unspecified
+    // fields (a previously detected fingerprint, ownership) are preserved on
+    // conflict. `updated_at` is always refreshed.
+    const row: Record<string, unknown> = {
+      organization_id: input.organizationId,
+      kind: input.kind,
+      identifier: input.identifier,
+      updated_at: new Date().toISOString(),
+    };
+    if (input.displayName !== undefined) row.display_name = input.displayName;
+    if (input.repositoryId !== undefined) row.repository_id = input.repositoryId;
+    if (input.generatorFingerprint !== undefined) {
+      row.generator_fingerprint = input.generatorFingerprint;
+    }
+    if (input.currentVerdict !== undefined) row.current_verdict = input.currentVerdict;
+    if (input.currentShipScore !== undefined) row.current_ship_score = input.currentShipScore;
+    if (input.verdictEvidence !== undefined) row.verdict_evidence = input.verdictEvidence;
+    if (input.lastCheckedAt !== undefined) row.last_checked_at = input.lastCheckedAt;
+
+    const rows = await this.fetchDb<Target[]>(
+      'targets?on_conflict=organization_id,kind,identifier',
+      {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify(row),
+      },
+    );
+    return rows[0];
   }
 }
 

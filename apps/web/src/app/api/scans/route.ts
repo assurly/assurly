@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { ApiError, RATE_LIMITS, requireRouteUser, secureRoute } from '../../../utils/apiSecurity';
 import { requireRepositoryAccess, requireScanAccess } from '../../../utils/authorization';
+import { resolveVerdictFromScanFindings } from '../../../utils/shipGate';
+import { GENERATOR_FINGERPRINTS } from '../../../utils/generatorFingerprint';
+import type { DbAdapter, Scan, ScanFinding } from '../../../utils/dbAdapter';
 
 const scanQuery = z
   .object({
@@ -36,6 +39,11 @@ const saveScanBody = z
     errors: z.number().int().nonnegative().max(100).optional(),
     warnings: z.number().int().nonnegative().max(100).optional(),
     findings: z.array(findingSchema).max(100),
+    // The AI builder that produced this app (Phase 0 detector, computed client-side
+    // from the repo tree). Persisted on the target to seed the corpus moat.
+    generatorFingerprint: z.enum(GENERATOR_FINGERPRINTS).optional(),
+    // The true number of files the scan analyzed, for accurate verdict evidence.
+    scannedFileCount: z.number().int().nonnegative().max(100_000).optional(),
   })
   .strict();
 
@@ -61,6 +69,50 @@ export const GET = secureRoute(
     return NextResponse.json({ scans: await context.db.getRecentScans(query.repoId) });
   },
 );
+
+/**
+ * Refreshes the repo's `target` (the current-verdict projection) from a scan
+ * that was just persisted. The scan is the source of truth, so this is
+ * best-effort: a target-sync failure must never fail the scan save. It also
+ * records the generator fingerprint (moat groundwork) without overwriting a
+ * previously detected one when the client omits it.
+ */
+async function syncRepoTargetFromScan(
+  db: DbAdapter,
+  body: z.infer<typeof saveScanBody>,
+  scan: Scan,
+): Promise<void> {
+  try {
+    const repo = await db.getRepository(body.repoId);
+    if (!repo) return;
+    const verdict = resolveVerdictFromScanFindings(body.findings as unknown as ScanFinding[], {
+      scannedFileCount: body.scannedFileCount,
+    });
+    await db.upsertTarget({
+      organizationId: repo.organization_id,
+      kind: 'repo',
+      identifier: repo.name,
+      displayName: repo.name,
+      repositoryId: repo.id,
+      // Preserve a prior fingerprint when this scan didn't detect one.
+      generatorFingerprint: body.generatorFingerprint ?? undefined,
+      currentVerdict: verdict.status,
+      currentShipScore: verdict.shipScore,
+      verdictEvidence: {
+        topIssue: verdict.topIssue,
+        blockerCount: verdict.blockerCount,
+        reviewCount: verdict.reviewCount,
+        warningCount: verdict.warningCount,
+        headline: verdict.headline,
+      },
+      lastCheckedAt: scan.created_at ?? new Date().toISOString(),
+    });
+  } catch (error) {
+    // Surfaced via the route's own 5xx logging only if it escapes; here we
+    // swallow it so the (already persisted) scan still returns 201.
+    console.error('Failed to sync target from scan:', error);
+  }
+}
 
 export const POST = secureRoute(
   {
@@ -94,6 +146,7 @@ export const POST = secureRoute(
       warnings,
       body.findings,
     );
+    await syncRepoTargetFromScan(context.db, body, scan);
     return NextResponse.json(scan, { status: 201 });
   },
 );

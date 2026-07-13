@@ -24,7 +24,11 @@ vi.mock('../../utils/clientApi', async (importOriginal) => {
   const actual = (await importOriginal()) as typeof clientApiModule;
   return {
     ...actual,
-    clientApi: { ...actual.clientApi, portal: vi.fn() },
+    clientApi: {
+      ...actual.clientApi,
+      targets: vi.fn(async () => ({ targets: [] })),
+      portal: vi.fn(),
+    },
   };
 });
 

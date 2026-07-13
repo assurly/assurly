@@ -592,7 +592,19 @@ Leverage and dependency both point to this order. We do not reorder without upda
   synced, observability improved, rules frozen, moat instrumentation shipped). Two items deliberately
   sequenced into Phase 1 to avoid throwaway work and premature prod migrations.
 
-- [ ] **Phase 1** — Verdict Object (data + API + surfacing)
+- [~] **Phase 1** — Verdict Object (data + API + surfacing) — **code complete, tests green;
+  final in-browser confirmation pending a fresh login (session had expired).**
+  - [x] `targets` table (migration `20260713000000_targets.sql`) with org-scoped RLS — **applied to prod**
+  - [x] `resolveVerdict` / `resolveVerdictFromScanFindings` (top-issue projection) + tests
+  - [x] `dbAdapter`: `getTargets` / `getTargetById` / `upsertTarget` (PostgREST merge-duplicates)
+  - [x] Scan-save syncs the repo target (verdict projection + generator fingerprint), best-effort
+  - [x] `generator_fingerprint` captured client-side during scan → persisted on the target (folded-in item)
+  - [x] `GET /api/targets` (verdict per app; target row authoritative, else derived from latest scan) + tests
+  - [x] FE `VerdictCard` + `VerdictCardsSection` as the **primary dashboard surface** (repo-scan
+        demoted below — the folded-in "demote repo-scan" item) + tests
+  - [ ] Browser-verify verdict cards + card→detail + post-scan refresh (needs login)
+  - [→] `GET /api/targets/[id]` deferred: the existing repo/scan detail already serves as the verdict
+    detail (cards open it), so a separate endpoint is not needed for the Phase 1 DoD
 - [ ] **Phase 2** — Proof-First Experience + consequence translation
 - [ ] **Phase 3** — Ownership Verification
 - [ ] **Phase 4** — AI Red-Team Planner + Layer 2 deep review

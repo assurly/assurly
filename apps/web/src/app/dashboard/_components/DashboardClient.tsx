@@ -27,6 +27,7 @@ import {
   type ScanScope,
 } from '../../../utils/browserScanner';
 import ManualChecker from './manual-checker/ManualChecker';
+import { detectGeneratorFingerprint } from '../../../utils/generatorFingerprint';
 import { UnauthenticatedDashboard } from './UnauthenticatedDashboard';
 import {
   clientApi,
@@ -42,6 +43,7 @@ import { summarizeScanFixes } from '../../../utils/fixSummary';
 import { preferPublicScanForRepository, sanitizeGitHubOwner } from '../../../utils/scanProxy';
 import { buildShipGateFromScanFindings } from '../../../utils/shipGate';
 import { RepoListPanel } from './RepoListPanel';
+import { VerdictCardsSection } from './VerdictCardsSection';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { DashboardTabs } from './DashboardTabs';
 import { PublicRepoConnect } from './PublicRepoConnect';
@@ -243,6 +245,25 @@ function DashboardContent({
     setScanError(null);
     setScanLogs([]);
   };
+
+  // Opening a verdict card drops the user into the existing repo detail/scan flow.
+  const handleOpenVerdict = (repositoryId: string): void => {
+    const repo = repos.find((candidate) => candidate.id === repositoryId);
+    if (!repo) return;
+    handleSelectRepo(repo);
+    scrollToScanDetails();
+  };
+
+  // Verdict cards re-fetch whenever a scan finishes (the target was refreshed
+  // server-side during save), so the dashboard verdict reflects the new result.
+  const [verdictRefreshKey, setVerdictRefreshKey] = useState(0);
+  const wasScanningRef = useRef(false);
+  useEffect(() => {
+    if (wasScanningRef.current && !isScanning) {
+      setVerdictRefreshKey((key) => key + 1);
+    }
+    wasScanningRef.current = isScanning;
+  }, [isScanning]);
 
   useEffect(() => {
     const pendingRepo = window.localStorage.getItem('last_scanned_public_repo');
@@ -960,12 +981,14 @@ function DashboardContent({
       let detectedFramework = 'Unknown';
       let hasSupabase = false;
       let hasStripe = false;
+      let packageJsonText: string | null = null;
 
       if (hasPackageJson) {
         try {
           const pkgRes = await fetchFileContent('package.json');
           if (pkgRes.ok) {
-            const pkgData = await pkgRes.json();
+            packageJsonText = await pkgRes.text();
+            const pkgData = JSON.parse(packageJsonText);
             const allDeps = {
               ...(pkgData.dependencies || {}),
               ...(pkgData.devDependencies || {}),
@@ -978,6 +1001,13 @@ function DashboardContent({
           // Ignore package.json read failures
         }
       }
+
+      // Which AI builder produced this app — recorded on the target to seed the
+      // corpus moat (Phase 1). Derived from the repo tree + package.json.
+      const generatorFingerprint = detectGeneratorFingerprint({
+        filePaths: tree.map((node) => node.path),
+        packageJson: packageJsonText,
+      });
 
       setScanProgress(30);
       setScanLogs((prev) => [
@@ -1225,6 +1255,9 @@ function DashboardContent({
             errors: persistedErrors,
             warnings: persistedWarnings,
             findings: dbFindings,
+            // Feed the target's current-verdict projection + corpus moat (Phase 1).
+            generatorFingerprint,
+            scannedFileCount: fileSelection.files.length,
           });
 
           // Keep the full result visible for the rest of the session without
@@ -1349,79 +1382,82 @@ function DashboardContent({
         <DashboardTabs activeTab={activeTab} onTabChange={handleDashboardTabChange} />
 
         {activeTab === 'repositories' ? (
-          <div className="dashboard-grid">
-            <div className="dashboard-repo-column">
-              <RepoListPanel
-                repositories={repos}
-                selectedRepoId={selectedRepo?.id ?? null}
-                scanCountsByRepoId={scanCountsByRepoId}
-                hasGitHubInstallation={Boolean(org?.github_installation_id)}
-                onSelectRepository={handleSelectRepo}
-              />
+          <>
+            <VerdictCardsSection onOpenRepo={handleOpenVerdict} refreshKey={verdictRefreshKey} />
+            <div className="dashboard-grid">
+              <div className="dashboard-repo-column">
+                <RepoListPanel
+                  repositories={repos}
+                  selectedRepoId={selectedRepo?.id ?? null}
+                  scanCountsByRepoId={scanCountsByRepoId}
+                  hasGitHubInstallation={Boolean(org?.github_installation_id)}
+                  onSelectRepository={handleSelectRepo}
+                />
 
-              <PublicRepoConnect
-                publicRepoInput={publicRepoInput}
-                isAddingRepo={isAddingRepo}
-                isFetchingPublicRepos={isFetchingPublicRepos}
-                discoveredPublicRepos={discoveredPublicRepos}
-                onInputChange={setPublicRepoInput}
-                onSubmit={(event) => void handleAddPublicRepo(event)}
-                onClearDiscovered={() => setDiscoveredPublicRepos([])}
-                onSelectDiscoveredRepo={(fullName) => {
-                  setPublicRepoInput(fullName);
-                  setDiscoveredPublicRepos([]);
-                  void handleAddPublicRepo(undefined, fullName);
+                <PublicRepoConnect
+                  publicRepoInput={publicRepoInput}
+                  isAddingRepo={isAddingRepo}
+                  isFetchingPublicRepos={isFetchingPublicRepos}
+                  discoveredPublicRepos={discoveredPublicRepos}
+                  onInputChange={setPublicRepoInput}
+                  onSubmit={(event) => void handleAddPublicRepo(event)}
+                  onClearDiscovered={() => setDiscoveredPublicRepos([])}
+                  onSelectDiscoveredRepo={(fullName) => {
+                    setPublicRepoInput(fullName);
+                    setDiscoveredPublicRepos([]);
+                    void handleAddPublicRepo(undefined, fullName);
+                  }}
+                />
+
+                <DeployedUrlScan loginUrl={loginUrl} />
+              </div>
+
+              <ScanWorkspace
+                selectedRepo={selectedRepo}
+                githubInstallationId={org?.github_installation_id}
+                billingPlan={org?.billing_plan}
+                selectedRepoScanCount={selectedRepoScanCount}
+                canJumpToScanResults={canJumpToScanResults}
+                onJumpToResults={() => {
+                  scrollToScanDetails();
                 }}
+                isScanning={isScanning}
+                onRunScan={triggerScan}
+                scanError={scanError}
+                onDismissScanError={() => {
+                  setScanError(null);
+                  setScanLogs([]);
+                }}
+                scanProgress={scanProgress}
+                scanLogs={scanLogs}
+                repoDetailStatus={repoDetailStatus}
+                displayedScans={displayedScans}
+                selectedScan={selectedScan}
+                onSelectScan={(scan) => {
+                  setShareError(null);
+                  setSelectedScan(scan);
+                }}
+                shipGateReport={shipGateReport}
+                fixSummary={fixSummary}
+                displayedFindings={displayedFindings}
+                findingsLimit={SAVE_FINDINGS_LIMIT}
+                selectedShareUrl={selectedShareUrl}
+                selectedBadgeMarkdown={selectedBadgeMarkdown}
+                fetchTrend={clientApi.trend}
+                onShare={
+                  org?.billing_plan === 'pro' && !selectedShareUrl
+                    ? () => void handleShareScan()
+                    : undefined
+                }
+                isSharing={sharingScanId === selectedScan?.id}
+                shareError={shareError}
+                fixingFindingId={fixingFindingId}
+                isFindingFixable={isFindingFixable}
+                onCreateFixPr={(finding) => void handleCreateFixPr(finding)}
+                onCreateBatchFixPr={() => void handleCreateBatchFixPr()}
               />
-
-              <DeployedUrlScan loginUrl={loginUrl} />
             </div>
-
-            <ScanWorkspace
-              selectedRepo={selectedRepo}
-              githubInstallationId={org?.github_installation_id}
-              billingPlan={org?.billing_plan}
-              selectedRepoScanCount={selectedRepoScanCount}
-              canJumpToScanResults={canJumpToScanResults}
-              onJumpToResults={() => {
-                scrollToScanDetails();
-              }}
-              isScanning={isScanning}
-              onRunScan={triggerScan}
-              scanError={scanError}
-              onDismissScanError={() => {
-                setScanError(null);
-                setScanLogs([]);
-              }}
-              scanProgress={scanProgress}
-              scanLogs={scanLogs}
-              repoDetailStatus={repoDetailStatus}
-              displayedScans={displayedScans}
-              selectedScan={selectedScan}
-              onSelectScan={(scan) => {
-                setShareError(null);
-                setSelectedScan(scan);
-              }}
-              shipGateReport={shipGateReport}
-              fixSummary={fixSummary}
-              displayedFindings={displayedFindings}
-              findingsLimit={SAVE_FINDINGS_LIMIT}
-              selectedShareUrl={selectedShareUrl}
-              selectedBadgeMarkdown={selectedBadgeMarkdown}
-              fetchTrend={clientApi.trend}
-              onShare={
-                org?.billing_plan === 'pro' && !selectedShareUrl
-                  ? () => void handleShareScan()
-                  : undefined
-              }
-              isSharing={sharingScanId === selectedScan?.id}
-              shareError={shareError}
-              fixingFindingId={fixingFindingId}
-              isFindingFixable={isFindingFixable}
-              onCreateFixPr={(finding) => void handleCreateFixPr(finding)}
-              onCreateBatchFixPr={() => void handleCreateBatchFixPr()}
-            />
-          </div>
+          </>
         ) : (
           <ManualChecker onToast={handleCheckerToast} />
         )}

@@ -80,7 +80,35 @@ const saveScanBodySchema = z.object({
   errors: z.number().int().nonnegative(),
   warnings: z.number().int().nonnegative(),
   findings: z.array(scanFindingInputSchema),
+  // Optional metadata for the target's current-verdict projection (Phase 1).
+  generatorFingerprint: z.enum(['lovable', 'v0', 'bolt', 'cursor', 'replit', 'unknown']).optional(),
+  scannedFileCount: z.number().int().nonnegative().optional(),
 });
+const verdictTopIssueSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  severity: z.enum(['error', 'warning']),
+  sampleMessage: z.string(),
+  affectedFileCount: z.number(),
+  occurrenceCount: z.number(),
+});
+const targetCardSchema = z.object({
+  id: z.string(),
+  kind: z.literal('repo'),
+  identifier: z.string(),
+  displayName: z.string(),
+  repositoryId: z.string(),
+  generatorFingerprint: z.string().nullable(),
+  verdict: z.enum(['ready', 'review', 'blocked', 'unknown']),
+  shipScore: z.number().nullable(),
+  topIssue: verdictTopIssueSchema.nullable(),
+  lastCheckedAt: z.string().nullable(),
+  latestScanId: z.string().nullable(),
+  ownershipVerified: z.boolean(),
+});
+const targetsSchema = z.object({ targets: z.array(targetCardSchema) });
+export type TargetCard = z.infer<typeof targetCardSchema>;
+
 const githubRepositorySchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -163,6 +191,7 @@ export const clientApi = {
     requestJson('/api/repositories', repositorySchema, jsonRequest('POST', { name, githubRepoId })),
   scans: (repositoryId: string): Promise<{ scans: Scan[] }> =>
     requestJson(`/api/scans?repoId=${encodeURIComponent(repositoryId)}`, scansSchema),
+  targets: (): Promise<{ targets: TargetCard[] }> => requestJson('/api/targets', targetsSchema),
   findings: (scanId: string): Promise<{ findings: ScanFinding[] }> =>
     requestJson(`/api/scans?scanId=${encodeURIComponent(scanId)}`, findingsSchema),
   saveScan: (body: z.input<typeof saveScanBodySchema>): Promise<Scan> =>

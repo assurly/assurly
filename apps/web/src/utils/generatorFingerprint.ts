@@ -12,7 +12,17 @@
  * just lacks that row); a wrong attribution would poison the dataset.
  */
 
-export type GeneratorFingerprint = 'lovable' | 'v0' | 'bolt' | 'cursor' | 'replit' | 'unknown';
+/** Every fingerprint value, including `unknown`. A const tuple so it can back a zod enum. */
+export const GENERATOR_FINGERPRINTS = [
+  'lovable',
+  'v0',
+  'bolt',
+  'cursor',
+  'replit',
+  'unknown',
+] as const;
+
+export type GeneratorFingerprint = (typeof GENERATOR_FINGERPRINTS)[number];
 
 /** The non-`unknown` fingerprints, in the priority order they are evaluated. */
 export const KNOWN_GENERATOR_FINGERPRINTS: readonly Exclude<GeneratorFingerprint, 'unknown'>[] = [

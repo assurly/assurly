@@ -22,6 +22,7 @@ vi.mock('../../utils/clientApi', async (importOriginal) => {
     ...actual,
     clientApi: {
       ...actual.clientApi,
+      targets: vi.fn(async () => ({ targets: [] })),
       scans: vi.fn().mockResolvedValue({ scans: [] }),
       findings: vi.fn().mockResolvedValue({ findings: [] }),
     },

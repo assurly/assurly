@@ -7135,3 +7135,201 @@ body {
     overflow-wrap: break-word;
   }
 }
+
+/* ==========================================================================
+   Verdict cards — the Phase 1 "current verdict per app" primary surface.
+   ========================================================================== */
+.verdict-section {
+  margin-bottom: 28px;
+}
+.verdict-section__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.verdict-section__title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+.verdict-section__subtitle {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 2px 0 0;
+}
+.verdict-section__error {
+  font-size: 0.85rem;
+  color: var(--color-danger-text);
+  margin: 0 0 12px;
+}
+.verdict-section__empty {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  padding: 20px;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius);
+}
+.verdict-card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+.verdict-section__loading {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+.verdict-card-skeleton {
+  height: 96px;
+  border-radius: var(--border-radius);
+  background: linear-gradient(
+    100deg,
+    var(--color-surface) 30%,
+    var(--color-surface-raised) 50%,
+    var(--color-surface) 70%
+  );
+  background-size: 200% 100%;
+  animation: verdict-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes verdict-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.verdict-card {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-left-width: 4px;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.1s ease;
+}
+.verdict-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-color-strong, var(--color-border-strong));
+}
+.verdict-card:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.verdict-card:active {
+  transform: translateY(1px);
+}
+.verdict-card--blocked {
+  border-left-color: var(--color-danger);
+}
+.verdict-card--review {
+  border-left-color: var(--color-warning);
+}
+.verdict-card--ready {
+  border-left-color: var(--color-success);
+}
+.verdict-card--unknown {
+  border-left-color: var(--color-border-strong);
+}
+.verdict-card__status {
+  font-size: 1.25rem;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.verdict-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.verdict-card__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.verdict-card__name {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.verdict-card__chip {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+.verdict-card__verdict {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.verdict-card--blocked .verdict-card__verdict {
+  color: var(--color-danger-text);
+}
+.verdict-card__issue {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.verdict-card__issue--clean {
+  color: var(--color-success);
+}
+.verdict-card__issue--muted {
+  color: var(--text-muted);
+}
+.verdict-card__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.verdict-card__score {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+.verdict-card--blocked .verdict-card__score {
+  color: var(--color-danger-text);
+}
+.verdict-card__score-max {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.verdict-card__freshness {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+@media (max-width: 520px) {
+  .verdict-card-list,
+  .verdict-section__loading {
+    grid-template-columns: 1fr;
+  }
+}
