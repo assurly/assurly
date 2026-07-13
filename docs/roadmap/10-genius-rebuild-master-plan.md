@@ -592,8 +592,11 @@ Leverage and dependency both point to this order. We do not reorder without upda
   synced, observability improved, rules frozen, moat instrumentation shipped). Two items deliberately
   sequenced into Phase 1 to avoid throwaway work and premature prod migrations.
 
-- [~] **Phase 1** — Verdict Object (data + API + surfacing) — **code complete, tests green;
-  final in-browser confirmation pending a fresh login (session had expired).**
+- [x] **Phase 1** — Verdict Object (data + API + surfacing) — **complete & browser-verified.**
+      Dashboard leads with "Your apps" verdict cards ("3 apps not safe to ship right now"), sorted
+      blocked→review→ready→unknown, each showing verdict + score + top issue + freshness. Confirmed
+      end-to-end: cards render from prod, card→detail navigation works, and a live scan upserts the
+      target (no sync error) then refreshes the card to "Checked just now".
   - [x] `targets` table (migration `20260713000000_targets.sql`) with org-scoped RLS — **applied to prod**
   - [x] `resolveVerdict` / `resolveVerdictFromScanFindings` (top-issue projection) + tests
   - [x] `dbAdapter`: `getTargets` / `getTargetById` / `upsertTarget` (PostgREST merge-duplicates)
@@ -602,7 +605,7 @@ Leverage and dependency both point to this order. We do not reorder without upda
   - [x] `GET /api/targets` (verdict per app; target row authoritative, else derived from latest scan) + tests
   - [x] FE `VerdictCard` + `VerdictCardsSection` as the **primary dashboard surface** (repo-scan
         demoted below — the folded-in "demote repo-scan" item) + tests
-  - [ ] Browser-verify verdict cards + card→detail + post-scan refresh (needs login)
+  - [x] Browser-verified: verdict cards render, card→detail, live scan → target upsert → card refresh
   - [→] `GET /api/targets/[id]` deferred: the existing repo/scan detail already serves as the verdict
     detail (cards open it), so a separate endpoint is not needed for the Phase 1 DoD
 - [ ] **Phase 2** — Proof-First Experience + consequence translation
