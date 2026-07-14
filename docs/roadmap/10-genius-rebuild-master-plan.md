@@ -608,14 +608,14 @@ Leverage and dependency both point to this order. We do not reorder without upda
   - [x] Browser-verified: verdict cards render, card→detail, live scan → target upsert → card refresh
   - [→] `GET /api/targets/[id]` deferred: the existing repo/scan detail already serves as the verdict
     detail (cards open it), so a separate endpoint is not needed for the Phase 1 DoD
-- [~] **Phase 2** — Proof-First Experience + consequence translation — **complete pending commit.**
-  Tests green (704 pass), typecheck clean, prod migration applied, browser-verified end-to-end.
+- [x] **Phase 2** — Proof-First Experience + consequence translation — **complete & browser-verified.**
+      Tests green (704 pass), typecheck clean, `probe_evidence` migration applied to prod (`supabase db push`
+      → remote up to date), browser-verified end-to-end.
   - [x] AI provider abstraction `utils/ai/claudeClient.ts` (model ids centralised, 20s timeout, one
         retry on 5xx, content-hash cache, per-org budget guard, `asUntrustedData` injection defense) + tests
   - [x] `consequenceMap.ts` (pure, client-safe curated consequence for every rule id) +
         `consequenceTranslator.ts` (AI fallback → curated → message, never on critical path) + tests
-  - [x] `probe_evidence` migration `20260714000000_probe_evidence.sql` (org-scoped RLS) — **dry-run OK,
-        NOT yet pushed to prod (awaiting approval)**
+  - [x] `probe_evidence` migration `20260714000000_probe_evidence.sql` (org-scoped RLS) — **applied to prod**
   - [x] `runtimeScanner` returns already-redacted `ProbeEvidence` (RLS row count via `count=exact`
         header — proves scale without exfiltration; masked secrets; missing headers) + `redactCell` + tests
   - [x] Active Supabase RLS row-pull gated: passive-only by default, `activeProbe` only for signed-in
