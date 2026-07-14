@@ -411,6 +411,44 @@ export async function fetchGitHubFile(
   return readLimitedResponseText(response, maxBytes);
 }
 
+export interface GitHubBatchFile {
+  path: string;
+  /** File contents, or `null` when the file could not be read (missing, too large, transient). */
+  content: string | null;
+}
+
+/**
+ * Fetches many repository files in one server-side pass with bounded concurrency.
+ * A single unreadable file never fails the batch — its content comes back `null`.
+ * This is what lets the scan proxies (public + private) replace hundreds of
+ * per-file client round trips (which trip rate limits and take minutes) with one
+ * request. Order of the returned array matches the de-duplicated input paths.
+ */
+export async function fetchGitHubFilesBatch(
+  token: string,
+  fullName: string,
+  paths: readonly string[],
+  ref: string,
+  options: { concurrency?: number; maxBytes?: number } = {},
+): Promise<GitHubBatchFile[]> {
+  const { concurrency = 15, maxBytes = 512 * 1024 } = options;
+  const uniquePaths = [...new Set(paths)];
+  const results = new Map<string, string | null>();
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    while (cursor < uniquePaths.length) {
+      const path = uniquePaths[cursor++];
+      try {
+        results.set(path, await fetchGitHubFile(token, fullName, path, ref, maxBytes));
+      } catch {
+        results.set(path, null);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, uniquePaths.length) }, worker));
+  return uniquePaths.map((path) => ({ path, content: results.get(path) ?? null }));
+}
+
 export async function readLimitedResponseText(
   response: Response,
   maxBytes: number,

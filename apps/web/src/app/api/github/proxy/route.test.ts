@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GET } from './route';
+import { GET, POST } from './route';
 import { GitHubApiError } from '../../../../utils/githubApp';
 
 const mocks = vi.hoisted(() => ({
@@ -157,5 +157,86 @@ describe('GitHub installation proxy error classification (GET /api/github/proxy)
     expect(data.default_branch).toBe('main');
     expect(data.tree).toHaveLength(1);
     expect(data.commit_sha).toBe(sha);
+  });
+});
+
+describe('GitHub installation proxy batch read (POST /api/github/proxy)', () => {
+  function batchRequest(body: unknown): Request {
+    return new Request('http://localhost/api/github/proxy', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('fetches every requested file in one response using the installation token', async () => {
+    mocks.getInstallationAccessToken.mockResolvedValue('installation-token');
+    const contents: Record<string, string> = {
+      'package.json': '{"name":"app"}',
+      'db/schema.sql': 'create table users();',
+    };
+    // URL-routed mock, robust to the batch's concurrent fetch order.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        const match = url.match(/\/contents\/(.+)\?ref=main$/);
+        if (match) {
+          // The installation token must be used for the file reads.
+          expect((options?.headers as Record<string, string>).Authorization).toBe(
+            'Bearer installation-token',
+          );
+          return new Response(contents[decodeURIComponent(match[1])] ?? '', { status: 200 });
+        }
+        return new Response('not found', { status: 404 });
+      }),
+    );
+
+    const res = await POST(
+      batchRequest({ repoId: REPO_ID, branch: 'main', paths: Object.keys(contents) }),
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.default_branch).toBe('main');
+    const byPath = Object.fromEntries(
+      (data.files as Array<{ path: string; content: string | null }>).map((f) => [
+        f.path,
+        f.content,
+      ]),
+    );
+    expect(byPath['package.json']).toBe('{"name":"app"}');
+    expect(byPath['db/schema.sql']).toBe('create table users();');
+  });
+
+  it('returns null for an unreadable file instead of failing the batch', async () => {
+    mocks.getInstallationAccessToken.mockResolvedValue('installation-token');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/contents/ok.ts?ref=main')) {
+          return new Response('export const ok = 1;', { status: 200 });
+        }
+        return new Response('not found', { status: 404 });
+      }),
+    );
+
+    const res = await POST(
+      batchRequest({ repoId: REPO_ID, branch: 'main', paths: ['ok.ts', 'gone.ts'] }),
+    );
+    expect(res.status).toBe(200);
+    const byPath = Object.fromEntries(
+      ((await res.json()).files as Array<{ path: string; content: string | null }>).map((f) => [
+        f.path,
+        f.content,
+      ]),
+    );
+    expect(byPath['ok.ts']).toBe('export const ok = 1;');
+    expect(byPath['gone.ts']).toBeNull();
+  });
+
+  it('rejects a malformed body (no paths)', async () => {
+    const res = await POST(batchRequest({ repoId: REPO_ID, branch: 'main' }));
+    expect(res.status).toBe(400);
   });
 });

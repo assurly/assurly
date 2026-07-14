@@ -114,6 +114,9 @@ beforeEach(() => {
   createFixMock.mockReset();
 
   vi.spyOn(console, 'error').mockImplementation(() => {});
+  // jsdom does not implement window.open; the app calls it as a best-effort jump
+  // to the PR. Stub it so the (expected) noise doesn't pollute test output.
+  vi.spyOn(window, 'open').mockReturnValue(null);
 
   // jsdom's localStorage is unreliable across tests; provide a clean stub.
   const store = new Map<string, string>();
@@ -161,14 +164,18 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
     expect(screen.queryByRole('button', { name: /fix it/i })).toBeNull();
   });
 
-  it('shows an English success toast after the PR is created', async () => {
+  it('shows a success toast with a link to the created PR', async () => {
     createFixMock.mockResolvedValue({ prUrl: FIX_PR_URL, findingIds: FIX_FINDING_IDS });
 
     await renderWithFixableFinding();
     fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
 
     const status = await screen.findByRole('status');
-    expect(status.textContent).toMatch(/pull request created successfully/i);
+    expect(status.textContent).toMatch(/pull request created on github/i);
+    // The toast carries a reliable, clickable link to the PR (not a silent swap).
+    const toastLink = within(status).getByRole('link', { name: /view pull request/i });
+    expect(toastLink.getAttribute('href')).toBe(FIX_PR_URL);
+    expect(toastLink.getAttribute('target')).toBe('_blank');
   });
 
   it('calls createFix with the exact repo, scan, and finding IDs', async () => {

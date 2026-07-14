@@ -75,6 +75,9 @@ type ToastNotification = {
   type: 'success' | 'error' | 'info';
   /** When `null`, the toast stays until the user dismisses it. */
   autoDismissMs?: number | null;
+  /** Optional call-to-action link (e.g. "View pull request →"). */
+  actionLabel?: string;
+  actionHref?: string;
 };
 
 const DEFAULT_TOAST_DISMISS_MS: Record<ToastNotification['type'], number> = {
@@ -595,6 +598,30 @@ function DashboardContent({
     setLocalFindings(apply);
   };
 
+  // Best-effort jump to the freshly opened PR. Browsers may block window.open
+  // after an async request (it is not inside the original click gesture), so the
+  // persistent toast's "View pull request" link is the reliable path — this just
+  // saves a click when the browser allows it.
+  const openPrInNewTab = (prUrl: string): void => {
+    try {
+      window.open(prUrl, '_blank', 'noopener,noreferrer');
+    } catch {
+      // Ignore — the toast action link covers navigation.
+    }
+  };
+
+  const announcePrCreated = (prUrl: string, message: string): void => {
+    openPrInNewTab(prUrl);
+    setToast({
+      message,
+      type: 'success',
+      actionLabel: 'View pull request →',
+      actionHref: prUrl,
+      // Persist until dismissed so the user always has a reliable link to the PR.
+      autoDismissMs: null,
+    });
+  };
+
   const isFindingFixable = (finding: ScanFinding): boolean =>
     !isLocalFindingId(finding.id) && isAutoFixableFinding(finding);
 
@@ -611,7 +638,7 @@ function DashboardContent({
       });
       if (prUrl && findingIds?.length) {
         markFindingsFixed(findingIds, prUrl);
-        setToast({ message: 'Pull request created successfully.', type: 'success' });
+        announcePrCreated(prUrl, 'Pull request created on GitHub.');
       } else {
         throw new Error('Failed to retrieve the PR URL from the backend.');
       }
@@ -642,10 +669,10 @@ function DashboardContent({
       });
       if (prUrl && findingIds?.length) {
         markFindingsFixed(findingIds, prUrl);
-        setToast({
-          message: `Combined pull request ready for ${findingIds.length} fixes.`,
-          type: 'success',
-        });
+        announcePrCreated(
+          prUrl,
+          `Combined pull request created on GitHub for ${findingIds.length} fixes.`,
+        );
       } else {
         throw new Error('Failed to retrieve the PR URL from the backend.');
       }
@@ -855,43 +882,50 @@ function DashboardContent({
         const pending = paths.filter((path) => !contentCache.has(path));
         if (pending.length === 0) return;
 
-        // Public repositories: one batch request pulls every file at once. This
-        // is the fast path — hundreds of per-file requests otherwise trip the
-        // public rate limit and take minutes.
-        if (!usePrivateProxy) {
-          try {
-            const res = await fetch('/api/github/public-scan', {
-              method: 'POST',
-              credentials: 'same-origin',
-              headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-              body: JSON.stringify({ repo: repoFullName, branch: defaultBranch, paths: pending }),
-            });
-            if (res.ok) {
-              const data: unknown = await res.json();
-              const files =
-                (data as { files?: Array<{ path?: unknown; content?: unknown }> }).files ?? [];
-              for (const entry of files) {
-                if (typeof entry?.path === 'string') {
-                  contentCache.set(
-                    entry.path,
-                    typeof entry.content === 'string' ? entry.content : null,
-                  );
-                }
-              }
-              // Mark any path the server omitted as absent so callers don't refetch.
-              for (const path of pending) {
-                if (!contentCache.has(path)) contentCache.set(path, null);
-              }
-              return;
+        // One batch request pulls every file at once — the difference between a
+        // fast scan and hundreds of serial per-file round trips (which trip rate
+        // limits and take minutes). Both the private (installation) and public
+        // proxies support the batch endpoint.
+        const batch = usePrivateProxy
+          ? {
+              url: '/api/github/proxy',
+              body: { repoId: selectedRepo.id, branch: defaultBranch, paths: pending },
             }
-          } catch {
-            // Fall through to per-file fetching below.
+          : {
+              url: '/api/github/public-scan',
+              body: { repo: repoFullName, branch: defaultBranch, paths: pending },
+            };
+        try {
+          const res = await fetch(batch.url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify(batch.body),
+          });
+          if (res.ok) {
+            const data: unknown = await res.json();
+            const files =
+              (data as { files?: Array<{ path?: unknown; content?: unknown }> }).files ?? [];
+            for (const entry of files) {
+              if (typeof entry?.path === 'string') {
+                contentCache.set(
+                  entry.path,
+                  typeof entry.content === 'string' ? entry.content : null,
+                );
+              }
+            }
+            // Mark any path the server omitted as absent so callers don't refetch.
+            for (const path of pending) {
+              if (!contentCache.has(path)) contentCache.set(path, null);
+            }
+            return;
           }
+        } catch {
+          // Fall through to per-file fetching below.
         }
 
-        // Private-proxy path (installations) or batch failure: fetch serially so
-        // we never exceed the proxy rate limit. De-duplication above already
-        // halves the request count versus the previous per-pass fetching.
+        // Batch failed (e.g. transient error): fall back to serial per-file
+        // fetching, which respects the proxy rate limit and still completes.
         for (const path of pending) {
           if (scanAbortRef.current) break;
           await loadFileContent(path);

@@ -3721,6 +3721,26 @@ footer .footer-links a:hover {
   flex-shrink: 0;
 }
 
+.dashboard-toast__action {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 5px 12px;
+  border-radius: 6px;
+  color: var(--color-canvas);
+  background: var(--color-accent);
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.dashboard-toast__action:hover {
+  background: var(--color-accent-hover);
+}
+.dashboard-toast__action:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 button.dashboard-repo-selector-item {
   width: 100%;
   font: inherit;

@@ -4,6 +4,7 @@ import { resolveGitHubAccessToken } from '../../../../utils/auth';
 import { emptyBodySchema, RATE_LIMITS, secureRoute, ApiError } from '../../../../utils/apiSecurity';
 import {
   fetchGitHubFile,
+  fetchGitHubFilesBatch,
   githubHeaders,
   githubRepositoryApiUrl,
   readLimitedResponseText,
@@ -200,30 +201,7 @@ export const POST = secureRoute(
       throw new ApiError(403, 'private_repository', 'Private repository is not available.');
     const branch = body.branch || metadata.default_branch;
 
-    const uniquePaths = [...new Set(body.paths)];
-    const results = new Map<string, string | null>();
-    const CONCURRENCY = 15;
-    let cursor = 0;
-    const worker = async (): Promise<void> => {
-      while (cursor < uniquePaths.length) {
-        const path = uniquePaths[cursor++];
-        try {
-          results.set(
-            path,
-            await fetchGitHubFile(token || '', body.repo, path, branch, 512 * 1024),
-          );
-        } catch {
-          // A single unreadable file (missing, too large, transient) must not
-          // fail the whole batch — the scan proceeds without it.
-          results.set(path, null);
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, uniquePaths.length) }, worker));
-
-    return NextResponse.json({
-      default_branch: branch,
-      files: uniquePaths.map((path) => ({ path, content: results.get(path) ?? null })),
-    });
+    const files = await fetchGitHubFilesBatch(token || '', body.repo, body.paths, branch);
+    return NextResponse.json({ default_branch: branch, files });
   },
 );

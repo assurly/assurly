@@ -5,6 +5,9 @@ import type { ReactElement } from 'react';
 export interface DashboardToastData {
   message: string;
   type: 'success' | 'error' | 'info';
+  /** Optional call-to-action link rendered inside the toast (opens in a new tab). */
+  actionLabel?: string;
+  actionHref?: string;
 }
 
 export interface DashboardToastProps {
@@ -53,7 +56,17 @@ export function DashboardToast({ toast, onDismiss }: DashboardToastProps): React
         {getToastIcon(toast.type)}
       </span>
       <span className="dashboard-toast__message">{toast.message}</span>
-      {toast.type === 'error' ? (
+      {toast.actionHref ? (
+        <a
+          className="dashboard-toast__action"
+          href={toast.actionHref}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {toast.actionLabel ?? 'Open'}
+        </a>
+      ) : null}
+      {toast.type === 'error' || toast.actionHref ? (
         <button
           type="button"
           className="dashboard-toast__dismiss"

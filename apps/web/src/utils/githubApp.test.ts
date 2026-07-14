@@ -1,5 +1,67 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { getGitHubServerPat } from './githubApp';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fetchGitHubFilesBatch, getGitHubServerPat } from './githubApp';
+
+describe('fetchGitHubFilesBatch', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('fetches each unique path once and returns them in order', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input).match(/\/contents\/(.+)\?ref=/)?.[1] ?? '';
+      return new Response(`content:${decodeURIComponent(path)}`, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    // A duplicate path must not be fetched twice.
+    const files = await fetchGitHubFilesBatch(
+      'tok',
+      'owner/repo',
+      ['a.ts', 'b.ts', 'a.ts'],
+      'main',
+    );
+
+    expect(files).toEqual([
+      { path: 'a.ts', content: 'content:a.ts' },
+      { path: 'b.ts', content: 'content:b.ts' },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns null for a file that fails to fetch without failing the batch', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes('/contents/ok.ts?ref=')
+          ? new Response('ok', { status: 200 })
+          : new Response('nope', { status: 404 }),
+      ),
+    );
+
+    const files = await fetchGitHubFilesBatch('tok', 'owner/repo', ['ok.ts', 'missing.ts'], 'main');
+    expect(files).toEqual([
+      { path: 'ok.ts', content: 'ok' },
+      { path: 'missing.ts', content: null },
+    ]);
+  });
+
+  it('never runs more than `concurrency` fetches at once', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        return new Response('x', { status: 200 });
+      }),
+    );
+
+    const paths = Array.from({ length: 20 }, (_, i) => `f${i}.ts`);
+    await fetchGitHubFilesBatch('tok', 'owner/repo', paths, 'main', { concurrency: 4 });
+    expect(peak).toBeLessThanOrEqual(4);
+  });
+});
 
 describe('getGitHubServerPat', () => {
   afterEach(() => {
