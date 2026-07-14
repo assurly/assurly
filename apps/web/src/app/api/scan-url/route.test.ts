@@ -1,15 +1,25 @@
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 import { RATE_LIMITS } from '../../../utils/apiSecurity';
+import { AuthenticationError } from '../../../utils/auth';
 import { resetRateLimitsForTests } from '../../../utils/rateLimit';
 import { POST } from './route';
 
 const scanLiveUrlMock = vi.hoisted(() => vi.fn());
+const requireUserMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../utils/runtimeScanner', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../utils/runtimeScanner')>();
   return {
     ...actual,
-    scanLiveUrl: scanLiveUrlMock,
+    scanLiveUrlWithEvidence: scanLiveUrlMock,
+  };
+});
+
+vi.mock('../../../utils/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../utils/auth')>();
+  return {
+    ...actual,
+    requireUser: requireUserMock,
   };
 });
 
@@ -20,7 +30,10 @@ describe('POST /api/scan-url', () => {
     process.env = { ...originalEnv };
     resetRateLimitsForTests();
     scanLiveUrlMock.mockReset();
-    scanLiveUrlMock.mockResolvedValue([]);
+    scanLiveUrlMock.mockResolvedValue({ findings: [], evidence: [] });
+    requireUserMock.mockReset();
+    // Default: anonymous caller (no session) → secureRoute treats optional auth as null.
+    requireUserMock.mockRejectedValue(new AuthenticationError());
   });
 
   afterEach(() => {
@@ -29,14 +42,17 @@ describe('POST /api/scan-url', () => {
   });
 
   it('returns report and findings for a valid public URL', async () => {
-    scanLiveUrlMock.mockResolvedValue([
-      {
-        ruleId: 'runtime-missing-security-headers',
-        severity: 'warning',
-        message: 'Missing security headers: Strict-Transport-Security.',
-        file: 'HTTP response',
-      },
-    ]);
+    scanLiveUrlMock.mockResolvedValue({
+      findings: [
+        {
+          ruleId: 'runtime-missing-security-headers',
+          severity: 'warning',
+          message: 'Missing security headers: Strict-Transport-Security.',
+          file: 'HTTP response',
+        },
+      ],
+      evidence: [],
+    });
 
     const response = await POST(
       new Request('http://localhost/api/scan-url', {
@@ -54,18 +70,28 @@ describe('POST /api/scan-url', () => {
       shipScore: expect.any(Number),
     });
     expect(json.findings).toHaveLength(1);
-    expect(scanLiveUrlMock).toHaveBeenCalledWith('https://myapp.lovable.app/');
+    expect(json.evidence).toEqual([]);
+    // Anonymous callers get passive checks only (no active RLS row-pull).
+    expect(scanLiveUrlMock).toHaveBeenCalledWith(
+      'https://myapp.lovable.app/',
+      expect.anything(),
+      undefined,
+      { activeProbe: false },
+    );
   });
 
   it('returns NOT READY TO SHIP when runtime RLS is open', async () => {
-    scanLiveUrlMock.mockResolvedValue([
-      {
-        ruleId: 'runtime-supabase-rls-open',
-        severity: 'error',
-        message: "Supabase table 'profiles' returned rows via anon key without RLS protection.",
-        file: 'Supabase REST API',
-      },
-    ]);
+    scanLiveUrlMock.mockResolvedValue({
+      findings: [
+        {
+          ruleId: 'runtime-supabase-rls-open',
+          severity: 'error',
+          message: "Supabase table 'profiles' returned rows via anon key without RLS protection.",
+          file: 'Supabase REST API',
+        },
+      ],
+      evidence: [],
+    });
 
     const response = await POST(
       new Request('http://localhost/api/scan-url', {
@@ -130,6 +156,64 @@ describe('POST /api/scan-url', () => {
     );
     expect(response.status).toBe(400);
     expect((await response.json()).error.code).toBe('invalid_url');
+  });
+
+  it('runs the active probe and persists evidence for an authenticated scan', async () => {
+    const insertProbeEvidence = vi.fn().mockResolvedValue(undefined);
+    const getOrganizationByUserId = vi.fn().mockResolvedValue({ id: 'org-1' });
+    requireUserMock.mockResolvedValue({
+      user: { id: 'user-1' },
+      accessToken: 'token',
+      db: { getOrganizationByUserId, insertProbeEvidence },
+    });
+    scanLiveUrlMock.mockResolvedValue({
+      findings: [
+        {
+          ruleId: 'runtime-supabase-rls-open',
+          severity: 'error',
+          message: "Supabase table 'users' returned rows via anon key without RLS protection.",
+          file: 'Supabase REST API',
+        },
+      ],
+      evidence: [
+        {
+          findingRuleId: 'runtime-supabase-rls-open',
+          kind: 'rls_rows',
+          summary: 'We read 500 rows from your `users` table using only the public key.',
+          redactedSample: {
+            table: 'users',
+            rowCount: 500,
+            columns: ['email'],
+            sampleCell: 't***@***.com',
+          },
+        },
+      ],
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://myapp.lovable.app' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.evidence).toHaveLength(1);
+    expect(scanLiveUrlMock).toHaveBeenCalledWith(
+      'https://myapp.lovable.app/',
+      expect.anything(),
+      undefined,
+      { activeProbe: true },
+    );
+    expect(insertProbeEvidence).toHaveBeenCalledWith([
+      expect.objectContaining({
+        organizationId: 'org-1',
+        findingRuleId: 'runtime-supabase-rls-open',
+        kind: 'rls_rows',
+      }),
+    ]);
   });
 
   it('uses the expensive rate limit policy', () => {

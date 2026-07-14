@@ -112,6 +112,30 @@ export interface UpsertTargetInput {
   lastCheckedAt?: string | null;
 }
 
+export type ProbeEvidenceKind = 'rls_rows' | 'exposed_secret' | 'open_endpoint' | 'missing_header';
+
+/** A persisted, already-redacted proof artifact behind a runtime finding (Phase 2). */
+export interface ProbeEvidenceRow {
+  id: string;
+  organization_id: string;
+  scan_id: string | null;
+  finding_rule_id: string;
+  kind: ProbeEvidenceKind;
+  summary: string;
+  redacted_sample: unknown | null;
+  created_at: string;
+}
+
+/** Input for persisting probe evidence. `redactedSample` must already be masked. */
+export interface ProbeEvidenceInput {
+  organizationId: string;
+  scanId?: string | null;
+  findingRuleId: string;
+  kind: ProbeEvidenceKind;
+  summary: string;
+  redactedSample?: unknown;
+}
+
 export interface StripeBillingEvent {
   eventId: string;
   eventType: string;
@@ -189,6 +213,8 @@ export interface DbAdapter {
   getTargets(organizationId: string): Promise<Target[]>;
   getTargetById(id: string): Promise<Target | null>;
   upsertTarget(input: UpsertTargetInput): Promise<Target>;
+  insertProbeEvidence(rows: ProbeEvidenceInput[]): Promise<void>;
+  getProbeEvidenceForScan(scanId: string): Promise<ProbeEvidenceRow[]>;
 }
 
 function eq(value: string | number): string {
@@ -541,6 +567,28 @@ export class SupabaseDbAdapter implements DbAdapter {
       },
     );
     return rows[0];
+  }
+
+  async insertProbeEvidence(rows: ProbeEvidenceInput[]): Promise<void> {
+    if (rows.length === 0) return;
+    // Uniform key set so PostgREST accepts the bulk insert (see saveScan / PGRST102).
+    const payload = rows.map((row) => ({
+      organization_id: row.organizationId,
+      scan_id: row.scanId ?? null,
+      finding_rule_id: row.findingRuleId,
+      kind: row.kind,
+      summary: row.summary,
+      redacted_sample: row.redactedSample ?? null,
+    }));
+    await this.fetchDb('probe_evidence', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  getProbeEvidenceForScan(scanId: string): Promise<ProbeEvidenceRow[]> {
+    return this.fetchDb(`probe_evidence?select=*&scan_id=eq.${eq(scanId)}&order=created_at.asc`);
   }
 }
 
