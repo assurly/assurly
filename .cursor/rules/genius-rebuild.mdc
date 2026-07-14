@@ -1,0 +1,60 @@
+---
+description: Execution discipline for the Assurly genius rebuild (Phases 2–8). One phase at a time, stop before prod migrations and browser verification, keep the suite green. Applies to all rebuild work.
+globs:
+alwaysApply: true
+---
+
+# Assurly — Genius Rebuild execution discipline
+
+The plan of record is `docs/roadmap/genius-rebuild-plan.md` (the "what/how" for Phases 2–8) with
+`docs/roadmap/10-genius-rebuild-master-plan.md` for the "why". **Read Sections 1–3 of the handoff plan
+before writing any code.**
+
+## Scope
+
+- **Phases 0 and 1 are DONE.** Do not rebuild, recreate, or "improve" them. Section 1 of the handoff
+  plan lists what already exists — build on it.
+- **Work ONE phase at a time.** Do not start the next phase until the human explicitly says so
+  (e.g. "Now start Phase 3"). Current next phase: **Phase 2**.
+- Do not reorder phases without updating `10-genius-rebuild-master-plan.md` first.
+
+## Before you write code (every phase)
+
+- Re-read Section 2 (conventions) and Section 3 (gotchas) of the handoff plan.
+- New API routes go through `secureRoute`; user-host fetches go through the SSRF-safe path; new tables
+  get org-scoped RLS; AI model ids live only in `utils/ai/claudeClient.ts`; treat all scanned content
+  as untrusted; redact PII in any proof.
+
+## STOP and ask the human — never do these autonomously
+
+1. **Production database migrations.** There is no local DB — `supabase db push` changes PRODUCTION.
+   Write the migration file, run `supabase db push --dry-run`, show the output, and **wait for an
+   explicit "yes"** before pushing.
+2. **Browser verification.** You cannot sign in and verify the live app. When a phase's acceptance
+   criteria need a browser check, hand the human a short checklist of exactly what to verify and wait.
+   A phase is not done until the human confirms it works live.
+
+## Testing (non-negotiable)
+
+- **Run vitest from the REPO ROOT:** `npx vitest run apps/web/src` (running it from `apps/web` throws
+  `ERR_REQUIRE_ESM`). `npx tsc --noEmit` is fine from `apps/web`.
+- Write unit/route tests for all new logic. Keep the suite green and typecheck clean **throughout**.
+- When you claim a step is done, **paste the actual test + typecheck output** — do not assert "should pass".
+- Add a security test for every new probe/AI path (it must not issue a mutating or out-of-scope request).
+
+## Definition of Done (a phase is done only when ALL hold)
+
+1. Deliverables implemented per the conventions.
+2. `npx vitest run apps/web/src` green; `npx tsc --noEmit` clean.
+3. Browser-verified end-to-end by the human (not just tests).
+4. Any new migration applied to prod with the human's approval.
+5. Master Tracker in `10-genius-rebuild-master-plan.md` updated with a one-line "what landed".
+6. Committed in small, logical, conventional-commit steps. End each commit message with:
+   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. Commit only when green.
+
+## Working style
+
+Build like a senior: root-cause empirically (read the real code, check real dev-server logs — the
+5xx `errorMessage`/`errorStack` is logged server-side — verify against reality, don't trust
+assumptions). Keep the deterministic gate working with AI disabled. Cut anything that dilutes the
+proof-first verdict.
