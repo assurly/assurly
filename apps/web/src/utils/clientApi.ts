@@ -35,16 +35,25 @@ const scanSchema = z.object({
   share_token: z.string().nullable().optional(),
   created_at: z.string(),
 });
+// Persisted rows return an explicit `null` for unset optional columns (Postgres/
+// PostgREST, not "absent key"), so these accept null in addition to undefined —
+// then normalise to undefined so the inferred TS type matches ScanFinding.
+const nullToUndefined = <T extends z.ZodTypeAny>(schema: T) =>
+  schema
+    .nullable()
+    .optional()
+    .transform((value) => value ?? undefined);
+
 const findingSchema = z.object({
   id: z.string(),
   scan_id: z.string(),
   rule_id: z.string(),
   severity: z.enum(['error', 'warning']),
-  confidence: z.enum(['high', 'medium', 'low']).optional(),
+  confidence: nullToUndefined(z.enum(['high', 'medium', 'low'])),
   file_path: z.string(),
-  line_number: z.number().optional(),
+  line_number: nullToUndefined(z.number()),
   message: z.string(),
-  suggestion: z.string().optional(),
+  suggestion: nullToUndefined(z.string()),
   fix_pr_url: z.string().url().nullable().optional(),
   created_at: z.string(),
 });
