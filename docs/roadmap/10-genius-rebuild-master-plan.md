@@ -608,7 +608,27 @@ Leverage and dependency both point to this order. We do not reorder without upda
   - [x] Browser-verified: verdict cards render, card→detail, live scan → target upsert → card refresh
   - [→] `GET /api/targets/[id]` deferred: the existing repo/scan detail already serves as the verdict
     detail (cards open it), so a separate endpoint is not needed for the Phase 1 DoD
-- [ ] **Phase 2** — Proof-First Experience + consequence translation
+- [~] **Phase 2** — Proof-First Experience + consequence translation — **complete pending commit.**
+  Tests green (704 pass), typecheck clean, prod migration applied, browser-verified end-to-end.
+  - [x] AI provider abstraction `utils/ai/claudeClient.ts` (model ids centralised, 20s timeout, one
+        retry on 5xx, content-hash cache, per-org budget guard, `asUntrustedData` injection defense) + tests
+  - [x] `consequenceMap.ts` (pure, client-safe curated consequence for every rule id) +
+        `consequenceTranslator.ts` (AI fallback → curated → message, never on critical path) + tests
+  - [x] `probe_evidence` migration `20260714000000_probe_evidence.sql` (org-scoped RLS) — **dry-run OK,
+        NOT yet pushed to prod (awaiting approval)**
+  - [x] `runtimeScanner` returns already-redacted `ProbeEvidence` (RLS row count via `count=exact`
+        header — proves scale without exfiltration; masked secrets; missing headers) + `redactCell` + tests
+  - [x] Active Supabase RLS row-pull gated: passive-only by default, `activeProbe` only for signed-in
+        users (`scan-url` route); security test asserts SSRF guard on the active path
+  - [x] `dbAdapter.insertProbeEvidence` / `getProbeEvidenceForScan`; `scan-url` persists evidence for
+        authenticated scans (best-effort) + returns evidence for anonymous previews + route tests
+  - [x] FE `ProofEvidence` (proof headline: "we read N rows from `users`", redacted) on landing hero +
+        dashboard URL scan; `ScanFindingCard` consequence-first with collapsible technical detail;
+        `VerdictCard` + `ShipGateGroupRow` surface consequences + tests
+  - [x] Push `probe_evidence` migration to prod — **applied 2026-07-14**
+  - [x] Browser-verify end-to-end: passive URL scan (fastshare.cz — Live proof + probe_evidence
+        persist); authenticated active RLS probe (controlled gist target — „We read 5 rows from
+        `posts`" + redacted sample in probe_evidence, 2026-07-14)
 - [ ] **Phase 3** — Ownership Verification
 - [ ] **Phase 4** — AI Red-Team Planner + Layer 2 deep review
 - [ ] **Phase 5** — Verified-Fix Loop + dataset

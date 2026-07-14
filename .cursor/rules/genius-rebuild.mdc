@@ -1,6 +1,5 @@
 ---
-description: Execution discipline for the Assurly genius rebuild (Phases 2–8). One phase at a time, stop before prod migrations and browser verification, keep the suite green. Applies to all rebuild work.
-globs:
+description: 
 alwaysApply: true
 ---
 
