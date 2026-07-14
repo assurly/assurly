@@ -96,6 +96,27 @@ export function getResendApiKey(): string | undefined {
   return value || undefined;
 }
 
+/**
+ * The Anthropic API key powering the optional AI layer (consequence generation,
+ * later the red-team planner). AI is never on the critical path: callers must
+ * degrade gracefully when this is unset, so it returns `undefined` rather than
+ * throwing. See `utils/ai/claudeClient.ts`.
+ */
+export function getAnthropicApiKey(): string | undefined {
+  const value = process.env.ANTHROPIC_API_KEY?.trim();
+  return value || undefined;
+}
+
+/**
+ * Per-org monthly token ceiling for AI calls. A conservative default keeps costs
+ * bounded before real accounting lands (Phase 8). Override via env for testing.
+ */
+export function getAiMonthlyTokenCap(): number {
+  const raw = process.env.AI_MONTHLY_TOKEN_CAP?.trim();
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 2_000_000;
+}
+
 export function getResendFromAddress(): string {
   const value = process.env.RESEND_FROM_EMAIL?.trim();
   return value || 'Assurly Alerts <onboarding@resend.dev>';
