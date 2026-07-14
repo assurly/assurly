@@ -18,6 +18,7 @@ import { sanitizeGitHubOwner } from '../../../utils/scanProxy';
 import { isLikelyScannableUrl } from '../../../utils/urlValidation';
 import { ShipGatePanel } from '../ship-gate/ShipGatePanel';
 import { buildShipGateFromWebFindings, type ShipGateReport } from '../../../utils/shipGate';
+import { ProofEvidence, type ProofEvidenceItem } from '../../dashboard/_components/ProofEvidence';
 import { AuthButton } from './AuthButton';
 import { CurrencyToggle } from './CurrencyToggle';
 import { HomeHeader } from './HomeHeader';
@@ -103,6 +104,7 @@ export default function HomeClient({
     errorCount: number;
     warningCount: number;
     shipGate: ShipGateReport;
+    evidence: ProofEvidenceItem[];
   } | null>(null);
 
   const [isFetchingRepos, setIsFetchingRepos] = useState(false);
@@ -206,6 +208,7 @@ export default function HomeClient({
       const data = (await response.json()) as {
         report: ShipGateReport;
         findings: Array<{ severity: 'error' | 'warning' }>;
+        evidence?: ProofEvidenceItem[];
       };
 
       const errorCount = data.findings.filter((finding) => finding.severity === 'error').length;
@@ -216,6 +219,7 @@ export default function HomeClient({
         errorCount,
         warningCount,
         shipGate: data.report,
+        evidence: data.evidence ?? [],
       });
       setUrlScanFinished(true);
     } catch (error: unknown) {
@@ -901,6 +905,7 @@ export default function HomeClient({
 
             {urlScanFinished && urlScanResults && (
               <div>
+                <ProofEvidence evidence={urlScanResults.evidence} />
                 <div className="scanner-results-card scanner-results-card--ship-gate">
                   <div className="scanner-results-info">
                     <h4>Ship Gate for {urlScanResults.targetUrl}</h4>

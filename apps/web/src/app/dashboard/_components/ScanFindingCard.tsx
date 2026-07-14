@@ -2,6 +2,7 @@
 
 import type { ReactElement } from 'react';
 import type { ScanFinding } from '../../../utils/dbAdapter';
+import { getCuratedConsequence } from '../../../utils/consequenceMap';
 import { findingFixPrUrl } from '../../../utils/fixSummary';
 
 interface ScanFindingCardProps {
@@ -22,6 +23,11 @@ export function ScanFindingCard({
   const severityClass =
     finding.severity === 'error' ? 'scan-finding-card--error' : 'scan-finding-card--warning';
   const fixPrUrl = findingFixPrUrl(finding);
+  const consequence = getCuratedConsequence(finding.rule_id);
+  // Consequence is the primary line a non-engineer reads; fall back to the raw
+  // message only when no curated consequence exists for the rule.
+  const primaryLine = consequence?.consequence ?? finding.message;
+  const hasTechnicalDetail = Boolean(consequence) || Boolean(finding.suggestion);
 
   return (
     <article
@@ -48,13 +54,23 @@ export function ScanFindingCard({
         ) : null}
       </header>
 
-      <p className="scan-finding-card__message">{finding.message}</p>
+      {consequence?.regulation ? (
+        <span className="scan-finding-card__regulation">{consequence.regulation}</span>
+      ) : null}
 
-      {finding.suggestion ? (
-        <p className="scan-finding-card__suggestion">
-          <span className="scan-finding-card__suggestion-label">Suggestion</span>
-          {finding.suggestion}
-        </p>
+      <p className="scan-finding-card__consequence">{primaryLine}</p>
+
+      {hasTechnicalDetail ? (
+        <details className="scan-finding-card__technical">
+          <summary>For your developer</summary>
+          {consequence ? <p className="scan-finding-card__message">{finding.message}</p> : null}
+          {finding.suggestion ? (
+            <p className="scan-finding-card__suggestion">
+              <span className="scan-finding-card__suggestion-label">Suggestion</span>
+              {finding.suggestion}
+            </p>
+          ) : null}
+        </details>
       ) : null}
 
       {isFixable ? (

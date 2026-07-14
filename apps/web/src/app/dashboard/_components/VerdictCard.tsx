@@ -2,6 +2,7 @@
 
 import type { ReactElement } from 'react';
 import type { TargetCard } from '../../../utils/clientApi';
+import { consequenceForGroupKey } from '../../../utils/consequenceMap';
 
 interface VerdictCardProps {
   card: TargetCard;
@@ -68,7 +69,9 @@ export function VerdictCard({ card, onOpen }: VerdictCardProps): ReactElement {
         </span>
         <span className="verdict-card__verdict">{meta.label}</span>
         {card.topIssue ? (
-          <span className="verdict-card__issue">{card.topIssue.sampleMessage}</span>
+          <span className="verdict-card__issue">
+            {consequenceForGroupKey(card.topIssue.key)?.consequence ?? card.topIssue.sampleMessage}
+          </span>
         ) : card.verdict === 'ready' ? (
           <span className="verdict-card__issue verdict-card__issue--clean">
             No blockers — safe to deploy.

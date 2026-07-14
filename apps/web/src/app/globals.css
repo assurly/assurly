@@ -7353,3 +7353,114 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* --- Proof evidence (Phase 2: proof-first) -------------------------------- */
+.proof-evidence {
+  border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin: var(--space-4) 0;
+}
+.proof-evidence__eyebrow {
+  margin: 0 0 var(--space-2);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-danger-text);
+}
+.proof-evidence__headline {
+  margin: 0 0 var(--space-3);
+  font-size: 1.05rem;
+  font-weight: 650;
+  line-height: 1.4;
+  color: var(--color-text);
+}
+.proof-evidence__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+.proof-evidence__fact dt {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  margin-bottom: 2px;
+}
+.proof-evidence__fact dd {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+.proof-evidence__fact code,
+.proof-evidence__secret code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  background: var(--color-surface-subtle);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+.proof-evidence__secret {
+  margin: 0;
+}
+.proof-evidence__headers {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+.proof-evidence__list {
+  list-style: none;
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.proof-evidence__list-item {
+  font-size: 0.88rem;
+  color: var(--color-text-secondary);
+}
+
+/* --- Finding card: consequence-first ------------------------------------- */
+.scan-finding-card__consequence {
+  margin: 0 0 var(--space-2);
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+.scan-finding-card__regulation {
+  display: inline-block;
+  margin: 0 0 var(--space-2);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-danger-text);
+}
+.scan-finding-card__technical {
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-2);
+}
+.scan-finding-card__technical > summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  list-style: revert;
+}
+.scan-finding-card__technical[open] > summary {
+  margin-bottom: var(--space-2);
+}
+
+.ship-gate-list-consequence {
+  margin: var(--space-1) 0 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+}

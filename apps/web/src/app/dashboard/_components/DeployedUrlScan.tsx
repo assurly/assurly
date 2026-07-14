@@ -5,6 +5,7 @@ import type { WebFinding } from '../../../utils/browserScanner';
 import type { ShipGateReport } from '../../../utils/shipGate';
 import { isLikelyScannableUrl } from '../../../utils/urlValidation';
 import { ShipGatePanel } from '../../_components/ship-gate/ShipGatePanel';
+import { ProofEvidence, type ProofEvidenceItem } from './ProofEvidence';
 
 export interface DeployedUrlScanProps {
   loginUrl?: string;
@@ -14,6 +15,7 @@ interface UrlScanResults {
   targetUrl: string;
   shipGate: ShipGateReport;
   findings: WebFinding[];
+  evidence: ProofEvidenceItem[];
 }
 
 async function readScanUrlError(response: Response): Promise<string> {
@@ -58,11 +60,16 @@ export function DeployedUrlScan({
         throw new Error(await readScanUrlError(response));
       }
 
-      const data = (await response.json()) as { report: ShipGateReport; findings: WebFinding[] };
+      const data = (await response.json()) as {
+        report: ShipGateReport;
+        findings: WebFinding[];
+        evidence?: ProofEvidenceItem[];
+      };
       setScanResults({
         targetUrl: trimmed,
         shipGate: data.report,
         findings: data.findings,
+        evidence: data.evidence ?? [],
       });
     } catch (error: unknown) {
       setScanError(error instanceof Error ? error.message : 'URL scan failed.');
@@ -116,6 +123,7 @@ export function DeployedUrlScan({
 
       {scanResults ? (
         <div className="dashboard-url-scan-results">
+          <ProofEvidence evidence={scanResults.evidence} />
           <div className="scanner-results-card scanner-results-card--ship-gate">
             <div className="scanner-results-info">
               <h4>Ship Gate for {scanResults.targetUrl}</h4>

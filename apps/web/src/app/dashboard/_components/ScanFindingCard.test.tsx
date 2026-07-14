@@ -42,6 +42,23 @@ describe('ScanFindingCard', () => {
     expect(screen.getByRole('button', { name: /fix it/i })).toBeTruthy();
   });
 
+  it('leads with the plain-language consequence and tucks technical detail away', () => {
+    render(
+      <ScanFindingCard
+        finding={finding}
+        fixingFindingId={null}
+        isFixable={true}
+        onCreateFixPr={vi.fn()}
+      />,
+    );
+
+    // Primary line is the curated consequence, not the raw technical message.
+    expect(screen.getByText(/anyone on the internet can read/i)).toBeTruthy();
+    // Technical detail is present but behind a "For your developer" disclosure.
+    expect(screen.getByText('For your developer')).toBeTruthy();
+    expect(screen.getByText(finding.message)).toBeTruthy();
+  });
+
   it('shows a linked fix PR when one already exists', () => {
     render(
       <ScanFindingCard
