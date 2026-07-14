@@ -128,6 +128,61 @@ export function maskSecretValue(secret: string): string {
   return `${secret.slice(0, 4)}****${suffix}`;
 }
 
+/** The four proof categories the product renders and persists (see probe_evidence). */
+export type ProbeEvidenceKind = 'rls_rows' | 'exposed_secret' | 'open_endpoint' | 'missing_header';
+
+/**
+ * Shape + masked sample ONLY — never raw PII. This is what a probe is allowed to
+ * hand back to the rest of the app; redaction happens here inside the scanner so
+ * raw personal data never leaves it (convention §2.8).
+ */
+export interface RedactedSample {
+  rowCount?: number;
+  columns?: string[];
+  sampleCell?: string;
+  table?: string;
+  secretLabel?: string;
+  maskedSecret?: string;
+  headers?: string[];
+}
+
+/** A single, already-redacted proof artifact tied to a finding by rule id. */
+export interface ProbeEvidence {
+  findingRuleId: string;
+  kind: ProbeEvidenceKind;
+  summary: string;
+  redactedSample?: RedactedSample;
+}
+
+/**
+ * Masks a single retrieved cell so we can prove data was readable without ever
+ * exposing the real value. Emails keep their shape (`t***@***.com`); everything
+ * else collapses to a first-character stub.
+ */
+export function redactCell(value: unknown): string {
+  if (value === null || value === undefined) return '(empty)';
+  if (typeof value === 'number' || typeof value === 'boolean') return '***';
+  const str = String(value);
+  const email = str.match(/^([^@\s]+)@([^@\s]+\.[^@\s]+)$/);
+  if (email) {
+    const local = email[1];
+    const tld = email[2].split('.').pop() ?? '';
+    return `${local[0] ?? ''}***@***.${tld}`;
+  }
+  if (str.length <= 1) return '***';
+  return `${str[0]}***`;
+}
+
+/** Picks a representative, masked sample cell from a retrieved row. */
+function pickRedactedSampleCell(row: Record<string, unknown>): string | undefined {
+  const stringEntry = Object.values(row).find(
+    (value) => typeof value === 'string' && value.length > 0,
+  );
+  if (stringEntry !== undefined) return redactCell(stringEntry);
+  const anyEntry = Object.values(row)[0];
+  return anyEntry === undefined ? undefined : redactCell(anyEntry);
+}
+
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split('.');
   if (parts.length < 2) return null;
@@ -146,8 +201,12 @@ function isServiceRoleJwt(token: string): boolean {
   return payload?.role === 'service_role';
 }
 
-export function scanBundleForSecrets(bundleText: string): WebFinding[] {
+export function scanBundleForSecretsWithEvidence(bundleText: string): {
+  findings: WebFinding[];
+  evidence: ProbeEvidence[];
+} {
   const findings: WebFinding[] = [];
+  const evidence: ProbeEvidence[] = [];
   const seen = new Set<string>();
 
   for (const pattern of SECRET_PATTERNS) {
@@ -161,36 +220,65 @@ export function scanBundleForSecrets(bundleText: string): WebFinding[] {
       }
 
       seen.add(value);
+      const masked = maskSecretValue(value);
       findings.push({
         ruleId: pattern.ruleId,
         severity: 'error',
-        message: `${pattern.label} exposed in production bundle (${maskSecretValue(value)}).`,
+        message: `${pattern.label} exposed in production bundle (${masked}).`,
         suggestion:
           'Remove secrets from client-side bundles and rotate the exposed credential immediately.',
         file: 'Runtime bundle',
       });
+      evidence.push({
+        findingRuleId: pattern.ruleId,
+        kind: 'exposed_secret',
+        summary: `${pattern.label} is readable in your app's public code (${masked}).`,
+        redactedSample: { secretLabel: pattern.label, maskedSecret: masked },
+      });
     }
   }
 
-  return findings;
+  return { findings, evidence };
+}
+
+export function scanBundleForSecrets(bundleText: string): WebFinding[] {
+  return scanBundleForSecretsWithEvidence(bundleText).findings;
+}
+
+export function checkSecurityHeadersWithEvidence(headers: Headers): {
+  findings: WebFinding[];
+  evidence: ProbeEvidence[];
+} {
+  const missing = REQUIRED_SECURITY_HEADERS.filter((header) => !headers.get(header.name));
+
+  if (missing.length === 0) return { findings: [], evidence: [] };
+
+  const platform = detectDeployPlatform(headers);
+  const labels = missing.map((header) => header.label);
+
+  return {
+    findings: [
+      {
+        ruleId: 'runtime-missing-security-headers',
+        severity: 'warning',
+        message: `Missing security headers: ${labels.join(', ')}.`,
+        suggestion: buildSecurityHeaderRemediation(missing, platform),
+        file: 'HTTP response',
+      },
+    ],
+    evidence: [
+      {
+        findingRuleId: 'runtime-missing-security-headers',
+        kind: 'missing_header',
+        summary: `Your app is missing ${labels.length} protective header${labels.length === 1 ? '' : 's'}: ${labels.join(', ')}.`,
+        redactedSample: { headers: labels },
+      },
+    ],
+  };
 }
 
 export function checkSecurityHeaders(headers: Headers): WebFinding[] {
-  const missing = REQUIRED_SECURITY_HEADERS.filter((header) => !headers.get(header.name));
-
-  if (missing.length === 0) return [];
-
-  const platform = detectDeployPlatform(headers);
-
-  return [
-    {
-      ruleId: 'runtime-missing-security-headers',
-      severity: 'warning',
-      message: `Missing security headers: ${missing.map((header) => header.label).join(', ')}.`,
-      suggestion: buildSecurityHeaderRemediation(missing, platform),
-      file: 'HTTP response',
-    },
-  ];
+  return checkSecurityHeadersWithEvidence(headers).findings;
 }
 
 function supabaseHeaders(anonKey: string): HeadersInit {
@@ -201,12 +289,21 @@ function supabaseHeaders(anonKey: string): HeadersInit {
   };
 }
 
-export async function probeSupabaseRls(
+/** Parses the total row count from a PostgREST `content-range: 0-0/1234` header. */
+function parseContentRangeTotal(header: string | null): number | undefined {
+  if (!header) return undefined;
+  const total = header.split('/')[1];
+  if (!total || total === '*') return undefined;
+  const parsed = Number(total);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export async function probeSupabaseRlsWithEvidence(
   supabaseUrl: string,
   anonKey: string,
   fetchImpl: typeof fetch = fetch,
   lookupImpl?: LookupImpl,
-): Promise<WebFinding[]> {
+): Promise<{ findings: WebFinding[]; evidence: ProbeEvidence[] }> {
   // supabaseUrl is extracted from the scanned page's own HTML/bundle text
   // (see extractSupabaseConfig) — it is attacker-controlled input, not a
   // trusted constant, and must go through the same SSRF guard as any other
@@ -214,6 +311,7 @@ export async function probeSupabaseRls(
   assertScannableUrl(supabaseUrl);
 
   const findings: WebFinding[] = [];
+  const evidence: ProbeEvidence[] = [];
   const openTables: string[] = [];
 
   for (const table of SENSITIVE_SUPABASE_TABLES) {
@@ -223,7 +321,10 @@ export async function probeSupabaseRls(
 
     const { response } = await safeFetch(
       probeUrl.toString(),
-      { headers: supabaseHeaders(anonKey) },
+      // count=exact returns the total row count in `content-range` WITHOUT
+      // retrieving the rows themselves — we prove exposure at scale without
+      // exfiltrating data. This is a read (GET), never a mutation.
+      { headers: { ...supabaseHeaders(anonKey), Prefer: 'count=exact' } },
       fetchImpl,
       lookupImpl,
     );
@@ -246,6 +347,25 @@ export async function probeSupabaseRls(
         suggestion: `Enable row-level security and add policies for table '${table}'.`,
         file: 'Supabase REST API',
       });
+
+      const totalRows =
+        parseContentRangeTotal(response.headers.get('content-range')) ?? rows.length;
+      const firstRow =
+        rows[0] && typeof rows[0] === 'object' ? (rows[0] as Record<string, unknown>) : {};
+      const columns = Object.keys(firstRow);
+      const sampleCell = pickRedactedSampleCell(firstRow);
+      const rowLabel = totalRows === 1 ? '1 row' : `${totalRows.toLocaleString('en-US')} rows`;
+      evidence.push({
+        findingRuleId: 'runtime-supabase-rls-open',
+        kind: 'rls_rows',
+        summary: `We read ${rowLabel} from your \`${table}\` table using only the public key.`,
+        redactedSample: {
+          table,
+          rowCount: totalRows,
+          columns,
+          ...(sampleCell ? { sampleCell } : {}),
+        },
+      });
     }
   }
 
@@ -260,6 +380,21 @@ export async function probeSupabaseRls(
     });
   }
 
+  return { findings, evidence };
+}
+
+export async function probeSupabaseRls(
+  supabaseUrl: string,
+  anonKey: string,
+  fetchImpl: typeof fetch = fetch,
+  lookupImpl?: LookupImpl,
+): Promise<WebFinding[]> {
+  const { findings } = await probeSupabaseRlsWithEvidence(
+    supabaseUrl,
+    anonKey,
+    fetchImpl,
+    lookupImpl,
+  );
   return findings;
 }
 
@@ -403,21 +538,45 @@ async function readRuntimeResponseText(response: Response): Promise<string> {
   return readLimitedResponseText(response, RUNTIME_MAX_RESPONSE_BYTES);
 }
 
-export async function scanLiveUrl(
+export interface ScanLiveUrlOptions {
+  /**
+   * When false (the default), only PASSIVE checks run — missing security headers
+   * and secrets leaked into the public bundle. The ACTIVE Supabase RLS row-pull
+   * (which retrieves real data from a third-party database) requires proven
+   * ownership and is gated behind sign-in until Phase 3 (convention: safety &
+   * consent first). Never enable this for anonymous, arbitrary URLs.
+   */
+  activeProbe?: boolean;
+}
+
+export interface ScanLiveUrlResult {
+  findings: WebFinding[];
+  evidence: ProbeEvidence[];
+}
+
+export async function scanLiveUrlWithEvidence(
   rawUrl: string,
   fetchImpl: typeof fetch = fetch,
   lookupImpl?: LookupImpl,
-): Promise<WebFinding[]> {
+  options: ScanLiveUrlOptions = {},
+): Promise<ScanLiveUrlResult> {
   const { response: pageResponse, finalUrl: pageUrl } = await safeFetch(
     rawUrl,
     { method: 'GET' },
     fetchImpl,
     lookupImpl,
   );
-  const findings: WebFinding[] = [...checkSecurityHeaders(pageResponse.headers)];
+  const findings: WebFinding[] = [];
+  const evidence: ProbeEvidence[] = [];
+
+  const headerResult = checkSecurityHeadersWithEvidence(pageResponse.headers);
+  findings.push(...headerResult.findings);
+  evidence.push(...headerResult.evidence);
 
   const html = await readRuntimeResponseText(pageResponse);
-  findings.push(...scanBundleForSecrets(html));
+  const htmlSecrets = scanBundleForSecretsWithEvidence(html);
+  findings.push(...htmlSecrets.findings);
+  evidence.push(...htmlSecrets.evidence);
 
   const scriptUrls = extractScriptUrls(html, pageUrl).slice(0, 8);
   for (const scriptUrl of scriptUrls) {
@@ -429,19 +588,36 @@ export async function scanLiveUrl(
     );
     if (!scriptResponse.ok) continue;
     const bundleText = await readRuntimeResponseText(scriptResponse);
-    findings.push(...scanBundleForSecrets(bundleText));
+    const bundleSecrets = scanBundleForSecretsWithEvidence(bundleText);
+    findings.push(...bundleSecrets.findings);
+    evidence.push(...bundleSecrets.evidence);
   }
 
-  const supabaseConfig = extractSupabaseConfig(html);
-  if (supabaseConfig.supabaseUrl && supabaseConfig.anonKey) {
-    const supabaseFindings = await probeSupabaseRls(
-      supabaseConfig.supabaseUrl,
-      supabaseConfig.anonKey,
-      fetchImpl,
-      lookupImpl,
-    );
-    findings.push(...supabaseFindings);
+  // Active data-exfiltration proof: only when the caller has established the user
+  // may probe this target (sign-in / connected repo). Passive scans skip it.
+  if (options.activeProbe) {
+    const supabaseConfig = extractSupabaseConfig(html);
+    if (supabaseConfig.supabaseUrl && supabaseConfig.anonKey) {
+      const supabaseResult = await probeSupabaseRlsWithEvidence(
+        supabaseConfig.supabaseUrl,
+        supabaseConfig.anonKey,
+        fetchImpl,
+        lookupImpl,
+      );
+      findings.push(...supabaseResult.findings);
+      evidence.push(...supabaseResult.evidence);
+    }
   }
 
+  return { findings, evidence };
+}
+
+export async function scanLiveUrl(
+  rawUrl: string,
+  fetchImpl: typeof fetch = fetch,
+  lookupImpl?: LookupImpl,
+  options: ScanLiveUrlOptions = {},
+): Promise<WebFinding[]> {
+  const { findings } = await scanLiveUrlWithEvidence(rawUrl, fetchImpl, lookupImpl, options);
   return findings;
 }

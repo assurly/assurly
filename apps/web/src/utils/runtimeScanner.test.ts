@@ -1,15 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   checkSecurityHeaders,
+  checkSecurityHeadersWithEvidence,
   maskSecretValue,
   probeSupabaseRls,
+  probeSupabaseRlsWithEvidence,
+  redactCell,
   runtimeFetch,
   safeFetch,
   scanLiveUrl,
+  scanLiveUrlWithEvidence,
   RUNTIME_FETCH_TIMEOUT_MS,
   RUNTIME_MAX_REDIRECTS,
   RUNTIME_MAX_RESPONSE_BYTES,
   scanBundleForSecrets,
+  scanBundleForSecretsWithEvidence,
   type LookupImpl,
 } from './runtimeScanner';
 
@@ -298,18 +303,95 @@ describe('runtimeScanner', () => {
     });
   });
 
-  describe('scanLiveUrl', () => {
-    it('rejects a Supabase URL planted in the page content that points at a private address', async () => {
-      const html = `
-        <html><body>
-          <script>window.__ENV = { NEXT_PUBLIC_SUPABASE_URL: "http://169.254.169.254", NEXT_PUBLIC_SUPABASE_ANON_KEY: "${makeJwt(
-            { role: 'anon' },
-          )}" };</script>
-        </body></html>`;
+  describe('probeSupabaseRlsWithEvidence', () => {
+    const supabaseUrl = 'https://demo.supabase.co';
+    const anonKey = makeJwt({ role: 'anon', iss: 'supabase' });
 
+    it('returns redacted evidence (count, columns, masked sample) for an open table', async () => {
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/rest/v1/users')) {
+          return new Response(JSON.stringify([{ id: '1', email: 'alice@example.com' }]), {
+            status: 200,
+            headers: { 'content-range': '0-0/512' },
+          });
+        }
+        return new Response(JSON.stringify([]), { status: 200 });
+      }) as typeof fetch;
+
+      const { evidence } = await probeSupabaseRlsWithEvidence(
+        supabaseUrl,
+        anonKey,
+        fetchMock,
+        fakeLookup(),
+      );
+      const rls = evidence.find((item) => item.kind === 'rls_rows');
+      expect(rls).toBeDefined();
+      expect(rls?.summary).toContain('512 rows');
+      expect(rls?.summary).toContain('users');
+      expect(rls?.redactedSample?.rowCount).toBe(512);
+      expect(rls?.redactedSample?.columns).toEqual(['id', 'email']);
+      // Sample cell is masked — never the raw email.
+      expect(rls?.redactedSample?.sampleCell).not.toContain('alice@example.com');
+      expect(JSON.stringify(rls)).not.toContain('alice@example.com');
+    });
+
+    it('requests an exact count without a mutating method', async () => {
+      const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        expect((init?.method ?? 'GET').toUpperCase()).toBe('GET');
+        const url = String(input);
+        if (url.includes('/rest/v1/orders')) {
+          return new Response(JSON.stringify([{ id: '9' }]), { status: 200 });
+        }
+        return new Response(JSON.stringify([]), { status: 200 });
+      }) as typeof fetch;
+      await probeSupabaseRlsWithEvidence(supabaseUrl, anonKey, fetchMock, fakeLookup());
+    });
+  });
+
+  describe('redactCell', () => {
+    it('masks an email keeping its shape', () => {
+      expect(redactCell('alice@example.com')).toBe('a***@***.com');
+    });
+    it('masks a generic string to a first-character stub', () => {
+      expect(redactCell('SensitiveValue')).toBe('S***');
+    });
+    it('masks numbers and booleans', () => {
+      expect(redactCell(42)).toBe('***');
+      expect(redactCell(true)).toBe('***');
+    });
+  });
+
+  describe('scanBundleForSecretsWithEvidence', () => {
+    it('emits redacted exposed-secret evidence', () => {
+      const { evidence } = scanBundleForSecretsWithEvidence('const k = "sk_live_abc123def456";');
+      expect(evidence).toHaveLength(1);
+      expect(evidence[0]?.kind).toBe('exposed_secret');
+      expect(evidence[0]?.redactedSample?.maskedSecret).toBe('sk_live_****f456');
+      expect(JSON.stringify(evidence[0])).not.toContain('sk_live_abc123def456');
+    });
+  });
+
+  describe('checkSecurityHeadersWithEvidence', () => {
+    it('emits missing-header evidence listing the missing headers', () => {
+      const { evidence } = checkSecurityHeadersWithEvidence(new Headers({ server: 'nginx' }));
+      expect(evidence[0]?.kind).toBe('missing_header');
+      expect(evidence[0]?.redactedSample?.headers?.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('scanLiveUrl', () => {
+    const plantedHtml = `
+      <html><body>
+        <script>window.__ENV = { NEXT_PUBLIC_SUPABASE_URL: "http://169.254.169.254", NEXT_PUBLIC_SUPABASE_ANON_KEY: "${makeJwt(
+          { role: 'anon' },
+        )}" };</script>
+      </body></html>`;
+
+    it('rejects a planted private Supabase URL when the active probe runs (SSRF guard)', async () => {
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
         if (String(input) === 'https://myapp.example/') {
-          return new Response(html, {
+          return new Response(plantedHtml, {
             status: 200,
             headers: { 'content-type': 'text/html' },
           });
@@ -318,8 +400,33 @@ describe('runtimeScanner', () => {
       }) as typeof fetch;
 
       await expect(
-        scanLiveUrl('https://myapp.example/', fetchMock, fakeLookup()),
+        scanLiveUrl('https://myapp.example/', fetchMock, fakeLookup(), { activeProbe: true }),
       ).rejects.toThrow();
+    });
+
+    it('does NOT run the active Supabase probe by default (passive only)', async () => {
+      const supabaseRequests: string[] = [];
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('supabase.co') || url.includes('169.254.169.254')) {
+          supabaseRequests.push(url);
+        }
+        if (url === 'https://myapp.example/') {
+          const html = `<html><body><script>window.__ENV = { NEXT_PUBLIC_SUPABASE_URL: "https://demo.supabase.co", NEXT_PUBLIC_SUPABASE_ANON_KEY: "${makeJwt(
+            { role: 'anon' },
+          )}" };</script></body></html>`;
+          return new Response(html, { status: 200, headers: { 'content-type': 'text/html' } });
+        }
+        return new Response('', { status: 200 });
+      }) as typeof fetch;
+
+      const { findings } = await scanLiveUrlWithEvidence(
+        'https://myapp.example/',
+        fetchMock,
+        fakeLookup(),
+      );
+      expect(supabaseRequests).toEqual([]);
+      expect(findings.some((f) => f.ruleId === 'runtime-supabase-rls-open')).toBe(false);
     });
   });
 });
