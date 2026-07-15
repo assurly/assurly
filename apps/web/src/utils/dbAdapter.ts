@@ -112,6 +112,12 @@ export interface UpsertTargetInput {
   lastCheckedAt?: string | null;
 }
 
+/** Input for marking a target's ownership as proven (Phase 3). */
+export interface SetTargetOwnershipInput {
+  ownershipVerified: boolean;
+  ownershipMethod: TargetOwnershipMethod | null;
+}
+
 export type ProbeEvidenceKind = 'rls_rows' | 'exposed_secret' | 'open_endpoint' | 'missing_header';
 
 /** A persisted, already-redacted proof artifact behind a runtime finding (Phase 2). */
@@ -212,7 +218,13 @@ export interface DbAdapter {
   updateFindingFixPrUrls(updates: { findingId: string; fixPrUrl: string }[]): Promise<void>;
   getTargets(organizationId: string): Promise<Target[]>;
   getTargetById(id: string): Promise<Target | null>;
+  getTargetByIdentifier(
+    organizationId: string,
+    kind: TargetKind,
+    identifier: string,
+  ): Promise<Target | null>;
   upsertTarget(input: UpsertTargetInput): Promise<Target>;
+  setTargetOwnership(id: string, input: SetTargetOwnershipInput): Promise<Target>;
   insertProbeEvidence(rows: ProbeEvidenceInput[]): Promise<void>;
   getProbeEvidenceForScan(scanId: string): Promise<ProbeEvidenceRow[]>;
 }
@@ -537,6 +549,16 @@ export class SupabaseDbAdapter implements DbAdapter {
     return this.first(`targets?select=*&id=eq.${eq(id)}`);
   }
 
+  getTargetByIdentifier(
+    organizationId: string,
+    kind: TargetKind,
+    identifier: string,
+  ): Promise<Target | null> {
+    return this.first(
+      `targets?select=*&organization_id=eq.${eq(organizationId)}&kind=eq.${eq(kind)}&identifier=eq.${eq(identifier)}`,
+    );
+  }
+
   async upsertTarget(input: UpsertTargetInput): Promise<Target> {
     // Only send the fields the caller specified. PostgREST's merge-duplicates
     // upsert updates exactly the columns present in the payload, so unspecified
@@ -566,6 +588,21 @@ export class SupabaseDbAdapter implements DbAdapter {
         body: JSON.stringify(row),
       },
     );
+    return rows[0];
+  }
+
+  async setTargetOwnership(id: string, input: SetTargetOwnershipInput): Promise<Target> {
+    // RLS restricts this PATCH to org members via the caller's user token, so a
+    // user can only flip ownership on a target their organization owns.
+    const rows = await this.fetchDb<Target[]>(`targets?id=eq.${eq(id)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        ownership_verified: input.ownershipVerified,
+        ownership_method: input.ownershipMethod,
+        updated_at: new Date().toISOString(),
+      }),
+    });
     return rows[0];
   }
 

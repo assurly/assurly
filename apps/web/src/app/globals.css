@@ -3479,6 +3479,119 @@ footer .footer-links a:hover {
   padding: 0;
 }
 
+.ownership-verify {
+  margin-top: 16px;
+  padding: 16px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.ownership-verify__title {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ownership-verify__copy {
+  margin: 0 0 14px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.ownership-verify__methods {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.ownership-verify__method {
+  padding: 6px 12px;
+  background-color: var(--color-canvas);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ownership-verify__method--active {
+  background-color: var(--color-border);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.ownership-verify__step {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.ownership-verify__value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background-color: var(--color-canvas);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.ownership-verify__value code {
+  flex: 1;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: var(--color-text);
+}
+
+.ownership-verify__copy-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 5px;
+  color: var(--color-accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ownership-verify__submit {
+  padding: 8px 16px;
+  background-color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: 6px;
+  color: var(--color-on-accent, #fff);
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.ownership-verify__submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.ownership-verify__hint {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.ownership-verify__error {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  color: var(--color-danger-text);
+  line-height: 1.4;
+}
+
 .dashboard-scan-workspace {
   display: flex;
   flex-direction: column;

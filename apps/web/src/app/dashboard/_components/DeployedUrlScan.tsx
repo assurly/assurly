@@ -1,14 +1,20 @@
 'use client';
 
-import { useState, type FormEvent, type ReactElement } from 'react';
+import { useCallback, useState, type FormEvent, type ReactElement } from 'react';
 import type { WebFinding } from '../../../utils/browserScanner';
 import type { ShipGateReport } from '../../../utils/shipGate';
 import { isLikelyScannableUrl } from '../../../utils/urlValidation';
 import { ShipGatePanel } from '../../_components/ship-gate/ShipGatePanel';
 import { ProofEvidence, type ProofEvidenceItem } from './ProofEvidence';
+import { OwnershipVerify } from './OwnershipVerify';
 
 export interface DeployedUrlScanProps {
   loginUrl?: string;
+}
+
+interface ScanTarget {
+  id: string;
+  ownershipVerified: boolean;
 }
 
 interface UrlScanResults {
@@ -16,6 +22,7 @@ interface UrlScanResults {
   shipGate: ShipGateReport;
   findings: WebFinding[];
   evidence: ProofEvidenceItem[];
+  target: ScanTarget | null;
 }
 
 async function readScanUrlError(response: Response): Promise<string> {
@@ -40,20 +47,15 @@ export function DeployedUrlScan({
   const isValidUrl = isLikelyScannableUrl(urlInput);
   const showInvalidHint = urlInput.trim().length > 0 && !isValidUrl;
 
-  const handleSubmit = async (event?: FormEvent): Promise<void> => {
-    event?.preventDefault();
-    const trimmed = urlInput.trim();
-    if (!isValidUrl || isScanning) return;
-
+  const runScan = useCallback(async (targetUrl: string): Promise<void> => {
     setIsScanning(true);
     setScanError(null);
-    setScanResults(null);
 
     try {
       const response = await fetch('/api/scan-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: trimmed }),
+        body: JSON.stringify({ url: targetUrl }),
       });
 
       if (!response.ok) {
@@ -64,18 +66,28 @@ export function DeployedUrlScan({
         report: ShipGateReport;
         findings: WebFinding[];
         evidence?: ProofEvidenceItem[];
+        target?: ScanTarget | null;
       };
       setScanResults({
-        targetUrl: trimmed,
+        targetUrl,
         shipGate: data.report,
         findings: data.findings,
         evidence: data.evidence ?? [],
+        target: data.target ?? null,
       });
     } catch (error: unknown) {
       setScanError(error instanceof Error ? error.message : 'URL scan failed.');
     } finally {
       setIsScanning(false);
     }
+  }, []);
+
+  const handleSubmit = async (event?: FormEvent): Promise<void> => {
+    event?.preventDefault();
+    const trimmed = urlInput.trim();
+    if (!isValidUrl || isScanning) return;
+    setScanResults(null);
+    await runScan(trimmed);
   };
 
   return (
@@ -134,6 +146,13 @@ export function DeployedUrlScan({
             </div>
             <ShipGatePanel report={scanResults.shipGate} compact />
           </div>
+          {scanResults.target && !scanResults.target.ownershipVerified ? (
+            <OwnershipVerify
+              targetId={scanResults.target.id}
+              identifier={scanResults.targetUrl}
+              onVerified={() => void runScan(scanResults.targetUrl)}
+            />
+          ) : null}
           <p className="dashboard-url-scan-hint">
             This is a runtime probe of your live URL — fix the items above on your host or in your
             deploy config. To also scan your source code (RLS, exposed secrets, undocumented env

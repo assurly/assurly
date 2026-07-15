@@ -117,6 +117,29 @@ export function getAiMonthlyTokenCap(): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 2_000_000;
 }
 
+/**
+ * Secret used to derive per-target ownership-verification tokens (HMAC). The
+ * token is placed publicly on the user's site, so it need not be secret from
+ * third parties, but deriving it from a server secret makes it unforgeable and
+ * unique per target. Prefers a dedicated `OWNERSHIP_TOKEN_SECRET`, falls back to
+ * the always-present server-only service-role key, and only in non-production
+ * uses a fixed development secret so the app boots without extra config.
+ */
+export function getOwnershipTokenSecret(): string {
+  const dedicated = process.env.OWNERSHIP_TOKEN_SECRET?.trim();
+  if (dedicated) return dedicated;
+
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (serviceRole) return serviceRole;
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new ConfigurationError(
+      'OWNERSHIP_TOKEN_SECRET (or SUPABASE_SERVICE_ROLE_KEY) is required to issue ownership tokens.',
+    );
+  }
+  return 'assurly-dev-ownership-secret';
+}
+
 export function getResendFromAddress(): string {
   const value = process.env.RESEND_FROM_EMAIL?.trim();
   return value || 'Assurly Alerts <onboarding@resend.dev>';
