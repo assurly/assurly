@@ -200,8 +200,7 @@ export function OwnershipVerify({
 
           {notFound ? (
             <p className="ownership-verify__hint">
-              We couldn&apos;t find the {METHOD_LABELS[method].toLowerCase()} yet. Make sure
-              it&apos;s live (deploy / DNS propagation can take a few minutes), then try again.
+              {`We couldn't find the ${METHOD_LABELS[method].toLowerCase()} yet. Make sure it's live (deploy / DNS propagation can take a few minutes), then try again.`}
             </p>
           ) : null}
         </div>
