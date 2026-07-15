@@ -5,8 +5,9 @@ import type { WebFinding } from '../../../utils/browserScanner';
 import type { ShipGateReport } from '../../../utils/shipGate';
 import { isLikelyScannableUrl } from '../../../utils/urlValidation';
 import { ShipGatePanel } from '../../_components/ship-gate/ShipGatePanel';
-import { ProofEvidence, type ProofEvidenceItem } from './ProofEvidence';
+import { DeepReviewPanel, type DeepReviewView } from './DeepReviewPanel';
 import { OwnershipVerify } from './OwnershipVerify';
+import { ProofEvidence, type ProofEvidenceItem } from './ProofEvidence';
 
 export interface DeployedUrlScanProps {
   loginUrl?: string;
@@ -23,6 +24,36 @@ interface UrlScanResults {
   findings: WebFinding[];
   evidence: ProofEvidenceItem[];
   target: ScanTarget | null;
+  /** Paid Layer-2 review — absent for free tier / AI unavailable. */
+  deepReview: DeepReviewView | null;
+}
+
+function parseDeepReview(raw: unknown): DeepReviewView | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.summary !== 'string' || !record.summary.trim()) return null;
+  if (record.source !== 'ai') return null;
+
+  const findings: DeepReviewView['findings'] = [];
+  if (Array.isArray(record.findings)) {
+    for (const item of record.findings) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as Record<string, unknown>;
+      const title = typeof row.title === 'string' ? row.title.trim() : '';
+      const risk = typeof row.risk === 'string' ? row.risk.trim() : '';
+      const recommendation =
+        typeof row.recommendation === 'string' ? row.recommendation.trim() : '';
+      if (title && risk) {
+        findings.push({
+          title,
+          risk,
+          recommendation: recommendation || 'Review with your developer.',
+        });
+      }
+    }
+  }
+
+  return { summary: record.summary.trim(), findings, source: 'ai' };
 }
 
 async function readScanUrlError(response: Response): Promise<string> {
@@ -67,6 +98,7 @@ export function DeployedUrlScan({
         findings: WebFinding[];
         evidence?: ProofEvidenceItem[];
         target?: ScanTarget | null;
+        deepReview?: unknown;
       };
       setScanResults({
         targetUrl,
@@ -74,6 +106,7 @@ export function DeployedUrlScan({
         findings: data.findings,
         evidence: data.evidence ?? [],
         target: data.target ?? null,
+        deepReview: parseDeepReview(data.deepReview),
       });
     } catch (error: unknown) {
       setScanError(error instanceof Error ? error.message : 'URL scan failed.');
@@ -146,6 +179,7 @@ export function DeployedUrlScan({
             </div>
             <ShipGatePanel report={scanResults.shipGate} compact />
           </div>
+          {scanResults.deepReview ? <DeepReviewPanel review={scanResults.deepReview} /> : null}
           {scanResults.target && !scanResults.target.ownershipVerified ? (
             <OwnershipVerify
               targetId={scanResults.target.id}

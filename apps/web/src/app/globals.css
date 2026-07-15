@@ -7538,6 +7538,121 @@ body {
   color: var(--color-text-secondary);
 }
 
+/* --- AI deep review (Phase 4 Layer 2) — collapsible under Layer-1 --------- */
+.deep-review {
+  margin-top: 16px;
+  padding: 0;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.deep-review__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.deep-review__summary::-webkit-details-marker {
+  display: none;
+}
+
+.deep-review__summary::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--color-text-muted);
+  border-bottom: 1.5px solid var(--color-text-muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.deep-review[open] > .deep-review__summary::after {
+  transform: rotate(-135deg);
+}
+
+.deep-review__eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.deep-review__count {
+  margin-left: auto;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.deep-review__body {
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.deep-review__lede {
+  margin: 12px 0 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--color-text);
+}
+
+.deep-review__list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.deep-review__item {
+  padding: 12px;
+  background-color: var(--color-canvas);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.deep-review__title {
+  margin: 0 0 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.35;
+}
+
+.deep-review__risk {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
+.deep-review__recommendation {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+
+.deep-review__rec-label {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
 /* --- Finding card: consequence-first ------------------------------------- */
 .scan-finding-card__consequence {
   margin: 0 0 var(--space-2);
