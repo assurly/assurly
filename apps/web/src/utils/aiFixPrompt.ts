@@ -1,4 +1,5 @@
 import type { WebFinding } from './browserScanner';
+import { getCuratedConsequence } from './consequenceMap';
 
 const SECRET_PATTERNS: RegExp[] = [
   /\bsk-(?:ant-)?[A-Za-z0-9-]{8,}\b/g,
@@ -40,6 +41,11 @@ function deriveInstruction(finding: WebFinding): string {
   return 'Review this finding and apply a safe, minimal fix.';
 }
 
+function deriveWhyItMatters(finding: WebFinding): string | undefined {
+  if (!finding.ruleId) return undefined;
+  return getCuratedConsequence(finding.ruleId)?.consequence;
+}
+
 function findingSortKey(finding: WebFinding): string {
   return [
     finding.file ?? '',
@@ -54,7 +60,10 @@ function formatFindingBlock(finding: WebFinding): string {
   const line = finding.line ?? 0;
   const problem = maskSecrets(finding.message);
   const instruction = deriveInstruction(finding);
-  return `File ${file}, line ${line}: ${problem} → ${instruction}`;
+  const why = deriveWhyItMatters(finding);
+  const lines = [`File ${file}, line ${line}: ${problem} → ${instruction}`];
+  if (why) lines.push(`Why it matters: ${why}`);
+  return lines.join('\n');
 }
 
 export function buildAiFixPrompt(findings: WebFinding[]): string {
