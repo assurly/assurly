@@ -1,7 +1,10 @@
 import { lookup } from 'node:dns/promises';
 import { Agent } from 'undici';
 import type { WebFinding } from './browserScanner';
+import type { ClaudeClientDeps } from './ai/claudeClient';
+import { extractHeuristicTableNames, planRedTeamProbes } from './ai/redTeamPlanner';
 import { readLimitedResponseText } from './githubApp';
+import { DEFAULT_SENSITIVE_SUPABASE_TABLES, executeProbePlan, type ProbePlanStep } from './probes';
 import { assertPublicIpAddress, assertScannableUrl } from './urlSafety';
 
 export const RUNTIME_FETCH_TIMEOUT_MS = 8_000;
@@ -27,18 +30,6 @@ interface ResolvedSafeHost {
 }
 
 type FetchInit = RequestInit & { dispatcher?: Agent };
-
-const SENSITIVE_SUPABASE_TABLES = [
-  'profiles',
-  'users',
-  'posts',
-  'orders',
-  'customers',
-  'subscriptions',
-  'messages',
-  'accounts',
-  'payments',
-] as const;
 
 const SECRET_PATTERNS: Array<{ ruleId: 'runtime-secret-in-bundle'; regex: RegExp; label: string }> =
   [
@@ -174,7 +165,7 @@ export function redactCell(value: unknown): string {
 }
 
 /** Picks a representative, masked sample cell from a retrieved row. */
-function pickRedactedSampleCell(row: Record<string, unknown>): string | undefined {
+export function pickRedactedSampleCell(row: Record<string, unknown>): string | undefined {
   const stringEntry = Object.values(row).find(
     (value) => typeof value === 'string' && value.length > 0,
   );
@@ -281,28 +272,17 @@ export function checkSecurityHeaders(headers: Headers): WebFinding[] {
   return checkSecurityHeadersWithEvidence(headers).findings;
 }
 
-function supabaseHeaders(anonKey: string): HeadersInit {
-  return {
-    apikey: anonKey,
-    Authorization: `Bearer ${anonKey}`,
-    Accept: 'application/json',
-  };
-}
-
-/** Parses the total row count from a PostgREST `content-range: 0-0/1234` header. */
-function parseContentRangeTotal(header: string | null): number | undefined {
-  if (!header) return undefined;
-  const total = header.split('/')[1];
-  if (!total || total === '*') return undefined;
-  const parsed = Number(total);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
+/**
+ * Layer-1 / test helper: probes the default sensitive table list via the
+ * whitelisted `supabase_rls_table_read` primitive (no AI). Prefer
+ * `scanLiveUrlWithEvidence({ activeProbe: true })` for the full ownership-gated path.
+ */
 export async function probeSupabaseRlsWithEvidence(
   supabaseUrl: string,
   anonKey: string,
   fetchImpl: typeof fetch = fetch,
   lookupImpl?: LookupImpl,
+  tables: readonly string[] = DEFAULT_SENSITIVE_SUPABASE_TABLES,
 ): Promise<{ findings: WebFinding[]; evidence: ProbeEvidence[] }> {
   // supabaseUrl is extracted from the scanned page's own HTML/bundle text
   // (see extractSupabaseConfig) — it is attacker-controlled input, not a
@@ -310,77 +290,24 @@ export async function probeSupabaseRlsWithEvidence(
   // scan target before it is ever fetched.
   assertScannableUrl(supabaseUrl);
 
-  const findings: WebFinding[] = [];
-  const evidence: ProbeEvidence[] = [];
-  const openTables: string[] = [];
+  const plan: ProbePlanStep[] = tables.map((table) => ({
+    primitive: 'supabase_rls_table_read',
+    params: { table },
+  }));
 
-  for (const table of SENSITIVE_SUPABASE_TABLES) {
-    const probeUrl = new URL(`/rest/v1/${table}`, supabaseUrl);
-    probeUrl.searchParams.set('select', '*');
-    probeUrl.searchParams.set('limit', '1');
+  const result = await executeProbePlan(plan, {
+    targetOrigin: new URL(supabaseUrl).origin,
+    supabaseUrl,
+    anonKey,
+    fetchImpl,
+    lookupImpl,
+    safeFetch,
+  });
 
-    const { response } = await safeFetch(
-      probeUrl.toString(),
-      // count=exact returns the total row count in `content-range` WITHOUT
-      // retrieving the rows themselves — we prove exposure at scale without
-      // exfiltrating data. This is a read (GET), never a mutation.
-      { headers: { ...supabaseHeaders(anonKey), Prefer: 'count=exact' } },
-      fetchImpl,
-      lookupImpl,
-    );
-    if (!response.ok) continue;
-
-    let rows: unknown[] = [];
-    try {
-      const payload = (await response.json()) as unknown;
-      rows = Array.isArray(payload) ? payload : [];
-    } catch {
-      continue;
-    }
-
-    if (rows.length > 0) {
-      openTables.push(table);
-      findings.push({
-        ruleId: 'runtime-supabase-rls-open',
-        severity: 'error',
-        message: `Supabase table '${table}' returned rows via anon key without RLS protection.`,
-        suggestion: `Enable row-level security and add policies for table '${table}'.`,
-        file: 'Supabase REST API',
-      });
-
-      const totalRows =
-        parseContentRangeTotal(response.headers.get('content-range')) ?? rows.length;
-      const firstRow =
-        rows[0] && typeof rows[0] === 'object' ? (rows[0] as Record<string, unknown>) : {};
-      const columns = Object.keys(firstRow);
-      const sampleCell = pickRedactedSampleCell(firstRow);
-      const rowLabel = totalRows === 1 ? '1 row' : `${totalRows.toLocaleString('en-US')} rows`;
-      evidence.push({
-        findingRuleId: 'runtime-supabase-rls-open',
-        kind: 'rls_rows',
-        summary: `We read ${rowLabel} from your \`${table}\` table using only the public key.`,
-        redactedSample: {
-          table,
-          rowCount: totalRows,
-          columns,
-          ...(sampleCell ? { sampleCell } : {}),
-        },
-      });
-    }
-  }
-
-  for (const table of openTables) {
-    findings.push({
-      ruleId: 'runtime-supabase-anon-write-implied',
-      severity: 'warning',
-      message: `Table '${table}' is readable with the anon key; write access is likely possible if RLS policies are missing.`,
-      suggestion:
-        'Add restrictive RLS policies for SELECT, INSERT, UPDATE, and DELETE. This check infers risk only — no write probe was attempted.',
-      file: 'Supabase REST API',
-    });
-  }
-
-  return { findings, evidence };
+  return {
+    findings: result.findings,
+    evidence: result.evidence as ProbeEvidence[],
+  };
 }
 
 export async function probeSupabaseRls(
@@ -543,15 +470,30 @@ export interface ScanLiveUrlOptions {
    * When false (the default), only PASSIVE checks run — missing security headers
    * and secrets leaked into the public bundle. The ACTIVE Supabase RLS row-pull
    * (which retrieves real data from a third-party database) requires proven
-   * ownership and is gated behind sign-in until Phase 3 (convention: safety &
-   * consent first). Never enable this for anonymous, arbitrary URLs.
+   * ownership. Callers must NOT set this to true for a `url` target unless
+   * `isActiveProbeAllowed` (see utils/ownership/gate.ts) returned true — that is
+   * the single server-side authority for the passive/active boundary. Never
+   * enable this for anonymous or unverified arbitrary URLs.
+   *
+   * The AI red-team planner runs ONLY inside this branch — never around the gate.
    */
   activeProbe?: boolean;
+  /** Org id for AI budget accounting (planner). Optional. */
+  organizationId?: string;
+  /**
+   * When false, the active path uses the deterministic table plan only (no LLM).
+   * Defaults to true; AI failures still degrade to the deterministic plan.
+   */
+  useAiPlanner?: boolean;
+  /** Injectable Claude deps (tests). */
+  aiDeps?: ClaudeClientDeps;
 }
 
 export interface ScanLiveUrlResult {
   findings: WebFinding[];
   evidence: ProbeEvidence[];
+  /** Whether the active plan came from AI or the deterministic fallback. */
+  planSource?: 'ai' | 'deterministic';
 }
 
 export async function scanLiveUrlWithEvidence(
@@ -568,6 +510,7 @@ export async function scanLiveUrlWithEvidence(
   );
   const findings: WebFinding[] = [];
   const evidence: ProbeEvidence[] = [];
+  let planSource: 'ai' | 'deterministic' | undefined;
 
   const headerResult = checkSecurityHeadersWithEvidence(pageResponse.headers);
   findings.push(...headerResult.findings);
@@ -579,6 +522,7 @@ export async function scanLiveUrlWithEvidence(
   evidence.push(...htmlSecrets.evidence);
 
   const scriptUrls = extractScriptUrls(html, pageUrl).slice(0, 8);
+  let bundleTextAccum = html;
   for (const scriptUrl of scriptUrls) {
     const { response: scriptResponse } = await safeFetch(
       scriptUrl,
@@ -588,28 +532,49 @@ export async function scanLiveUrlWithEvidence(
     );
     if (!scriptResponse.ok) continue;
     const bundleText = await readRuntimeResponseText(scriptResponse);
+    bundleTextAccum += `\n${bundleText}`;
     const bundleSecrets = scanBundleForSecretsWithEvidence(bundleText);
     findings.push(...bundleSecrets.findings);
     evidence.push(...bundleSecrets.evidence);
   }
 
   // Active data-exfiltration proof: only when the caller has established the user
-  // may probe this target (sign-in / connected repo). Passive scans skip it.
+  // may probe this target (ownership gate). Passive scans skip it — and the planner
+  // never runs outside this branch.
   if (options.activeProbe) {
-    const supabaseConfig = extractSupabaseConfig(html);
+    const supabaseConfig = extractSupabaseConfig(bundleTextAccum);
     if (supabaseConfig.supabaseUrl && supabaseConfig.anonKey) {
-      const supabaseResult = await probeSupabaseRlsWithEvidence(
-        supabaseConfig.supabaseUrl,
-        supabaseConfig.anonKey,
+      const heuristicTables = extractHeuristicTableNames(bundleTextAccum);
+      const { plan, source } = await planRedTeamProbes(
+        {
+          targetOrigin: pageUrl.origin,
+          hasSupabase: true,
+          supabaseHost: new URL(supabaseConfig.supabaseUrl).host,
+          heuristicTables,
+          scannedSnippet: bundleTextAccum.slice(0, 4_000),
+        },
+        {
+          organizationId: options.organizationId,
+          useAi: options.useAiPlanner !== false,
+          deps: options.aiDeps,
+        },
+      );
+      planSource = source;
+
+      const probeResult = await executeProbePlan(plan, {
+        targetOrigin: pageUrl.origin,
+        supabaseUrl: supabaseConfig.supabaseUrl,
+        anonKey: supabaseConfig.anonKey,
         fetchImpl,
         lookupImpl,
-      );
-      findings.push(...supabaseResult.findings);
-      evidence.push(...supabaseResult.evidence);
+        safeFetch,
+      });
+      findings.push(...probeResult.findings);
+      evidence.push(...(probeResult.evidence as ProbeEvidence[]));
     }
   }
 
-  return { findings, evidence };
+  return { findings, evidence, ...(planSource ? { planSource } : {}) };
 }
 
 export async function scanLiveUrl(

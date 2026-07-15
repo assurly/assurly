@@ -76,7 +76,7 @@ describe('POST /api/scan-url', () => {
       'https://myapp.lovable.app/',
       expect.anything(),
       undefined,
-      { activeProbe: false },
+      { activeProbe: false, organizationId: undefined },
     );
   });
 
@@ -158,13 +158,16 @@ describe('POST /api/scan-url', () => {
     expect((await response.json()).error.code).toBe('invalid_url');
   });
 
-  it('runs the active probe and persists evidence for an authenticated scan', async () => {
+  it('runs the active probe and persists evidence for an authenticated scan on a verified URL target', async () => {
     const insertProbeEvidence = vi.fn().mockResolvedValue(undefined);
-    const getOrganizationByUserId = vi.fn().mockResolvedValue({ id: 'org-1' });
+    const getOrganizationByUserId = vi
+      .fn()
+      .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
+    const upsertTarget = vi.fn().mockResolvedValue({ id: 'target-1', ownership_verified: true });
     requireUserMock.mockResolvedValue({
       user: { id: 'user-1' },
       accessToken: 'token',
-      db: { getOrganizationByUserId, insertProbeEvidence },
+      db: { getOrganizationByUserId, insertProbeEvidence, upsertTarget },
     });
     scanLiveUrlMock.mockResolvedValue({
       findings: [
@@ -205,7 +208,7 @@ describe('POST /api/scan-url', () => {
       'https://myapp.lovable.app/',
       expect.anything(),
       undefined,
-      { activeProbe: true },
+      { activeProbe: true, organizationId: 'org-1' },
     );
     expect(insertProbeEvidence).toHaveBeenCalledWith([
       expect.objectContaining({
@@ -214,6 +217,74 @@ describe('POST /api/scan-url', () => {
         kind: 'rls_rows',
       }),
     ]);
+    expect(json.target).toEqual({ id: 'target-1', ownershipVerified: true });
+    expect(upsertTarget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'org-1',
+        kind: 'url',
+        identifier: 'https://myapp.lovable.app',
+      }),
+    );
+  });
+
+  it('does NOT run the active probe for an authenticated scan on an UNVERIFIED URL target', async () => {
+    const insertProbeEvidence = vi.fn().mockResolvedValue(undefined);
+    const getOrganizationByUserId = vi
+      .fn()
+      .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
+    const upsertTarget = vi.fn().mockResolvedValue({ id: 'target-1', ownership_verified: false });
+    requireUserMock.mockResolvedValue({
+      user: { id: 'user-1' },
+      accessToken: 'token',
+      db: { getOrganizationByUserId, insertProbeEvidence, upsertTarget },
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://not-mine.lovable.app' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    // The gate must force passive-only for an unverified url target, even though
+    // the caller is authenticated.
+    expect(scanLiveUrlMock).toHaveBeenCalledWith(
+      'https://not-mine.lovable.app/',
+      expect.anything(),
+      undefined,
+      { activeProbe: false, organizationId: 'org-1' },
+    );
+    expect(json.target).toEqual({ id: 'target-1', ownershipVerified: false });
+  });
+
+  it('stays passive-only when the target lookup fails (fail-closed)', async () => {
+    const getOrganizationByUserId = vi.fn().mockRejectedValue(new Error('db down'));
+    const upsertTarget = vi.fn();
+    requireUserMock.mockResolvedValue({
+      user: { id: 'user-1' },
+      accessToken: 'token',
+      db: { getOrganizationByUserId, upsertTarget, insertProbeEvidence: vi.fn() },
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://myapp.lovable.app' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(scanLiveUrlMock).toHaveBeenCalledWith(
+      'https://myapp.lovable.app/',
+      expect.anything(),
+      undefined,
+      { activeProbe: false, organizationId: undefined },
+    );
+    expect(upsertTarget).not.toHaveBeenCalled();
   });
 
   it('uses the expensive rate limit policy', () => {
