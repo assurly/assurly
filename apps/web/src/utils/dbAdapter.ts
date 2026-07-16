@@ -142,6 +142,44 @@ export interface ProbeEvidenceInput {
   redactedSample?: unknown;
 }
 
+export type FixOutcomeStatus = 'verified_fixed' | 'still_open' | 'regressed';
+
+/** A persisted verified-fix loop record (Phase 5). */
+export interface FixOutcomeRow {
+  id: string;
+  organization_id: string;
+  target_id: string | null;
+  scan_id: string | null;
+  finding_rule_id: string;
+  generator_fingerprint: string | null;
+  fix_strategy: string | null;
+  outcome: FixOutcomeStatus;
+  pr_url: string | null;
+  deploy_id: string | null;
+  created_at: string;
+}
+
+/** Input for recording a verified-fix outcome. `deployId` dedupes deploy re-fires. */
+export interface FixOutcomeInput {
+  organizationId: string;
+  targetId: string | null;
+  scanId?: string | null;
+  findingRuleId: string;
+  generatorFingerprint?: string | null;
+  fixStrategy?: string | null;
+  outcome: FixOutcomeStatus;
+  prUrl?: string | null;
+  deployId?: string | null;
+}
+
+/** Pattern-only projection of fix outcomes for the corpus rollup (§2.8). */
+export interface FixOutcomeCorpusRow {
+  generator_fingerprint: string | null;
+  finding_rule_id: string;
+  fix_strategy: string | null;
+  outcome: FixOutcomeStatus;
+}
+
 export interface StripeBillingEvent {
   eventId: string;
   eventType: string;
@@ -227,6 +265,21 @@ export interface DbAdapter {
   setTargetOwnership(id: string, input: SetTargetOwnershipInput): Promise<Target>;
   insertProbeEvidence(rows: ProbeEvidenceInput[]): Promise<void>;
   getProbeEvidenceForScan(scanId: string): Promise<ProbeEvidenceRow[]>;
+  findVerifiedUrlTargetByOrigin(origin: string): Promise<Target | null>;
+  claimVercelDelivery(
+    deployId: string,
+    eventType: string,
+    organizationId: string,
+    targetId: string,
+  ): Promise<boolean>;
+  finishVercelDelivery(
+    deployId: string,
+    succeeded: boolean,
+    failureMessage?: string,
+  ): Promise<void>;
+  insertFixOutcomes(rows: FixOutcomeInput[]): Promise<void>;
+  getFixOutcomesForTarget(targetId: string): Promise<FixOutcomeRow[]>;
+  getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]>;
 }
 
 function eq(value: string | number): string {
@@ -626,6 +679,82 @@ export class SupabaseDbAdapter implements DbAdapter {
 
   getProbeEvidenceForScan(scanId: string): Promise<ProbeEvidenceRow[]> {
     return this.fetchDb(`probe_evidence?select=*&scan_id=eq.${eq(scanId)}&order=created_at.asc`);
+  }
+
+  findVerifiedUrlTargetByOrigin(origin: string): Promise<Target | null> {
+    // Resolve a deploy to a guarded app by matching the origin against a target
+    // our org already OWNS and has verified. This is a lookup against our own DB;
+    // the origin is only ever a key, never a probe target (see api/vercel/webhook).
+    return this.first(
+      `targets?select=*&kind=eq.url&ownership_verified=is.true&identifier=eq.${eq(origin)}`,
+    );
+  }
+
+  async claimVercelDelivery(
+    deployId: string,
+    eventType: string,
+    organizationId: string,
+    targetId: string,
+  ): Promise<boolean> {
+    return this.fetchDb<boolean>('rpc/claim_vercel_webhook_delivery', {
+      method: 'POST',
+      body: JSON.stringify({
+        target_deploy_id: deployId,
+        target_event_type: eventType,
+        target_organization_id: organizationId,
+        target_target_id: targetId,
+      }),
+    });
+  }
+
+  async finishVercelDelivery(
+    deployId: string,
+    succeeded: boolean,
+    failureMessage?: string,
+  ): Promise<void> {
+    await this.fetchDb('rpc/finish_vercel_webhook_delivery', {
+      method: 'POST',
+      body: JSON.stringify({
+        target_deploy_id: deployId,
+        succeeded,
+        failure_message: failureMessage || null,
+      }),
+    });
+  }
+
+  async insertFixOutcomes(rows: FixOutcomeInput[]): Promise<void> {
+    if (rows.length === 0) return;
+    // Uniform key set so PostgREST accepts the bulk insert (see saveScan / PGRST102).
+    const payload = rows.map((row) => ({
+      organization_id: row.organizationId,
+      target_id: row.targetId,
+      scan_id: row.scanId ?? null,
+      finding_rule_id: row.findingRuleId,
+      generator_fingerprint: row.generatorFingerprint ?? null,
+      fix_strategy: row.fixStrategy ?? null,
+      outcome: row.outcome,
+      pr_url: row.prUrl ?? null,
+      deploy_id: row.deployId ?? null,
+    }));
+    // ignore-duplicates so a re-fired deploy (same target/rule/deploy_id) is a
+    // no-op against the partial unique index rather than a hard error.
+    await this.fetchDb('fix_outcome', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal,resolution=ignore-duplicates' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  getFixOutcomesForTarget(targetId: string): Promise<FixOutcomeRow[]> {
+    return this.fetchDb(`fix_outcome?select=*&target_id=eq.${eq(targetId)}&order=created_at.asc`);
+  }
+
+  getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]> {
+    // Pattern columns ONLY — never organization_id, target_id, pr_url, or any
+    // customer-identifying field (§2.8). This is the aggregate exit asset.
+    return this.fetchDb(
+      'fix_outcome?select=generator_fingerprint,finding_rule_id,fix_strategy,outcome',
+    );
   }
 }
 
