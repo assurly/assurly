@@ -24,8 +24,10 @@ interface UrlScanResults {
   findings: WebFinding[];
   evidence: ProofEvidenceItem[];
   target: ScanTarget | null;
-  /** Paid Layer-2 review — absent for free tier / AI unavailable. */
+  /** Paid Layer-2 review — absent for free tier / AI unavailable / passive scan. */
   deepReview: DeepReviewView | null;
+  /** Pro user, ownership not verified yet — deep review unlocks on verification. */
+  deepReviewLocked: boolean;
 }
 
 function parseDeepReview(raw: unknown): DeepReviewView | null {
@@ -99,6 +101,7 @@ export function DeployedUrlScan({
         evidence?: ProofEvidenceItem[];
         target?: ScanTarget | null;
         deepReview?: unknown;
+        deepReviewLocked?: unknown;
       };
       setScanResults({
         targetUrl,
@@ -107,6 +110,7 @@ export function DeployedUrlScan({
         evidence: data.evidence ?? [],
         target: data.target ?? null,
         deepReview: parseDeepReview(data.deepReview),
+        deepReviewLocked: data.deepReviewLocked === true,
       });
     } catch (error: unknown) {
       setScanError(error instanceof Error ? error.message : 'URL scan failed.');
@@ -179,7 +183,18 @@ export function DeployedUrlScan({
             </div>
             <ShipGatePanel report={scanResults.shipGate} compact />
           </div>
-          {scanResults.deepReview ? <DeepReviewPanel review={scanResults.deepReview} /> : null}
+          {scanResults.deepReview ? (
+            <DeepReviewPanel review={scanResults.deepReview} />
+          ) : scanResults.deepReviewLocked ? (
+            <p className="deep-review-locked" data-testid="deep-review-locked">
+              <span className="deep-review-locked__eyebrow">AI deep review</span>
+              <span className="deep-review-locked__lock" aria-hidden="true">
+                🔒
+              </span>{' '}
+              Verify ownership below to unlock a Pro-level, app-specific threat analysis — it
+              reasons about your live app’s real attack surface, not a generic checklist.
+            </p>
+          ) : null}
           {scanResults.target && !scanResults.target.ownershipVerified ? (
             <OwnershipVerify
               targetId={scanResults.target.id}

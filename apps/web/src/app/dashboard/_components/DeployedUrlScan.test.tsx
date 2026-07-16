@@ -110,6 +110,51 @@ describe('DeployedUrlScan deep review surface', () => {
     expect(screen.getByText('Absent CSP enables XSS')).toBeTruthy();
   });
 
+  it('shows a "verify to unlock" teaser when deep review is ownership-locked (Pro, unverified)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          report: {
+            status: 'review',
+            shipScore: 92,
+            headline: 'REVIEW RECOMMENDED',
+            statusEmoji: '⚠️',
+            blockers: [],
+            reviews: [],
+            warnings: [],
+            cleanFileCount: 0,
+            scannedFileCount: 1,
+            totalErrorFindings: 0,
+            totalWarningFindings: 1,
+          },
+          findings: [
+            {
+              ruleId: 'runtime-supabase-key-exposed',
+              severity: 'warning',
+              message: 'DB reachable.',
+              file: 'Public app bundle',
+            },
+          ],
+          evidence: [],
+          target: { id: 't1', ownershipVerified: false },
+          deepReviewLocked: true,
+        }),
+      ),
+    );
+
+    render(<DeployedUrlScan />);
+    typeUrl('https://myapp.example');
+    fireEvent.click(scanButton());
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deep-review-locked')).toBeTruthy();
+    });
+    // The heavyweight panel is NOT rendered — only the teaser.
+    expect(screen.queryByTestId('deep-review')).toBeNull();
+    expect(screen.getByText(/Verify ownership below to unlock/)).toBeTruthy();
+  });
+
   it('omits the deep review panel when the API returns none', async () => {
     vi.stubGlobal(
       'fetch',

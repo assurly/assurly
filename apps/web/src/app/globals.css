@@ -7548,6 +7548,30 @@ body {
   overflow: hidden;
 }
 
+.deep-review-locked {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background-color: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.deep-review-locked__eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-right: 8px;
+}
+
+.deep-review-locked__lock {
+  font-size: 0.8rem;
+}
+
 .deep-review__summary {
   display: flex;
   align-items: center;

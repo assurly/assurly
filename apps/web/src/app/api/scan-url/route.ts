@@ -169,9 +169,9 @@ export const POST = secureRoute(
       }
     }
 
-    // Layer 2 deep review (paid only). Never blocks the Layer-1 verdict — null
-    // when free tier, nothing worth reviewing (no findings + passive scan), AI
-    // unavailable, or the call fails.
+    // Layer 2 deep review (paid + ownership-gated). Runs only after the active
+    // probe, so it reasons from real evidence — never speculates on a passive
+    // scan. Null on free tier, passive scan, AI unavailable, or a failed call.
     const deepReview = await runDeepReview(
       findings,
       { targetOrigin: parsedUrl.origin },
@@ -182,6 +182,11 @@ export const POST = secureRoute(
       },
     );
 
+    // A Pro user scanning a URL they haven't verified yet is one ownership check
+    // away from unlocking deep review. Signal it so the client can turn the gate
+    // into a funnel step instead of silently omitting the feature.
+    const deepReviewLocked = gate.paidTierAllowed && !gate.activeProbe;
+
     return NextResponse.json({
       report,
       findings,
@@ -189,6 +194,7 @@ export const POST = secureRoute(
       target: gate.target,
       ...(planSource ? { planSource } : {}),
       ...(deepReview ? { deepReview } : {}),
+      ...(deepReviewLocked ? { deepReviewLocked: true } : {}),
     });
   },
 );

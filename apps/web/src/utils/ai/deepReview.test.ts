@@ -54,10 +54,26 @@ describe('runDeepReview', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('isDeepReviewWorthwhile gates on findings or an active probe', () => {
-    expect(isDeepReviewWorthwhile(0, false)).toBe(false);
-    expect(isDeepReviewWorthwhile(1, false)).toBe(true);
-    expect(isDeepReviewWorthwhile(0, true)).toBe(true);
+  it('skips the paid call for a passive scan even when it has findings', async () => {
+    // The key policy: passive findings alone do NOT justify Opus. Only an active
+    // probe (owned app, real evidence) does — otherwise deep review speculates.
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    const fetchImpl = vi.fn() as unknown as typeof fetch;
+    const result = await runDeepReview(
+      [
+        { ruleId: 'runtime-missing-security-headers', severity: 'warning', message: 'no csp' },
+        { ruleId: 'runtime-supabase-key-exposed', severity: 'warning', message: 'db reachable' },
+      ],
+      { targetOrigin: 'https://app.example' },
+      { paidTierAllowed: true, activeProbeRan: false, deps: { fetchImpl } },
+    );
+    expect(result).toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('isDeepReviewWorthwhile gates solely on the active probe', () => {
+    expect(isDeepReviewWorthwhile(false)).toBe(false);
+    expect(isDeepReviewWorthwhile(true)).toBe(true);
   });
 
   it('returns null when ANTHROPIC_API_KEY is unset', async () => {
@@ -65,7 +81,7 @@ describe('runDeepReview', () => {
     const result = await runDeepReview(
       [{ ruleId: 'x', severity: 'error', message: 'm' }],
       { targetOrigin: 'https://app.example' },
-      { paidTierAllowed: true },
+      { paidTierAllowed: true, activeProbeRan: true },
     );
     expect(result).toBeNull();
   });
@@ -99,7 +115,7 @@ describe('runDeepReview', () => {
     const result = await runDeepReview(
       [{ ruleId: 'runtime-supabase-rls-open', severity: 'error', message: 'open customers' }],
       { targetOrigin: 'https://app.example', contextSnippet: 'from("customers")' },
-      { paidTierAllowed: true, deps: { fetchImpl } },
+      { paidTierAllowed: true, activeProbeRan: true, deps: { fetchImpl } },
     );
 
     expect(result?.summary).toContain('world-readable');

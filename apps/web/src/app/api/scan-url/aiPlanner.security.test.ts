@@ -192,4 +192,20 @@ describe('scan-url AI planner + ownership gate (security)', () => {
     expect(restRequests).toEqual([]);
     expect(json.target).toBeNull();
   });
+
+  it('locks deep review behind ownership for a Pro user on an unverified URL (no paid spend)', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    const restRequests: Array<{ url: string; method: string }> = [];
+    vi.stubGlobal('fetch', buildFetchMock(restRequests));
+    requireUserMock.mockResolvedValue(authWithTarget(false, 'pro'));
+
+    const response = await POST(scanRequest());
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    // Passive scan → no active probe → deep review is NOT run (no Opus spend),
+    // but the client is told it can unlock it by verifying ownership.
+    expect(json.deepReview).toBeUndefined();
+    expect(json.deepReviewLocked).toBe(true);
+  });
 });

@@ -37,10 +37,10 @@ export interface RunDeepReviewOptions {
    */
   paidTierAllowed: boolean;
   /**
-   * Whether the ACTIVE data-exfiltration probe actually ran for this scan.
-   * Combined with the finding count, this is the worthiness gate: a clean,
-   * passive-only scan has nothing for Layer 2 to reason about, so we skip the
-   * paid model call entirely rather than spend tokens on an empty verdict.
+   * Whether the ACTIVE data-exfiltration probe ran for this scan — i.e. the user
+   * owns the app (ownership gate) and we exercised its live attack surface. This
+   * is the sole worthiness gate: deep review runs ONLY when it did. See
+   * `isDeepReviewWorthwhile`.
    */
   activeProbeRan?: boolean;
   deps?: ClaudeClientDeps;
@@ -99,13 +99,19 @@ function parseDeepReviewJson(text: string): DeepReviewResult | null {
 }
 
 /**
- * Whether a Layer-2 pass is worth the paid model spend. Deep review only earns
- * its cost when there is something to reason about: at least one Layer-1 finding
- * to deepen, or an active probe that exercised the live attack surface. A clean,
- * passive-only scan gets no deep review — nothing to analyze, no tokens spent.
+ * Whether a Layer-2 pass is worth the paid model spend. Deep review earns its
+ * cost — and produces GROUNDED output rather than speculation — only when the
+ * active probe ran: that means the user owns the app (ownership gate) and we
+ * exercised its real attack surface, so the model reasons from evidence.
+ *
+ * A passive scan (public headers + bundle inspection of an unowned URL) has no
+ * probe evidence, and its findings are already explained per-finding by the
+ * consequence layer. Running Opus there would burn tokens to speculate about a
+ * stranger's app — against the product's proof-first principle — so we skip it,
+ * however many passive findings turned up. Verifying ownership unlocks it.
  */
-export function isDeepReviewWorthwhile(findingCount: number, activeProbeRan: boolean): boolean {
-  return findingCount > 0 || activeProbeRan;
+export function isDeepReviewWorthwhile(activeProbeRan: boolean): boolean {
+  return activeProbeRan;
 }
 
 /**
@@ -119,7 +125,7 @@ export async function runDeepReview(
   options: RunDeepReviewOptions,
 ): Promise<DeepReviewResult | null> {
   if (!options.paidTierAllowed) return null;
-  if (!isDeepReviewWorthwhile(layer1Findings.length, options.activeProbeRan ?? false)) {
+  if (!isDeepReviewWorthwhile(options.activeProbeRan ?? false)) {
     return null;
   }
 
