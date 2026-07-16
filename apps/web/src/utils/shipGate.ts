@@ -19,8 +19,9 @@ export {
 export function toShipGateFinding(
   finding: Pick<
     WebFinding,
-    'severity' | 'confidence' | 'message' | 'file' | 'line' | 'suggestion'
+    'severity' | 'confidence' | 'message' | 'file' | 'line' | 'suggestion' | 'ruleId'
   > & {
+    /** Back-compat: historically some callers passed the DB snake_case field. */
     rule_id?: string;
   },
 ): ShipGateFindingInput {
@@ -30,7 +31,11 @@ export function toShipGateFinding(
     message: finding.message,
     file: finding.file,
     line: finding.line,
-    ruleId: finding.rule_id ?? 'unknown',
+    // WebFinding carries `ruleId` (camelCase). Reading `rule_id` here silently
+    // collapsed every runtime finding into one 'unknown' group, so two distinct
+    // warnings (e.g. missing-headers + supabase-key-exposed) merged and the second
+    // finding's message/consequence vanished from the Ship Gate breakdown.
+    ruleId: finding.ruleId ?? finding.rule_id ?? 'unknown',
     suggestion: finding.suggestion,
   };
 }
