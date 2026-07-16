@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clearAiCache, MODELS } from './claudeClient';
-import { runDeepReview } from './deepReview';
+import { isDeepReviewWorthwhile, runDeepReview } from './deepReview';
 
 describe('runDeepReview', () => {
   afterEach(() => {
@@ -18,6 +18,46 @@ describe('runDeepReview', () => {
     );
     expect(result).toBeNull();
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('skips the paid call for a clean, passive-only scan (no findings, no active probe)', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    const fetchImpl = vi.fn() as unknown as typeof fetch;
+    const result = await runDeepReview(
+      [],
+      { targetOrigin: 'https://app.example' },
+      { paidTierAllowed: true, activeProbeRan: false, deps: { fetchImpl } },
+    );
+    expect(result).toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('runs on a clean scan when the active probe actually ran', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            content: [
+              { type: 'text', text: JSON.stringify({ summary: 'Reviewed.', findings: [] }) },
+            ],
+          }),
+          { status: 200 },
+        ),
+    ) as unknown as typeof fetch;
+    const result = await runDeepReview(
+      [],
+      { targetOrigin: 'https://app.example' },
+      { paidTierAllowed: true, activeProbeRan: true, deps: { fetchImpl } },
+    );
+    expect(result?.summary).toBe('Reviewed.');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('isDeepReviewWorthwhile gates on findings or an active probe', () => {
+    expect(isDeepReviewWorthwhile(0, false)).toBe(false);
+    expect(isDeepReviewWorthwhile(1, false)).toBe(true);
+    expect(isDeepReviewWorthwhile(0, true)).toBe(true);
   });
 
   it('returns null when ANTHROPIC_API_KEY is unset', async () => {
