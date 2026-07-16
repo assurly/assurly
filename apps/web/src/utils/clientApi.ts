@@ -57,6 +57,17 @@ const findingSchema = z.object({
   fix_pr_url: z.string().url().nullable().optional(),
   created_at: z.string(),
 });
+const reprobeSchema = z.object({
+  probed: z.boolean(),
+  outcomes: z.array(
+    z.object({
+      ruleId: z.string(),
+      outcome: z.enum(['verified_fixed', 'still_open', 'regressed']),
+    }),
+  ),
+});
+export type ReprobeResult = z.infer<typeof reprobeSchema>;
+
 const sessionSchema = z.object({
   user: userSchema.nullable(),
   organization: organizationSchema.nullable(),
@@ -227,6 +238,12 @@ export const clientApi = {
     message: string;
   }): Promise<{ success: boolean }> =>
     requestJson('/api/contact', z.object({ success: z.boolean() }), jsonRequest('POST', body)),
+  reprobe: (targetId: string): Promise<ReprobeResult> =>
+    requestJson(
+      `/api/targets/${encodeURIComponent(targetId)}/reprobe`,
+      reprobeSchema,
+      jsonRequest('POST'),
+    ),
 };
 
 export const githubApi = {

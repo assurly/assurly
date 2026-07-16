@@ -6,8 +6,9 @@ import { ApiError, emptyObjectSchema, RATE_LIMITS, secureRoute } from '../../../
 import { scanLiveUrlWithEvidence, type ProbeEvidence } from '../../../utils/runtimeScanner';
 import { assertScannableUrl, UrlSafetyError } from '../../../utils/urlSafety';
 import { isActiveProbeAllowed, normalizeUrlIdentifier } from '../../../utils/ownership';
+import { recordReprobeOutcomes } from '../../../utils/reprobe';
 import type { AuthContext } from '../../../utils/auth';
-import type { ProbeEvidenceInput } from '../../../utils/dbAdapter';
+import type { ProbeEvidenceInput, Target } from '../../../utils/dbAdapter';
 
 const scanUrlBody = z
   .object({
@@ -29,6 +30,8 @@ interface ScanUrlTarget {
 interface UrlTargetGate {
   activeProbe: boolean;
   target: ScanUrlTarget | null;
+  /** The full target row, kept for the verified-fix baseline seed (Phase 5). */
+  targetRow: Target | null;
   organizationId: string | null;
   paidTierAllowed: boolean;
 }
@@ -44,7 +47,13 @@ async function resolveUrlTargetGate(auth: AuthContext, scanUrl: string): Promise
   try {
     const organization = await auth.db.getOrganizationByUserId(auth.user.id);
     if (!organization) {
-      return { activeProbe: false, target: null, organizationId: null, paidTierAllowed: false };
+      return {
+        activeProbe: false,
+        target: null,
+        targetRow: null,
+        organizationId: null,
+        paidTierAllowed: false,
+      };
     }
 
     const identifier = normalizeUrlIdentifier(scanUrl);
@@ -59,12 +68,19 @@ async function resolveUrlTargetGate(auth: AuthContext, scanUrl: string): Promise
     return {
       activeProbe: isActiveProbeAllowed({ kind: 'url', ownershipVerified: row.ownership_verified }),
       target: { id: row.id, ownershipVerified: row.ownership_verified },
+      targetRow: row,
       organizationId: organization.id,
       paidTierAllowed: organization.billing_plan === 'pro',
     };
   } catch (error) {
     console.warn('[Assurly] failed to resolve url target gate:', (error as Error).message);
-    return { activeProbe: false, target: null, organizationId: null, paidTierAllowed: false };
+    return {
+      activeProbe: false,
+      target: null,
+      targetRow: null,
+      organizationId: null,
+      paidTierAllowed: false,
+    };
   }
 }
 
@@ -120,6 +136,7 @@ export const POST = secureRoute(
       : {
           activeProbe: false,
           target: null,
+          targetRow: null,
           organizationId: null,
           paidTierAllowed: false,
         };
@@ -140,14 +157,28 @@ export const POST = secureRoute(
 
     if (auth) await persistEvidence(auth, evidence);
 
+    // Verified-fix baseline (Phase 5): when the ownership-gated active probe runs,
+    // record the currently-open runtime findings so a later re-probe (after a fix
+    // deploys) can flip them to VERIFIED FIXED. Best-effort — a persistence failure
+    // never fails the scan. Only state changes are written (see recordReprobeOutcomes).
+    if (auth && gate.activeProbe && gate.targetRow) {
+      try {
+        await recordReprobeOutcomes({ db: auth.db, target: gate.targetRow, findings });
+      } catch (error) {
+        console.warn('[Assurly] failed to record fix-outcome baseline:', (error as Error).message);
+      }
+    }
+
     // Layer 2 deep review (paid only). Never blocks the Layer-1 verdict — null
-    // when free tier, AI unavailable, or the call fails.
+    // when free tier, nothing worth reviewing (no findings + passive scan), AI
+    // unavailable, or the call fails.
     const deepReview = await runDeepReview(
       findings,
       { targetOrigin: parsedUrl.origin },
       {
         organizationId: gate.organizationId ?? undefined,
         paidTierAllowed: gate.paidTierAllowed,
+        activeProbeRan: gate.activeProbe,
       },
     );
 
