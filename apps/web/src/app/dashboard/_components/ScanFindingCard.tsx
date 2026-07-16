@@ -1,9 +1,16 @@
 'use client';
 
 import type { ReactElement } from 'react';
-import type { ScanFinding } from '../../../utils/dbAdapter';
+import type { FixOutcomeStatus, ScanFinding } from '../../../utils/dbAdapter';
 import { getCuratedConsequence } from '../../../utils/consequenceMap';
 import { findingFixPrUrl } from '../../../utils/fixSummary';
+import { VerifiedFixTimeline } from './VerifiedFixTimeline';
+
+/** The verified-fix outcome for this finding, when a re-probe has recorded one. */
+export interface FindingFixOutcome {
+  outcome: FixOutcomeStatus;
+  verifiedAt?: string | null;
+}
 
 interface ScanFindingCardProps {
   finding: ScanFinding;
@@ -11,6 +18,7 @@ interface ScanFindingCardProps {
   fixingFindingId: string | null;
   isFixable: boolean;
   onCreateFixPr: (finding: ScanFinding) => void;
+  fixOutcome?: FindingFixOutcome;
 }
 
 export function ScanFindingCard({
@@ -19,6 +27,7 @@ export function ScanFindingCard({
   fixingFindingId,
   isFixable,
   onCreateFixPr,
+  fixOutcome,
 }: ScanFindingCardProps): ReactElement {
   const severityClass =
     finding.severity === 'error' ? 'scan-finding-card--error' : 'scan-finding-card--warning';
@@ -59,6 +68,15 @@ export function ScanFindingCard({
       ) : null}
 
       <p className="scan-finding-card__consequence">{primaryLine}</p>
+
+      {fixOutcome ? (
+        <VerifiedFixTimeline
+          outcome={fixOutcome.outcome}
+          foundAt={finding.created_at}
+          prUrl={fixPrUrl}
+          verifiedAt={fixOutcome.verifiedAt}
+        />
+      ) : null}
 
       {hasTechnicalDetail ? (
         <details className="scan-finding-card__technical">

@@ -7692,3 +7692,67 @@ body {
   line-height: 1.4;
   color: var(--color-text-secondary);
 }
+
+/* Verified-fix loop payoff (Phase 5): the "VERIFIED FIXED" badge + timeline. */
+.verified-fix {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-subtle);
+}
+.verified-fix--verified {
+  border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
+}
+.verified-fix__badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.verified-fix__badge--verified {
+  background-color: color-mix(in srgb, var(--color-success) 18%, transparent);
+  color: var(--color-success);
+}
+.verified-fix__badge--open {
+  background-color: color-mix(in srgb, var(--color-text-secondary) 14%, transparent);
+  color: var(--color-text-secondary);
+}
+.verified-fix__badge--regressed {
+  background-color: color-mix(in srgb, var(--color-danger-text) 16%, transparent);
+  color: var(--color-danger-text);
+}
+.verified-fix__timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.verified-fix__step {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8rem;
+}
+.verified-fix__step-label {
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+.verified-fix__step-time {
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.verified-fix__step-link {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+.verified-fix__step-link:hover {
+  text-decoration: underline;
+}
