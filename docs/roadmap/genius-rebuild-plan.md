@@ -1,22 +1,37 @@
 # Assurly — Genius Rebuild: Cursor Execution Handoff
 
 > **Audience:** Cursor (the AI coding agent that will continue this rebuild).
-> **Purpose:** A self-contained, senior-level execution spec for **all remaining work** (Phases 2–8).
+> **Purpose:** A self-contained, senior-level execution spec for **all remaining work** (Phases 5–8).
 > **Companion:** The strategy/rationale lives in [`10-genius-rebuild-master-plan.md`](./10-genius-rebuild-master-plan.md).
 > Read that once for the "why"; this file is the "what and how".
 >
-> **Owner:** Tibor Kútik · **Handoff date:** 2026-07-13
+> **Owner:** Tibor Kútik · **Handoff date:** 2026-07-13 · **Last updated:** 2026-07-16 (Phase 4 landed)
 >
-> **Golden rule:** Phases 0 and 1 are **already built, tested, and shipped** — do **not** rebuild them.
-> Start at **Phase 2**. Read Sections 1–3 first (current state + conventions + gotchas); they will save
+> **Golden rule:** Phases **0, 1, 2, 3 and 4** are **already built and tested** — do **not** rebuild them.
+> Start at **Phase 5**. Read Sections 1–3 first (current state + conventions + gotchas); they will save
 > you hours and stop you from breaking working code.
+>
+> **Verification status (read this before claiming a phase is done):** Phases 0–2 are browser-verified.
+> Phases 3 and 4 are **code-complete and safety-proven but NOT browser-verified** — see the Master
+> Tracker in the companion file for exactly what is open and why. They are listed in §1 because you must
+> **build on** them, not because their DoD is closed. Do not mark them verified on their behalf.
 
 ---
 
 ## 1. What is already DONE (do not rebuild — this is your foundation)
 
-Phases 0 and 1 are complete, tested (full suite green), and verified in a real browser. The following
+Phases 0–4 are implemented and tested (**767 tests green, 107 files; `tsc --noEmit` clean**). Phases 0–2
+are additionally browser-verified; Phases 3–4 are not yet (see the note in the header). The following
 exists and works. **Build on it; do not recreate or "improve" it unless a later phase explicitly says so.**
+
+Fast orientation — the four things Phase 5 leans on hardest:
+
+| You need                                   | It already exists at                                                                                 |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| The verdict per app                        | `utils/shipGate.ts` (`resolveVerdict*`), `targets` table, `GET /api/targets`                         |
+| A live proof-probe (ownership-gated)       | `utils/runtimeScanner.ts` → `scanLiveUrlWithEvidence({ activeProbe })` + `utils/probes/*`            |
+| The pass/fail authority for active probing | `utils/ownership/gate.ts` → `isActiveProbeAllowed` — **the single gate; never duplicate it**         |
+| The fix pipeline                           | `utils/githubAutoFix.ts`, `utils/githubFixPipeline.ts`, `POST /api/github/fix`, `api/github/webhook` |
 
 ### 1.1 Scan reliability & performance (done)
 
@@ -88,8 +103,71 @@ badge_token, created_at, updated_at`. Unique on `(organization_id, kind, identif
 - `GET /api/targets/[id]` was **not** built. The existing repo/scan detail already serves as the
   verdict detail. Build it only when a phase needs a stable per-target detail endpoint (e.g. a public
   trust page in Phase 6).
-- The `probe_evidence` and `fix_outcome` tables do **not** exist yet. They are created in **Phase 2**
-  and **Phase 5** respectively (their schema belongs to the phase that uses them).
+- `probe_evidence` **now exists** (created in Phase 2, applied to prod 2026-07-14 — see §1.6).
+  `fix_outcome` still does **not** exist: **you create it in Phase 5** (§5).
+
+### 1.6 Proof-first experience + the AI client (Phase 2 — done, browser-verified)
+
+- **`utils/ai/claudeClient.ts` — the ONE AI abstraction. Reuse it; never add a second.**
+  `callClaude({ model, system, messages, maxTokens })`, plus:
+  - `MODELS = { fast, balanced, deep }` — the **only** place model ids live. Never inline a model string.
+  - `asUntrustedData(text)` — wraps scanned content as data, not instructions (prompt-injection defense).
+    **Every** piece of scanned content you pass to an LLM goes through this. Non-negotiable (§2.6).
+  - `assertAiBudget(orgId)` / `recordAiUsage(orgId, tokens)` — per-org cost cap. Reuse; do not re-invent.
+  - Content-hash cache (`clearAiCache()` in tests), 20s timeout, one retry on 5xx.
+  - Throws `AiUnavailableError` when `ANTHROPIC_API_KEY` is unset — callers **must** degrade, never fail.
+- **Consequence translation:** `utils/consequenceMap.ts` (pure, client-safe, curated sentence per rule id)
+  - `utils/consequenceTranslator.ts` (AI fallback → curated → raw `message`; never on the critical path).
+- **`probe_evidence` table** — migration `20260714000000_probe_evidence.sql`, org-scoped RLS, **applied to
+  prod**. `dbAdapter.insertProbeEvidence(rows)` / `getProbeEvidenceForScan(scanId)`.
+- **Redaction lives in the scanner.** `runtimeScanner` returns already-redacted `ProbeEvidence`
+  (`redactCell`); raw PII never leaves it. RLS scale is proven with `limit=1` + `Prefer: count=exact` —
+  we show _"we read 500 rows"_ **without** exfiltrating 500 rows. Keep that property in anything new.
+- **FE:** `ProofEvidence.tsx` (proof headline) on the landing hero + dashboard URL scan;
+  `ScanFindingCard` is consequence-first with the technical detail collapsed.
+
+### 1.7 Ownership verification (Phase 3 — code-complete, NOT browser-verified)
+
+- **`utils/ownership/gate.ts` → `isActiveProbeAllowed({ kind, ownershipVerified })` is the single
+  server-side authority** for the passive/active boundary. `repo` = implicitly owned (GitHub App);
+  `url` = requires `ownership_verified === true`. **Every probe entrypoint must consult this one
+  function** — never re-implement, never route around it.
+- `normalizeUrlIdentifier(url)` pins a `url` target to its **origin**. Ownership is therefore
+  **origin-scoped**: `verifyOwnership` is called with the origin, so `meta_tag` reads the origin **root**
+  and `file` reads `/.well-known/assurly-verify.txt` at the root. This is deliberate — it stops someone
+  verifying a shared host (e.g. a gist) by uploading one file and then probing everyone else on it.
+- `utils/ownership/verify.ts` — `meta_tag` / `dns_txt` / `file`, all via SSRF-safe GET, 1 MiB body cap.
+  `utils/ownership/token.ts` — `deriveOwnershipToken(org + target + identifier)` (not transferable).
+- `GET`/`POST /api/targets/[id]/verify-ownership` + `dbAdapter.setTargetOwnership`; FE `OwnershipVerify.tsx`.
+- **Consequence for testing against real sites:** an active probe now needs an origin whose **root** the
+  owner controls. Local targets are impossible by design — the SSRF guard blocks `localhost`/private IPs
+  on every hop.
+
+### 1.8 AI red-team planner + Layer 2 (Phase 4 — code-complete & safety-proven, moat criterion OPEN)
+
+- **`utils/probes/*` — the whitelist + deterministic executor. This is the security model; respect it.**
+  - `PROBE_PRIMITIVE_NAMES` (currently just `supabase_rls_table_read`) — **the LLM selects a primitive
+    name + zod-validated params; it never emits a raw request.** Adding a primitive = a code change here.
+  - `executor.ts` — `sanitizeProbePlan` drops unknown primitives/invalid params; the executor re-validates,
+    enforces `PROBE_MAX_STEPS = 12` / `PROBE_MAX_DURATION_MS = 30_000`, and **fails closed** (a
+    `UrlSafetyError` aborts the whole plan). **Hard rails live in code, never in the prompt.**
+  - Host + anon key come from the **execution context** (scanner-extracted), never from LLM params.
+- `utils/ai/redTeamPlanner.ts` — `MODELS.fast`; snippets wrapped in `asUntrustedData`; **deterministic
+  fallback** on any AI failure so Layer 1 stays reproducible. `buildDeterministicProbePlan` unions the 9
+  default tables with `.from('…')` regex hits (`extractHeuristicTableNames`), capped at 12.
+- `utils/ai/deepReview.ts` (`MODELS.deep`, paid only — `billing_plan === 'pro'`) and
+  `utils/ai/contextualFix.ts`. Both return null / curated on failure — **AI is never on the critical path.**
+- **Wiring:** the planner + executor run **only** inside `runtimeScanner`'s `if (options.activeProbe)`
+  branch; `scan-url/route.ts` sets that from `isActiveProbeAllowed` and **fails closed** on any target
+  lookup failure. `planSource: 'ai' | 'deterministic'` is returned to the client.
+- **Security tests you must not weaken:** `probes/executor.security.test.ts`,
+  `api/scan-url/aiPlanner.security.test.ts`, `api/scan-url/ownershipGate.security.test.ts`. The last one
+  asserts **zero Claude API calls for an unverified target** (a side-effect assertion, with a positive
+  control) — because `planRedTeamProbes` deliberately does not re-check ownership, so the property is
+  non-local and a refactor that hoists the planner out of the gate branch must fail loudly.
+- **Known gap (do not paper over):** the moat criterion — "the planner probes tables it was not hardcoded
+  to know" — is **not demonstrated**, and the deterministic fallback already probes regex-found tables, so
+  the AI's real edge is narrower than the criterion implies. See the Master Tracker's Phase 4 design note.
 
 ---
 
@@ -112,8 +190,9 @@ and security holes.
    Never issue a **mutating** HTTP method during a probe.
 4. **`scanner-core` is the shared source of truth** across CLI / web / MCP / GitHub Action. A rule or
    helper needed by multiple surfaces lives there and must be wired into each surface that needs it.
-5. **AI calls default to the latest Claude models**, behind a single provider abstraction (you create
-   it in Phase 2 — see §4.1). No model-id strings scattered across the codebase. Model ids:
+5. **AI calls default to the latest Claude models**, behind a single provider abstraction — it **already
+   exists**: `utils/ai/claudeClient.ts` (§1.6). Reuse it; never add a second AI layer, and never inline a
+   model id — `MODELS` is the only place they live. Model ids:
    - Deep reasoning: `claude-opus-4-8`
    - Balanced: `claude-sonnet-5`
    - Fast/cheap (triage, planning): `claude-haiku-4-5-20251001`
@@ -208,196 +287,117 @@ A phase is **done** only when **all** of these hold:
 
 ---
 
-## 5. REMAINING WORK — Phase 2
+## 5. REMAINING WORK — Phase 5
 
-### Phase 2 — Proof-First Experience + consequence translation (do this next)
+### Phase 5 — Verified-Fix Loop + dataset (do this next)
 
-**Goal:** Make the **live proof-of-exploit** the hero, and translate every finding into a
-**business consequence a non-engineer feels**. Highest conversion leverage; mostly frontend plus a thin
-AI/consequence layer over the existing `runtimeScanner`.
+**Goal:** Close the loop — found → fix → deploy → **automatic re-probe → "VERIFIED FIXED"** — and record
+every outcome so the corpus starts accumulating.
 
-**Context you already have:** `apps/web/src/utils/runtimeScanner.ts` already does the crown-jewel work —
-`probeSupabaseRls` extracts the Supabase config from a live bundle and **actually retrieves rows** via
-the anon key (real proof), and `checkSecurityHeaders` / `scanBundleForSecrets` find missing headers and
-leaked secrets. `POST /api/scan-url` (`apps/web/src/app/api/scan-url/route.ts`) runs it and returns
-`{ report, findings }`. **You are surfacing and framing this, not building the probe.**
+**Why this phase matters more than it looks:** everything before it proves a _problem_. This is the first
+phase that proves **we solved it** — the emotional payoff the subscription is sold on. And every row it
+writes is a row of the moat: the master plan's §0 thesis puts the exit asset in the **corpus** (how
+AI-built apps fail and which fixes actually closed them), not in the scanner or the planner.
+
+**Context you already have — you are connecting existing parts, not building new machinery:**
+
+- **The probe** — `scanLiveUrlWithEvidence(url, fetch, lookup, { activeProbe })` in `runtimeScanner.ts`
+  (§1.8). A re-probe is _calling this again and diffing_. Do **not** write a second probe path.
+- **The gate** — `isActiveProbeAllowed` (§1.7). **A re-probe IS an active probe** and must consult the
+  same single authority: `repo` passes implicitly, `url` needs `ownership_verified`.
+- **The fix pipeline** — `utils/githubAutoFix.ts` / `utils/githubFixPipeline.ts`, `POST /api/github/fix`,
+  and `api/github/webhook/route.ts` (already verifies signatures and runs `scanRegression` /
+  `notifyIfRegressionBlockers`). The fix PR already knows the rule id it addresses — that is your join key.
+- **The target** — `dbAdapter.getTargetById(id)` / `getTargetByIdentifier(...)` maps an event back to the
+  guarded app. **Resolve the target from your own DB — never from a webhook payload** (see risks).
+- **Evidence** — `insertProbeEvidence` / `getProbeEvidenceForScan` already persist redacted proof (§1.6).
 
 **Deliverables**
 
-1. **AI provider abstraction (create once, reused by Phases 2 & 4).**
-   `apps/web/src/utils/ai/claudeClient.ts`:
-   - `callClaude({ model, system, messages, maxTokens, signal? }): Promise<string>` using the Anthropic
-     API. Env: `ANTHROPIC_API_KEY` (add to `.env` docs; fail closed with a clear error if unset).
-   - Export a `MODELS = { fast: 'claude-haiku-4-5-20251001', balanced: 'claude-sonnet-5', deep:
-'claude-opus-4-8' }` map — the **only** place model ids appear.
-   - **Timeout** (e.g. 20s) via `AbortSignal.timeout`; one retry on transient 5xx; graceful throw
-     otherwise (callers must degrade to non-AI behavior — see below).
-   - **Content-hash cache**: memoise `(model + hash(system+messages))` → response (start with an
-     in-process LRU; a `ai_cache` table can come later). Scanned content changes rarely within a scan.
-   - **Per-org budget cap**: a simple guard (`assertAiBudget(orgId)`) that refuses calls past a monthly
-     token/cost ceiling. Stub the store now; wire real accounting in Phase 8 if needed.
-   - **Prompt-injection defense**: a helper `asUntrustedData(text): string` that wraps scanned content
-     in a delimiter block with an instruction that it is data, not instructions. Use it for all
-     scanned-content inputs.
-   - Tests: mock `fetch`; assert model routing, timeout path, cache hit avoids a second call, and that
-     a thrown AI error is surfaced (so callers can catch and degrade).
+1. **`fix_outcome` table** — migration `apps/web/supabase/migrations/<timestamp>_fix_outcome.sql`,
+   org-scoped RLS (copy the shape from `20260714000000_probe_evidence.sql`, §2.7):
 
-2. **Consequence translation (deterministic first, AI fallback second).**
-   `apps/web/src/utils/consequenceTranslator.ts`:
-   - `CONSEQUENCE_MAP: Record<string /*ruleId*/, { consequence: string; regulation?: string }>` — a
-     curated, plain-language, money-&-reputation sentence per known ruleId. Examples (write these well —
-     they are the product's voice; no CVSS, no jargon):
-     - `supabase-rls` / `runtime-supabase-rls-open` → "Anyone on the internet can read this table's rows
-       right now — your customers' data is exposed. Likely a GDPR/CCPA breach and instant loss of trust."
-     - `runtime-secret-in-bundle` / `stripe-secret-leak` → "A secret key is visible in your app's public
-       code. Anyone can copy it and run charges / access data as you. Rotate it immediately."
-     - `stripe-webhook-signature` → "Anyone can send fake payment events to your app — they could unlock
-       paid features without paying."
-     - `runtime-missing-security-headers` → "Your app is missing basic protections that stop common
-       browser attacks (clickjacking, content sniffing)."
-     - …cover every ruleId the scanners can emit (grep `ruleId:` across `scanner-core` + `runtimeScanner`).
-   - `getConsequence(finding): { text: string; regulation?: string; source: 'curated' | 'ai' }` — return
-     the curated entry; for an **unknown** ruleId, call `claudeClient` (fast model) to generate a
-     one-sentence consequence, cached. **Never block on AI**: if the AI call throws or budget is
-     exhausted, fall back to the finding's existing `message`.
-   - Tests: curated hit; unknown ruleId → AI path (mocked); AI failure → falls back to `message`.
+   ```sql
+   create table if not exists public.fix_outcome (
+     id uuid primary key default gen_random_uuid(),
+     organization_id uuid not null references public.organizations(id) on delete cascade,
+     target_id uuid references public.targets(id) on delete cascade,
+     scan_id uuid references public.scans(id) on delete set null,
+     finding_rule_id text not null,
+     generator_fingerprint text,
+     fix_strategy text,
+     outcome text not null check (outcome in ('verified_fixed','still_open','regressed')),
+     pr_url text,
+     created_at timestamptz not null default timezone('utc', now())
+   );
+   -- + enable RLS, member policies, grants, index on (organization_id), (target_id, finding_rule_id)
+   ```
 
-3. **`probe_evidence` persistence + rendering.**
-   - **Migration** `apps/web/supabase/migrations/<timestamp>_probe_evidence.sql` (RLS org-scoped, §2.7):
-     ```sql
-     create table if not exists public.probe_evidence (
-       id uuid primary key default gen_random_uuid(),
-       organization_id uuid not null references public.organizations(id) on delete cascade,
-       scan_id uuid references public.scans(id) on delete cascade,
-       finding_rule_id text not null,
-       kind text not null check (kind in ('rls_rows','exposed_secret','open_endpoint','missing_header')),
-       summary text not null,              -- one-line, human, e.g. "Retrieved 500 rows from `users`"
-       redacted_sample jsonb,              -- shape + masked sample ONLY (see §2.8)
-       created_at timestamptz not null default timezone('utc', now())
-     );
-     -- + enable RLS, member policies, grants, index on (organization_id), (scan_id)
-     ```
-     Apply with owner approval (§3.2).
-   - **`runtimeScanner.ts`**: have the probe return structured, **already-redacted** evidence alongside
-     each finding (row count, column names, a masked sample cell; the open table name; the masked secret
-     prefix). Do the redaction inside the scanner so raw PII never leaves it.
-   - **`scan-url/route.ts`** and the dashboard scan path: persist evidence rows for owned/authenticated
-     scans. The public landing hero can render evidence straight from the response (no persistence
-     needed for an anonymous preview).
-   - **`dbAdapter`**: `insertProbeEvidence(...)`, `getProbeEvidenceForScan(scanId)`.
+   **Apply only with the owner's explicit approval (§3.2) — there is no local DB; this is production.**
 
-4. **Frontend — proof-first framing.**
-   - New `apps/web/src/app/dashboard/_components/ProofEvidence.tsx` — renders the redacted proof as the
-     **headline** ("We just read 500 rows from your `users` table, including emails — sample:
-     `t***@gmail.com`"), styled to feel alarming-but-credible. Reuse the design tokens in
-     `design-tokens.css` / `globals.css`.
-   - **Landing hero** (`apps/web/src/app/_components/home/HomeClient.tsx`): make the URL scan the hero.
-     Copy: **"Paste your app's URL. We'll show you what a hacker can steal right now."** One input → one
-     verdict → real proof. Keep the `npx assurly scan` affordance as a small secondary option. (Until
-     Phase 3's ownership gate exists, keep the public hero to the **safe/passive** checks — headers,
-     public-bundle secrets — and gate the active RLS row-pull behind sign-in / a connected repo. Do not
-     ship anonymous active data-exfiltration of arbitrary third-party URLs.)
-   - **Finding + detail UI** (`ScanFindingCard.tsx`, `ShipGatePanel.tsx`, `ScanDetailsPanel.tsx`): the
-     **primary line** under each finding is now `getConsequence(finding).text` (plain consequence), with
-     the technical `message`/`suggestion` moved into a collapsible "For your developer" section. The
-     detail order becomes: **Verdict → the one thing that hurts + proof → consequence → one-click fix →
-     (collapsible) technical findings table.**
-   - Surface the consequence on the **verdict cards** too (`VerdictCard` already shows `topIssue`; swap
-     its `sampleMessage` for the consequence text where available).
+2. **`apps/web/src/utils/verifiedFix.ts`** — the pure decision logic, unit-testable with no HTTP:
+   - `resolveFixOutcome(before, after, ruleId)` → `'verified_fixed'` (present before, gone after) /
+     `'still_open'` (present in both) / `'regressed'` (absent before, present after).
+   - Keep re-probe I/O **out** of this file so classification is testable in isolation.
+
+3. **Deploy signal → re-probe** — `apps/web/src/app/api/vercel/webhook/route.ts`. **Mirror
+   `api/github/webhook/route.ts` exactly; do not invent a new scheme:**
+   - `secureRoute` with `auth: 'none'`, `bodyMode: 'raw'` (you need the exact bytes to verify),
+     `maxBodyBytes`, `rateLimit: RATE_LIMITS.webhook`.
+   - **Verify the signature** against the Vercel secret and throw `ApiError(401, 'invalid_signature', …)`
+     on failure — an unauthenticated endpoint that triggers probes is an abuse vector.
+   - **Idempotency:** a webhook can fire more than once per deploy. Key on the deploy id; never write
+     duplicate `fix_outcome` rows.
+   - On a verified deploy for a known target → re-probe (through the gate) → classify → write the row.
+
+4. **`POST /api/targets/[id]/reprobe`** — on-demand re-probe. `secureRoute`, auth required, `csrf: true`,
+   `rateLimit: RATE_LIMITS.sensitive`. **Must call `isActiveProbeAllowed` and fail closed**, exactly as
+   `scan-url/route.ts` does — a re-probe endpoint that skips the gate re-opens everything Phase 3 closed.
+
+5. **FE — the payoff.** A "**VERIFIED FIXED**" state on the finding plus a timeline ("found 14:03 → fixed
+   by PR #12 → verified closed 14:40"). Reuse the design tokens and the `DashboardToast` /
+   `announcePrCreated` pattern for the "we just verified your fix" moment (§3.6).
+
+6. **Corpus aggregate (internal).** A rollup over `(generator_fingerprint, finding_rule_id, fix_strategy,
+outcome)` — "Lovable+Supabase → RLS off in X%, fix Y closes it Z%". **Patterns only, never customer
+   data** (§2.8). This is the exit asset; treat its privacy properties as a product requirement.
+
+**Tests (part of the deliverable, not a follow-up)**
+
+- `verifiedFix.test.ts` — every branch of `resolveFixOutcome`, including `regressed`.
+- Webhook route: valid signature → re-probe runs; **invalid/absent signature → 401 and NO probe**;
+  duplicate delivery → exactly one row.
+- `reprobe` route: a **security test** proving the ownership gate holds — an unverified `url` target gets
+  no active pull here either. Mirror `api/scan-url/ownershipGate.security.test.ts`, and assert the
+  _side effect_ (zero probe requests), not just a response field.
 
 **Acceptance criteria**
 
-- On the landing page, pasting a URL you own returns, within seconds: a Yes/No verdict + real
-  (redacted) evidence + a money-consequence sentence — verified in a browser against a real owned app.
-- Every finding in the dashboard renders a plain-language consequence as its primary line; the CVSS/
-  jargon view is collapsed. No developer jargon in the primary surface.
-- `probe_evidence` rows are written for an authenticated URL/repo scan (verify a row in the DB).
-- AI is never on the critical path: with `ANTHROPIC_API_KEY` unset, consequences still render (curated
-  map) and scans still complete.
+- Fixing an RLS finding via an Assurly PR on an owned app flips it to **VERIFIED FIXED** after deploy,
+  with a timestamped trail — **verified in a browser**.
+- A `fix_outcome` row is written per resolved finding (verify the row in the DB).
+- A re-probe is impossible on an unverified `url` target (security test).
 
-**Risks / do-not:** never render or store un-redacted PII; do not run active third-party probing before
-Phase 3; keep the deterministic gate working with AI disabled.
+**Risks / do-not:**
+
+- **Never probe a target named in a webhook payload.** The payload is untrusted input; resolve the target
+  from your own DB by deploy/repo identity. Otherwise the webhook becomes an open probe-anything endpoint.
+- Deploy signals are unreliable across hosts — fall back to a scheduled re-probe rather than blocking the
+  loop on Vercel being correct.
+- Never write customer data into the corpus — aggregate patterns only.
+- Keep the gate authoritative: no new active path may exist that does not consult `isActiveProbeAllowed`.
 
 ---
 
-## 6. REMAINING WORK — Phases 3–8 (senior specs)
+## 6. REMAINING WORK — Phases 6–8 (senior specs)
 
-Each phase still ends with the full Definition of Done (§4). Phase 2 above is the most detailed because
+Each phase still ends with the full Definition of Done (§4). Phase 5 above is the most detailed because
 it is next; the specs below are precise but expect you to apply the same rigor and the conventions in §2.
 
-### Phase 3 — Ownership Verification (unlock safe public probing)
-
-**Goal:** Let a user prove they own a URL so the **active** proof-probe can run on it publicly, without
-Assurly becoming an attack tool.
-
-**Deliverables**
-
-- **`apps/web/src/utils/ownership/`**: issue + verify challenges. Methods (implement at least
-  `meta_tag` and `dns_txt`; `github_app` is implicit for connected repos):
-  - `meta_tag`: user adds `<meta name="assurly-verify" content="<token>">`; verify via SSRF-safe fetch
-    of the URL and HTML parse.
-  - `dns_txt`: user adds a `assurly-verify=<token>` TXT record; verify via DNS lookup.
-  - `file`: `/.well-known/assurly-verify.txt`.
-  - `deploy_link`: OAuth to Vercel/Netlify (optional, later).
-- **`POST /api/targets/[id]/verify-ownership`** (secureRoute, auth required, csrf). Issues a token,
-  checks the challenge, sets `targets.ownership_verified = true` + `ownership_method`.
-- **Probe tiering in `runtimeScanner.ts`**: split **passive** (headers, public-bundle secrets — always
-  allowed) from **active** (RLS row-pull, auth-boundary probing — require `ownership_verified` for `url`
-  targets). Enforce in `scan-url/route.ts` and any probe entrypoint.
-- **FE `OwnershipVerify.tsx`**: a 60-second "prove this is your app — paste one line" flow. Unverified
-  arbitrary URLs get the **passive preview** + a clear "verify to run the full data-exfiltration test".
-
-**Acceptance:** unverified URL → passive preview only; after verifying (meta tag) → full active probe
-runs; a **security test** proves no active data-pull is possible without `ownership_verified`.
-
-### Phase 4 — AI Red-Team Planner + Layer 2 deep review (the durable moat)
-
-**Goal:** Replace the fixed probe list with an **LLM that plans safe probes adaptively**, and add a paid
-**AI deep-reasoning pass** that understands _this_ app's threat model.
-
-**Deliverables**
-
-- **`apps/web/src/utils/ai/redTeamPlanner.ts`**: given detected signals (Supabase present, auth
-  provider, public API routes, framework, generator fingerprint), the LLM **selects among whitelisted,
-  non-mutating probe primitives** — it never emits raw requests. Output is a bounded, ordered plan.
-- **`apps/web/src/utils/probes/`**: a registry of safe probe primitives (each: name, input schema,
-  SSRF-safe non-mutating execution). A **deterministic executor** runs only planner-approved primitives
-  within time/rate bounds. **Hard safety rails live in code, independent of the LLM.**
-- **`apps/web/src/utils/ai/deepReview.ts`**: reasons about the app's business context and surfaces
-  high-value, app-specific risks beyond the 14 rules. **Paid tier only.** Uses `MODELS.deep`.
-- **Contextual fix explanation**: per-finding "why this matters / fix it for me" plugged into the
-  existing auto-fix (`githubAutoFix.ts`) and "copy fix prompt" surfaces.
-- **Cost/safety**: model routing (fast for planning/triage, deep for review), content-hash caching,
-  per-org budget caps, graceful degradation to Layer 1 when AI is unavailable.
-
-**Acceptance:** on an owned Supabase app the planner discovers and probes tables it was **not** hardcoded
-to know, with proof; **safety tests** prove the LLM path can never issue a mutating or out-of-scope
-request; the Layer-1 gate still returns a deterministic verdict with AI disabled.
-
-**Non-negotiable:** all scanned content is untrusted (§2.6); the LLM chooses among safe primitives only.
-
-### Phase 5 — Verified-Fix Loop + dataset (retention + exit asset)
-
-**Goal:** Close the loop: found → fix → deploy → **auto re-probe → "VERIFIED FIXED"**, and record every
-outcome to seed the corpus.
-
-**Deliverables**
-
-- **`fix_outcome` table** (migration, RLS): `id, organization_id, scan_id, finding_rule_id,
-generator_fingerprint, fix_strategy text, outcome text check (outcome in
-('verified_fixed','still_open','regressed')), pr_url text, created_at`.
-- **`apps/web/src/utils/verifiedFix.ts`** + a **Vercel deploy webhook** route: after an Assurly fix PR
-  merges/deploys, re-run the relevant probe and write the `fix_outcome`. Build on the existing
-  `github/webhook` + `scanRegression` / `notifyIfRegressionBlockers`.
-- **`POST /api/targets/[id]/reprobe`** to trigger a re-probe on demand.
-- **FE**: a "**VERIFIED FIXED**" state + a timeline ("found 14:03 → fixed by PR #12 → verified closed
-  14:40") on the finding.
-- **Corpus aggregate view** (internal): `(generator_fingerprint, ruleId, fix_strategy, outcome)` rollups
-  — "Lovable+Supabase → RLS off in X%, fix Y closes it Z%". Privacy-safe (patterns only, never customer
-  data).
-
-**Acceptance:** fixing an RLS finding via an Assurly PR on an owned app flips it to VERIFIED FIXED after
-deploy, with a timestamped trail; a `fix_outcome` row is written per resolved finding.
+> **Phases 3, 4 and 5 are no longer specified here.** Phase 3 (Ownership) and Phase 4 (AI red-team planner
+>
+> - Layer 2) are **built** — their shipped shape is documented in **§1.7** and **§1.8**, which is what you
+>   build on. Phase 5's spec moved to **§5** because it is next. Do not re-implement any of them.
 
 ### Phase 6 — Continuous Guardian + Badge growth loop (subscription value + distribution)
 
@@ -477,15 +477,24 @@ layer **platforms embed**.
 
 ## 8. Execution order & final reminders
 
-1. **Phase 2** (proof-first + consequences + AI client) — next.
-2. **Phase 3** (ownership) — legal prerequisite to public active probing.
-3. **Phase 4** (AI red-team + deep review) — the moat; safe only after ownership.
-4. **Phase 5** (verified-fix loop + dataset).
+1. ~~**Phase 2** (proof-first + consequences + AI client)~~ — **done & browser-verified** (§1.6).
+2. ~~**Phase 3** (ownership)~~ — **built** (§1.7); browser verification still open.
+3. ~~**Phase 4** (AI red-team + deep review)~~ — **built & safety-proven** (§1.8); browser verification and
+   the moat criterion still open.
+4. **Phase 5** (verified-fix loop + dataset) — **next; spec in §5.**
 5. **Phase 6** (continuous guardian + badge).
 6. **Phase 7** (MCP gate + OEM).
 7. **Phase 8** (pricing + exit).
 
 Do not reorder without updating `10-genius-rebuild-master-plan.md` first.
+
+**Open items carried into Phase 5 — do not silently inherit them as "done":** Phases 3 and 4 are not
+browser-verified, and Phase 4's moat criterion ("the planner probes tables it was not hardcoded to know")
+is unproven — the deterministic fallback already probes regex-found tables, so the AI's edge is narrower
+than that criterion implies. Both are recorded in the Master Tracker. An active probe needs an origin
+whose **root** the owner controls (§1.7), which is why this has not been verified against a synthetic
+target: a page authored so the LLM infers the table name proves the mechanism can fire, not that it fires
+on real AI-built apps. Verify against a real app when one is available.
 
 **Before you start each phase:** re-read §2 (conventions) and §3 (gotchas). **Before you finish each
 phase:** run the full Definition of Done (§4), get owner approval for any prod migration, browser-verify,

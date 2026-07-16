@@ -629,8 +629,87 @@ Leverage and dependency both point to this order. We do not reorder without upda
   - [x] Browser-verify end-to-end: passive URL scan (fastshare.cz — Live proof + probe_evidence
         persist); authenticated active RLS probe (controlled gist target — „We read 5 rows from
         `posts`" + redacted sample in probe_evidence, 2026-07-14)
-- [ ] **Phase 3** — Ownership Verification
-- [ ] **Phase 4** — AI Red-Team Planner + Layer 2 deep review
+- [ ] **Phase 3** — Ownership Verification — **code-complete; NOT browser-verified.** Shipped in
+      `5bc838c`. Not checked off: no browser verification is on record, and per the rule at the top
+      of this tracker a phase is only checked when its DoD is met **and** browser-verified. Code and
+      tests are otherwise done (see below); the gap is verification evidence, not implementation.
+  - [x] `utils/ownership/gate.ts` — `isActiveProbeAllowed({ kind, ownershipVerified })` is the single
+        server-side authority for the passive/active boundary (`repo` implicitly owned; `url` requires
+        proven ownership); `normalizeUrlIdentifier` pins a target to its **origin** + tests
+  - [x] `utils/ownership/verify.ts` — `meta_tag` / `dns_txt` / `file` challenges. All HTTP goes through
+        the SSRF-safe, GET-only `safeFetch`; body reads capped at 1 MiB; DNS path issues no HTTP + tests
+  - [x] `utils/ownership/token.ts` — `deriveOwnershipToken(org + target + identifier)`, so a token is
+        not transferable between orgs or targets + tests
+  - [x] `GET`/`POST /api/targets/[id]/verify-ownership` (`secureRoute`, auth required, `csrf: true`,
+        `RATE_LIMITS.sensitive`); persists `ownership_verified` **only** on a passing challenge + tests
+  - [x] FE `OwnershipVerify.tsx` (paste-one-line flow) + `DeployedUrlScan.tsx` wiring; `dbAdapter.setTargetOwnership`
+  - [→] No migration needed — the ownership columns shipped with Phase 1's `20260713000000_targets.sql`
+  - [→] **Acceptance criterion "no active data-pull without `ownership_verified`, covered by a security
+    test" was NOT satisfied by this phase.** Phase 3 built the machinery but did not wire it into the
+    scan path; enforcement in `scan-url/route.ts` + `ownershipGate.security.test.ts` landed in Phase 4
+    (`4fe4b0c`). Recorded here so the sequencing is not mis-read later.
+  - [x] **Design note (verified 2026-07-16):** ownership is **origin-scoped** — `verifyOwnership` is
+        called with `target.identifier` (the origin), so `meta_tag` reads the origin **root** and `file`
+        reads `/.well-known/…` at the root. A shared host (e.g. `gist.githubusercontent.com`) therefore
+        **cannot** be verified by uploading one file, which closes an origin-takeover hole. Consequence:
+        Phase 2's controlled **gist** target can no longer be used for active probes — Phase 2 gated the
+        active pull on _sign-in_, Phase 3 tightened it to _ownership_. Any future active-probe
+        verification needs an origin whose **root** the owner controls.
+  - [ ] Browser-verify the verify flow end-to-end (meta_tag → `ownership_verified = true` → active probe
+        runs). Folded into Phase 4's browser verification — the active probe cannot run unless this
+        works, so one session proves both.
+- [ ] **Phase 4** — AI Red-Team Planner + Layer 2 deep review — **code-complete & safety-proven; moat
+      acceptance criterion OPEN.** Shipped in `3a6acbd`, `3777495`, `4fe4b0c`, `48b0328`. Suite green
+      (767 pass, 107 files, run from repo root per gotcha §3.1), `tsc --noEmit` clean. Not checked off:
+      the phase's headline criterion — "the planner discovers and probes tables it was **not** hardcoded
+      to know" — is not yet demonstrated against a real app (see the two notes at the end).
+  - [x] `utils/probes/*` — whitelist registry (`PROBE_PRIMITIVE_NAMES`, currently the single
+        `supabase_rls_table_read`), zod-validated params (table name pinned to `[A-Za-z_][A-Za-z0-9_]*`,
+        unknown keys like `method`/`url` stripped before the handler), and a **deterministic executor**
+        with hard caps in code (`PROBE_MAX_STEPS = 12`, `PROBE_MAX_DURATION_MS = 30_000`)
+  - [x] `probes/supabaseRls.ts` — the old `probeSupabaseRlsWithEvidence` logic extracted into a primitive:
+        GET-only via the injected SSRF-safe `safeFetch`, `limit=1` + `Prefer: count=exact` (proves scale
+        without exfiltrating rows), host/anon key from **context** (scanner-extracted), never from LLM params
+  - [x] `utils/ai/redTeamPlanner.ts` — `MODELS.fast`; scanned content wrapped in `asUntrustedData`;
+        output sanitised against the whitelist; **deterministic fallback** on any AI failure/budget/parse
+        error, so Layer 1 stays reproducible + tests
+  - [x] `utils/ai/deepReview.ts` (`MODELS.deep`, paid tier only — `billing_plan === 'pro'`) and
+        `utils/ai/contextualFix.ts`; both degrade to null/curated — AI is never on the critical path
+  - [x] `runtimeScanner.ts` — pluggable probe execution; the planner + executor run **only** inside the
+        `if (options.activeProbe)` branch; `scan-url/route.ts` sets that from `isActiveProbeAllowed` and
+        **fails closed** on any target-lookup failure; `planSource: 'ai' | 'deterministic'` surfaced to the client
+  - [x] Security tests: `probes/executor.security.test.ts` (adversarial plans — `http_raw`, `shell_exec`,
+        `../etc/passwd`, `a; DROP TABLE users;--`, forged `supabaseUrl` in params — never become a mutating
+        or out-of-scope request); `scan-url/aiPlanner.security.test.ts` (gate blocks planner + probe;
+        adversarial LLM JSON yields GET-only to the owned host; Layer 1 deterministic with AI disabled);
+        `scan-url/ownershipGate.security.test.ts` (real scanner, zero REST calls when unverified)
+  - [x] **Gate assertion hardened (2026-07-16):** `aiPlanner.security.test.ts` asserted the planner was
+        blocked via `planSource === undefined` — an _output artifact_. A mutation (planner hoisted out of
+        the `activeProbe` branch, result unused) **kept every existing security test green** while the
+        scanned content of an unverified target was already sent to the LLM. Added a pair to
+        `ownershipGate.security.test.ts` asserting the _side effect_ — zero Claude API calls for an
+        unverified target, plus a **positive control** proving the assertion is not vacuous. Both fail
+        under that mutation. This matters because `planRedTeamProbes` deliberately does not re-check
+        ownership (its docstring defers to the caller), so the property is **non-local**.
+  - [x] Cost/safety reuses the Phase 2 abstraction (`assertAiBudget` / `recordAiUsage` / content-hash
+        cache); deep review additionally skipped when there is nothing to reason about (no findings and
+        no active probe) rather than spending tokens on an empty verdict
+  - [ ] **OPEN — moat criterion not demonstrated.** Requires an owned app with a real Supabase. Local
+        targets are impossible by design (the SSRF guard blocks `localhost`/private IPs on every hop) and
+        the Phase 2 gist target is now unusable (see the Phase 3 origin-scope note). Deliberately **not**
+        proven with a synthetic target: a page authored so the LLM infers the table name would be teaching
+        to the test — it would show the mechanism can fire, not that it fires on real AI-built apps.
+        Verify against a real app when one is available.
+  - [→] **Design finding (2026-07-16) — the planner's marginal value is narrower than the criterion
+    implies.** `buildDeterministicProbePlan` seeds a `Set` with the 9 hardcoded tables and then unions
+    the `.from('…')` regex hits from `extractHeuristicTableNames`, capped at `PROBE_MAX_STEPS = 12`. The
+    **deterministic** path therefore already probes up to 3 non-hardcoded tables with no AI at all, so
+    "discovers tables it was not hardcoded to know" can be satisfied by the regex alone. The AI's real
+    edge is (a) prioritising within the 12-step budget and (b) tables the regex cannot see (dynamically
+    built names, or names only inferable from page semantics). Not a bug — the fallback is correct and
+    the caps are right — but the acceptance criterion overstates what the AI contributes. Decide whether
+    to make the planner earn its place before treating it as the moat; the plan's own thesis (§0) locates
+    the moat in the **corpus**, not the planner.
 - [ ] **Phase 5** — Verified-Fix Loop + dataset
 - [ ] **Phase 6** — Continuous Guardian + badge growth loop
 - [ ] **Phase 7** — Agent-native (MCP gate) + OEM
