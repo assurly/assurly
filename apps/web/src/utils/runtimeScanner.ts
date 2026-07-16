@@ -273,6 +273,59 @@ export function checkSecurityHeaders(headers: Headers): WebFinding[] {
 }
 
 /**
+ * Passive Supabase-exposure preview. A live app that ships a Supabase URL + anon
+ * key in its public bundle has a database reachable straight from the browser.
+ *
+ * This is deliberately a `warning`, never a blocker: shipping the anon key is
+ * normal Supabase usage and perfectly safe when row-level security is on. From
+ * the outside we CANNOT tell whether the tables are actually readable — that
+ * takes the active probe, which requires proven ownership. So the honest hook is
+ * "the door is here; verify and we'll test whether the lock holds" — scary and
+ * true, without claiming a breach we haven't proven or touching the data.
+ *
+ * Emitted only on passive scans. When the active probe runs it either proves an
+ * open table (`runtime-supabase-rls-open`) or finds nothing, so this preview
+ * would be redundant there and is suppressed.
+ */
+export function buildSupabaseExposureEvidence(
+  supabaseUrl: string,
+  anonKey: string,
+): { findings: WebFinding[]; evidence: ProbeEvidence[] } {
+  let host = supabaseUrl;
+  try {
+    host = new URL(supabaseUrl).host;
+  } catch {
+    // Keep the raw string if it is not a parseable URL.
+  }
+  const maskedKey = anonKey.length > 12 ? `${anonKey.slice(0, 8)}…${anonKey.slice(-4)}` : '…';
+
+  return {
+    findings: [
+      {
+        ruleId: 'runtime-supabase-key-exposed',
+        severity: 'warning',
+        message:
+          "Your Supabase database is reachable directly from the browser with a public key shipped in this app's code. If any table is missing row-level security (RLS), anyone on the internet can read it. Verify you own this app and we'll prove exactly which tables are exposed.",
+        suggestion:
+          'The anon key being public is normal — an open RLS policy is what turns it into a breach. Verify ownership to run the full data-exfiltration test, then enable RLS with a policy on every table that holds user data.',
+        file: 'Public app bundle',
+      },
+    ],
+    evidence: [
+      {
+        findingRuleId: 'runtime-supabase-key-exposed',
+        kind: 'open_endpoint',
+        summary: `Your database at ${host} is reachable from any browser using the public key in your app's code — verify ownership and we'll test whether your tables are actually readable.`,
+        redactedSample: {
+          secretLabel: 'Supabase anon key',
+          maskedSecret: maskedKey,
+        },
+      },
+    ],
+  };
+}
+
+/**
  * Layer-1 / test helper: probes the default sensitive table list via the
  * whitelisted `supabase_rls_table_read` primitive (no AI). Prefer
  * `scanLiveUrlWithEvidence({ activeProbe: true })` for the full ownership-gated path.
@@ -538,11 +591,12 @@ export async function scanLiveUrlWithEvidence(
     evidence.push(...bundleSecrets.evidence);
   }
 
+  const supabaseConfig = extractSupabaseConfig(bundleTextAccum);
+
   // Active data-exfiltration proof: only when the caller has established the user
   // may probe this target (ownership gate). Passive scans skip it — and the planner
   // never runs outside this branch.
   if (options.activeProbe) {
-    const supabaseConfig = extractSupabaseConfig(bundleTextAccum);
     if (supabaseConfig.supabaseUrl && supabaseConfig.anonKey) {
       const heuristicTables = extractHeuristicTableNames(bundleTextAccum);
       const { plan, source } = await planRedTeamProbes(
@@ -572,6 +626,15 @@ export async function scanLiveUrlWithEvidence(
       findings.push(...probeResult.findings);
       evidence.push(...(probeResult.evidence as ProbeEvidence[]));
     }
+  } else if (supabaseConfig.supabaseUrl && supabaseConfig.anonKey) {
+    // Passive preview: we can see the database is reachable but must NOT probe it
+    // without proven ownership. Surface the honest "verify to test the lock" hook.
+    const exposure = buildSupabaseExposureEvidence(
+      supabaseConfig.supabaseUrl,
+      supabaseConfig.anonKey,
+    );
+    findings.push(...exposure.findings);
+    evidence.push(...exposure.evidence);
   }
 
   return { findings, evidence, ...(planSource ? { planSource } : {}) };

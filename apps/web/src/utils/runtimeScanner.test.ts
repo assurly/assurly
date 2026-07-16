@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  buildSupabaseExposureEvidence,
   checkSecurityHeaders,
   checkSecurityHeadersWithEvidence,
   maskSecretValue,
@@ -427,6 +428,58 @@ describe('runtimeScanner', () => {
       );
       expect(supabaseRequests).toEqual([]);
       expect(findings.some((f) => f.ruleId === 'runtime-supabase-rls-open')).toBe(false);
+      // But a passive scan still surfaces the honest "your DB key is public — verify
+      // to test the lock" hook, without ever touching the database.
+      expect(findings.some((f) => f.ruleId === 'runtime-supabase-key-exposed')).toBe(true);
+    });
+
+    it('suppresses the passive exposure hook when the active probe runs', async () => {
+      vi.stubEnv('ANTHROPIC_API_KEY', ''); // planner falls back to the deterministic plan
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === 'https://myapp.example/') {
+          const html = `<html><body><script>window.__ENV = { NEXT_PUBLIC_SUPABASE_URL: "https://demo.supabase.co", NEXT_PUBLIC_SUPABASE_ANON_KEY: "${makeJwt(
+            { role: 'anon' },
+          )}" };</script></body></html>`;
+          return new Response(html, { status: 200, headers: { 'content-type': 'text/html' } });
+        }
+        // Every RLS probe returns no rows → no open-table finding.
+        return new Response('[]', { status: 200, headers: { 'content-range': '0-0/0' } });
+      }) as typeof fetch;
+
+      const { findings } = await scanLiveUrlWithEvidence(
+        'https://myapp.example/',
+        fetchMock,
+        fakeLookup(),
+        { activeProbe: true },
+      );
+      // The real probe ran (and found nothing), so the preview hook is redundant.
+      expect(findings.some((f) => f.ruleId === 'runtime-supabase-key-exposed')).toBe(false);
+    });
+  });
+
+  describe('buildSupabaseExposureEvidence', () => {
+    it('is a warning (never a blocker) that drives ownership verification', () => {
+      const { findings, evidence } = buildSupabaseExposureEvidence(
+        'https://demo.supabase.co',
+        makeJwt({ role: 'anon' }),
+      );
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.ruleId).toBe('runtime-supabase-key-exposed');
+      // Honest severity: a correctly-configured app (RLS on) shipping the anon key
+      // is safe, so this must NOT cry wolf as an error/blocker.
+      expect(findings[0]?.severity).toBe('warning');
+      expect(findings[0]?.message.toLowerCase()).toContain('verify');
+      expect(evidence[0]?.kind).toBe('open_endpoint');
+      expect(evidence[0]?.summary).toContain('demo.supabase.co');
+    });
+
+    it('masks the anon key in the evidence sample', () => {
+      const key = makeJwt({ role: 'anon' });
+      const { evidence } = buildSupabaseExposureEvidence('https://demo.supabase.co', key);
+      const masked = evidence[0]?.redactedSample?.maskedSecret ?? '';
+      expect(masked).not.toBe(key);
+      expect(masked).toContain('…');
     });
   });
 });

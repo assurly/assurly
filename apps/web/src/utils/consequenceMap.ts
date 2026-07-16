@@ -34,6 +34,11 @@ export const CONSEQUENCE_MAP: Record<string, ConsequenceEntry> = {
       'We pulled real rows from your live database using only the public key — anyone can do the same and copy your customers\u2019 data. This is a live data breach.',
     regulation: 'GDPR / CCPA',
   },
+  'runtime-supabase-key-exposed': {
+    consequence:
+      'Your app ships its database key in public code, so your database is reachable from any browser. If a single table is missing row-level security, anyone can read it — customer emails, orders, messages. Verify your app and we’ll show you exactly what’s exposed.',
+    regulation: 'GDPR / CCPA',
+  },
   'runtime-supabase-anon-write-implied': {
     consequence:
       'Because this table is wide open to reads with the public key, strangers can very likely also change or delete your data — corrupting orders, users, or content.',
