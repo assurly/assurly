@@ -12,11 +12,7 @@ describe('user database adapter', () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-secret';
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => [],
-    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
     await getUserDbAdapter('verified-user-jwt').getRepository('repo-a');
@@ -34,14 +30,12 @@ describe('user database adapter', () => {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
       const fetchMock = vi.fn().mockImplementation(async (url: string) => {
         if (String(url).includes('/rest/v1/scan_findings')) {
-          return { ok: true, status: 201, json: async () => [] };
+          return new Response(JSON.stringify([]), { status: 201 });
         }
         // The scans insert returns the created row.
-        return {
-          ok: true,
+        return new Response(JSON.stringify([{ id: 'scan-1', repository_id: 'repo-1' }]), {
           status: 201,
-          json: async () => [{ id: 'scan-1', repository_id: 'repo-1' }],
-        };
+        });
       });
       vi.stubGlobal('fetch', fetchMock);
       return fetchMock;
@@ -102,6 +96,35 @@ describe('user database adapter', () => {
         String(url).includes('/rest/v1/scan_findings'),
       );
       expect(findingsCalls).toHaveLength(0);
+    });
+  });
+
+  describe('empty-body inserts (Prefer: return=minimal)', () => {
+    // Regression: a `return=minimal` POST comes back 201 with NO body. The old
+    // helper only skipped JSON parsing on 204, so it called response.json() on an
+    // empty body and threw "Unexpected end of JSON input" — silently losing every
+    // probe_evidence / fix_outcome insert (best-effort, so it never failed a scan).
+    // The prior tests mocked `json: async () => []`, so they never exercised this.
+    it('insertProbeEvidence does not throw on a 201 with an empty body', async () => {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
+      const fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 201 }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(
+        getUserDbAdapter('jwt').insertProbeEvidence([
+          {
+            organizationId: 'org-1',
+            findingRuleId: 'runtime-supabase-rls-open',
+            kind: 'rls_rows',
+            summary: 'We read 5 rows from customers.',
+          },
+        ]),
+      ).resolves.toBeUndefined();
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      expect(JSON.stringify(init.headers)).toContain('return=minimal');
     });
   });
 });

@@ -310,7 +310,12 @@ export class SupabaseDbAdapter implements DbAdapter {
       throw new Error(`Supabase request failed (${response.status}): ${detail}`);
     }
 
-    return (response.status === 204 ? null : await response.json()) as T;
+    // Parse on body presence, not status code. `Prefer: return=minimal` yields an
+    // empty body with 201 (POST) or 204 (PATCH/DELETE); `return=representation`
+    // yields JSON. Keying on 204 alone made a minimal POST (201, empty) throw
+    // "Unexpected end of JSON input" (hit by insertProbeEvidence / insertFixOutcomes).
+    const text = await response.text();
+    return (text.length > 0 ? JSON.parse(text) : null) as T;
   }
 
   private async first<T>(path: string): Promise<T | null> {
