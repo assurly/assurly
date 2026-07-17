@@ -629,10 +629,11 @@ Leverage and dependency both point to this order. We do not reorder without upda
   - [x] Browser-verify end-to-end: passive URL scan (fastshare.cz — Live proof + probe_evidence
         persist); authenticated active RLS probe (controlled gist target — „We read 5 rows from
         `posts`" + redacted sample in probe_evidence, 2026-07-14)
-- [ ] **Phase 3** — Ownership Verification — **code-complete; NOT browser-verified.** Shipped in
-      `5bc838c`. Not checked off: no browser verification is on record, and per the rule at the top
-      of this tracker a phase is only checked when its DoD is met **and** browser-verified. Code and
-      tests are otherwise done (see below); the gap is verification evidence, not implementation.
+- [x] **Phase 3** — Ownership Verification — **complete & browser-verified (2026-07-17).** Shipped in
+      `5bc838c`. Verified live end-to-end against a controlled owned target (a throwaway Vercel page +
+      Supabase): an unverified URL got the passive preview + exposure hook only; after adding the
+      `meta_tag` and redeploying, the challenge passed, `ownership_verified` flipped true, and the active
+      probe unlocked. The gate held (passive-only until proven ownership).
   - [x] `utils/ownership/gate.ts` — `isActiveProbeAllowed({ kind, ownershipVerified })` is the single
         server-side authority for the passive/active boundary (`repo` implicitly owned; `url` requires
         proven ownership); `normalizeUrlIdentifier` pins a target to its **origin** + tests
@@ -655,14 +656,12 @@ Leverage and dependency both point to this order. We do not reorder without upda
         Phase 2's controlled **gist** target can no longer be used for active probes — Phase 2 gated the
         active pull on _sign-in_, Phase 3 tightened it to _ownership_. Any future active-probe
         verification needs an origin whose **root** the owner controls.
-  - [ ] Browser-verify the verify flow end-to-end (meta_tag → `ownership_verified = true` → active probe
-        runs). Folded into Phase 4's browser verification — the active probe cannot run unless this
-        works, so one session proves both.
-- [ ] **Phase 4** — AI Red-Team Planner + Layer 2 deep review — **code-complete & safety-proven; moat
-      acceptance criterion OPEN.** Shipped in `3a6acbd`, `3777495`, `4fe4b0c`, `48b0328`. Suite green
-      (767 pass, 107 files, run from repo root per gotcha §3.1), `tsc --noEmit` clean. Not checked off:
-      the phase's headline criterion — "the planner discovers and probes tables it was **not** hardcoded
-      to know" — is not yet demonstrated against a real app (see the two notes at the end).
+  - [x] Browser-verified 2026-07-17: `meta_tag` → `ownership_verified = true` → active probe ran.
+- [~] **Phase 4** — AI Red-Team Planner + Layer 2 deep review — **core browser-verified (2026-07-17);
+  moat sub-criterion demonstrated NOT working live.** Shipped in `3a6acbd`, `3777495`, `4fe4b0c`,
+  `48b0328`. Suite green, `tsc --noEmit` clean. Left as `[~]` (not fully checked): the active probe,
+  ownership gate, and Layer-2 gating are verified, but the headline moat criterion — "the planner
+  discovers and probes tables it was **not** hardcoded to know" — did **not** hold on a live target.
   - [x] `utils/probes/*` — whitelist registry (`PROBE_PRIMITIVE_NAMES`, currently the single
         `supabase_rls_table_read`), zod-validated params (table name pinned to `[A-Za-z_][A-Za-z0-9_]*`,
         unknown keys like `method`/`url` stripped before the handler), and a **deterministic executor**
@@ -694,12 +693,19 @@ Leverage and dependency both point to this order. We do not reorder without upda
   - [x] Cost/safety reuses the Phase 2 abstraction (`assertAiBudget` / `recordAiUsage` / content-hash
         cache); deep review additionally skipped when there is nothing to reason about (no findings and
         no active probe) rather than spending tokens on an empty verdict
-  - [ ] **OPEN — moat criterion not demonstrated.** Requires an owned app with a real Supabase. Local
-        targets are impossible by design (the SSRF guard blocks `localhost`/private IPs on every hop) and
-        the Phase 2 gist target is now unusable (see the Phase 3 origin-scope note). Deliberately **not**
-        proven with a synthetic target: a page authored so the LLM infers the table name would be teaching
-        to the test — it would show the mechanism can fire, not that it fires on real AI-built apps.
-        Verify against a real app when one is available.
+  - [x] **Core browser-verified 2026-07-17.** On an owned, ownership-verified Supabase target the active
+        probe pulled **5 real rows** from `customers` via the anon key (redacted proof: `a***@***.com`,
+        columns + `count=exact` scale), producing a BLOCKER + LIVE PROOF and flipping the verdict to
+        🚫 NOT READY. Deep review ran **only** after ownership (locked teaser on the passive scan → live
+        analysis after verify). No console/server errors.
+  - [→] **MOAT SUB-CRITERION — demonstrated NOT working (2026-07-17).** The test target held two tables:
+    `customers` (in the hardcoded list) and `invoices` (NOT hardcoded, referenced only in the page's
+    prose, RLS also off with 3 rows). The probe found `customers` but **never touched `invoices`** —
+    despite it being readable. So "the planner discovers a table it was not hardcoded to know" did
+    **not** happen on a realistic page: the AI either fell back to the deterministic plan or didn't
+    infer `invoices` from context. This confirms the design finding below empirically. Making it pass
+    by strengthening the page's `invoices` signal would be teaching to the test. **Decision pending:**
+    make the planner earn its place, or accept that the moat is the corpus (§0), not the planner.
   - [→] **Design finding (2026-07-16) — the planner's marginal value is narrower than the criterion
     implies.** `buildDeterministicProbePlan` seeds a `Set` with the 9 hardcoded tables and then unions
     the `.from('…')` regex hits from `extractHeuristicTableNames`, capped at `PROBE_MAX_STEPS = 12`. The
@@ -710,7 +716,21 @@ Leverage and dependency both point to this order. We do not reorder without upda
     the caps are right — but the acceptance criterion overstates what the AI contributes. Decide whether
     to make the planner earn its place before treating it as the moat; the plan's own thesis (§0) locates
     the moat in the **corpus**, not the planner.
-- [ ] **Phase 5** — Verified-Fix Loop + dataset
+- [x] **Phase 5** — Verified-Fix Loop + dataset — **complete & browser-verified end-to-end (2026-07-17).**
+      Shipped in `f5a90fc`, `ab7fcc9`, `a181f2b`, `054483d` + `9fabf19`.
+  - [x] `fix_outcome` migration `20260716000000_fix_outcome.sql` (org-scoped RLS + `private.vercel_webhook_deliveries`
+        idempotency infra) — **applied to prod 2026-07-17** (`supabase db push`, owner-approved; additive/idempotent).
+  - [x] `utils/verifiedFix.ts` (pure `resolveFixOutcome` + rollup), `utils/reprobe.ts` orchestrator (goes
+        through `isActiveProbeAllowed`, fails closed, writes only on a state change), `utils/vercelWebhook.ts`
+        (HMAC-SHA1 verified, target resolved from our DB never the payload, claim-first idempotency),
+        `POST /api/targets/[id]/reprobe`, VERIFIED FIXED timeline UI + tests.
+  - [x] **Loop proven in prod:** scan #1 of an owned target with `customers` RLS off wrote
+        `runtime-supabase-rls-open → still_open`; after enabling RLS (the fix) a re-scan wrote
+        `runtime-supabase-rls-open → verified_fixed` (confirmed via a direct `fix_outcome` query on prod).
+        UI verdict moved 🚫 NOT READY 80 → ⚠️ REVIEW 96, "No blockers detected". Satisfies the acceptance
+        criterion "a fix_outcome row is written per resolved finding (verify via DB)".
+  - [x] `9fabf19` fixed the persistence bug found during this verification (`return=minimal` 201 empty
+        body threw "Unexpected end of JSON input"), so evidence + outcomes now persist.
 - [ ] **Phase 6** — Continuous Guardian + badge growth loop
 - [ ] **Phase 7** — Agent-native (MCP gate) + OEM
 - [ ] **Phase 8** — Pricing, business & exit readiness
