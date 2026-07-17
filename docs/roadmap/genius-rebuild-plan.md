@@ -1,37 +1,39 @@
 # Assurly — Genius Rebuild: Cursor Execution Handoff
 
 > **Audience:** Cursor (the AI coding agent that will continue this rebuild).
-> **Purpose:** A self-contained, senior-level execution spec for **all remaining work** (Phases 5–8).
+> **Purpose:** A self-contained, senior-level execution spec for **all remaining work** (Phases 6–8).
 > **Companion:** The strategy/rationale lives in [`10-genius-rebuild-master-plan.md`](./10-genius-rebuild-master-plan.md).
 > Read that once for the "why"; this file is the "what and how".
 >
-> **Owner:** Tibor Kútik · **Handoff date:** 2026-07-13 · **Last updated:** 2026-07-16 (Phase 4 landed)
+> **Owner:** Tibor Kútik · **Handoff date:** 2026-07-13 · **Last updated:** 2026-07-17 (Phase 5 landed)
 >
-> **Golden rule:** Phases **0, 1, 2, 3 and 4** are **already built and tested** — do **not** rebuild them.
-> Start at **Phase 5**. Read Sections 1–3 first (current state + conventions + gotchas); they will save
-> you hours and stop you from breaking working code.
+> **Golden rule:** Phases **0 through 5** are **already built, tested, and browser-verified** — do **not**
+> rebuild them. Start at **Phase 6**. Read Sections 1–3 first (current state + conventions + gotchas);
+> they will save you hours and stop you from breaking working code.
 >
-> **Verification status (read this before claiming a phase is done):** Phases 0–2 are browser-verified.
-> Phases 3 and 4 are **code-complete and safety-proven but NOT browser-verified** — see the Master
-> Tracker in the companion file for exactly what is open and why. They are listed in §1 because you must
-> **build on** them, not because their DoD is closed. Do not mark them verified on their behalf.
+> **Verification status (read this before claiming a phase is done):** Phases 0–5 are all browser-verified
+> end-to-end (2026-07-17: ownership → active probe → verified-fix loop proven live against a controlled
+> owned target; the `fix_outcome` migration is applied to prod). Phase 4's AI red-team planner now
+> genuinely discovers app-specific tables (moat criterion resolved). See the Master Tracker in the
+> companion file for the shipped shape of each. §1 documents what you **build on**.
 
 ---
 
 ## 1. What is already DONE (do not rebuild — this is your foundation)
 
-Phases 0–4 are implemented and tested (**767 tests green, 107 files; `tsc --noEmit` clean**). Phases 0–2
-are additionally browser-verified; Phases 3–4 are not yet (see the note in the header). The following
-exists and works. **Build on it; do not recreate or "improve" it unless a later phase explicitly says so.**
+Phases 0–5 are implemented, tested (**822 tests green, 113 files; `tsc --noEmit` clean**), and
+browser-verified end-to-end. The following exists and works. **Build on it; do not recreate or "improve"
+it unless a later phase explicitly says so.**
 
-Fast orientation — the four things Phase 5 leans on hardest:
+Fast orientation — the things Phase 6 leans on hardest:
 
-| You need                                   | It already exists at                                                                                 |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| The verdict per app                        | `utils/shipGate.ts` (`resolveVerdict*`), `targets` table, `GET /api/targets`                         |
-| A live proof-probe (ownership-gated)       | `utils/runtimeScanner.ts` → `scanLiveUrlWithEvidence({ activeProbe })` + `utils/probes/*`            |
-| The pass/fail authority for active probing | `utils/ownership/gate.ts` → `isActiveProbeAllowed` — **the single gate; never duplicate it**         |
-| The fix pipeline                           | `utils/githubAutoFix.ts`, `utils/githubFixPipeline.ts`, `POST /api/github/fix`, `api/github/webhook` |
+| You need                     | It already exists at                                                                               |
+| ---------------------------- | -------------------------------------------------------------------------------------------------- |
+| The verdict per app          | `utils/shipGate.ts` (`resolveVerdict*`), `targets` table, `GET /api/targets`                       |
+| A re-probe (ownership-gated) | `utils/reprobe.ts` → `reprobeTargetAndRecord` (§1.9) — **never write a second probe path**         |
+| The gate for active probing  | `utils/ownership/gate.ts` → `isActiveProbeAllowed` — **the single gate; never route around it**    |
+| Regression detect + email    | `utils/scanRegression.ts` (`detectNewBlockers`), `utils/notify.ts` (`sendRegressionAlert`, Resend) |
+| Badge + public report        | `GET /api/badge/[token]` (SVG), `report/[token]/page.tsx` + `GET /api/reports/[token]`             |
 
 ### 1.1 Scan reliability & performance (done)
 
@@ -103,8 +105,9 @@ badge_token, created_at, updated_at`. Unique on `(organization_id, kind, identif
 - `GET /api/targets/[id]` was **not** built. The existing repo/scan detail already serves as the
   verdict detail. Build it only when a phase needs a stable per-target detail endpoint (e.g. a public
   trust page in Phase 6).
-- `probe_evidence` **now exists** (created in Phase 2, applied to prod 2026-07-14 — see §1.6).
-  `fix_outcome` still does **not** exist: **you create it in Phase 5** (§5).
+- `probe_evidence` (Phase 2) and `fix_outcome` (Phase 5) **both exist and are applied to prod**
+  (see §1.6 and §1.9). `GET /api/targets/[id]` is still **not** built — Phase 6 is the phase most likely
+  to need it (a public trust-page projection); build it there if you do.
 
 ### 1.6 Proof-first experience + the AI client (Phase 2 — done, browser-verified)
 
@@ -126,7 +129,7 @@ badge_token, created_at, updated_at`. Unique on `(organization_id, kind, identif
 - **FE:** `ProofEvidence.tsx` (proof headline) on the landing hero + dashboard URL scan;
   `ScanFindingCard` is consequence-first with the technical detail collapsed.
 
-### 1.7 Ownership verification (Phase 3 — code-complete, NOT browser-verified)
+### 1.7 Ownership verification (Phase 3 — done, browser-verified)
 
 - **`utils/ownership/gate.ts` → `isActiveProbeAllowed({ kind, ownershipVerified })` is the single
   server-side authority** for the passive/active boundary. `repo` = implicitly owned (GitHub App);
@@ -143,7 +146,7 @@ badge_token, created_at, updated_at`. Unique on `(organization_id, kind, identif
   owner controls. Local targets are impossible by design — the SSRF guard blocks `localhost`/private IPs
   on every hop.
 
-### 1.8 AI red-team planner + Layer 2 (Phase 4 — code-complete & safety-proven, moat criterion OPEN)
+### 1.8 AI red-team planner + Layer 2 (Phase 4 — done, browser-verified; moat criterion resolved)
 
 - **`utils/probes/*` — the whitelist + deterministic executor. This is the security model; respect it.**
   - `PROBE_PRIMITIVE_NAMES` (currently just `supabase_rls_table_read`) — **the LLM selects a primitive
@@ -153,8 +156,10 @@ badge_token, created_at, updated_at`. Unique on `(organization_id, kind, identif
     `UrlSafetyError` aborts the whole plan). **Hard rails live in code, never in the prompt.**
   - Host + anon key come from the **execution context** (scanner-extracted), never from LLM params.
 - `utils/ai/redTeamPlanner.ts` — `MODELS.fast`; snippets wrapped in `asUntrustedData`; **deterministic
-  fallback** on any AI failure so Layer 1 stays reproducible. `buildDeterministicProbePlan` unions the 9
-  default tables with `.from('…')` regex hits (`extractHeuristicTableNames`), capped at 12.
+  fallback** on any AI failure so Layer 1 stays reproducible. The prompt instructs the model to **infer
+  app-specific tables from the product described on the page** (this is what closed the moat criterion);
+  `buildDeterministicProbePlan` probes heuristic `.from('…')` tables **first**, then fills from a curated
+  18-table default list (`DEFAULT_SENSITIVE_SUPABASE_TABLES`), capped at `PROBE_MAX_STEPS`.
 - `utils/ai/deepReview.ts` (`MODELS.deep`, paid only — `billing_plan === 'pro'`) and
   `utils/ai/contextualFix.ts`. Both return null / curated on failure — **AI is never on the critical path.**
 - **Wiring:** the planner + executor run **only** inside `runtimeScanner`'s `if (options.activeProbe)`
@@ -165,9 +170,35 @@ badge_token, created_at, updated_at`. Unique on `(organization_id, kind, identif
   asserts **zero Claude API calls for an unverified target** (a side-effect assertion, with a positive
   control) — because `planRedTeamProbes` deliberately does not re-check ownership, so the property is
   non-local and a refactor that hoists the planner out of the gate branch must fail loudly.
-- **Known gap (do not paper over):** the moat criterion — "the planner probes tables it was not hardcoded
-  to know" — is **not demonstrated**, and the deterministic fallback already probes regex-found tables, so
-  the AI's real edge is narrower than the criterion implies. See the Master Tracker's Phase 4 design note.
+- **Moat criterion resolved (2026-07-17):** the planner now genuinely infers non-hardcoded tables — proven
+  with a real AI call (a distinctive logistics page yielded `driver_payouts`, `route_optimizations`,
+  `drivers`, `routes`, none in the wordlist). **Positioning note:** the planner is a _coverage engine_, not
+  the moat — table-name inference is commoditizable. The durable moat is the **verified-fix corpus** that
+  Phase 5 feeds (see §1.9 and the master plan §0). Do not over-invest in planner cleverness.
+
+### 1.9 Verified-fix loop + dataset (Phase 5 — done, browser-verified end-to-end)
+
+**This is the retention hook AND the start of the moat corpus — build Phase 6 directly on it.**
+
+- **`fix_outcome` table** — migration `20260716000000_fix_outcome.sql`, org-scoped RLS, **applied to prod**.
+  Records `(finding_rule_id, generator_fingerprint, fix_strategy, outcome ∈ {verified_fixed, still_open,
+regressed}, pr_url, deploy_id, …)`. Also created `private.vercel_webhook_deliveries` + claim/finish RPCs
+  for webhook idempotency. `dbAdapter`: `insertFixOutcomes` (ignore-duplicates), `getFixOutcomesForTarget`,
+  `getFixOutcomeCorpus` (reads **pattern columns only**, never customer data).
+- **`utils/verifiedFix.ts`** — pure, I/O-free classifier: `resolveFixOutcome(before, after, ruleId)` →
+  verified_fixed / still_open / regressed, plus the corpus rollup. Unit-testable in isolation.
+- **`utils/reprobe.ts`** — the I/O orchestrator: `reprobeTargetAndRecord` + `recordReprobeOutcomes`.
+  **A re-probe IS an active probe** — it goes through `isActiveProbeAllowed` and fails closed; the scanner
+  is injectable; outcomes are written **only on a state change** (no `still_open` spam). Reuse this for any
+  re-probe you add in Phase 6 — do not write a second probe path.
+- **`utils/vercelWebhook.ts` + `POST /api/vercel/webhook`** — HMAC-SHA1 verified; the target is resolved
+  from **our own DB** by origin, **never** from the payload (an unauth webhook that probes a payload-named
+  host is an abuse vector); claim-first idempotency on `deploy_id`. **Mirror this shape for any new webhook.**
+- **`POST /api/targets/[id]/reprobe`** — on-demand re-probe (auth, csrf, `RATE_LIMITS.sensitive`, gate-checked).
+- **FE `VerifiedFixTimeline.tsx`** — the "VERIFIED FIXED" payoff (found → fixed by PR → verified closed).
+- **Proven live:** an owned target with `customers` RLS off recorded `still_open`; after enabling RLS a
+  re-scan recorded `verified_fixed` (confirmed by a direct `fix_outcome` query on prod); verdict moved
+  🚫 NOT READY 80 → ⚠️ REVIEW 96.
 
 ---
 
@@ -287,138 +318,103 @@ A phase is **done** only when **all** of these hold:
 
 ---
 
-## 5. REMAINING WORK — Phase 5
+## 5. REMAINING WORK — Phase 6
 
-### Phase 5 — Verified-Fix Loop + dataset (do this next)
+### Phase 6 — Continuous Guardian + Badge growth loop (do this next)
 
-**Goal:** Close the loop — found → fix → deploy → **automatic re-probe → "VERIFIED FIXED"** — and record
-every outcome so the corpus starts accumulating.
+**Goal:** Turn one-shot scans into an **always-on guardian** (the subscription value) and make the
+**badge a distribution engine**. This is the phase that turns "I scanned once" into "I pay every month
+because Assurly watches my app", and turns every protected app into marketing.
 
-**Why this phase matters more than it looks:** everything before it proves a _problem_. This is the first
-phase that proves **we solved it** — the emotional payoff the subscription is sold on. And every row it
-writes is a row of the moat: the master plan's §0 thesis puts the exit asset in the **corpus** (how
-AI-built apps fail and which fixes actually closed them), not in the scanner or the planner.
+**Why now, and the golden constraint:** the verdict (P1), proof (P2), ownership (P3), AI depth (P4), and
+the verified-fix loop (P5) all exist and are browser-verified. **Nothing here is new probing machinery** —
+you are _scheduling_ the probe you already have, _alerting_ on the regressions you already detect, and
+_surfacing_ the badge/report you already render. Do NOT rebuild probing, the ownership gate, alerting, or
+the verdict object.
 
-**Context you already have — you are connecting existing parts, not building new machinery:**
+**Context you already have — connect these, do not recreate:**
 
-- **The probe** — `scanLiveUrlWithEvidence(url, fetch, lookup, { activeProbe })` in `runtimeScanner.ts`
-  (§1.8). A re-probe is _calling this again and diffing_. Do **not** write a second probe path.
-- **The gate** — `isActiveProbeAllowed` (§1.7). **A re-probe IS an active probe** and must consult the
-  same single authority: `repo` passes implicitly, `url` needs `ownership_verified`.
-- **The fix pipeline** — `utils/githubAutoFix.ts` / `utils/githubFixPipeline.ts`, `POST /api/github/fix`,
-  and `api/github/webhook/route.ts` (already verifies signatures and runs `scanRegression` /
-  `notifyIfRegressionBlockers`). The fix PR already knows the rule id it addresses — that is your join key.
-- **The target** — `dbAdapter.getTargetById(id)` / `getTargetByIdentifier(...)` maps an event back to the
-  guarded app. **Resolve the target from your own DB — never from a webhook payload** (see risks).
-- **Evidence** — `insertProbeEvidence` / `getProbeEvidenceForScan` already persist redacted proof (§1.6).
+- **Re-probe** — `utils/reprobe.ts` → `reprobeTargetAndRecord` / `recordReprobeOutcomes` (Phase 5, §1.9).
+  A scheduled or deploy-triggered guardian check IS a re-probe **through the ownership gate**. Reuse it
+  verbatim — never write a second probe path, never route around `isActiveProbeAllowed`.
+- **Regression detection** — `utils/scanRegression.ts`: `detectRegressions`, `detectNewBlockers`,
+  `notifyIfRegressionBlockers(db, repository, prev, current)`. Wired today only into `api/github/webhook`
+  for repo scans — you extend the same idea to `url` targets.
+- **Email** — `utils/notify.ts`: `sendRegressionAlert(recipients, { name }, newBlockers)` via Resend;
+  recipients from `db.getOrganizationAdminEmails(orgId)`. Reuse; add channels alongside, don't replace.
+- **Badge + public report** — `GET /api/badge/[token]` already renders an SVG "Ship Score N/100"
+  (`auth: 'none'`, `buildShipGateFromScanFindings`); `report/[token]/page.tsx` + `GET /api/reports/[token]`.
+- **Deploy signal** — `POST /api/vercel/webhook` (Phase 5) already re-probes on deploy and records
+  outcomes; Phase 6 adds the **alert** on top when a deploy introduces a new blocker.
 
 **Deliverables**
 
-1. **`fix_outcome` table** — migration `apps/web/supabase/migrations/<timestamp>_fix_outcome.sql`,
-   org-scoped RLS (copy the shape from `20260714000000_probe_evidence.sql`, §2.7):
+1. **Scheduled guardian re-probe (daily baseline).**
+   - Cron entrypoint via `apps/web/vercel.json` `crons` → a new `GET /api/cron/guardian`. It is
+     unauthenticated by nature, so **verify a shared cron secret** (`CRON_SECRET` / the `Authorization`
+     header) before doing any work; `secureRoute` `auth: 'none'`, `RATE_LIMITS.webhook`, and 401 on a bad
+     secret.
+   - For each monitored ownership-verified `url` target (and connected repos), run the existing re-probe
+     (`reprobeTargetAndRecord`) **through `isActiveProbeAllowed`**. Bound concurrency and per-run wall time;
+     one slow/failed target must never block or fail the batch.
+   - Update the target's verdict + `last_checked_at` (the verdict object is already the store).
 
-   ```sql
-   create table if not exists public.fix_outcome (
-     id uuid primary key default gen_random_uuid(),
-     organization_id uuid not null references public.organizations(id) on delete cascade,
-     target_id uuid references public.targets(id) on delete cascade,
-     scan_id uuid references public.scans(id) on delete set null,
-     finding_rule_id text not null,
-     generator_fingerprint text,
-     fix_strategy text,
-     outcome text not null check (outcome in ('verified_fixed','still_open','regressed')),
-     pr_url text,
-     created_at timestamptz not null default timezone('utc', now())
-   );
-   -- + enable RLS, member policies, grants, index on (organization_id), (target_id, finding_rule_id)
-   ```
+2. **Regression alerts for targets — productized and low-noise.**
+   - On BOTH the scheduled run and the deploy webhook: diff new findings vs. the target's previous state and
+     alert **only on NEW blockers / regressions** (reuse `detectNewBlockers`) — never on the steady state.
+     Alert fatigue is the #1 failure mode; this is a hard product rule, not a preference.
+   - Founder's language: _"Your app was safe yesterday; this morning's edit re-exposed `users`."_ Deliver via
+     `sendRegressionAlert` (Resend) **plus an optional Slack/Discord incoming-webhook** per target.
+   - **Per-target alert preferences** — a `target_alert_prefs` table (channel, webhook URL, enabled),
+     org-scoped RLS (§2.7) via a new migration (prod push needs owner approval, §3.2) + FE
+     `AlertPreferences.tsx`.
 
-   **Apply only with the owner's explicit approval (§3.2) — there is no local DB; this is production.**
+3. **Badge as a growth loop + public trust page.**
+   - Promote `GET /api/badge/[token]` to a polished "Verified by Assurly · Ship Score N/100" founders embed
+     on their own site; every badge links back to the trust page = the growth loop.
+   - Turn `report/[token]` into a polished public **trust page** (verdict + redacted proof summary +
+     "last checked" freshness + the badge). This is where a stable **`GET /api/targets/[id]` public
+     projection** (deferred in Phase 1, §1.5) may finally be worth building — expose only safe public
+     fields, **never raw evidence or PII**.
 
-2. **`apps/web/src/utils/verifiedFix.ts`** — the pure decision logic, unit-testable with no HTTP:
-   - `resolveFixOutcome(before, after, ruleId)` → `'verified_fixed'` (present before, gone after) /
-     `'still_open'` (present in both) / `'regressed'` (absent before, present after).
-   - Keep re-probe I/O **out** of this file so classification is testable in isolation.
-
-3. **Deploy signal → re-probe** — `apps/web/src/app/api/vercel/webhook/route.ts`. **Mirror
-   `api/github/webhook/route.ts` exactly; do not invent a new scheme:**
-   - `secureRoute` with `auth: 'none'`, `bodyMode: 'raw'` (you need the exact bytes to verify),
-     `maxBodyBytes`, `rateLimit: RATE_LIMITS.webhook`.
-   - **Verify the signature** against the Vercel secret and throw `ApiError(401, 'invalid_signature', …)`
-     on failure — an unauthenticated endpoint that triggers probes is an abuse vector.
-   - **Idempotency:** a webhook can fire more than once per deploy. Key on the deploy id; never write
-     duplicate `fix_outcome` rows.
-   - On a verified deploy for a known target → re-probe (through the gate) → classify → write the row.
-
-4. **`POST /api/targets/[id]/reprobe`** — on-demand re-probe. `secureRoute`, auth required, `csrf: true`,
-   `rateLimit: RATE_LIMITS.sensitive`. **Must call `isActiveProbeAllowed` and fail closed**, exactly as
-   `scan-url/route.ts` does — a re-probe endpoint that skips the gate re-opens everything Phase 3 closed.
-
-5. **FE — the payoff.** A "**VERIFIED FIXED**" state on the finding plus a timeline ("found 14:03 → fixed
-   by PR #12 → verified closed 14:40"). Reuse the design tokens and the `DashboardToast` /
-   `announcePrCreated` pattern for the "we just verified your fix" moment (§3.6).
-
-6. **Corpus aggregate (internal).** A rollup over `(generator_fingerprint, finding_rule_id, fix_strategy,
-outcome)` — "Lovable+Supabase → RLS off in X%, fix Y closes it Z%". **Patterns only, never customer
-   data** (§2.8). This is the exit asset; treat its privacy properties as a product requirement.
+4. **FE "Guardian" state.**
+   - On `VerdictCard`: a live monitoring status + "last checked" freshness + a regression indicator when the
+     score dropped since the previous check.
 
 **Tests (part of the deliverable, not a follow-up)**
 
-- `verifiedFix.test.ts` — every branch of `resolveFixOutcome`, including `regressed`.
-- Webhook route: valid signature → re-probe runs; **invalid/absent signature → 401 and NO probe**;
-  duplicate delivery → exactly one row.
-- `reprobe` route: a **security test** proving the ownership gate holds — an unverified `url` target gets
-  no active pull here either. Mirror `api/scan-url/ownershipGate.security.test.ts`, and assert the
-  _side effect_ (zero probe requests), not just a response field.
+- Cron route: valid secret runs the batch; **missing/invalid secret → 401 and NO probe**.
+- Alert logic: new blocker → **exactly one** alert; unchanged findings → **zero** alerts (the fatigue rule);
+  a newly-fixed finding → no alert. Mock `sendRegressionAlert`; assert call counts.
+- Guardian re-probe honors the gate: an unverified `url` target gets **no active probe** — mirror the
+  Phase 4/5 side-effect security tests (assert zero probe requests, not just a response field).
+- Badge / trust projection exposes only whitelisted public fields (no evidence, no PII) — assert the shape.
 
 **Acceptance criteria**
 
-- Fixing an RLS finding via an Assurly PR on an owned app flips it to **VERIFIED FIXED** after deploy,
-  with a timestamped trail — **verified in a browser**.
-- A `fix_outcome` row is written per resolved finding (verify the row in the DB).
-- A re-probe is impossible on an unverified `url` target (security test).
+- A regression on an owned app (introduced between two guardian checks, or on a deploy) fires **exactly one**
+  alert within the monitoring window — verified in a browser and a real inbox / webhook.
+- The badge renders the **live** current score and links to a shareable trust page — verified in a browser.
+- Steady state (no new blockers) produces **no** alerts.
 
 **Risks / do-not:**
 
-- **Never probe a target named in a webhook payload.** The payload is untrusted input; resolve the target
-  from your own DB by deploy/repo identity. Otherwise the webhook becomes an open probe-anything endpoint.
-- Deploy signals are unreliable across hosts — fall back to a scheduled re-probe rather than blocking the
-  loop on Vercel being correct.
-- Never write customer data into the corpus — aggregate patterns only.
-- Keep the gate authoritative: no new active path may exist that does not consult `isActiveProbeAllowed`.
+- **Alert fatigue** — only new blockers/regressions, never the steady state.
+- No new probe path and nothing that skips `isActiveProbeAllowed` — the guardian must not become a way to
+  probe unverified targets on a schedule.
+- The public trust page / badge projection must never leak evidence rows or PII — public = shape only.
+- The cron endpoint must reject any request without the shared secret before touching a single target.
 
 ---
 
-## 6. REMAINING WORK — Phases 6–8 (senior specs)
+## 6. REMAINING WORK — Phases 7–8 (senior specs)
 
-Each phase still ends with the full Definition of Done (§4). Phase 5 above is the most detailed because
+Each phase still ends with the full Definition of Done (§4). Phase 6 above (§5) is the most detailed because
 it is next; the specs below are precise but expect you to apply the same rigor and the conventions in §2.
 
-> **Phases 3, 4 and 5 are no longer specified here.** Phase 3 (Ownership) and Phase 4 (AI red-team planner
->
-> - Layer 2) are **built** — their shipped shape is documented in **§1.7** and **§1.8**, which is what you
->   build on. Phase 5's spec moved to **§5** because it is next. Do not re-implement any of them.
-
-### Phase 6 — Continuous Guardian + Badge growth loop (subscription value + distribution)
-
-**Goal:** Turn one-shot scans into an always-on guardian, and make the badge a growth engine.
-
-**Deliverables**
-
-- **Scheduled + event-driven re-probe** (daily baseline + on every deploy/PR). Productize regression
-  alerts ("Your app was safe yesterday; this morning's edit re-exposed `users`") on top of the existing
-  `scanRegression` / `notifyIfRegressionBlockers`. Alert via email (existing Resend) + optional
-  Slack/Discord webhook; per-target alert prefs (`AlertPreferences.tsx`).
-- **Badge as a first-class embeddable** — promote `GET /api/badge/[token]` to a polished "Verified by
-  Assurly · Ship Score N/100" that founders show their own customers. Turn `report/[token]` into a
-  polished public **trust page** (this is where a `GET /api/targets/[id]` public projection may finally
-  be worth building). Every badge links back = growth loop.
-- **FE**: "Guardian" state on the verdict card (live monitoring status + last check).
-
-**Acceptance:** a regression on an owned app fires an alert within the monitoring window; the badge
-renders the live score and links to a shareable trust page — verified in a browser.
-
-**Do-not:** alert only on new blockers/regressions (avoid alert fatigue).
+> **Phases 3, 4, 5 and 6 are no longer specified here.** Phases 3–5 are **built** — their shipped shape is
+> documented in **§1.7 / §1.8 / §1.9**, which is what you build on. Phase 6's spec is in **§5** because it is
+> next. Do not re-implement any of them.
 
 ### Phase 7 — Agent-Native Distribution (MCP gate) + OEM
 
@@ -477,24 +473,21 @@ layer **platforms embed**.
 
 ## 8. Execution order & final reminders
 
-1. ~~**Phase 2** (proof-first + consequences + AI client)~~ — **done & browser-verified** (§1.6).
-2. ~~**Phase 3** (ownership)~~ — **built** (§1.7); browser verification still open.
-3. ~~**Phase 4** (AI red-team + deep review)~~ — **built & safety-proven** (§1.8); browser verification and
-   the moat criterion still open.
-4. **Phase 5** (verified-fix loop + dataset) — **next; spec in §5.**
-5. **Phase 6** (continuous guardian + badge).
-6. **Phase 7** (MCP gate + OEM).
-7. **Phase 8** (pricing + exit).
+1. ~~**Phases 2–4**~~ (proof-first, ownership, AI red-team + deep review) — **done & browser-verified**
+   (§1.6 / §1.7 / §1.8); Phase 4's moat criterion is resolved.
+2. ~~**Phase 5**~~ (verified-fix loop + dataset) — **done & browser-verified end-to-end** (§1.9);
+   `fix_outcome` migration applied to prod.
+3. **Phase 6** (continuous guardian + badge growth loop) — **next; spec in §5.**
+4. **Phase 7** (MCP gate + OEM).
+5. **Phase 8** (pricing + exit).
 
 Do not reorder without updating `10-genius-rebuild-master-plan.md` first.
 
-**Open items carried into Phase 5 — do not silently inherit them as "done":** Phases 3 and 4 are not
-browser-verified, and Phase 4's moat criterion ("the planner probes tables it was not hardcoded to know")
-is unproven — the deterministic fallback already probes regex-found tables, so the AI's edge is narrower
-than that criterion implies. Both are recorded in the Master Tracker. An active probe needs an origin
-whose **root** the owner controls (§1.7), which is why this has not been verified against a synthetic
-target: a page authored so the LLM infers the table name proves the mechanism can fire, not that it fires
-on real AI-built apps. Verify against a real app when one is available.
+**Carry into Phase 6 — do not silently inherit as "done":** two Phase-1 deferrals are still open and Phase 6
+is the phase most likely to need them — `GET /api/targets/[id]` (a stable per-target endpoint for the public
+trust page, §1.5) and per-target alert delivery beyond email. Neither is built. Also: the moat is the
+**verified-fix corpus** (§0), not the planner — invest Phase-6 energy in monitoring/distribution, not in
+more planner cleverness.
 
 **Before you start each phase:** re-read §2 (conventions) and §3 (gotchas). **Before you finish each
 phase:** run the full Definition of Done (§4), get owner approval for any prod migration, browser-verify,
