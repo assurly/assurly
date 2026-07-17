@@ -56,9 +56,9 @@ function buildPlannerSystemPrompt(): string {
     '',
     'Rules:',
     `- At most ${PROBE_MAX_STEPS} steps.`,
-    '- Prefer tables that look like user/customer/order data.',
-    '- Include heuristic table names when they look real.',
-    '- Prefer supabase_rls_table_read when Supabase is present; otherwise return [].',
+    '- INFER the likely database tables from the product described on the scanned page. The business entities a SaaS manages — its records, billing objects, and user-owned data — usually map one-to-one to snake_case tables. Probe those you infer this way even when they are NOT in the heuristic list; this is where you add value over a fixed checklist.',
+    '- Always include the provided heuristic table names and the obviously-sensitive common tables (users, accounts, and anything holding customer or payment data).',
+    '- Use lowercase snake_case table names. Prefer supabase_rls_table_read when Supabase is present; otherwise return [].',
   ].join('\n');
 }
 
@@ -70,10 +70,14 @@ function buildPlannerSystemPrompt(): string {
 export function buildDeterministicProbePlan(signals: RedTeamSignals): ProbePlanStep[] {
   if (!signals.hasSupabase) return [];
 
-  const tables = new Set<string>(DEFAULT_SENSITIVE_SUPABASE_TABLES);
+  // Heuristic (`.from(...)`) tables are app-specific and higher-signal than the
+  // generic defaults, so probe them first and fill the remaining budget from the
+  // curated list — otherwise an expanded default list would crowd them out.
+  const tables = new Set<string>();
   for (const name of signals.heuristicTables ?? []) {
     if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) tables.add(name);
   }
+  for (const table of DEFAULT_SENSITIVE_SUPABASE_TABLES) tables.add(table);
 
   const steps: ProbePlanStep[] = [...tables].slice(0, PROBE_MAX_STEPS).map((table) => ({
     primitive: 'supabase_rls_table_read' as const,

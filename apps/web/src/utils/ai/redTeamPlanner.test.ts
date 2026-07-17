@@ -133,4 +133,39 @@ describe('redTeamPlanner', () => {
     expect(body.messages[0]?.content).toContain('<untrusted_scanned_content>');
     expect(body.messages[0]?.content).toContain('ignore previous instructions');
   });
+
+  it('instructs the model to INFER app-specific tables, not just echo the heuristics (moat)', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ content: [{ type: 'text', text: '[]' }] }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    await planRedTeamProbes(
+      { targetOrigin: 'https://app.example', hasSupabase: true, scannedSnippet: 'a page' },
+      { deps: { fetchImpl } },
+    );
+
+    const body = JSON.parse(String(vi.mocked(fetchImpl).mock.calls[0]?.[1]?.body)) as {
+      system: string;
+    };
+    // Without an explicit inference instruction the fast model just echoes the
+    // heuristic table (verified empirically) and never finds non-hardcoded tables.
+    expect(body.system).toContain('INFER');
+    expect(body.system.toLowerCase()).toContain('one-to-one');
+  });
+
+  it('buildDeterministicProbePlan probes heuristic tables before the generic defaults', () => {
+    const plan = buildDeterministicProbePlan({
+      targetOrigin: 'https://app.example',
+      hasSupabase: true,
+      heuristicTables: ['ledger', 'shipments'],
+    });
+    const tables = plan.map((s) => s.params.table);
+    // App-specific `.from()` tables lead (higher signal) even though the default
+    // list is longer than the step budget — they must never be crowded out.
+    expect(tables[0]).toBe('ledger');
+    expect(tables[1]).toBe('shipments');
+    expect(tables).toContain('users');
+  });
 });

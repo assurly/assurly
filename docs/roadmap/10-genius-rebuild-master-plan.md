@@ -657,32 +657,30 @@ Leverage and dependency both point to this order. We do not reorder without upda
         active pull on _sign-in_, Phase 3 tightened it to _ownership_. Any future active-probe
         verification needs an origin whose **root** the owner controls.
   - [x] Browser-verified 2026-07-17: `meta_tag` → `ownership_verified = true` → active probe ran.
-- [~] **Phase 4** — AI Red-Team Planner + Layer 2 deep review — **core browser-verified (2026-07-17);
-  moat sub-criterion demonstrated NOT working live.** Shipped in `3a6acbd`, `3777495`, `4fe4b0c`,
-  `48b0328`. Suite green, `tsc --noEmit` clean. Left as `[~]` (not fully checked): the active probe,
-  ownership gate, and Layer-2 gating are verified, but the headline moat criterion — "the planner
-  discovers and probes tables it was **not** hardcoded to know" — did **not** hold on a live target.
-  - [x] `utils/probes/*` — whitelist registry (`PROBE_PRIMITIVE_NAMES`, currently the single
+- [x] **Phase 4** — AI Red-Team Planner + Layer 2 deep review — **complete (2026-07-17): core
+      browser-verified, moat criterion resolved.** Shipped in `3a6acbd`, `3777495`, `4fe4b0c`, `48b0328`
+  - the 2026-07-17 planner-sharpening commit. Suite green (822), `tsc --noEmit` clean.
+  * [x] `utils/probes/*` — whitelist registry (`PROBE_PRIMITIVE_NAMES`, currently the single
         `supabase_rls_table_read`), zod-validated params (table name pinned to `[A-Za-z_][A-Za-z0-9_]*`,
         unknown keys like `method`/`url` stripped before the handler), and a **deterministic executor**
         with hard caps in code (`PROBE_MAX_STEPS = 12`, `PROBE_MAX_DURATION_MS = 30_000`)
-  - [x] `probes/supabaseRls.ts` — the old `probeSupabaseRlsWithEvidence` logic extracted into a primitive:
+  * [x] `probes/supabaseRls.ts` — the old `probeSupabaseRlsWithEvidence` logic extracted into a primitive:
         GET-only via the injected SSRF-safe `safeFetch`, `limit=1` + `Prefer: count=exact` (proves scale
         without exfiltrating rows), host/anon key from **context** (scanner-extracted), never from LLM params
-  - [x] `utils/ai/redTeamPlanner.ts` — `MODELS.fast`; scanned content wrapped in `asUntrustedData`;
+  * [x] `utils/ai/redTeamPlanner.ts` — `MODELS.fast`; scanned content wrapped in `asUntrustedData`;
         output sanitised against the whitelist; **deterministic fallback** on any AI failure/budget/parse
         error, so Layer 1 stays reproducible + tests
-  - [x] `utils/ai/deepReview.ts` (`MODELS.deep`, paid tier only — `billing_plan === 'pro'`) and
+  * [x] `utils/ai/deepReview.ts` (`MODELS.deep`, paid tier only — `billing_plan === 'pro'`) and
         `utils/ai/contextualFix.ts`; both degrade to null/curated — AI is never on the critical path
-  - [x] `runtimeScanner.ts` — pluggable probe execution; the planner + executor run **only** inside the
+  * [x] `runtimeScanner.ts` — pluggable probe execution; the planner + executor run **only** inside the
         `if (options.activeProbe)` branch; `scan-url/route.ts` sets that from `isActiveProbeAllowed` and
         **fails closed** on any target-lookup failure; `planSource: 'ai' | 'deterministic'` surfaced to the client
-  - [x] Security tests: `probes/executor.security.test.ts` (adversarial plans — `http_raw`, `shell_exec`,
+  * [x] Security tests: `probes/executor.security.test.ts` (adversarial plans — `http_raw`, `shell_exec`,
         `../etc/passwd`, `a; DROP TABLE users;--`, forged `supabaseUrl` in params — never become a mutating
         or out-of-scope request); `scan-url/aiPlanner.security.test.ts` (gate blocks planner + probe;
         adversarial LLM JSON yields GET-only to the owned host; Layer 1 deterministic with AI disabled);
         `scan-url/ownershipGate.security.test.ts` (real scanner, zero REST calls when unverified)
-  - [x] **Gate assertion hardened (2026-07-16):** `aiPlanner.security.test.ts` asserted the planner was
+  * [x] **Gate assertion hardened (2026-07-16):** `aiPlanner.security.test.ts` asserted the planner was
         blocked via `planSource === undefined` — an _output artifact_. A mutation (planner hoisted out of
         the `activeProbe` branch, result unused) **kept every existing security test green** while the
         scanned content of an unverified target was already sent to the LLM. Added a pair to
@@ -690,32 +688,33 @@ Leverage and dependency both point to this order. We do not reorder without upda
         unverified target, plus a **positive control** proving the assertion is not vacuous. Both fail
         under that mutation. This matters because `planRedTeamProbes` deliberately does not re-check
         ownership (its docstring defers to the caller), so the property is **non-local**.
-  - [x] Cost/safety reuses the Phase 2 abstraction (`assertAiBudget` / `recordAiUsage` / content-hash
+  * [x] Cost/safety reuses the Phase 2 abstraction (`assertAiBudget` / `recordAiUsage` / content-hash
         cache); deep review additionally skipped when there is nothing to reason about (no findings and
         no active probe) rather than spending tokens on an empty verdict
-  - [x] **Core browser-verified 2026-07-17.** On an owned, ownership-verified Supabase target the active
+  * [x] **Core browser-verified 2026-07-17.** On an owned, ownership-verified Supabase target the active
         probe pulled **5 real rows** from `customers` via the anon key (redacted proof: `a***@***.com`,
         columns + `count=exact` scale), producing a BLOCKER + LIVE PROOF and flipping the verdict to
         🚫 NOT READY. Deep review ran **only** after ownership (locked teaser on the passive scan → live
         analysis after verify). No console/server errors.
-  - [→] **MOAT SUB-CRITERION — demonstrated NOT working (2026-07-17).** The test target held two tables:
-    `customers` (in the hardcoded list) and `invoices` (NOT hardcoded, referenced only in the page's
-    prose, RLS also off with 3 rows). The probe found `customers` but **never touched `invoices`** —
-    despite it being readable. So "the planner discovers a table it was not hardcoded to know" did
-    **not** happen on a realistic page: the AI either fell back to the deterministic plan or didn't
-    infer `invoices` from context. This confirms the design finding below empirically. Making it pass
-    by strengthening the page's `invoices` signal would be teaching to the test. **Decision pending:**
-    make the planner earn its place, or accept that the moat is the corpus (§0), not the planner.
-  - [→] **Design finding (2026-07-16) — the planner's marginal value is narrower than the criterion
-    implies.** `buildDeterministicProbePlan` seeds a `Set` with the 9 hardcoded tables and then unions
-    the `.from('…')` regex hits from `extractHeuristicTableNames`, capped at `PROBE_MAX_STEPS = 12`. The
-    **deterministic** path therefore already probes up to 3 non-hardcoded tables with no AI at all, so
-    "discovers tables it was not hardcoded to know" can be satisfied by the regex alone. The AI's real
-    edge is (a) prioritising within the 12-step budget and (b) tables the regex cannot see (dynamically
-    built names, or names only inferable from page semantics). Not a bug — the fallback is correct and
-    the caps are right — but the acceptance criterion overstates what the AI contributes. Decide whether
-    to make the planner earn its place before treating it as the moat; the plan's own thesis (§0) locates
-    the moat in the **corpus**, not the planner.
+  * [x] **MOAT CRITERION — resolved & proven (2026-07-17).** Root cause of the earlier failure was
+        diagnosed empirically, not guessed: the planner **did** run (`planSource: ai`) and **did** have the
+        prose in its input, but the prompt only told it to "include heuristic table names", so the fast model
+        just echoed the one `.from()` hit and inferred nothing. Fix (three parts): (1) the planner prompt now
+        explicitly instructs the model to **INFER** the app's tables from the described product entities;
+        (2) `DEFAULT_SENSITIVE_SUPABASE_TABLES` expanded to a curated 18 and the deterministic plan now probes
+        heuristic tables **first** so an app-specific `.from()` table is never crowded out; (3) tests pin the
+        inference instruction and the ordering. Proven with a real AI call through the production
+        `planRedTeamProbes`: given a distinctive logistics page, it inferred `driver_payouts`,
+        `route_optimizations`, `drivers`, and `routes` — none in the wordlist, only one a `.from()` hit — vs.
+        the pre-fix output of `["customers"]`. So the planner now genuinely discovers tables it was not
+        hardcoded to know.
+  * [→] **Positioning reframe (decided 2026-07-17): the moat is the CORPUS, not the planner.** Even
+    sharpened, table-name inference is commoditizable (a good wordlist + entity extraction gets most of
+    it), so the planner is a **probe-coverage engine**, not a defensible moat — we improved it because
+    coverage = more real holes found = more product value and more corpus data, **not** as a moat bet.
+    The durable, non-replicable asset is the `(generator_fingerprint, ruleId, fix_strategy, outcome)`
+    corpus that Phase 5 now feeds — exactly where §0 locates it. Do not over-invest further in planner
+    cleverness; invest in the corpus aggregates.
 - [x] **Phase 5** — Verified-Fix Loop + dataset — **complete & browser-verified end-to-end (2026-07-17).**
       Shipped in `f5a90fc`, `ab7fcc9`, `a181f2b`, `054483d` + `9fabf19`.
   - [x] `fix_outcome` migration `20260716000000_fix_outcome.sql` (org-scoped RLS + `private.vercel_webhook_deliveries`
