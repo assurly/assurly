@@ -20,11 +20,12 @@ function textBlocks(result: { content: Array<{ type: string; text?: string }> })
 }
 
 describe('Assurly MCP tool handlers', () => {
-  it('exports the three MCP tool names', () => {
+  it('exports the MCP tool names (three local scanners + the hosted verdict)', () => {
     expect(ASSURLY_MCP_TOOL_NAMES).toEqual([
       'assurly_scan_path',
       'assurly_scan_files',
       'assurly_explain_rule',
+      'assurly_verdict',
     ]);
   });
 

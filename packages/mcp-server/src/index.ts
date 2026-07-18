@@ -9,8 +9,11 @@ import {
   handleExplainRule,
   handleScanFiles,
   handleScanPath,
+  handleVerdict,
   ASSURLY_MCP_TOOL_NAMES,
 } from './tools';
+
+const DEFAULT_ASSURLY_API_URL = 'https://assurly.dev';
 
 // Read the version from package.json at runtime so it never drifts from the
 // published npm version. In the bundled CJS output, __dirname is the dist/
@@ -83,6 +86,36 @@ export function createAssurlyMcpServer(): McpServer {
       },
     },
     async ({ ruleId }) => handleExplainRule({ ruleId }),
+  );
+
+  server.registerTool(
+    'assurly_verdict',
+    {
+      title: 'Get the hosted Assurly ship verdict',
+      description:
+        'Pre-deploy ship gate: read the hosted Assurly verdict (Ready/Review/Blocked + ship score + ' +
+        'top issue + one-line fix) for a deployed URL or a repo. Reads the hosted Assurly API — it does ' +
+        'not scan locally and never triggers an active probe. Requires ASSURLY_API_KEY in the environment.',
+      inputSchema: {
+        url: z
+          .string()
+          .url()
+          .optional()
+          .describe('Deployed app URL to look up (exactly one of url/repo)'),
+        repo: z
+          .string()
+          .optional()
+          .describe('Repository in owner/name form to look up (exactly one of url/repo)'),
+      },
+    },
+    async ({ url, repo }) =>
+      handleVerdict(
+        { url, repo },
+        {
+          apiUrl: process.env.ASSURLY_API_URL?.trim() || DEFAULT_ASSURLY_API_URL,
+          apiKey: process.env.ASSURLY_API_KEY?.trim() || undefined,
+        },
+      ),
   );
 
   return server;
