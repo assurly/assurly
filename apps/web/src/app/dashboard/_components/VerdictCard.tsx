@@ -66,6 +66,14 @@ export function VerdictCard({ card, onOpen }: VerdictCardProps): ReactElement {
               {fingerprintLabel}
             </span>
           )}
+          {card.guardianEnabled ? (
+            <span
+              className="verdict-card__chip verdict-card__chip--guardian"
+              title="Continuous Guardian"
+            >
+              Guardian
+            </span>
+          ) : null}
         </span>
         <span className="verdict-card__verdict">{meta.label}</span>
         {card.topIssue ? (
@@ -81,6 +89,11 @@ export function VerdictCard({ card, onOpen }: VerdictCardProps): ReactElement {
             Run a scan to get a verdict.
           </span>
         )}
+        {card.scoreDropped ? (
+          <span className="verdict-card__regression" role="status">
+            Score dropped since last check
+          </span>
+        ) : null}
       </span>
 
       <span className="verdict-card__meta">

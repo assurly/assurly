@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { RATE_LIMITS, requireRouteUser, secureRoute } from '../../../utils/apiSecurity';
 import { resolveVerdictFromScanFindings, type Verdict } from '../../../utils/shipGate';
 import type { DbAdapter, Repository, Target, TargetVerdict } from '../../../utils/dbAdapter';
+import type { VerdictEvidenceShape } from '../../../utils/publicTrust';
 
 /**
  * One app's current safety verdict for the dashboard. This is the object the
@@ -12,19 +13,34 @@ import type { DbAdapter, Repository, Target, TargetVerdict } from '../../../util
 export interface TargetCard {
   /** Stable id: the target row id when synced, else a repo-derived key. */
   id: string;
-  kind: 'repo';
+  kind: 'repo' | 'url';
   identifier: string;
   displayName: string;
-  repositoryId: string;
+  repositoryId: string | null;
   generatorFingerprint: string | null;
   verdict: TargetVerdict;
   shipScore: number | null;
   topIssue: Verdict['topIssue'];
-  /** When the app was last checked (latest scan time), or null if never scanned. */
+  /** When the app was last checked (latest scan / guardian time), or null if never. */
   lastCheckedAt: string | null;
-  /** Latest scan id, for opening the detail view. */
+  /** Latest scan id, for opening the detail view (repo targets). */
   latestScanId: string | null;
   ownershipVerified: boolean;
+  /** Continuous Guardian is watching this app (ownership-verified url, or connected repo). */
+  guardianEnabled: boolean;
+  /** True when the ship score dropped since the previous guardian/scan check. */
+  scoreDropped: boolean;
+  /** Public badge token when available (for embed copy). */
+  badgeToken: string | null;
+}
+
+function scoreDroppedFromEvidence(
+  evidence: VerdictEvidenceShape,
+  currentScore: number | null,
+): boolean {
+  const previous = evidence.previousShipScore;
+  if (previous == null || currentScore == null) return false;
+  return currentScore < previous;
 }
 
 function cardFromTargetRow(
@@ -32,7 +48,7 @@ function cardFromTargetRow(
   repo: Repository,
   latestScanId: string | null,
 ): TargetCard {
-  const evidence = (target.verdict_evidence ?? {}) as { topIssue?: Verdict['topIssue'] };
+  const evidence = (target.verdict_evidence ?? {}) as VerdictEvidenceShape;
   return {
     id: target.id,
     kind: 'repo',
@@ -46,6 +62,30 @@ function cardFromTargetRow(
     lastCheckedAt: target.last_checked_at,
     latestScanId,
     ownershipVerified: target.ownership_verified,
+    guardianEnabled: true,
+    scoreDropped: scoreDroppedFromEvidence(evidence, target.current_ship_score),
+    badgeToken: target.badge_token,
+  };
+}
+
+function cardFromUrlTarget(target: Target): TargetCard {
+  const evidence = (target.verdict_evidence ?? {}) as VerdictEvidenceShape;
+  return {
+    id: target.id,
+    kind: 'url',
+    identifier: target.identifier,
+    displayName: target.display_name ?? target.identifier,
+    repositoryId: null,
+    generatorFingerprint: target.generator_fingerprint,
+    verdict: target.current_verdict ?? 'unknown',
+    shipScore: target.current_ship_score,
+    topIssue: evidence.topIssue ?? null,
+    lastCheckedAt: target.last_checked_at,
+    latestScanId: null,
+    ownershipVerified: target.ownership_verified,
+    guardianEnabled: target.ownership_verified,
+    scoreDropped: scoreDroppedFromEvidence(evidence, target.current_ship_score),
+    badgeToken: target.badge_token,
   };
 }
 
@@ -62,6 +102,7 @@ async function deriveCardFromLatestScan(
 ): Promise<TargetCard> {
   const scans = await db.getRecentScans(repo.id);
   const latest = scans[0];
+  const evidence = (target?.verdict_evidence ?? {}) as VerdictEvidenceShape;
   const base: TargetCard = {
     id: target?.id ?? `repo:${repo.id}`,
     kind: 'repo',
@@ -75,6 +116,9 @@ async function deriveCardFromLatestScan(
     lastCheckedAt: null,
     latestScanId: null,
     ownershipVerified: target?.ownership_verified ?? false,
+    guardianEnabled: true,
+    scoreDropped: false,
+    badgeToken: target?.badge_token ?? null,
   };
   if (!latest) return base;
 
@@ -87,6 +131,7 @@ async function deriveCardFromLatestScan(
     topIssue: verdict.topIssue,
     lastCheckedAt: latest.created_at,
     latestScanId: latest.id,
+    scoreDropped: scoreDroppedFromEvidence(evidence, verdict.shipScore),
   };
 }
 
@@ -113,10 +158,11 @@ export const GET = secureRoute(
     const targetByRepoId = new Map(
       targets.filter((t) => t.repository_id).map((t) => [t.repository_id as string, t]),
     );
+    const urlTargets = targets.filter((t) => t.kind === 'url');
 
     // A synced target row is authoritative and cheap; only repos without one
     // pay for a latest-scan derivation. All cards are built in parallel.
-    const cards = await Promise.all(
+    const repoCards = await Promise.all(
       repos.map(async (repo): Promise<TargetCard> => {
         const target = targetByRepoId.get(repo.id);
         if (target && target.current_verdict) {
@@ -126,6 +172,8 @@ export const GET = secureRoute(
         return deriveCardFromLatestScan(context.db, repo, target);
       }),
     );
+
+    const cards = [...repoCards, ...urlTargets.map(cardFromUrlTarget)];
 
     // Most urgent first: blocked, then review, then ready, then unscanned.
     const order: Record<TargetVerdict, number> = { blocked: 0, review: 1, ready: 2, unknown: 3 };

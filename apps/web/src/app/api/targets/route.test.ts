@@ -84,6 +84,8 @@ describe('GET /api/targets', () => {
       shipScore: 76,
       generatorFingerprint: 'lovable',
       latestScanId: 'scan-9',
+      guardianEnabled: true,
+      scoreDropped: false,
     });
     // A synced target must not pay for a findings re-derivation.
     expect(db.getScanFindings).not.toHaveBeenCalled();

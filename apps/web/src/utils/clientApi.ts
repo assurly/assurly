@@ -114,10 +114,10 @@ const verdictTopIssueSchema = z.object({
 });
 const targetCardSchema = z.object({
   id: z.string(),
-  kind: z.literal('repo'),
+  kind: z.enum(['repo', 'url']),
   identifier: z.string(),
   displayName: z.string(),
-  repositoryId: z.string(),
+  repositoryId: z.string().nullable(),
   generatorFingerprint: z.string().nullable(),
   verdict: z.enum(['ready', 'review', 'blocked', 'unknown']),
   shipScore: z.number().nullable(),
@@ -125,6 +125,9 @@ const targetCardSchema = z.object({
   lastCheckedAt: z.string().nullable(),
   latestScanId: z.string().nullable(),
   ownershipVerified: z.boolean(),
+  guardianEnabled: z.boolean().default(false),
+  scoreDropped: z.boolean().default(false),
+  badgeToken: z.string().nullable().default(null),
 });
 const targetsSchema = z.object({ targets: z.array(targetCardSchema) });
 export type TargetCard = z.infer<typeof targetCardSchema>;

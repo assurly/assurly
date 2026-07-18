@@ -28,6 +28,9 @@ function card(overrides: Partial<TargetCard> = {}): TargetCard {
     lastCheckedAt: '2026-07-13T10:00:00.000Z',
     latestScanId: 'scan-9',
     ownershipVerified: false,
+    guardianEnabled: true,
+    scoreDropped: false,
+    badgeToken: null,
     ...overrides,
   };
 }
@@ -91,5 +94,13 @@ describe('VerdictCard', () => {
     render(<VerdictCard card={target} onOpen={onOpen} />);
     fireEvent.click(screen.getByRole('button', { name: /acme\/api/i }));
     expect(onOpen).toHaveBeenCalledWith(target);
+  });
+
+  it('shows Guardian monitoring and a regression indicator when score dropped', () => {
+    render(
+      <VerdictCard card={card({ guardianEnabled: true, scoreDropped: true })} onOpen={vi.fn()} />,
+    );
+    expect(screen.getByText('Guardian')).toBeTruthy();
+    expect(screen.getByText(/Score dropped since last check/i)).toBeTruthy();
   });
 });

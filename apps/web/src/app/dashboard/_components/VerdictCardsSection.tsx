@@ -11,6 +11,12 @@ interface VerdictCardsSectionProps {
   refreshKey?: number;
 }
 
+function handleCardOpen(card: TargetCard, onOpenRepo: (repositoryId: string) => void): void {
+  if (card.kind === 'repo' && card.repositoryId) {
+    onOpenRepo(card.repositoryId);
+  }
+}
+
 /**
  * The dashboard's primary surface (Phase 1): one always-current verdict per app.
  * Replaces the raw repository list as the lead — "can I ship this right now?" at
@@ -75,7 +81,7 @@ export function VerdictCardsSection({
       ) : (
         <div className="verdict-card-list">
           {cards.map((card) => (
-            <VerdictCard key={card.id} card={card} onOpen={(c) => onOpenRepo(c.repositoryId)} />
+            <VerdictCard key={card.id} card={card} onOpen={(c) => handleCardOpen(c, onOpenRepo)} />
           ))}
         </div>
       )}
