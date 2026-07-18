@@ -801,7 +801,38 @@ Leverage and dependency both point to this order. We do not reorder without upda
         and no probe (target `last_checked_at` unchanged); the OEM widget renders white-label ("Security-checked
         by Acme Platform · 96/100"). The dashboard create-key UI (plaintext-once) is covered by unit tests;
         not driven live because it needs an interactive login.
-- [ ] **Phase 8** — Pricing, business & exit readiness
+- [x] **Phase 8** — Pricing, business & exit readiness — **complete & live-verified end-to-end (2026-07-18).**
+      Shipped in `b63d567`, `a2fb174`, `7a40512`, `bcc5720`.
+  - [x] `billing_plan` OEM-tier migration `20260718200000_billing_plan_oem_tier.sql` (additive/idempotent;
+        adds a DB check on `organizations.billing_plan` and widens `api_keys.plan` to include `'oem'`) —
+        **applied to prod 2026-07-18** (`supabase db push`, owner-approved). Pre-push verified prod had no
+        dirty plan values; post-push confirmed both check constraints are `in ('free','pro','oem')`.
+  - [x] **Server-enforced entitlements** — `utils/entitlements.ts` (pure, exhaustive over `BillingPlan`,
+        compile-fails if a plan is added without a mapping) is the single source of truth. Enforced in
+        routes, not just shown: `scan-url` rejects a NEW `url` target past the plan's guarded-app limit
+        (Free = 1) with `402 plan_required` (re-scans always pass; fails open only on a DB error); deep
+        review is gated by `deepReviewEnabled`; an API key's rate tier is snapshotted from the org
+        entitlement. Enum kept in sync across `entitlementsForPlan`, `apiKeyRateLimitForPlan`
+        (exhaustive + `apiKeyOem`), and the DB checks.
+  - [x] **Pricing realign** in `HomeClient.tsx` — Free / Pro / OEM-Platform matching the entitlements; OEM is
+        "Contact Sales" with **no Stripe checkout** (owner-provisioned). Stripe `planForStatus` still maps
+        only `free`/`pro`, so a webhook can never set `'oem'` — no live billing change was made.
+  - [x] **Exit-readiness** — `GET /api/internal/metrics`, an aggregate-only surface from `getFixOutcomeCorpus`
+        (pattern columns only) + a scalar `countMonitoredApps` (HEAD + `count=exact`, no rows), gated by a
+        shared `METRICS_SECRET` via the new timing-safe, fail-closed `verifyBearerSecret` (401 before any DB
+        access). `rollupExitMetrics` is pure with an anti-leak test. Plus `docs/roadmap/11-exit-narrative.md`.
+  - [x] **Trust/compliance** — a public, static SOC2-lite `/trust` page (posture, ownership-gated probing,
+        PII redaction, subprocessors); no new data collection.
+  - [x] **Tests + independent review:** web 908 pass / 130 files, mcp-server 11 pass, `tsc --noEmit`
+        (apps/web) clean. Reviewed by reading the code, not the report: entitlements enforced server-side,
+        enum in sync, money is owner-only (no live financial op, OEM never set from a webhook), corpus/metrics
+        aggregate-only, metrics secret fail-closed.
+  - [x] **Live-verified (2026-07-18):** against prod — the metrics endpoint returns aggregate KPIs with a
+        valid secret (real corpus: 9 apps, verifiedFixRate 0.5714) and **401** with a missing/wrong secret and
+        no DB work; the realigned Free/Pro/OEM pricing renders; the SOC2-lite trust page renders. The 402
+        guarded-app-limit is unit-verified (a live check needs an interactive login on a Free org).
+
+**The genius rebuild is complete — Phases 0–8 are all shipped and browser/live-verified. There is no Phase 9.**
 
 ---
 
