@@ -76,6 +76,33 @@ export function toPublicIssueCategory(key: string, severity: Severity): string {
   return severity === 'error' ? 'Security blocker' : 'Security review item';
 }
 
+/**
+ * A one-line, GENERIC remediation for a coarse public category. Safe to expose to
+ * agents/OEM callers because it advises on the category only — it never names the
+ * app's exploitable table, env var, or any evidence. Mirrors the categories emitted
+ * by `toPublicIssueCategory`; any unmatched category falls back to a neutral line.
+ */
+export function categoryRemediation(category: string): string {
+  switch (category) {
+    case 'Database access control (RLS)':
+      return 'Enable Row-Level Security on every Supabase table and add owner-scoped policies.';
+    case 'Exposed secret or key':
+      return 'Rotate the exposed credential and move it to a server-only environment variable.';
+    case 'Configuration & secrets management':
+      return 'Document required environment variables and keep secrets out of client bundles.';
+    case 'Payment webhook verification':
+      return 'Verify the Stripe webhook signature before trusting any event payload.';
+    case 'Missing security headers':
+      return 'Add the recommended security response headers (CSP, HSTS, X-Content-Type-Options).';
+    case 'Server/client boundary':
+      return 'Keep server-only modules out of client components to avoid leaking server code.';
+    case 'Performance & runtime':
+      return 'Review runtime/cold-start and edge configuration for the affected routes.';
+    default:
+      return 'Review the flagged issue in the Assurly dashboard and apply the suggested fix.';
+  }
+}
+
 /** Builds the public DTO. Returns null when the target has no shareable badge token. */
 export function toPublicTrustProjection(target: Target): PublicTrustProjection | null {
   if (!target.badge_token) return null;
