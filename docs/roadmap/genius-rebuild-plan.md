@@ -1,39 +1,43 @@
 # Assurly — Genius Rebuild: Cursor Execution Handoff
 
 > **Audience:** Cursor (the AI coding agent that will continue this rebuild).
-> **Purpose:** A self-contained, senior-level execution spec for **all remaining work** (Phases 6–8).
+> **Purpose:** A self-contained, senior-level execution spec for **all remaining work** (Phases 7–8).
 > **Companion:** The strategy/rationale lives in [`10-genius-rebuild-master-plan.md`](./10-genius-rebuild-master-plan.md).
 > Read that once for the "why"; this file is the "what and how".
 >
-> **Owner:** Tibor Kútik · **Handoff date:** 2026-07-13 · **Last updated:** 2026-07-17 (Phase 5 landed)
+> **Owner:** Tibor Kútik · **Handoff date:** 2026-07-13 · **Last updated:** 2026-07-18 (Phase 6 landed)
 >
-> **Golden rule:** Phases **0 through 5** are **already built, tested, and browser-verified** — do **not**
-> rebuild them. Start at **Phase 6**. Read Sections 1–3 first (current state + conventions + gotchas);
+> **Golden rule:** Phases **0 through 6** are **already built, tested, and browser-verified** — do **not**
+> rebuild them. Start at **Phase 7**. Read Sections 1–3 first (current state + conventions + gotchas);
 > they will save you hours and stop you from breaking working code.
 >
-> **Verification status (read this before claiming a phase is done):** Phases 0–5 are all browser-verified
-> end-to-end (2026-07-17: ownership → active probe → verified-fix loop proven live against a controlled
-> owned target; the `fix_outcome` migration is applied to prod). Phase 4's AI red-team planner now
-> genuinely discovers app-specific tables (moat criterion resolved). See the Master Tracker in the
-> companion file for the shipped shape of each. §1 documents what you **build on**.
+> **Verification status (read this before claiming a phase is done):** Phases 0–6 are all browser-verified
+> end-to-end. 2026-07-17: ownership → active probe → verified-fix loop proven live (Phase 5). 2026-07-18:
+> the Continuous Guardian was proven live end-to-end (cron auth 401 → baseline → a real regression fired
+> exactly one alert email → badge/trust page → dashboard "score dropped" indicator), and the
+> `target_alert_prefs` migration is applied to prod. Phase 4's AI red-team planner genuinely discovers
+> app-specific tables (moat criterion resolved). See the Master Tracker in the companion file for the
+> shipped shape of each. §1 documents what you **build on**.
 
 ---
 
 ## 1. What is already DONE (do not rebuild — this is your foundation)
 
-Phases 0–5 are implemented, tested (**822 tests green, 113 files; `tsc --noEmit` clean**), and
+Phases 0–6 are implemented, tested (**857 tests green, 121 files; `tsc --noEmit` clean**), and
 browser-verified end-to-end. The following exists and works. **Build on it; do not recreate or "improve"
 it unless a later phase explicitly says so.**
 
-Fast orientation — the things Phase 6 leans on hardest:
+Fast orientation — the things Phase 7 leans on hardest:
 
-| You need                     | It already exists at                                                                               |
-| ---------------------------- | -------------------------------------------------------------------------------------------------- |
-| The verdict per app          | `utils/shipGate.ts` (`resolveVerdict*`), `targets` table, `GET /api/targets`                       |
-| A re-probe (ownership-gated) | `utils/reprobe.ts` → `reprobeTargetAndRecord` (§1.9) — **never write a second probe path**         |
-| The gate for active probing  | `utils/ownership/gate.ts` → `isActiveProbeAllowed` — **the single gate; never route around it**    |
-| Regression detect + email    | `utils/scanRegression.ts` (`detectNewBlockers`), `utils/notify.ts` (`sendRegressionAlert`, Resend) |
-| Badge + public report        | `GET /api/badge/[token]` (SVG), `report/[token]/page.tsx` + `GET /api/reports/[token]`             |
+| You need                              | It already exists at                                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| The verdict per app                   | `utils/shipGate.ts` (`resolveVerdict*`), `targets` table, `GET /api/targets`                            |
+| A structured public verdict/proof     | `utils/publicTrust.ts` → `toPublicTrustProjection` (shape-only), `GET /api/trust/[token]` (§1.10)       |
+| The badge (SVG, live score)           | `GET /api/badge/[token]` → links to `report/[token]` trust page (§1.10)                                 |
+| The gate for active probing           | `utils/ownership/gate.ts` → `isActiveProbeAllowed` — **the single gate; the API/MCP must never bypass** |
+| A re-probe (ownership-gated)          | `utils/reprobe.ts` → `reprobeTargetAndRecord` (§1.9) — **never write a second probe path**              |
+| The existing MCP server (local scans) | `packages/mcp-server` → `assurly_scan_path` / `assurly_scan_files` / `assurly_explain_rule`             |
+| Route security + rate limits          | `utils/apiSecurity.ts` → `secureRoute`, `RATE_LIMITS` (add plan/key-based limits here)                  |
 
 ### 1.1 Scan reliability & performance (done)
 
@@ -103,11 +107,11 @@ badge_token, created_at, updated_at`. Unique on `(organization_id, kind, identif
 ### 1.5 Deferred from Phase 1 (small, optional — pick up only if a later phase needs it)
 
 - `GET /api/targets/[id]` was **not** built. The existing repo/scan detail already serves as the
-  verdict detail. Build it only when a phase needs a stable per-target detail endpoint (e.g. a public
-  trust page in Phase 6).
-- `probe_evidence` (Phase 2) and `fix_outcome` (Phase 5) **both exist and are applied to prod**
-  (see §1.6 and §1.9). `GET /api/targets/[id]` is still **not** built — Phase 6 is the phase most likely
-  to need it (a public trust-page projection); build it there if you do.
+  verdict detail, and Phase 6's public trust page uses `GET /api/trust/[token]` (§1.10) instead. Build a
+  per-`id` endpoint only if a later phase needs a stable per-target detail endpoint keyed by id.
+- `probe_evidence` (Phase 2), `fix_outcome` (Phase 5), and `target_alert_prefs` (Phase 6) **all exist and
+  are applied to prod** (see §1.6 / §1.9 / §1.10). The public, shape-only projection already exists as
+  `toPublicTrustProjection` + `GET /api/trust/[token]` — Phase 7 should reuse it, not invent a second one.
 
 ### 1.6 Proof-first experience + the AI client (Phase 2 — done, browser-verified)
 
@@ -199,6 +203,34 @@ regressed}, pr_url, deploy_id, …)`. Also created `private.vercel_webhook_deliv
 - **Proven live:** an owned target with `customers` RLS off recorded `still_open`; after enabling RLS a
   re-scan recorded `verified_fixed` (confirmed by a direct `fix_outcome` query on prod); verdict moved
   🚫 NOT READY 80 → ⚠️ REVIEW 96.
+
+### 1.10 Continuous Guardian + badge growth loop (Phase 6 — done, browser-verified end-to-end)
+
+**This is the always-on monitoring + the public distribution surface — Phase 7 exposes it to agents/OEMs.**
+
+- **`target_alert_prefs` table** — migration `20260718000000_target_alert_prefs.sql`, org-scoped RLS
+  mirroring `targets`, `unique(target_id,channel)` — **applied to prod 2026-07-18**.
+- **Guardian cron** — `GET /api/cron/guardian` + `apps/web/vercel.json` `crons` (daily 06:00 UTC).
+  `utils/cronAuth.ts` verifies `Authorization: Bearer $CRON_SECRET` **fail-closed + timing-safe BEFORE any
+  DB/probe** (missing/wrong → 401, zero work). `utils/guardian.ts` batches through `reprobeTargetAndRecord`
+  → `isActiveProbeAllowed` (never a second probe path), verified-`url` targets only, bounded concurrency
+  (3) + wall time (50s); one slow/failed target never fails the batch.
+- **Low-noise alerts** — `utils/scanRegression.ts` → `notifyIfTargetRegressionBlockers` fires ONLY on
+  `detectNewBlockers` (new blockers); baseline / steady-state / newly-fixed = zero. Email (Resend) default-on;
+  optional Slack/Discord incoming-webhook per target with a **host-allowlist SSRF guard** (`utils/notify.ts`).
+  The deploy webhook applies `applyGuardianAfterReprobe` (new blockers only) after its re-probe.
+- **Badge + public trust growth loop** — `GET /api/badge/[token]` renders the live "Verified by Assurly ·
+  Ship Score N/100" SVG linking to `report/[token]`; **`GET /api/trust/[token]` + `utils/publicTrust.ts`
+  (`toPublicTrustProjection`) are the whitelisted, shape-only public projection** — verdict, score,
+  freshness, and a COARSE issue category only (`toPublicIssueCategory`), **never evidence rows, a raw
+  finding message, or the exposed table name**. This is the surface Phase 7's OEM/agent verdict reuses.
+- **FE `VerdictCard`** — Guardian chip, "last checked" freshness, "score dropped since last check" indicator.
+- **Proven live (2026-07-18):** cron auth 401 → authorized baseline (zero alerts) → a real regression
+  (RLS disabled between checks) fired **exactly one** alert email (`errors:0`, which also proved the
+  migration) and flipped the verdict 96 → 80 with the dashboard indicator; steady-state re-run = zero.
+- **Two hardening fixes shipped:** `2fbbd52` — the public projection no longer names the exploitable table
+  (category-only); `5fa1c64` — RLS findings are scoped per table (`supabaseTableLocation`) so a
+  second exposed table is a distinct regression, not a collapsed key.
 
 ---
 
@@ -318,120 +350,98 @@ A phase is **done** only when **all** of these hold:
 
 ---
 
-## 5. REMAINING WORK — Phase 6
+## 5. REMAINING WORK — Phase 7
 
-### Phase 6 — Continuous Guardian + Badge growth loop (do this next)
+### Phase 7 — Agent-Native Distribution (MCP gate) + OEM (do this next)
 
-**Goal:** Turn one-shot scans into an **always-on guardian** (the subscription value) and make the
-**badge a distribution engine**. This is the phase that turns "I scanned once" into "I pay every month
-because Assurly watches my app", and turns every protected app into marketing.
+**Goal:** Be the ship-gate that **AI coding agents call themselves** before they deploy, and the
+"security-checked" layer **platforms embed** for their own users. This is the distribution phase: it turns
+the verdict/proof/guardian you already built into something a Cursor/Bolt/Lovable agent hits over MCP and
+an API, and something a platform white-labels.
 
-**Why now, and the golden constraint:** the verdict (P1), proof (P2), ownership (P3), AI depth (P4), and
-the verified-fix loop (P5) all exist and are browser-verified. **Nothing here is new probing machinery** —
-you are _scheduling_ the probe you already have, _alerting_ on the regressions you already detect, and
-_surfacing_ the badge/report you already render. Do NOT rebuild probing, the ownership gate, alerting, or
-the verdict object.
+**Why now, and the golden constraint:** the verdict (P1), proof (P2), ownership gate (P3), AI depth (P4),
+the verified-fix loop (P5), and the always-on guardian + shape-only public projection (P6) all exist and
+are browser-verified. **Nothing here is new scanning or probing machinery** — you are _exposing_ the
+hosted verdict and the Phase-6 public projection through an MCP tool and a keyed API, and _white-labeling_
+the badge/trust surface. Do NOT re-implement scanning in the MCP server, and do NOT let the MCP/API become
+a way to actively probe a target the caller has not proven they own.
 
 **Context you already have — connect these, do not recreate:**
 
-- **Re-probe** — `utils/reprobe.ts` → `reprobeTargetAndRecord` / `recordReprobeOutcomes` (Phase 5, §1.9).
-  A scheduled or deploy-triggered guardian check IS a re-probe **through the ownership gate**. Reuse it
-  verbatim — never write a second probe path, never route around `isActiveProbeAllowed`.
-- **Regression detection** — `utils/scanRegression.ts`: `detectRegressions`, `detectNewBlockers`,
-  `notifyIfRegressionBlockers(db, repository, prev, current)`. Wired today only into `api/github/webhook`
-  for repo scans — you extend the same idea to `url` targets.
-- **Email** — `utils/notify.ts`: `sendRegressionAlert(recipients, { name }, newBlockers)` via Resend;
-  recipients from `db.getOrganizationAdminEmails(orgId)`. Reuse; add channels alongside, don't replace.
-- **Badge + public report** — `GET /api/badge/[token]` already renders an SVG "Ship Score N/100"
-  (`auth: 'none'`, `buildShipGateFromScanFindings`); `report/[token]/page.tsx` + `GET /api/reports/[token]`.
-- **Deploy signal** — `POST /api/vercel/webhook` (Phase 5) already re-probes on deploy and records
-  outcomes; Phase 6 adds the **alert** on top when a deploy introduces a new blocker.
+- **Hosted verdict** — `utils/shipGate.ts` (`resolveVerdict*`), the `targets` table, `GET /api/targets`.
+  The MCP/API verdict must READ this, not recompute a scan.
+- **Shape-only public projection (Phase 6, §1.10)** — `utils/publicTrust.ts` → `toPublicTrustProjection` +
+  `GET /api/trust/[token]`. This is exactly the safe payload an OEM/agent may see for a target it does not
+  own: verdict, score, freshness, coarse category — never evidence/PII/table names. Reuse it verbatim.
+- **The ownership gate** — `utils/ownership/gate.ts` → `isActiveProbeAllowed`. A programmatic caller gets
+  the **passive** verdict for a stranger URL; the **active** probe stays owner-only. The gate is the single
+  authority — the MCP tool and the API must go through it, never around it.
+- **The existing MCP server** — `packages/mcp-server` already ships `assurly_scan_path` /
+  `assurly_scan_files` / `assurly_explain_rule` (local static scans via `scanner-core`). You ADD one tool
+  alongside them; you do not rewrite the server.
+- **Route security + rate limits** — `utils/apiSecurity.ts` (`secureRoute`, `RATE_LIMITS`). Extend with
+  key/plan-based limits; do not invent a second security wrapper.
 
 **Deliverables**
 
-1. **Scheduled guardian re-probe (daily baseline).**
-   - Cron entrypoint via `apps/web/vercel.json` `crons` → a new `GET /api/cron/guardian`. It is
-     unauthenticated by nature, so **verify a shared cron secret** (`CRON_SECRET` / the `Authorization`
-     header) before doing any work; `secureRoute` `auth: 'none'`, `RATE_LIMITS.webhook`, and 401 on a bad
-     secret.
-   - For each monitored ownership-verified `url` target (and connected repos), run the existing re-probe
-     (`reprobeTargetAndRecord`) **through `isActiveProbeAllowed`**. Bound concurrency and per-run wall time;
-     one slow/failed target must never block or fail the batch.
-   - Update the target's verdict + `last_checked_at` (the verdict object is already the store).
+1. **`assurly_verdict` MCP tool — the pre-deploy ship-gate for agents.**
+   - Add to `packages/mcp-server` a tool `assurly_verdict({ url | repo })` returning a STRUCTURED verdict:
+     `status` (ready/review/blocked), ship score, the single top blocker + its one-line fix, and a link to
+     the trust page. Shape mirrors `toPublicTrustProjection` — coarse category, never evidence/PII.
+   - It calls the **hosted Assurly API** (below) — it must not run a live scan/probe itself. For a URL the
+     caller does not own, it returns the passive verdict only.
+   - Acceptance: a scripted MCP client gets a correct structured verdict for a known target pre-deploy.
 
-2. **Regression alerts for targets — productized and low-noise.**
-   - On BOTH the scheduled run and the deploy webhook: diff new findings vs. the target's previous state and
-     alert **only on NEW blockers / regressions** (reuse `detectNewBlockers`) — never on the steady state.
-     Alert fatigue is the #1 failure mode; this is a hard product rule, not a preference.
-   - Founder's language: _"Your app was safe yesterday; this morning's edit re-exposed `users`."_ Deliver via
-     `sendRegressionAlert` (Resend) **plus an optional Slack/Discord incoming-webhook** per target.
-   - **Per-target alert preferences** — a `target_alert_prefs` table (channel, webhook URL, enabled),
-     org-scoped RLS (§2.7) via a new migration (prod push needs owner approval, §3.2) + FE
-     `AlertPreferences.tsx`.
+2. **Programmatic verdict API + API keys (plan-gated).**
+   - A public, keyed endpoint (e.g. `GET /api/v1/verdict?url=…` / `?repo=…`) that returns the same
+     shape-only projection. `secureRoute` with a NEW `auth: 'apiKey'` mode; **plan-based** `RATE_LIMITS`.
+   - **`api_keys` table** (org-scoped RLS §2.7): store a **hash** of the key (never the plaintext), prefix,
+     label, plan, `last_used_at`, revoked flag. New migration → dry-run + owner approval (prod, §3.2).
+   - Key issuance/rotation/revocation from the dashboard (show the plaintext once, on creation, only).
+   - The keyed path is READ-ONLY over existing verdicts. It **must not** trigger an active probe on a
+     target the key's org hasn't ownership-verified — reuse `isActiveProbeAllowed`.
 
-3. **Badge as a growth loop + public trust page.**
-   - Promote `GET /api/badge/[token]` to a polished "Verified by Assurly · Ship Score N/100" founders embed
-     on their own site; every badge links back to the trust page = the growth loop.
-   - Turn `report/[token]` into a polished public **trust page** (verdict + redacted proof summary +
-     "last checked" freshness + the badge). This is where a stable **`GET /api/targets/[id]` public
-     projection** (deferred in Phase 1, §1.5) may finally be worth building — expose only safe public
-     fields, **never raw evidence or PII**.
-
-4. **FE "Guardian" state.**
-   - On `VerdictCard`: a live monitoring status + "last checked" freshness + a regression indicator when the
-     score dropped since the previous check.
+3. **OEM / B2B2C white-label surface.**
+   - A white-label verdict + badge widget/embed a platform (Lovable/Bolt/agency) can surface to its own
+     users, backed by the Phase-6 badge (`GET /api/badge/[token]`) and the trust projection. Configurable
+     branding label; the underlying data stays shape-only.
+   - Acceptance: a working embeddable "security-checked" widget backed by the badge/verdict.
 
 **Tests (part of the deliverable, not a follow-up)**
 
-- Cron route: valid secret runs the batch; **missing/invalid secret → 401 and NO probe**.
-- Alert logic: new blocker → **exactly one** alert; unchanged findings → **zero** alerts (the fatigue rule);
-  a newly-fixed finding → no alert. Mock `sendRegressionAlert`; assert call counts.
-- Guardian re-probe honors the gate: an unverified `url` target gets **no active probe** — mirror the
-  Phase 4/5 side-effect security tests (assert zero probe requests, not just a response field).
-- Badge / trust projection exposes only whitelisted public fields (no evidence, no PII) — assert the shape.
+- MCP `assurly_verdict`: returns the correct structured verdict for a known target (mock the hosted API);
+  a URL the caller doesn't own yields the passive verdict, never an active probe.
+- API-key auth: a valid key → verdict; **missing / malformed / revoked key → 401**; plan rate limit enforced.
+  Keys are stored hashed (assert the plaintext is never persisted or logged).
+- **Side-effect security (mirror Phase 4/5/6):** the programmatic + MCP paths make **zero** active-probe
+  requests against an unverified target — assert on the probe/fetch call count, not just a response field.
+- OEM/public payload exposes only whitelisted shape fields (no evidence, no PII, no table names).
 
 **Acceptance criteria**
 
-- A regression on an owned app (introduced between two guardian checks, or on a deploy) fires **exactly one**
-  alert within the monitoring window — verified in a browser and a real inbox / webhook.
-- The badge renders the **live** current score and links to a shareable trust page — verified in a browser.
-- Steady state (no new blockers) produces **no** alerts.
+- A scripted MCP client gets a correct structured `assurly_verdict` pre-deploy.
+- A working embeddable "security-checked" widget/API backed by the badge/verdict.
+- Programmatic key issuance + plan-based rate limits enforced; keys hashed at rest and revocable.
 
 **Risks / do-not:**
 
-- **Alert fatigue** — only new blockers/regressions, never the steady state.
-- No new probe path and nothing that skips `isActiveProbeAllowed` — the guardian must not become a way to
-  probe unverified targets on a schedule.
-- The public trust page / badge projection must never leak evidence rows or PII — public = shape only.
-- The cron endpoint must reject any request without the shared secret before touching a single target.
+- The MCP tool and the API must **never** become an active-probe bypass — the ownership gate stays
+  authoritative; strangers get the passive verdict only.
+- Public/OEM/keyed payloads are **shape only** (reuse `toPublicTrustProjection`) — never evidence, PII, or
+  the exposed table name.
+- API keys are **hashed at rest**, shown in plaintext exactly once on creation, revocable, rate-limited by plan.
+- Do not re-implement scanning inside `packages/mcp-server`; the verdict tool reads the hosted API.
 
 ---
 
-## 6. REMAINING WORK — Phases 7–8 (senior specs)
+## 6. REMAINING WORK — Phase 8 (senior spec)
 
-Each phase still ends with the full Definition of Done (§4). Phase 6 above (§5) is the most detailed because
-it is next; the specs below are precise but expect you to apply the same rigor and the conventions in §2.
+Phase 8 still ends with the full Definition of Done (§4). Phase 7 above (§5) is the most detailed because it
+is next; the spec below is precise but expects you to apply the same rigor and the conventions in §2.
 
-> **Phases 3, 4, 5 and 6 are no longer specified here.** Phases 3–5 are **built** — their shipped shape is
-> documented in **§1.7 / §1.8 / §1.9**, which is what you build on. Phase 6's spec is in **§5** because it is
-> next. Do not re-implement any of them.
-
-### Phase 7 — Agent-Native Distribution (MCP gate) + OEM
-
-**Goal:** Be the ship-gate that **AI agents call themselves** before deploy, and the "security-checked"
-layer **platforms embed**.
-
-**Deliverables**
-
-- **`packages/mcp-server`**: add an `assurly.verdict(url | repo)` tool returning a structured
-  Ready/Blocked + top blocker + fix, callable pre-deploy by a coding agent. Position as "the standard
-  ship-gate for AI agents."
-- **Programmatic API + keys** for agent/OEM use, with plan-based rate limits.
-- **OEM/B2B2C**: a white-label verdict + badge widget/API platforms (Lovable/Bolt/agencies) can surface
-  to their own users.
-
-**Acceptance:** a scripted MCP client gets a correct structured verdict pre-deploy; a working embeddable
-"security-checked" widget backed by the badge/verdict.
+> **Phases 3–6 are no longer specified here.** They are **built** — their shipped shape is documented in
+> **§1.7 / §1.8 / §1.9 / §1.10**, which is what you build on. Phase 7's spec is in **§5** because it is next.
+> Do not re-implement any of them.
 
 ### Phase 8 — Pricing, Business & Exit readiness
 
@@ -477,17 +487,20 @@ layer **platforms embed**.
    (§1.6 / §1.7 / §1.8); Phase 4's moat criterion is resolved.
 2. ~~**Phase 5**~~ (verified-fix loop + dataset) — **done & browser-verified end-to-end** (§1.9);
    `fix_outcome` migration applied to prod.
-3. **Phase 6** (continuous guardian + badge growth loop) — **next; spec in §5.**
-4. **Phase 7** (MCP gate + OEM).
+3. ~~**Phase 6**~~ (continuous guardian + badge growth loop) — **done & browser-verified end-to-end** (§1.10);
+   `target_alert_prefs` migration applied to prod.
+4. **Phase 7** (agent-native MCP gate + OEM) — **next; spec in §5.**
 5. **Phase 8** (pricing + exit).
 
 Do not reorder without updating `10-genius-rebuild-master-plan.md` first.
 
-**Carry into Phase 6 — do not silently inherit as "done":** two Phase-1 deferrals are still open and Phase 6
-is the phase most likely to need them — `GET /api/targets/[id]` (a stable per-target endpoint for the public
-trust page, §1.5) and per-target alert delivery beyond email. Neither is built. Also: the moat is the
-**verified-fix corpus** (§0), not the planner — invest Phase-6 energy in monitoring/distribution, not in
-more planner cleverness.
+**Carry into Phase 7 — do not silently inherit as "done":** the `assurly_verdict` MCP tool, an
+`auth: 'apiKey'` mode + `api_keys` table, and plan-based rate limits do **not** exist yet — build them
+through `secureRoute` and the ownership gate, never around them. `GET /api/targets/[id]` (a stable
+per-target public endpoint, §1.5) is still not built; you may finally want it here, but the shape-only
+payload already exists as `toPublicTrustProjection` / `GET /api/trust/[token]` (§1.10) — reuse it, don't
+invent a second projection. Also: the moat is the **verified-fix corpus** (§0), not the planner — invest
+Phase-7 energy in distribution (agents/OEM), not in more scanning.
 
 **Before you start each phase:** re-read §2 (conventions) and §3 (gotchas). **Before you finish each
 phase:** run the full Definition of Done (§4), get owner approval for any prod migration, browser-verify,
