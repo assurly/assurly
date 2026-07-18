@@ -132,6 +132,20 @@ const targetCardSchema = z.object({
 const targetsSchema = z.object({ targets: z.array(targetCardSchema) });
 export type TargetCard = z.infer<typeof targetCardSchema>;
 
+const apiKeySchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  keyPrefix: z.string(),
+  plan: z.enum(['free', 'pro']),
+  lastUsedAt: z.string().nullable(),
+  revokedAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+const apiKeysListSchema = z.object({ keys: z.array(apiKeySchema) });
+const apiKeyCreatedSchema = z.object({ apiKey: z.string(), key: apiKeySchema });
+const apiKeyRevokedSchema = z.object({ revoked: z.boolean() });
+export type ApiKeySummary = z.infer<typeof apiKeySchema>;
+
 const githubRepositorySchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -247,6 +261,17 @@ export const clientApi = {
       reprobeSchema,
       jsonRequest('POST'),
     ),
+  apiKeys: {
+    list: (): Promise<{ keys: ApiKeySummary[] }> => requestJson('/api/api-keys', apiKeysListSchema),
+    create: (label: string): Promise<{ apiKey: string; key: ApiKeySummary }> =>
+      requestJson('/api/api-keys', apiKeyCreatedSchema, jsonRequest('POST', { label })),
+    revoke: (id: string): Promise<{ revoked: boolean }> =>
+      requestJson(
+        `/api/api-keys/${encodeURIComponent(id)}/revoke`,
+        apiKeyRevokedSchema,
+        jsonRequest('POST'),
+      ),
+  },
 };
 
 export const githubApi = {

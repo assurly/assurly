@@ -44,6 +44,7 @@ import { preferPublicScanForRepository, sanitizeGitHubOwner } from '../../../uti
 import { buildShipGateFromScanFindings } from '../../../utils/shipGate';
 import { RepoListPanel } from './RepoListPanel';
 import { VerdictCardsSection } from './VerdictCardsSection';
+import { ApiKeys } from './ApiKeys';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { DashboardTabs } from './DashboardTabs';
 import { PublicRepoConnect } from './PublicRepoConnect';
@@ -1491,6 +1492,7 @@ function DashboardContent({
                 onCreateBatchFixPr={() => void handleCreateBatchFixPr()}
               />
             </div>
+            <ApiKeys />
           </>
         ) : (
           <ManualChecker onToast={handleCheckerToast} />
