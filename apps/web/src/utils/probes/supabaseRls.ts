@@ -10,6 +10,19 @@ function supabaseHeaders(anonKey: string): HeadersInit {
   };
 }
 
+/**
+ * Location string for a Supabase-table finding. The table name is part of the
+ * finding's IDENTITY, not just its human message: regression detection keys on
+ * `rule_id | file_path | line_number` (see `scanRegression.regressionKey`). If
+ * every exposed table shared one `file_path`, a SECOND table getting exposed
+ * would collapse onto the first table's key and never fire a "new blocker"
+ * alert. Scoping the location to the table keeps the key stable AND distinct —
+ * no volatile data (row counts live in evidence, never here).
+ */
+export function supabaseTableLocation(table: string): string {
+  return `Supabase REST API · ${table}`;
+}
+
 /** Parses the total row count from a PostgREST `content-range: 0-0/1234` header. */
 function parseContentRangeTotal(header: string | null): number | undefined {
   if (!header) return undefined;
@@ -94,7 +107,7 @@ export async function executeSupabaseRlsTableRead(
       severity: 'error',
       message: `Supabase table '${table}' returned rows via anon key without RLS protection.`,
       suggestion: `Enable row-level security and add policies for table '${table}'.`,
-      file: 'Supabase REST API',
+      file: supabaseTableLocation(table),
     },
   ];
 
@@ -130,6 +143,6 @@ export function buildAnonWriteImpliedFindings(openTables: readonly string[]): We
     message: `Table '${table}' is readable with the anon key; write access is likely possible if RLS policies are missing.`,
     suggestion:
       'Add restrictive RLS policies for SELECT, INSERT, UPDATE, and DELETE. This check infers risk only — no write probe was attempted.',
-    file: 'Supabase REST API',
+    file: supabaseTableLocation(table),
   }));
 }

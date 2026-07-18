@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ScanFinding } from './dbAdapter';
+import { supabaseTableLocation } from './probes/supabaseRls';
 import { detectNewBlockers, detectRegressions } from './scanRegression';
 
 function finding(
@@ -104,5 +105,34 @@ describe('detectNewBlockers', () => {
 
     // Only the high-confidence error is a blocker; error+medium is a review item.
     expect(detectNewBlockers([], current)).toEqual([current[1]]);
+  });
+
+  it('detects a newly-exposed Supabase table as a distinct new blocker (granularity)', () => {
+    // Every RLS-open finding shares one rule_id and has no line number; the table
+    // is the only discriminator and it lives in file_path via supabaseTableLocation.
+    // Without that, a second exposed table would collapse onto the first table's
+    // regression key and never alert.
+    const rls = (table: string): ScanFinding =>
+      finding({
+        id: `rls-${table}`,
+        rule_id: 'runtime-supabase-rls-open',
+        file_path: supabaseTableLocation(table),
+        line_number: undefined,
+        severity: 'error',
+        confidence: 'high',
+        message: `Supabase table '${table}' returned rows via anon key without RLS protection.`,
+      });
+
+    // The two locations must actually differ — this is what makes the key distinct.
+    expect(supabaseTableLocation('invoices')).not.toBe(supabaseTableLocation('customers'));
+
+    const previous = [rls('invoices')];
+    const current = [rls('invoices'), rls('customers')];
+
+    const newBlockers = detectNewBlockers(previous, current);
+    expect(newBlockers).toHaveLength(1);
+    expect(newBlockers[0].file_path).toBe(supabaseTableLocation('customers'));
+    // The already-known table must NOT re-alert (fatigue rule still holds).
+    expect(detectNewBlockers(previous, [rls('invoices')])).toEqual([]);
   });
 });
