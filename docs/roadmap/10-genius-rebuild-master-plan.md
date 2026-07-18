@@ -730,7 +730,43 @@ Leverage and dependency both point to this order. We do not reorder without upda
         criterion "a fix_outcome row is written per resolved finding (verify via DB)".
   - [x] `9fabf19` fixed the persistence bug found during this verification (`return=minimal` 201 empty
         body threw "Unexpected end of JSON input"), so evidence + outcomes now persist.
-- [ ] **Phase 6** — Continuous Guardian + badge growth loop
+- [x] **Phase 6** — Continuous Guardian + badge growth loop — **complete & browser-verified end-to-end (2026-07-18).**
+      Shipped in `ec3b8b1`, `5fb1ae1`, `064acd7`; hardened by `2fbbd52` + `5fa1c64`.
+  - [x] `target_alert_prefs` migration `20260718000000_target_alert_prefs.sql` (org-scoped RLS mirroring
+        `targets`, `unique(target_id,channel)`) — **applied to prod 2026-07-18** (`supabase db push`,
+        owner-approved; additive/idempotent).
+  - [x] Guardian cron `GET /api/cron/guardian` + `vercel.json` (daily 06:00 UTC). `utils/cronAuth.ts`
+        verifies `Authorization: Bearer $CRON_SECRET` **fail-closed + timing-safe BEFORE any DB/probe**;
+        missing/wrong secret → 401, zero work. `utils/guardian.ts` batches through `reprobeTargetAndRecord`
+        → `isActiveProbeAllowed` (never a second probe path), verified-url targets only, bounded
+        concurrency (3) + wall time (50s).
+  - [x] Low-noise alerts: `notifyIfTargetRegressionBlockers` fires ONLY on `detectNewBlockers` (new
+        blockers) — baseline/steady-state/newly-fixed = zero. Email (Resend) default-on; optional
+        Slack/Discord incoming-webhook per target with host-allowlist SSRF guard. Deploy webhook applies
+        `applyGuardianAfterReprobe` (new blockers only) after its re-probe.
+  - [x] Badge + public trust growth loop: `GET /api/badge/[token]` renders the live "Verified by Assurly
+        · Ship Score N/100" SVG linking to `report/[token]`; `GET /api/trust/[token]` + trust page are a
+        whitelisted shape-only projection. FE `VerdictCard` shows the Guardian chip, "last checked"
+        freshness, and a "score dropped since last check" regression indicator.
+  - [x] **Verified live end-to-end on the dogfood target** (`assurly-test-target…vercel.app`): cron auth
+        401 (missing/wrong secret) → authorized run seeded the baseline (badge_token, verdict, score) with
+        zero alerts; a real regression (RLS disabled on a table between checks) produced **exactly one**
+        alert email to the org admin (`errors:0`, which also proves the new migration — `getTargetAlertPrefs`
+        no longer errors) and flipped the verdict 96 → 80 with the dashboard "score dropped" indicator;
+        steady-state re-run = zero alerts; every check also fed the `fix_outcome` corpus
+        (`regressed`/`verified_fixed`).
+  - [x] **`2fbbd52` (security):** the public trust page/badge projection surfaced the raw finding message,
+        naming the exact exploitable table (e.g. `invoices`) of a still-`blocked` app. Now exposes only a
+        coarse category (`toPublicIssueCategory`, derived from the group-key prefix — never the tail) +
+        severity; anti-leak test asserts the table name/raw message are absent. Verified live: trust JSON +
+        rendered page show only "Database access control (RLS)".
+  - [x] **`5fa1c64` (correctness):** RLS-open findings shared one `rule_id`+`file_path` with the table only
+        in the message, so `regressionKey` collapsed N exposed tables to one key and a second exposed table
+        never alerted. `supabaseTableLocation(table)` now scopes the finding location per table (stable, no
+        volatile data). Verified live: exposing two tables yields two distinct table-scoped blockerSnapshot
+        entries; unit tests prove `detectNewBlockers` flags a newly-exposed second table while the known one
+        does not re-alert. **Note:** this changes the stored `file_path` shape — a target with a _live_
+        exposure re-classifies once on the first post-deploy check (a true positive), not a false alert.
 - [ ] **Phase 7** — Agent-native (MCP gate) + OEM
 - [ ] **Phase 8** — Pricing, business & exit readiness
 
