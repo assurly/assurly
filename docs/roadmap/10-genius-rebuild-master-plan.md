@@ -767,7 +767,40 @@ Leverage and dependency both point to this order. We do not reorder without upda
         entries; unit tests prove `detectNewBlockers` flags a newly-exposed second table while the known one
         does not re-alert. **Note:** this changes the stored `file_path` shape — a target with a _live_
         exposure re-classifies once on the first post-deploy check (a true positive), not a false alert.
-- [ ] **Phase 7** — Agent-native (MCP gate) + OEM
+- [x] **Phase 7** — Agent-native distribution (MCP gate) + OEM — **complete & live-verified end-to-end (2026-07-18).**
+      Shipped in `0ba799d`, `13498dd`, `d194324`, `1a50abd`, `e876553`.
+  - [x] `api_keys` migration `20260718100000_api_keys.sql` (org-scoped RLS mirroring `targets`, hash-only
+        storage, soft-revoke, `plan in (free,pro)`) — **applied to prod 2026-07-18** (`supabase db push`,
+        owner-approved; additive/idempotent). Verified on prod: table present, RLS on, 3 policies
+        (select/insert/update — no delete).
+  - [x] **API-key auth foundation** — `utils/apiKeys.ts`: 192-bit CSPRNG key, sha256 hash (unsalted is safe
+        at that entropy), plaintext returned exactly once and NEVER stored/logged, `parseBearerApiKey`
+        rejects malformed before any DB hit. `secureRoute` gains an `auth: 'apiKey'` mode (no second wrapper)
+        with plan-based `RATE_LIMITS` (`apiKeyFree`/`apiKeyPro`) keyed on the key id, layered under the IP guard.
+  - [x] **Keyed verdict API** `GET /api/v1/verdict` (`auth: 'apiKey'`) — READ-ONLY, SHAPE-ONLY via
+        `toPublicTrustProjection` + `categoryRemediation` (coarse category + generic fix, never a table name
+        or evidence). Uses the service role but scopes the lookup with an explicit `organization_id` filter
+        (`getTargetByIdentifier`), so no cross-org read; consults `isActiveProbeAllowed` but has NO
+        probe/scan/re-probe path, so a stranger/unverified URL only ever gets the passive verdict.
+  - [x] **API-key management** — `GET/POST /api/api-keys` + `POST /api/api-keys/[id]/revoke` (soft flag,
+        RLS-scoped via the user adapter → no IDOR) + dashboard `ApiKeys.tsx`. Plan snapshotted from the org
+        billing plan.
+  - [x] **`assurly_verdict` MCP tool** (`packages/mcp-server`) — added alongside the three existing local-scan
+        tools; READS the hosted `GET /api/v1/verdict` via `ASSURLY_API_KEY` (a single GET, no local scan/probe).
+        A blocking verdict is surfaced as a ship-gate failure.
+  - [x] **OEM white-label widget** `GET /api/widget/[token]` — embeddable SVG from the badge token +
+        projection, sanitized (SVG-injection-safe) branding label, shape-only.
+  - [x] **Tests + independent review:** web 886 pass / 126 files, mcp-server 11 pass, `tsc --noEmit` (apps/web)
+        clean (the pre-existing mcp-server `tsc` TS2589/module-resolution errors are unchanged and unrelated;
+        mcp validates via vitest + esbuild). Every non-negotiable was re-verified by reading the code, not the
+        report: zero active-probe path, org-scoped lookup, shape-only payloads, hash-only key storage, 401 on
+        missing/malformed/revoked, no revoke IDOR.
+  - [x] **Live-verified end-to-end (2026-07-18):** against the prod-migrated table — a minted key returns a
+        shape-only owned-target verdict (`review/96`, coarse "Missing security headers", no table name); no key
+        / garbage key / revoked key → 401; a stranger URL → passive `unknown` with `activeProbeAllowed:false`
+        and no probe (target `last_checked_at` unchanged); the OEM widget renders white-label ("Security-checked
+        by Acme Platform · 96/100"). The dashboard create-key UI (plaintext-once) is covered by unit tests;
+        not driven live because it needs an interactive login.
 - [ ] **Phase 8** — Pricing, business & exit readiness
 
 ---
