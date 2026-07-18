@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   after: vi.fn(),
   getAdminDbAdapter: vi.fn(),
   reprobe: vi.fn(),
+  applyGuardian: vi.fn(),
 }));
 
 vi.mock('next/server', async (importOriginal) => ({
@@ -17,6 +18,9 @@ vi.mock('../../../../utils/dbAdapter', () => ({
 vi.mock('../../../../utils/reprobe', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../utils/reprobe')>()),
   reprobeTargetAndRecord: mocks.reprobe,
+}));
+vi.mock('../../../../utils/guardian', () => ({
+  applyGuardianAfterReprobe: mocks.applyGuardian,
 }));
 
 import { POST } from './route';
@@ -78,6 +82,16 @@ describe('Vercel webhook security and idempotency', () => {
       outcomes: [{ ruleId: 'runtime-supabase-rls-open', outcome: 'verified_fixed' }],
       findings: [],
       evidence: [],
+    });
+    mocks.applyGuardian.mockResolvedValue({
+      targetId: target.id,
+      skipped: false,
+      skipReason: null,
+      probed: true,
+      alerted: false,
+      newBlockerCount: 0,
+      shipScore: 100,
+      verdict: 'ready',
     });
   });
 
@@ -155,6 +169,7 @@ describe('Vercel webhook security and idempotency', () => {
     expect(mocks.reprobe).toHaveBeenCalledWith(
       expect.objectContaining({ target, deployId: 'dpl_123' }),
     );
+    expect(mocks.applyGuardian).toHaveBeenCalledOnce();
     expect(db.finishVercelDelivery).toHaveBeenCalledWith('dpl_123', true);
   });
 

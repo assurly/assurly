@@ -110,6 +110,29 @@ export interface UpsertTargetInput {
   currentShipScore?: number | null;
   verdictEvidence?: unknown;
   lastCheckedAt?: string | null;
+  badgeToken?: string | null;
+}
+
+export type AlertChannel = 'email' | 'slack' | 'discord';
+
+/** Per-target alert delivery preferences (Phase 6 guardian). */
+export interface TargetAlertPref {
+  id: string;
+  organization_id: string;
+  target_id: string;
+  channel: AlertChannel;
+  webhook_url: string | null;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertTargetAlertPrefInput {
+  organizationId: string;
+  targetId: string;
+  channel: AlertChannel;
+  webhookUrl?: string | null;
+  enabled: boolean;
 }
 
 /** Input for marking a target's ownership as proven (Phase 3). */
@@ -266,6 +289,11 @@ export interface DbAdapter {
   insertProbeEvidence(rows: ProbeEvidenceInput[]): Promise<void>;
   getProbeEvidenceForScan(scanId: string): Promise<ProbeEvidenceRow[]>;
   findVerifiedUrlTargetByOrigin(origin: string): Promise<Target | null>;
+  /** All ownership-verified url targets for the guardian cron (admin/service role). */
+  listVerifiedUrlTargets(): Promise<Target[]>;
+  getTargetByBadgeToken(badgeToken: string): Promise<Target | null>;
+  getTargetAlertPrefs(targetId: string): Promise<TargetAlertPref[]>;
+  upsertTargetAlertPref(input: UpsertTargetAlertPrefInput): Promise<TargetAlertPref>;
   claimVercelDelivery(
     deployId: string,
     eventType: string,
@@ -637,6 +665,7 @@ export class SupabaseDbAdapter implements DbAdapter {
     if (input.currentShipScore !== undefined) row.current_ship_score = input.currentShipScore;
     if (input.verdictEvidence !== undefined) row.verdict_evidence = input.verdictEvidence;
     if (input.lastCheckedAt !== undefined) row.last_checked_at = input.lastCheckedAt;
+    if (input.badgeToken !== undefined) row.badge_token = input.badgeToken;
 
     const rows = await this.fetchDb<Target[]>(
       'targets?on_conflict=organization_id,kind,identifier',
@@ -693,6 +722,44 @@ export class SupabaseDbAdapter implements DbAdapter {
     return this.first(
       `targets?select=*&kind=eq.url&ownership_verified=is.true&identifier=eq.${eq(origin)}`,
     );
+  }
+
+  listVerifiedUrlTargets(): Promise<Target[]> {
+    // Guardian cron candidate set: ownership-verified url targets only. Unverified
+    // urls are never scheduled — the gate remains the authority inside each check.
+    return this.fetchDb(
+      'targets?select=*&kind=eq.url&ownership_verified=is.true&order=last_checked_at.asc.nullsfirst',
+    );
+  }
+
+  getTargetByBadgeToken(badgeToken: string): Promise<Target | null> {
+    return this.first(`targets?select=*&badge_token=eq.${eq(badgeToken)}`);
+  }
+
+  getTargetAlertPrefs(targetId: string): Promise<TargetAlertPref[]> {
+    return this.fetchDb(
+      `target_alert_prefs?select=*&target_id=eq.${eq(targetId)}&order=channel.asc`,
+    );
+  }
+
+  async upsertTargetAlertPref(input: UpsertTargetAlertPrefInput): Promise<TargetAlertPref> {
+    const row = {
+      organization_id: input.organizationId,
+      target_id: input.targetId,
+      channel: input.channel,
+      webhook_url: input.webhookUrl ?? null,
+      enabled: input.enabled,
+      updated_at: new Date().toISOString(),
+    };
+    const rows = await this.fetchDb<TargetAlertPref[]>(
+      'target_alert_prefs?on_conflict=target_id,channel',
+      {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify(row),
+      },
+    );
+    return rows[0];
   }
 
   async claimVercelDelivery(

@@ -7,6 +7,7 @@ import {
   secureRoute,
 } from '../../../../utils/apiSecurity';
 import { getAdminDbAdapter, type Target } from '../../../../utils/dbAdapter';
+import { applyGuardianAfterReprobe } from '../../../../utils/guardian';
 import { reprobeTargetAndRecord } from '../../../../utils/reprobe';
 import {
   extractDeployOrigins,
@@ -116,7 +117,15 @@ export const POST = secureRoute(
     const claimedTarget = target;
     after(async () => {
       try {
-        await reprobeTargetAndRecord({ target: claimedTarget, db, deployId });
+        // Re-probe through the ownership gate, then apply Phase 6 guardian
+        // alerts (new blockers only) + verdict refresh. Never a second probe path.
+        const reprobe = await reprobeTargetAndRecord({ target: claimedTarget, db, deployId });
+        await applyGuardianAfterReprobe({
+          db,
+          target: claimedTarget,
+          findings: reprobe.findings,
+          probed: reprobe.probed,
+        });
         await db.finishVercelDelivery(deployId, true);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
