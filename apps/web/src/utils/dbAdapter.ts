@@ -203,6 +203,40 @@ export interface FixOutcomeCorpusRow {
   outcome: FixOutcomeStatus;
 }
 
+/**
+ * A programmatic API key row for org-scoped management (Phase 7). NEVER carries
+ * the key hash or plaintext — the dashboard only shows the label + non-secret
+ * display prefix. The plaintext is returned to the creator exactly once, out of
+ * band (the create route response), and never persisted.
+ */
+export interface ApiKeyRow {
+  id: string;
+  organization_id: string;
+  label: string;
+  key_prefix: string;
+  plan: 'free' | 'pro';
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+/** Minimal projection used at request-time key authentication (service role). */
+export interface ApiKeyAuthContext {
+  id: string;
+  organization_id: string;
+  plan: 'free' | 'pro';
+  revoked_at: string | null;
+}
+
+/** Input for issuing a new key. `keyHash`/`keyPrefix` come from utils/apiKeys.ts. */
+export interface CreateApiKeyInput {
+  organizationId: string;
+  label: string;
+  keyHash: string;
+  keyPrefix: string;
+  plan: 'free' | 'pro';
+}
+
 export interface StripeBillingEvent {
   eventId: string;
   eventType: string;
@@ -308,11 +342,21 @@ export interface DbAdapter {
   insertFixOutcomes(rows: FixOutcomeInput[]): Promise<void>;
   getFixOutcomesForTarget(targetId: string): Promise<FixOutcomeRow[]>;
   getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]>;
+  createApiKey(input: CreateApiKeyInput): Promise<ApiKeyRow>;
+  listApiKeys(organizationId: string): Promise<ApiKeyRow[]>;
+  /** Request-time key auth (service role). Returns null when no key hashes to this. */
+  getApiKeyByHash(keyHash: string): Promise<ApiKeyAuthContext | null>;
+  revokeApiKey(id: string): Promise<void>;
+  touchApiKey(id: string): Promise<void>;
 }
 
 function eq(value: string | number): string {
   return encodeURIComponent(String(value));
 }
+
+/** api_keys columns safe to expose to a client — `key_hash` is deliberately absent. */
+const API_KEY_SAFE_COLUMNS =
+  'id,organization_id,label,key_prefix,plan,last_used_at,revoked_at,created_at';
 
 export class SupabaseDbAdapter implements DbAdapter {
   constructor(
@@ -827,6 +871,55 @@ export class SupabaseDbAdapter implements DbAdapter {
     return this.fetchDb(
       'fix_outcome?select=generator_fingerprint,finding_rule_id,fix_strategy,outcome',
     );
+  }
+
+  async createApiKey(input: CreateApiKeyInput): Promise<ApiKeyRow> {
+    // `select` on the insert return keeps `key_hash` out of the response so the
+    // hash is never round-tripped to a client. The plaintext is never here at all.
+    const rows = await this.fetchDb<ApiKeyRow[]>(`api_keys?select=${API_KEY_SAFE_COLUMNS}`, {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        organization_id: input.organizationId,
+        label: input.label,
+        key_hash: input.keyHash,
+        key_prefix: input.keyPrefix,
+        plan: input.plan,
+      }),
+    });
+    return rows[0];
+  }
+
+  listApiKeys(organizationId: string): Promise<ApiKeyRow[]> {
+    // Safe columns only — `key_hash` is never selected for a client surface.
+    return this.fetchDb(
+      `api_keys?select=${API_KEY_SAFE_COLUMNS}&organization_id=eq.${eq(organizationId)}&order=created_at.desc`,
+    );
+  }
+
+  getApiKeyByHash(keyHash: string): Promise<ApiKeyAuthContext | null> {
+    return this.first(
+      `api_keys?select=id,organization_id,plan,revoked_at&key_hash=eq.${eq(keyHash)}`,
+    );
+  }
+
+  async revokeApiKey(id: string): Promise<void> {
+    // RLS scopes this PATCH to the caller's org (user token), so a user can only
+    // revoke their own org's keys. Idempotent: re-revoking keeps the first stamp.
+    await this.fetchDb(`api_keys?id=eq.${eq(id)}&revoked_at=is.null`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ revoked_at: new Date().toISOString() }),
+    });
+  }
+
+  async touchApiKey(id: string): Promise<void> {
+    // Best-effort usage telemetry; runs under the service role at auth time.
+    await this.fetchDb(`api_keys?id=eq.${eq(id)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ last_used_at: new Date().toISOString() }),
+    });
   }
 }
 

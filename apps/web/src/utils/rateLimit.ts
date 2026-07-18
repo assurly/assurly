@@ -81,6 +81,19 @@ export async function enforceUserRateLimit(
   return consume(hashIdentity(`user:${auth.user.id}`), `${routeId}:user`, policy);
 }
 
+/**
+ * Plan-based rate limit for a programmatic API key (Phase 7). Keyed on the key
+ * id (not the IP or a user), so each key gets its own quota and a shared IP does
+ * not let one org exhaust another's budget.
+ */
+export async function enforceApiKeyRateLimit(
+  routeId: string,
+  policy: RateLimitPolicy,
+  apiKeyId: string,
+): Promise<RateLimitResult> {
+  return consume(hashIdentity(`apikey:${apiKeyId}`), `${routeId}:apikey`, policy);
+}
+
 export function resetRateLimitsForTests(): void {
   if (process.env.NODE_ENV === 'test') memoryBuckets.clear();
 }

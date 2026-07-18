@@ -1,11 +1,17 @@
 import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { authenticateApiKey, type ApiKeyContext } from './apiKeys';
 import { AuthenticationError, COOKIE_NAME, requireUser, type AuthContext } from './auth';
 import { AuthorizationError } from './authorization';
 import { ConfigurationError, getApplicationUrl, isTrustedDevOrigin } from './env';
 import { GitHubApiError, GitHubWriteAccessError } from './githubApp';
-import { enforceIpRateLimit, enforceUserRateLimit, type RateLimitPolicy } from './rateLimit';
+import {
+  enforceApiKeyRateLimit,
+  enforceIpRateLimit,
+  enforceUserRateLimit,
+  type RateLimitPolicy,
+} from './rateLimit';
 
 export const emptyObjectSchema = z.object({}).strict();
 export const emptyBodySchema = z.undefined();
@@ -17,9 +23,20 @@ export const RATE_LIMITS = {
   public: { limit: 60, windowSeconds: 60 },
   contact: { limit: 5, windowSeconds: 600 },
   webhook: { limit: 300, windowSeconds: 60 },
+  // Plan-based quotas for programmatic API-key callers (Phase 7). Keyed on the
+  // key id, so each key gets its own budget regardless of source IP.
+  apiKeyFree: { limit: 60, windowSeconds: 60 },
+  apiKeyPro: { limit: 600, windowSeconds: 60 },
 } as const satisfies Record<string, RateLimitPolicy>;
 
-export type AuthMode = 'none' | 'optional' | 'required';
+/** The enforced quota for a programmatic key, by the plan snapshotted on the key. */
+export function apiKeyRateLimitForPlan(plan: 'free' | 'pro'): RateLimitPolicy {
+  return plan === 'pro' ? RATE_LIMITS.apiKeyPro : RATE_LIMITS.apiKeyFree;
+}
+
+export type { ApiKeyContext };
+
+export type AuthMode = 'none' | 'optional' | 'required' | 'apiKey';
 export type BodyMode = 'none' | 'json' | 'raw';
 
 export interface SecureRouteConfig<Query, Body, Params = Record<string, never>> {
@@ -41,6 +58,8 @@ export interface SecureRouteContext<Query, Body, Params = Record<string, never>>
   body: Body;
   params: Params;
   auth: AuthContext | null;
+  /** Present only on `auth: 'apiKey'` routes — the org resolved from the key. */
+  apiKey: ApiKeyContext | null;
 }
 
 export type SecuredRouteHandler<
@@ -232,6 +251,7 @@ export function secureRoute<Query, Body, Params = Record<string, never>>(
     const id = requestId(request);
     const startedAt = Date.now();
     let auth: AuthContext | null = null;
+    let apiKey: ApiKeyContext | null = null;
     try {
       let parsedQuery: Query;
       let parsedBody: Body;
@@ -252,7 +272,13 @@ export function secureRoute<Query, Body, Params = Record<string, never>>(
         throw new ApiError(429, 'rate_limited', 'Too many requests.');
       }
 
-      if (config.auth !== 'none') {
+      // API-key auth is programmatic (no user session). A missing / malformed /
+      // unknown / revoked key resolves to null → 401, exactly like an absent
+      // session on an `auth: 'required'` route.
+      if (config.auth === 'apiKey') {
+        apiKey = await authenticateApiKey(request);
+        if (!apiKey) throw new ApiError(401, 'unauthorized', 'A valid API key is required.');
+      } else if (config.auth !== 'none') {
         try {
           auth = await requireUser(request);
         } catch (error) {
@@ -262,15 +288,29 @@ export function secureRoute<Query, Body, Params = Record<string, never>>(
       }
       if (config.csrf && usesSessionCookie(request)) enforceTrustedOrigin(request);
 
+      // Plan-based quota for a keyed caller (keyed on the key id); otherwise the
+      // per-user quota when a session is present.
+      const apiKeyRateLimit = apiKey
+        ? await enforceApiKeyRateLimit(
+            config.routeId,
+            apiKeyRateLimitForPlan(apiKey.plan),
+            apiKey.id,
+          )
+        : null;
+      if (apiKeyRateLimit && !apiKeyRateLimit.allowed) {
+        throw new ApiError(429, 'rate_limited', 'Too many requests.');
+      }
       const userRateLimit = auth
         ? await enforceUserRateLimit(config.routeId, config.rateLimit, auth)
         : null;
       if (userRateLimit && !userRateLimit.allowed) {
         throw new ApiError(429, 'rate_limited', 'Too many requests.');
       }
-      const remaining = userRateLimit
-        ? Math.min(ipRateLimit.remaining, userRateLimit.remaining)
-        : ipRateLimit.remaining;
+      const remaining = Math.min(
+        ipRateLimit.remaining,
+        userRateLimit?.remaining ?? Number.POSITIVE_INFINITY,
+        apiKeyRateLimit?.remaining ?? Number.POSITIVE_INFINITY,
+      );
 
       const response = await handler({
         request,
@@ -279,6 +319,7 @@ export function secureRoute<Query, Body, Params = Record<string, never>>(
         body: parsedBody,
         params: parsedParams,
         auth,
+        apiKey,
       });
       response.headers.set('X-Request-ID', id);
       response.headers.set('X-RateLimit-Remaining', String(remaining));
@@ -319,6 +360,12 @@ export function secureRoute<Query, Body, Params = Record<string, never>>(
 
 export function requireRouteUser(context: AuthContext | null): AuthContext {
   if (!context) throw new AuthenticationError();
+  return context;
+}
+
+/** Asserts a keyed caller is present (only null if misconfigured, since secureRoute 401s first). */
+export function requireApiKey(context: ApiKeyContext | null): ApiKeyContext {
+  if (!context) throw new ApiError(401, 'unauthorized', 'A valid API key is required.');
   return context;
 }
 
