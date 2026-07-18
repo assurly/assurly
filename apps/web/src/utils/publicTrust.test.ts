@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Target } from './dbAdapter';
-import { PUBLIC_TRUST_KEYS, toPublicTrustProjection } from './publicTrust';
+import { PUBLIC_TRUST_KEYS, toPublicIssueCategory, toPublicTrustProjection } from './publicTrust';
 
 function target(overrides: Partial<Target> = {}): Target {
   return {
@@ -17,10 +17,11 @@ function target(overrides: Partial<Target> = {}): Target {
     current_ship_score: 72,
     verdict_evidence: {
       topIssue: {
-        key: 'runtime-supabase-rls-open',
-        label: 'Open RLS',
+        key: 'rls:customers',
+        label: 'Missing RLS on table: customers',
         severity: 'error',
-        sampleMessage: 'Table users is readable via anon key',
+        sampleMessage:
+          "Supabase table 'customers' returned rows via anon key without RLS protection",
         affectedFileCount: 1,
         occurrenceCount: 1,
       },
@@ -54,8 +55,8 @@ describe('toPublicTrustProjection', () => {
       shipScore: 72,
       badgeToken: 'b'.repeat(32),
       topIssue: {
-        label: 'Open RLS',
-        sampleMessage: 'Table users is readable via anon key',
+        category: 'Database access control (RLS)',
+        severity: 'error',
       },
     });
 
@@ -65,6 +66,38 @@ describe('toPublicTrustProjection', () => {
     expect(json).not.toContain('secret row data');
     expect(json).not.toContain('organization');
     expect(json).not.toContain('webhook');
+  });
+
+  it('never leaks the exposed table name or raw finding message on a blocked app', () => {
+    // A public trust page must not broadcast the exact exploitable table of an
+    // app that is still `blocked`. Only the coarse category may appear.
+    const projection = toPublicTrustProjection(target());
+    const json = JSON.stringify(projection);
+
+    expect(json).not.toContain('customers');
+    expect(json).not.toContain('anon key');
+    expect(json).not.toContain('RLS protection');
+    expect(json).not.toContain('Missing RLS on table');
+    expect(projection!.topIssue).toEqual({
+      category: 'Database access control (RLS)',
+      severity: 'error',
+    });
+  });
+
+  it('maps issue keys to coarse categories without echoing the key tail', () => {
+    expect(toPublicIssueCategory('rls:secret_table', 'error')).toBe(
+      'Database access control (RLS)',
+    );
+    expect(toPublicIssueCategory('rule:runtime-supabase-key-exposed', 'warning')).toBe(
+      'Database access control (RLS)',
+    );
+    expect(toPublicIssueCategory('env:STRIPE_SECRET_KEY', 'error')).toBe(
+      'Configuration & secrets management',
+    );
+    expect(toPublicIssueCategory('msg:some raw finding text', 'error')).toBe('Security blocker');
+    expect(toPublicIssueCategory('msg:some raw finding text', 'warning')).toBe(
+      'Security review item',
+    );
   });
 
   it('returns null when the target has no badge token', () => {

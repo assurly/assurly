@@ -81,7 +81,8 @@ export default async function ReportPage({ params }: ReportPageProps): Promise<R
             <p className="trust-page__status">{VERDICT_LABEL[trust.verdict] ?? trust.verdict}</p>
             {trust.topIssue ? (
               <p className="trust-page__issue">
-                <strong>{trust.topIssue.label}</strong> — {trust.topIssue.sampleMessage}
+                <strong>{trust.topIssue.severity === 'error' ? 'Blocker' : 'Review'}</strong> —{' '}
+                {trust.topIssue.category}
               </p>
             ) : trust.verdict === 'ready' ? (
               <p className="trust-page__issue">No blockers detected on the last check.</p>
