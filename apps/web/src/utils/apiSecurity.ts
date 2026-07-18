@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { authenticateApiKey, type ApiKeyContext } from './apiKeys';
 import { AuthenticationError, COOKIE_NAME, requireUser, type AuthContext } from './auth';
 import { AuthorizationError } from './authorization';
+import type { BillingPlan } from './entitlements';
 import { ConfigurationError, getApplicationUrl, isTrustedDevOrigin } from './env';
 import { GitHubApiError, GitHubWriteAccessError } from './githubApp';
 import {
@@ -23,15 +24,33 @@ export const RATE_LIMITS = {
   public: { limit: 60, windowSeconds: 60 },
   contact: { limit: 5, windowSeconds: 600 },
   webhook: { limit: 300, windowSeconds: 60 },
-  // Plan-based quotas for programmatic API-key callers (Phase 7). Keyed on the
+  // Plan-based quotas for programmatic API-key callers (Phase 7/8). Keyed on the
   // key id, so each key gets its own budget regardless of source IP.
   apiKeyFree: { limit: 60, windowSeconds: 60 },
   apiKeyPro: { limit: 600, windowSeconds: 60 },
+  // The OEM/platform tier fans a verdict out to many end users, so it gets the
+  // largest programmatic budget.
+  apiKeyOem: { limit: 6000, windowSeconds: 60 },
 } as const satisfies Record<string, RateLimitPolicy>;
 
-/** The enforced quota for a programmatic key, by the plan snapshotted on the key. */
-export function apiKeyRateLimitForPlan(plan: 'free' | 'pro'): RateLimitPolicy {
-  return plan === 'pro' ? RATE_LIMITS.apiKeyPro : RATE_LIMITS.apiKeyFree;
+/**
+ * The enforced quota for a programmatic key, by the plan snapshotted on the key.
+ * Exhaustive over `BillingPlan` so a new plan cannot be added without giving it a
+ * tier here (keeps the enum in sync with utils/entitlements.ts and the DB check).
+ */
+export function apiKeyRateLimitForPlan(plan: BillingPlan): RateLimitPolicy {
+  switch (plan) {
+    case 'free':
+      return RATE_LIMITS.apiKeyFree;
+    case 'pro':
+      return RATE_LIMITS.apiKeyPro;
+    case 'oem':
+      return RATE_LIMITS.apiKeyOem;
+    default: {
+      const exhaustive: never = plan;
+      throw new Error(`Unknown billing plan: ${String(exhaustive)}`);
+    }
+  }
 }
 
 export type { ApiKeyContext };

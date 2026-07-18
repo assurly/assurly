@@ -164,10 +164,21 @@ describe('POST /api/scan-url', () => {
       .fn()
       .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
     const upsertTarget = vi.fn().mockResolvedValue({ id: 'target-1', ownership_verified: true });
+    // Re-scan of the already-guarded app (existing target) — within the free limit.
+    const getTargetByIdentifier = vi
+      .fn()
+      .mockResolvedValue({ id: 'target-1', ownership_verified: true });
+    const getTargets = vi.fn().mockResolvedValue([{ id: 'target-1' }]);
     requireUserMock.mockResolvedValue({
       user: { id: 'user-1' },
       accessToken: 'token',
-      db: { getOrganizationByUserId, insertProbeEvidence, upsertTarget },
+      db: {
+        getOrganizationByUserId,
+        insertProbeEvidence,
+        upsertTarget,
+        getTargetByIdentifier,
+        getTargets,
+      },
     });
     scanLiveUrlMock.mockResolvedValue({
       findings: [
@@ -233,10 +244,19 @@ describe('POST /api/scan-url', () => {
       .fn()
       .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
     const upsertTarget = vi.fn().mockResolvedValue({ id: 'target-1', ownership_verified: false });
+    // First guarded app for a free org (no existing target, zero currently) — allowed.
+    const getTargetByIdentifier = vi.fn().mockResolvedValue(null);
+    const getTargets = vi.fn().mockResolvedValue([]);
     requireUserMock.mockResolvedValue({
       user: { id: 'user-1' },
       accessToken: 'token',
-      db: { getOrganizationByUserId, insertProbeEvidence, upsertTarget },
+      db: {
+        getOrganizationByUserId,
+        insertProbeEvidence,
+        upsertTarget,
+        getTargetByIdentifier,
+        getTargets,
+      },
     });
 
     const response = await POST(
@@ -258,6 +278,72 @@ describe('POST /api/scan-url', () => {
       { activeProbe: false, organizationId: 'org-1' },
     );
     expect(json.target).toEqual({ id: 'target-1', ownershipVerified: false });
+  });
+
+  it('rejects guarding a NEW app past the free plan limit (server-side entitlement)', async () => {
+    const getOrganizationByUserId = vi
+      .fn()
+      .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
+    // No existing target for this URL, but the org already guards its one free app.
+    const getTargetByIdentifier = vi.fn().mockResolvedValue(null);
+    const getTargets = vi.fn().mockResolvedValue([{ id: 'existing-target' }]);
+    const upsertTarget = vi.fn();
+    requireUserMock.mockResolvedValue({
+      user: { id: 'user-1' },
+      accessToken: 'token',
+      db: {
+        getOrganizationByUserId,
+        getTargetByIdentifier,
+        getTargets,
+        upsertTarget,
+        insertProbeEvidence: vi.fn(),
+      },
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://second-app.lovable.app' }),
+      }),
+    );
+
+    expect(response.status).toBe(402);
+    expect((await response.json()).error.code).toBe('plan_required');
+    // The over-limit action is blocked before any target is created or scanned.
+    expect(upsertTarget).not.toHaveBeenCalled();
+    expect(scanLiveUrlMock).not.toHaveBeenCalled();
+  });
+
+  it('lets a Pro org guard a new app beyond one (unlimited guarded apps)', async () => {
+    const getOrganizationByUserId = vi.fn().mockResolvedValue({ id: 'org-1', billing_plan: 'pro' });
+    const getTargetByIdentifier = vi.fn().mockResolvedValue(null);
+    const getTargets = vi.fn().mockResolvedValue([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+    const upsertTarget = vi.fn().mockResolvedValue({ id: 'target-9', ownership_verified: false });
+    requireUserMock.mockResolvedValue({
+      user: { id: 'user-1' },
+      accessToken: 'token',
+      db: {
+        getOrganizationByUserId,
+        getTargetByIdentifier,
+        getTargets,
+        upsertTarget,
+        insertProbeEvidence: vi.fn(),
+      },
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://nth-app.lovable.app' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    // Pro never consults getTargets for a limit — unlimited apps.
+    expect(getTargets).not.toHaveBeenCalled();
+    expect(upsertTarget).toHaveBeenCalled();
   });
 
   it('stays passive-only when the target lookup fails (fail-closed)', async () => {

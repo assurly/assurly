@@ -7,8 +7,9 @@ import { scanLiveUrlWithEvidence, type ProbeEvidence } from '../../../utils/runt
 import { assertScannableUrl, UrlSafetyError } from '../../../utils/urlSafety';
 import { isActiveProbeAllowed, normalizeUrlIdentifier } from '../../../utils/ownership';
 import { recordReprobeOutcomes } from '../../../utils/reprobe';
+import { entitlementsForPlan } from '../../../utils/entitlements';
 import type { AuthContext } from '../../../utils/auth';
-import type { ProbeEvidenceInput, Target } from '../../../utils/dbAdapter';
+import type { DbAdapter, Organization, ProbeEvidenceInput, Target } from '../../../utils/dbAdapter';
 
 const scanUrlBody = z
   .object({
@@ -36,27 +37,73 @@ interface UrlTargetGate {
   paidTierAllowed: boolean;
 }
 
+const PASSIVE_GATE: UrlTargetGate = {
+  activeProbe: false,
+  target: null,
+  targetRow: null,
+  organizationId: null,
+  paidTierAllowed: false,
+};
+
+/**
+ * Enforces the plan's guarded-app entitlement (Phase 8) before a NEW `url` target
+ * is created. A re-scan of an already-guarded app is always allowed; only guarding
+ * a brand-new app past the plan's `guardedAppLimit` is rejected — server-side, so
+ * the UI cannot bypass it. Fails OPEN on a DB error (a transient count failure must
+ * never 500 a scan or wrongly block a paying customer) but throws a real 402 on a
+ * confirmed over-limit, which propagates out of the route.
+ */
+async function assertWithinGuardedAppLimit(
+  db: DbAdapter,
+  organization: Organization,
+  identifier: string,
+): Promise<void> {
+  const { guardedAppLimit } = entitlementsForPlan(organization.billing_plan);
+  if (guardedAppLimit === null) return;
+
+  let existing: Target | null;
+  let currentCount: number;
+  try {
+    existing = await db.getTargetByIdentifier(organization.id, 'url', identifier);
+    if (existing) return; // updating an existing guarded app, not creating a new one
+    currentCount = (await db.getTargets(organization.id)).length;
+  } catch {
+    return; // fail open on a lookup error — never block a scan over a count failure
+  }
+
+  if (currentCount >= guardedAppLimit) {
+    throw new ApiError(
+      402,
+      'plan_required',
+      `Your plan guards up to ${guardedAppLimit} app${guardedAppLimit === 1 ? '' : 's'}. Upgrade to guard more.`,
+    );
+  }
+}
+
 /**
  * Resolves (or creates) the caller's `url` target for this origin and decides
  * whether the ACTIVE proof-probe may run. The ownership gate is enforced here,
  * server-side: an active data-pull is impossible for a `url` target unless it is
  * `ownership_verified = true`. Fail-closed — any lookup failure leaves the scan
- * passive-only.
+ * passive-only. The guarded-app entitlement (Phase 8) is enforced BEFORE the
+ * upsert; an over-limit `ApiError` deliberately propagates (it is not swallowed).
  */
 async function resolveUrlTargetGate(auth: AuthContext, scanUrl: string): Promise<UrlTargetGate> {
+  let organization: Organization | null;
   try {
-    const organization = await auth.db.getOrganizationByUserId(auth.user.id);
-    if (!organization) {
-      return {
-        activeProbe: false,
-        target: null,
-        targetRow: null,
-        organizationId: null,
-        paidTierAllowed: false,
-      };
-    }
+    organization = await auth.db.getOrganizationByUserId(auth.user.id);
+  } catch (error) {
+    console.warn('[Assurly] failed to resolve url target gate:', (error as Error).message);
+    return PASSIVE_GATE;
+  }
+  if (!organization) return PASSIVE_GATE;
 
-    const identifier = normalizeUrlIdentifier(scanUrl);
+  const identifier = normalizeUrlIdentifier(scanUrl);
+  // Server-side entitlement gate (Phase 8). Throws 402 on a confirmed over-limit,
+  // which must escape this function — hence it runs OUTSIDE the passive try/catch.
+  await assertWithinGuardedAppLimit(auth.db, organization, identifier);
+
+  try {
     // Upsert preserves ownership_verified on conflict (it is not in the payload),
     // so re-scanning never silently re-grants or revokes an active probe.
     const row = await auth.db.upsertTarget({
@@ -70,17 +117,11 @@ async function resolveUrlTargetGate(auth: AuthContext, scanUrl: string): Promise
       target: { id: row.id, ownershipVerified: row.ownership_verified },
       targetRow: row,
       organizationId: organization.id,
-      paidTierAllowed: organization.billing_plan === 'pro',
+      paidTierAllowed: entitlementsForPlan(organization.billing_plan).deepReviewEnabled,
     };
   } catch (error) {
     console.warn('[Assurly] failed to resolve url target gate:', (error as Error).message);
-    return {
-      activeProbe: false,
-      target: null,
-      targetRow: null,
-      organizationId: null,
-      paidTierAllowed: false,
-    };
+    return PASSIVE_GATE;
   }
 }
 
@@ -131,15 +172,7 @@ export const POST = secureRoute(
     // they own. Anonymous callers and unverified URLs get the safe/passive checks
     // only (headers, public-bundle secrets). This is the server-side enforcement
     // point — the UI cannot bypass it. The planner never runs around this gate.
-    const gate = auth
-      ? await resolveUrlTargetGate(auth, parsedUrl.toString())
-      : {
-          activeProbe: false,
-          target: null,
-          targetRow: null,
-          organizationId: null,
-          paidTierAllowed: false,
-        };
+    const gate = auth ? await resolveUrlTargetGate(auth, parsedUrl.toString()) : PASSIVE_GATE;
 
     const { findings, evidence, planSource } = await scanLiveUrlWithEvidence(
       parsedUrl.toString(),

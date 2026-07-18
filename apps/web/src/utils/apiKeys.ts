@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { getAdminDbAdapter, type ApiKeyAuthContext, type DbAdapter } from './dbAdapter';
+import type { BillingPlan } from './entitlements';
 
 /**
  * Programmatic API keys (Phase 7). A key authenticates an ORGANIZATION so an
@@ -74,7 +75,7 @@ export function parseBearerApiKey(request: Request): string | null {
 export interface ApiKeyContext {
   id: string;
   organizationId: string;
-  plan: 'free' | 'pro';
+  plan: BillingPlan;
 }
 
 /**

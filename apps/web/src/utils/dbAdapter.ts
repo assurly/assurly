@@ -1,4 +1,7 @@
+import type { BillingPlan } from './entitlements';
 import { getSupabaseAdminConfig, getSupabaseConfig } from './env';
+
+export type { BillingPlan };
 
 export interface User {
   id: string;
@@ -10,7 +13,7 @@ export interface User {
 export interface Organization {
   id: string;
   name: string;
-  billing_plan: 'free' | 'pro';
+  billing_plan: BillingPlan;
   stripe_customer_id?: string;
   github_org_id?: number;
   github_installation_id?: string;
@@ -214,7 +217,7 @@ export interface ApiKeyRow {
   organization_id: string;
   label: string;
   key_prefix: string;
-  plan: 'free' | 'pro';
+  plan: BillingPlan;
   last_used_at: string | null;
   revoked_at: string | null;
   created_at: string;
@@ -224,7 +227,7 @@ export interface ApiKeyRow {
 export interface ApiKeyAuthContext {
   id: string;
   organization_id: string;
-  plan: 'free' | 'pro';
+  plan: BillingPlan;
   revoked_at: string | null;
 }
 
@@ -234,7 +237,7 @@ export interface CreateApiKeyInput {
   label: string;
   keyHash: string;
   keyPrefix: string;
-  plan: 'free' | 'pro';
+  plan: BillingPlan;
 }
 
 export interface StripeBillingEvent {
@@ -342,6 +345,12 @@ export interface DbAdapter {
   insertFixOutcomes(rows: FixOutcomeInput[]): Promise<void>;
   getFixOutcomesForTarget(targetId: string): Promise<FixOutcomeRow[]>;
   getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]>;
+  /**
+   * Total number of monitored apps (targets) across all orgs. Aggregate scalar
+   * ONLY — never returns a row or any customer-identifying field. Used by the
+   * exit-metrics surface (Phase 8) alongside the pattern-only corpus.
+   */
+  countMonitoredApps(): Promise<number>;
   createApiKey(input: CreateApiKeyInput): Promise<ApiKeyRow>;
   listApiKeys(organizationId: string): Promise<ApiKeyRow[]>;
   /** Request-time key auth (service role). Returns null when no key hashes to this. */
@@ -393,6 +402,28 @@ export class SupabaseDbAdapter implements DbAdapter {
   private async first<T>(path: string): Promise<T | null> {
     const rows = await this.fetchDb<T[]>(`${path}&limit=1`);
     return rows[0] || null;
+  }
+
+  /**
+   * Returns the exact row count for a query without transferring the rows. Uses
+   * PostgREST's `count=exact` + a zero-length Range so the body stays empty and
+   * the total comes from the `content-range` header (`*​/N`). Aggregate-only.
+   */
+  private async count(path: string): Promise<number> {
+    const response = await fetch(`${this.url}/rest/v1/${path}`, {
+      method: 'HEAD',
+      headers: {
+        apikey: this.apiKey,
+        Authorization: `Bearer ${this.authorizationToken}`,
+        Prefer: 'count=exact',
+        Range: '0-0',
+      },
+    });
+    if (!response.ok && response.status !== 206) {
+      throw new Error(`Supabase count failed (${response.status})`);
+    }
+    const total = response.headers.get('content-range')?.split('/')[1];
+    return total && total !== '*' ? Number(total) : 0;
   }
 
   async consumeApiRateLimit(
@@ -871,6 +902,12 @@ export class SupabaseDbAdapter implements DbAdapter {
     return this.fetchDb(
       'fix_outcome?select=generator_fingerprint,finding_rule_id,fix_strategy,outcome',
     );
+  }
+
+  countMonitoredApps(): Promise<number> {
+    // Scalar count only — the select is a single indexed column and the rows are
+    // never transferred (HEAD + count=exact). No customer data leaves the DB.
+    return this.count('targets?select=id');
   }
 
   async createApiKey(input: CreateApiKeyInput): Promise<ApiKeyRow> {

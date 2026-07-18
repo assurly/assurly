@@ -10,7 +10,7 @@ const userSchema = z.object({
 const organizationSchema = z.object({
   id: z.string(),
   name: z.string(),
-  billing_plan: z.enum(['free', 'pro']),
+  billing_plan: z.enum(['free', 'pro', 'oem']),
   stripe_customer_id: z.string().optional(),
   github_org_id: z.number().optional(),
   github_installation_id: z.string().optional(),
@@ -136,7 +136,7 @@ const apiKeySchema = z.object({
   id: z.string(),
   label: z.string(),
   keyPrefix: z.string(),
-  plan: z.enum(['free', 'pro']),
+  plan: z.enum(['free', 'pro', 'oem']),
   lastUsedAt: z.string().nullable(),
   revokedAt: z.string().nullable(),
   createdAt: z.string(),

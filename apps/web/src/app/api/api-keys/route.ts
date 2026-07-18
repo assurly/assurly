@@ -9,6 +9,7 @@ import {
 } from '../../../utils/apiSecurity';
 import { generateApiKey } from '../../../utils/apiKeys';
 import type { ApiKeyRow } from '../../../utils/dbAdapter';
+import { entitlementsForPlan, type BillingPlan } from '../../../utils/entitlements';
 
 const createBodySchema = z
   .object({
@@ -21,7 +22,7 @@ function serializeApiKey(row: ApiKeyRow): {
   id: string;
   label: string;
   keyPrefix: string;
-  plan: 'free' | 'pro';
+  plan: BillingPlan;
   lastUsedAt: string | null;
   revokedAt: string | null;
   createdAt: string;
@@ -82,12 +83,15 @@ export const POST = secureRoute(
     if (!org) throw new ApiError(400, 'no_organization', 'Create an organization first.');
 
     const generated = generateApiKey();
+    // Snapshot the key's rate tier from the org's plan entitlement (server-side —
+    // a caller cannot request a tier above what their plan grants).
+    const { apiKeyTier } = entitlementsForPlan(org.billing_plan);
     const row = await context.db.createApiKey({
       organizationId: org.id,
       label: body.label,
       keyHash: generated.keyHash,
       keyPrefix: generated.keyPrefix,
-      plan: org.billing_plan,
+      plan: apiKeyTier,
     });
 
     // `apiKey` (plaintext) is shown to the caller exactly once, here. It is not
