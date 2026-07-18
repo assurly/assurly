@@ -1,43 +1,45 @@
 # Assurly — Genius Rebuild: Cursor Execution Handoff
 
 > **Audience:** Cursor (the AI coding agent that will continue this rebuild).
-> **Purpose:** A self-contained, senior-level execution spec for **all remaining work** (Phases 7–8).
+> **Purpose:** A self-contained, senior-level execution spec for **all remaining work** (Phase 8 — the final phase).
 > **Companion:** The strategy/rationale lives in [`10-genius-rebuild-master-plan.md`](./10-genius-rebuild-master-plan.md).
 > Read that once for the "why"; this file is the "what and how".
 >
-> **Owner:** Tibor Kútik · **Handoff date:** 2026-07-13 · **Last updated:** 2026-07-18 (Phase 6 landed)
+> **Owner:** Tibor Kútik · **Handoff date:** 2026-07-13 · **Last updated:** 2026-07-18 (Phase 7 landed)
 >
-> **Golden rule:** Phases **0 through 6** are **already built, tested, and browser-verified** — do **not**
-> rebuild them. Start at **Phase 7**. Read Sections 1–3 first (current state + conventions + gotchas);
-> they will save you hours and stop you from breaking working code.
+> **Golden rule:** Phases **0 through 7** are **already built, tested, and browser/live-verified** — do **not**
+> rebuild them. Start at **Phase 8** (the final phase). Read Sections 1–3 first (current state + conventions +
+> gotchas); they will save you hours and stop you from breaking working code.
 >
-> **Verification status (read this before claiming a phase is done):** Phases 0–6 are all browser-verified
+> **Verification status (read this before claiming a phase is done):** Phases 0–7 are all browser/live-verified
 > end-to-end. 2026-07-17: ownership → active probe → verified-fix loop proven live (Phase 5). 2026-07-18:
-> the Continuous Guardian was proven live end-to-end (cron auth 401 → baseline → a real regression fired
-> exactly one alert email → badge/trust page → dashboard "score dropped" indicator), and the
-> `target_alert_prefs` migration is applied to prod. Phase 4's AI red-team planner genuinely discovers
-> app-specific tables (moat criterion resolved). See the Master Tracker in the companion file for the
-> shipped shape of each. §1 documents what you **build on**.
+> the Continuous Guardian proven live (cron auth 401 → baseline → a real regression fired exactly one alert
+> email → badge/trust page → dashboard indicator), `target_alert_prefs` applied to prod (Phase 6); then the
+> keyed verdict API + `assurly_verdict` MCP tool + OEM widget proven live against the prod-migrated
+> `api_keys` table (valid key → shape-only verdict, absent/garbage/revoked → 401, stranger → passive
+> `unknown` with no probe, widget renders white-label — Phase 7). Phase 4's AI red-team planner genuinely
+> discovers app-specific tables (moat criterion resolved). See the Master Tracker in the companion file for
+> the shipped shape of each. §1 documents what you **build on**.
 
 ---
 
 ## 1. What is already DONE (do not rebuild — this is your foundation)
 
-Phases 0–6 are implemented, tested (**857 tests green, 121 files; `tsc --noEmit` clean**), and
-browser-verified end-to-end. The following exists and works. **Build on it; do not recreate or "improve"
-it unless a later phase explicitly says so.**
+Phases 0–7 are implemented, tested (**886 web tests green / 126 files + 11 mcp-server; `tsc --noEmit`
+clean in apps/web**), and browser/live-verified end-to-end. The following exists and works. **Build on it;
+do not recreate or "improve" it unless a later phase explicitly says so.**
 
-Fast orientation — the things Phase 7 leans on hardest:
+Fast orientation — the things Phase 8 leans on hardest:
 
-| You need                              | It already exists at                                                                                    |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| The verdict per app                   | `utils/shipGate.ts` (`resolveVerdict*`), `targets` table, `GET /api/targets`                            |
-| A structured public verdict/proof     | `utils/publicTrust.ts` → `toPublicTrustProjection` (shape-only), `GET /api/trust/[token]` (§1.10)       |
-| The badge (SVG, live score)           | `GET /api/badge/[token]` → links to `report/[token]` trust page (§1.10)                                 |
-| The gate for active probing           | `utils/ownership/gate.ts` → `isActiveProbeAllowed` — **the single gate; the API/MCP must never bypass** |
-| A re-probe (ownership-gated)          | `utils/reprobe.ts` → `reprobeTargetAndRecord` (§1.9) — **never write a second probe path**              |
-| The existing MCP server (local scans) | `packages/mcp-server` → `assurly_scan_path` / `assurly_scan_files` / `assurly_explain_rule`             |
-| Route security + rate limits          | `utils/apiSecurity.ts` → `secureRoute`, `RATE_LIMITS` (add plan/key-based limits here)                  |
+| You need                            | It already exists at                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| The pricing / marketing page        | `apps/web/src/app/_components/HomeClient.tsx` (realign tiers here — don't rebuild it)                   |
+| Billing + Stripe plumbing           | the existing Stripe products/webhook + `organizations.billing_plan` (`'free' \| 'pro'`, §1.4)           |
+| The moat dataset (the exit asset)   | `fix_outcome` + `utils/dbAdapter.getFixOutcomeCorpus` (pattern columns only, never customer data, §1.9) |
+| The agent/OEM distribution surface  | keyed `GET /api/v1/verdict`, `assurly_verdict` MCP tool, OEM widget (§1.11) — the plan-based key tiers  |
+| The public "security-checked" brand | `GET /api/badge/[token]`, `report/[token]` trust page, `toPublicTrustProjection` (§1.10)                |
+| Route security + plan rate limits   | `utils/apiSecurity.ts` → `secureRoute`, `RATE_LIMITS`, `apiKeyRateLimitForPlan` (§1.11)                 |
+| Privacy/consent groundwork          | ownership gate + PII redaction from Phases 3/5 — the compliance surface builds on these                 |
 
 ### 1.1 Scan reliability & performance (done)
 
@@ -109,9 +111,10 @@ badge_token, created_at, updated_at`. Unique on `(organization_id, kind, identif
 - `GET /api/targets/[id]` was **not** built. The existing repo/scan detail already serves as the
   verdict detail, and Phase 6's public trust page uses `GET /api/trust/[token]` (§1.10) instead. Build a
   per-`id` endpoint only if a later phase needs a stable per-target detail endpoint keyed by id.
-- `probe_evidence` (Phase 2), `fix_outcome` (Phase 5), and `target_alert_prefs` (Phase 6) **all exist and
-  are applied to prod** (see §1.6 / §1.9 / §1.10). The public, shape-only projection already exists as
-  `toPublicTrustProjection` + `GET /api/trust/[token]` — Phase 7 should reuse it, not invent a second one.
+- `probe_evidence` (Phase 2), `fix_outcome` (Phase 5), `target_alert_prefs` (Phase 6), and `api_keys`
+  (Phase 7) **all exist and are applied to prod** (see §1.6 / §1.9 / §1.10 / §1.11). The public, shape-only
+  projection is `toPublicTrustProjection` + `GET /api/trust/[token]`, and Phase 7 reused it for the keyed
+  API and OEM widget (§1.11) — Phase 8 should reuse the same surface, never invent a second projection.
 
 ### 1.6 Proof-first experience + the AI client (Phase 2 — done, browser-verified)
 
@@ -232,6 +235,31 @@ regressed}, pr_url, deploy_id, …)`. Also created `private.vercel_webhook_deliv
   (category-only); `5fa1c64` — RLS findings are scoped per table (`supabaseTableLocation`) so a
   second exposed table is a distinct regression, not a collapsed key.
 
+### 1.11 Agent-native distribution + OEM (Phase 7 — done, live-verified end-to-end)
+
+**This is the distribution layer — agents and platforms consume the hosted verdict. Phase 8 monetizes it.**
+
+- **`api_keys` table** — migration `20260718100000_api_keys.sql`, org-scoped RLS, hash-only storage,
+  soft-revoke, `plan in ('free','pro')` — **applied to prod 2026-07-18**.
+- **API-key auth** — `utils/apiKeys.ts`: a 192-bit CSPRNG key, sha256 hash (unsalted is safe at that
+  entropy), plaintext returned **exactly once** and NEVER stored/logged. `secureRoute` has an
+  `auth: 'apiKey'` mode (no second wrapper) with plan-based `RATE_LIMITS` (`apiKeyFree`/`apiKeyPro`, via
+  `apiKeyRateLimitForPlan`) keyed on the key id and layered under the IP guard. `POST/GET /api/api-keys`
+  - `POST /api/api-keys/[id]/revoke` (RLS-scoped, no IDOR) + dashboard `ApiKeys.tsx`.
+- **Keyed verdict API** — `GET /api/v1/verdict` (`auth: 'apiKey'`): READ-ONLY and SHAPE-ONLY via
+  `utils/programmaticVerdict.ts` → `toPublicTrustProjection` + `categoryRemediation`. It uses the service
+  role but scopes the lookup with an explicit `organization_id` filter (`getTargetByIdentifier`), so **no
+  cross-org read**; it consults `isActiveProbeAllowed` but has **no probe/scan/re-probe path**, so a
+  stranger/unverified URL only ever gets the passive verdict. **This is the canonical read surface — reuse
+  it; do not add a second verdict endpoint.**
+- **`assurly_verdict` MCP tool** — `packages/mcp-server`, added alongside the three local-scan tools; it
+  READS the hosted `GET /api/v1/verdict` via `ASSURLY_API_KEY` (a single GET, no local scan/probe).
+- **OEM white-label widget** — `GET /api/widget/[token]`: embeddable SVG from the badge token + projection,
+  sanitized (SVG-injection-safe) branding label, shape-only.
+- **Live-verified (2026-07-18):** valid key → shape-only owned-target verdict; absent/garbage/revoked key
+  → 401; stranger URL → passive `unknown`, `activeProbeAllowed:false`, no probe (target `last_checked_at`
+  unchanged); widget renders white-label. Reviewed by reading the code, not the report.
+
 ---
 
 ## 2. Non-negotiable engineering conventions
@@ -350,120 +378,94 @@ A phase is **done** only when **all** of these hold:
 
 ---
 
-## 5. REMAINING WORK — Phase 7
+## 5. REMAINING WORK — Phase 8 (the final phase)
 
-### Phase 7 — Agent-Native Distribution (MCP gate) + OEM (do this next)
+### Phase 8 — Pricing, Business & Exit readiness (do this last)
 
-**Goal:** Be the ship-gate that **AI coding agents call themselves** before they deploy, and the
-"security-checked" layer **platforms embed** for their own users. This is the distribution phase: it turns
-the verdict/proof/guardian you already built into something a Cursor/Bolt/Lovable agent hits over MCP and
-an API, and something a platform white-labels.
+**Goal:** Align monetization with the value the rebuild created, make the plan actually enforce what a
+customer paid for, and package the company so a strategic buyer (Supabase / Vercel / a builder) can read
+it in one sitting. This is the closing phase: less new machinery, more turning what exists into revenue
+and a legible asset.
 
-**Why now, and the golden constraint:** the verdict (P1), proof (P2), ownership gate (P3), AI depth (P4),
-the verified-fix loop (P5), and the always-on guardian + shape-only public projection (P6) all exist and
-are browser-verified. **Nothing here is new scanning or probing machinery** — you are _exposing_ the
-hosted verdict and the Phase-6 public projection through an MCP tool and a keyed API, and _white-labeling_
-the badge/trust surface. Do NOT re-implement scanning in the MCP server, and do NOT let the MCP/API become
-a way to actively probe a target the caller has not proven they own.
+**Why now, and the golden constraint:** the verdict (P1), proof (P2), ownership (P3), AI depth (P4), the
+verified-fix loop + corpus (P5), the always-on guardian + trust brand (P6), and the agent/OEM distribution
+surface (P7) all exist and are live-verified. Phase 8 **monetizes and packages** them — it does not add
+scanning, probing, or a new verdict surface. Two hard rules run through everything here: **money is
+real** (never touch live billing programmatically) and **the corpus is aggregate-only** (never leak
+customer data into a metric, narrative, or export).
 
 **Context you already have — connect these, do not recreate:**
 
-- **Hosted verdict** — `utils/shipGate.ts` (`resolveVerdict*`), the `targets` table, `GET /api/targets`.
-  The MCP/API verdict must READ this, not recompute a scan.
-- **Shape-only public projection (Phase 6, §1.10)** — `utils/publicTrust.ts` → `toPublicTrustProjection` +
-  `GET /api/trust/[token]`. This is exactly the safe payload an OEM/agent may see for a target it does not
-  own: verdict, score, freshness, coarse category — never evidence/PII/table names. Reuse it verbatim.
-- **The ownership gate** — `utils/ownership/gate.ts` → `isActiveProbeAllowed`. A programmatic caller gets
-  the **passive** verdict for a stranger URL; the **active** probe stays owner-only. The gate is the single
-  authority — the MCP tool and the API must go through it, never around it.
-- **The existing MCP server** — `packages/mcp-server` already ships `assurly_scan_path` /
-  `assurly_scan_files` / `assurly_explain_rule` (local static scans via `scanner-core`). You ADD one tool
-  alongside them; you do not rewrite the server.
-- **Route security + rate limits** — `utils/apiSecurity.ts` (`secureRoute`, `RATE_LIMITS`). Extend with
-  key/plan-based limits; do not invent a second security wrapper.
+- **The marketing/pricing page** — `apps/web/src/app/_components/HomeClient.tsx`. Realign the tiers here;
+  do not rebuild the page. The current framing to revisit is `$19 Guard / $49 Agency`.
+- **Billing plumbing** — the existing Stripe products/webhook and `organizations.billing_plan`
+  (`'free' | 'pro'` today, §1.4). The API-key rate tier already reads the plan
+  (`apiKeyRateLimitForPlan`, §1.11) — plan is already load-bearing, so treat its values carefully.
+- **The moat dataset (the exit asset)** — `fix_outcome` + `utils/dbAdapter.getFixOutcomeCorpus`
+  (§1.9): reads **pattern columns only**, never customer data. Every metric/narrative draws from this,
+  not from raw findings.
+- **The distribution surface** — the keyed `GET /api/v1/verdict`, `assurly_verdict` MCP tool, and OEM
+  widget (§1.11). The OEM/platform pricing tier gates these.
+- **The public brand** — badge + `report/[token]` trust page + `toPublicTrustProjection` (§1.10). The
+  "security-checked" brand and the trust/compliance page build on this.
 
 **Deliverables**
 
-1. **`assurly_verdict` MCP tool — the pre-deploy ship-gate for agents.**
-   - Add to `packages/mcp-server` a tool `assurly_verdict({ url | repo })` returning a STRUCTURED verdict:
-     `status` (ready/review/blocked), ship score, the single top blocker + its one-line fix, and a link to
-     the trust page. Shape mirrors `toPublicTrustProjection` — coarse category, never evidence/PII.
-   - It calls the **hosted Assurly API** (below) — it must not run a live scan/probe itself. For a URL the
-     caller does not own, it returns the passive verdict only.
-   - Acceptance: a scripted MCP client gets a correct structured verdict for a known target pre-deploy.
+1. **Pricing realign + real entitlements.**
+   - Realign the tiers in `HomeClient.tsx`: **Free** = the viral proof-probe + one guarded app; **Pro**
+     (per-app) = continuous guardian + AI deep review + verified badge; add an **OEM/platform tier**
+     (usage/seat) for the B2B2C keyed API. Reconcile with the Stripe products.
+   - **Entitlements must be enforced server-side, not just shown.** Add a pure `utils/entitlements.ts`
+     mapping `billing_plan → { guardedAppLimit, apiKeyTier, deepReviewEnabled, oem }`, and enforce it in
+     the routes that create targets / issue keys / run deep review (via `secureRoute`, never client-only).
+   - If an OEM tier needs a new `billing_plan` value, that is a schema/enum change → a migration (dry-run +
+     owner approval, §3.2). Keep `apiKeyRateLimitForPlan` and the `api_keys.plan` check in sync.
 
-2. **Programmatic verdict API + API keys (plan-gated).**
-   - A public, keyed endpoint (e.g. `GET /api/v1/verdict?url=…` / `?repo=…`) that returns the same
-     shape-only projection. `secureRoute` with a NEW `auth: 'apiKey'` mode; **plan-based** `RATE_LIMITS`.
-   - **`api_keys` table** (org-scoped RLS §2.7): store a **hash** of the key (never the plaintext), prefix,
-     label, plan, `last_used_at`, revoked flag. New migration → dry-run + owner approval (prod, §3.2).
-   - Key issuance/rotation/revocation from the dashboard (show the plaintext once, on creation, only).
-   - The keyed path is READ-ONLY over existing verdicts. It **must not** trigger an active probe on a
-     target the key's org hasn't ownership-verified — reuse `isActiveProbeAllowed`.
+2. **Exit-readiness: the dataset narrative + a metrics view.**
+   - An aggregate **metrics surface** (an internal dashboard route or a generated report) built from
+     `getFixOutcomeCorpus` + target counts: apps monitored, regressions caught, fixes verified, corpus
+     size by generator/rule. **Aggregate-only, pattern columns only** — assert no customer data can appear.
+   - A concise **narrative doc** (in `docs/`) packaging the AI-failure + verified-fix corpus, the trust
+     brand, and the MCP/OEM distribution into an acquirer-legible story.
 
-3. **OEM / B2B2C white-label surface.**
-   - A white-label verdict + badge widget/embed a platform (Lovable/Bolt/agency) can surface to its own
-     users, backed by the Phase-6 badge (`GET /api/badge/[token]`) and the trust projection. Configurable
-     branding label; the underlying data stays shape-only.
-   - Acceptance: a working embeddable "security-checked" widget backed by the badge/verdict.
+3. **Trust / compliance surface.**
+   - A public "security-checked" brand page and a **SOC2-lite trust page** (security posture,
+     data-handling, subprocessors), plus clear consent/data-handling docs — leaning on the Phase 3
+     ownership model and the Phase 2/5 PII redaction. No new data collection.
 
 **Tests (part of the deliverable, not a follow-up)**
 
-- MCP `assurly_verdict`: returns the correct structured verdict for a known target (mock the hosted API);
-  a URL the caller doesn't own yields the passive verdict, never an active probe.
-- API-key auth: a valid key → verdict; **missing / malformed / revoked key → 401**; plan rate limit enforced.
-  Keys are stored hashed (assert the plaintext is never persisted or logged).
-- **Side-effect security (mirror Phase 4/5/6):** the programmatic + MCP paths make **zero** active-probe
-  requests against an unverified target — assert on the probe/fetch call count, not just a response field.
-- OEM/public payload exposes only whitelisted shape fields (no evidence, no PII, no table names).
+- `utils/entitlements.ts` is pure and unit-tested: each plan maps to the right limits; the guarded-app
+  limit, API-key tier, and deep-review gate are enforced (assert a route rejects an over-limit action).
+- Stripe/webhook plan mapping stays correct (mirror the existing billing tests); **test mode only**.
+- The metrics/corpus surface exposes **aggregate** fields only — assert no finding message, table name,
+  PII, or per-customer row can appear (mirror the Phase 6 shape-only tests).
 
 **Acceptance criteria**
 
-- A scripted MCP client gets a correct structured `assurly_verdict` pre-deploy.
-- A working embeddable "security-checked" widget/API backed by the badge/verdict.
-- Programmatic key issuance + plan-based rate limits enforced; keys hashed at rest and revocable.
+- New pricing is live on the marketing page and each tier maps to a **server-enforced** entitlement.
+- The OEM/platform tier is defined and gates the keyed-API rate limit.
+- The corpus + distribution narrative is documented, and a metrics view renders aggregate KPIs with no
+  customer data.
 
 **Risks / do-not:**
 
-- The MCP tool and the API must **never** become an active-probe bypass — the ownership gate stays
-  authoritative; strangers get the passive verdict only.
-- Public/OEM/keyed payloads are **shape only** (reuse `toPublicTrustProjection`) — never evidence, PII, or
-  the exposed table name.
-- API keys are **hashed at rest**, shown in plaintext exactly once on creation, revocable, rate-limited by plan.
-- Do not re-implement scanning inside `packages/mcp-server`; the verdict tool reads the hosted API.
+- **Never execute or simulate live financial operations** (charges, refunds, transfers). Stripe changes
+  are made by the owner in the Stripe dashboard; use **test mode** for anything you drive. (See the safety
+  rules — financial actions are owner-only.)
+- **Never leak customer data** into a metric, export, or narrative — the corpus is aggregate patterns only
+  (`getFixOutcomeCorpus`), and the trust page states posture, not customer specifics.
+- Entitlements are enforced **server-side** (`secureRoute` + `utils/entitlements.ts`) — a client-only gate
+  is not enforcement.
+- Any `billing_plan`/entitlements migration is owner-approved and additive (§3.2); keep the plan enum in
+  sync across the DB check, `apiKeyRateLimitForPlan`, and `api_keys.plan`.
+
+**This is the final phase.** When its DoD is met and browser-verified, the rebuild described by this handoff
+is complete — there is no Phase 9. Record it in the Master Tracker and stop.
 
 ---
 
-## 6. REMAINING WORK — Phase 8 (senior spec)
-
-Phase 8 still ends with the full Definition of Done (§4). Phase 7 above (§5) is the most detailed because it
-is next; the spec below is precise but expects you to apply the same rigor and the conventions in §2.
-
-> **Phases 3–6 are no longer specified here.** They are **built** — their shipped shape is documented in
-> **§1.7 / §1.8 / §1.9 / §1.10**, which is what you build on. Phase 7's spec is in **§5** because it is next.
-> Do not re-implement any of them.
-
-### Phase 8 — Pricing, Business & Exit readiness
-
-**Goal:** Align monetization with the new value; make the company legible to an acquirer.
-
-**Deliverables**
-
-- **Pricing realign** in `HomeClient.tsx` + Stripe products: Free = the scary proof-probe (viral top of
-  funnel) + one guarded app; Paid (per-app) = continuous monitoring + AI deep review + auto-fix +
-  verified badge; add an **OEM/platform tier** (usage/seat) for B2B2C. Revisit the current
-  `$19 Guard / $49 Agency` framing.
-- **Exit-readiness**: package the dataset story (AI-failure + verified-fix corpus), trust brand, and MCP
-  distribution into a clean narrative + a metrics dashboard for a strategic buyer (Supabase / Vercel /
-  builder).
-- **Trust/compliance surface**: the public "security-checked" brand, a SOC2-lite trust page, clear
-  data-handling/consent docs (leaning on Phase 3's ownership + privacy work).
-
-**Acceptance:** new pricing live; OEM tier defined; corpus + distribution narrative documented.
-
----
-
-## 7. Cross-cutting workstreams (run continuously, not a phase)
+## 6. Cross-cutting workstreams (run continuously, not a phase)
 
 - **AI cost & safety:** the single provider abstraction from Phase 2 (`utils/ai/claudeClient.ts`), model
   routing, content-hash caching, per-org budget caps, timeouts, prompt-injection defense. Latest Claude
@@ -481,7 +483,7 @@ is next; the spec below is precise but expects you to apply the same rigor and t
 
 ---
 
-## 8. Execution order & final reminders
+## 7. Execution order & final reminders
 
 1. ~~**Phases 2–4**~~ (proof-first, ownership, AI red-team + deep review) — **done & browser-verified**
    (§1.6 / §1.7 / §1.8); Phase 4's moat criterion is resolved.
@@ -489,18 +491,21 @@ is next; the spec below is precise but expects you to apply the same rigor and t
    `fix_outcome` migration applied to prod.
 3. ~~**Phase 6**~~ (continuous guardian + badge growth loop) — **done & browser-verified end-to-end** (§1.10);
    `target_alert_prefs` migration applied to prod.
-4. **Phase 7** (agent-native MCP gate + OEM) — **next; spec in §5.**
-5. **Phase 8** (pricing + exit).
+4. ~~**Phase 7**~~ (agent-native MCP gate + OEM) — **done & live-verified end-to-end** (§1.11);
+   `api_keys` migration applied to prod.
+5. **Phase 8** (pricing, business & exit) — **next and last; spec in §5.**
 
 Do not reorder without updating `10-genius-rebuild-master-plan.md` first.
 
-**Carry into Phase 7 — do not silently inherit as "done":** the `assurly_verdict` MCP tool, an
-`auth: 'apiKey'` mode + `api_keys` table, and plan-based rate limits do **not** exist yet — build them
-through `secureRoute` and the ownership gate, never around them. `GET /api/targets/[id]` (a stable
-per-target public endpoint, §1.5) is still not built; you may finally want it here, but the shape-only
-payload already exists as `toPublicTrustProjection` / `GET /api/trust/[token]` (§1.10) — reuse it, don't
-invent a second projection. Also: the moat is the **verified-fix corpus** (§0), not the planner — invest
-Phase-7 energy in distribution (agents/OEM), not in more scanning.
+**Carry into Phase 8 — do not silently inherit as "done":** entitlements are not enforced yet — the
+`billing_plan` gates the API-key rate tier (§1.11) but nothing enforces a guarded-app limit or deep-review
+access, so build `utils/entitlements.ts` and enforce it server-side (never client-only). Anything that
+touches money is owner-only: Stripe product/price changes happen in the Stripe dashboard, and you use
+**test mode** for anything you drive — never a live charge/refund/transfer. The exit metrics + narrative
+draw from the **verified-fix corpus** (`getFixOutcomeCorpus`, §1.9) — aggregate patterns only, never
+customer data. `GET /api/targets/[id]` (§1.5) is still not built; you likely won't need it — the public
+shape lives in `toPublicTrustProjection` / `GET /api/trust/[token]` (§1.10). After Phase 8's DoD there is
+no Phase 9.
 
 **Before you start each phase:** re-read §2 (conventions) and §3 (gotchas). **Before you finish each
 phase:** run the full Definition of Done (§4), get owner approval for any prod migration, browser-verify,
