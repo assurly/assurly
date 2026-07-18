@@ -3,16 +3,104 @@ import type { ReactElement } from 'react';
 import { ShipGatePanel } from '../../_components/ship-gate/ShipGatePanel';
 import { buildShipGateFromScanFindings } from '../../../utils/shipGate';
 import { getAdminDbAdapter } from '../../../utils/dbAdapter';
+import { toPublicTrustProjection } from '../../../utils/publicTrust';
 
 interface ReportPageProps {
   params: Promise<{ token: string }>;
 }
 
+const VERDICT_LABEL: Record<string, string> = {
+  ready: 'Ready to ship',
+  review: 'Review recommended',
+  blocked: 'Not ready to ship',
+  unknown: 'Not checked yet',
+};
+
+function formatFreshness(iso: string | null): string {
+  if (!iso) return 'Never checked';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return 'Never checked';
+  const seconds = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (seconds < 60) return 'Checked just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `Checked ${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `Checked ${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `Checked ${days}d ago`;
+}
+
+/**
+ * Public trust page (Phase 6 growth loop) when the token is a target badge_token.
+ * Falls back to the legacy scan share report for backward compatibility.
+ * Trust projection is shape-only — never evidence rows / PII.
+ */
 export default async function ReportPage({ params }: ReportPageProps): Promise<ReactElement> {
   const { token } = await params;
   if (!/^[a-f0-9]{32}$/.test(token)) notFound();
 
   const db = getAdminDbAdapter();
+  const target = await db.getTargetByBadgeToken(token);
+  if (target) {
+    const trust = toPublicTrustProjection(target);
+    if (!trust) notFound();
+
+    const badgeSrc = `/api/badge/${token}`;
+    return (
+      <main className="report-page trust-page">
+        <div className="report-page-inner">
+          <header className="report-page-header">
+            <p className="report-page-eyebrow">Verified by Assurly</p>
+            <h1>{trust.displayName}</h1>
+            <p className="report-page-meta">
+              {VERDICT_LABEL[trust.verdict] ?? trust.verdict}
+              {trust.shipScore !== null ? ` · Ship Score ${trust.shipScore}/100` : ''}
+              {' · '}
+              {formatFreshness(trust.lastCheckedAt)}
+            </p>
+          </header>
+
+          <p className="trust-page__badge-wrap">
+            <a href={badgeSrc}>
+              {/* Badge is a dynamic SVG API route — native img is intentional. */}
+              <img
+                className="trust-page__badge"
+                src={badgeSrc}
+                alt={`Verified by Assurly · Ship Score ${trust.shipScore ?? '—'}/100`}
+                width={260}
+                height={28}
+              />
+            </a>
+          </p>
+
+          <section className="trust-page__verdict" aria-label="Current verdict">
+            <p className="trust-page__score">
+              {trust.shipScore === null ? '—' : trust.shipScore}
+              <span>/100</span>
+            </p>
+            <p className="trust-page__status">{VERDICT_LABEL[trust.verdict] ?? trust.verdict}</p>
+            {trust.topIssue ? (
+              <p className="trust-page__issue">
+                <strong>{trust.topIssue.label}</strong> — {trust.topIssue.sampleMessage}
+              </p>
+            ) : trust.verdict === 'ready' ? (
+              <p className="trust-page__issue">No blockers detected on the last check.</p>
+            ) : null}
+            <p className="trust-page__freshness">{formatFreshness(trust.lastCheckedAt)}</p>
+          </section>
+
+          <p className="trust-page__footer">
+            Continuous monitoring by{' '}
+            <a href="https://assurly.dev" rel="noopener noreferrer">
+              Assurly
+            </a>
+            . Proof is shape-only — personal data is never shown on this page.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   const scan = await db.getScanByShareToken(token);
   if (!scan) notFound();
 

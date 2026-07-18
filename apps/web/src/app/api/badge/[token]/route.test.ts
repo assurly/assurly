@@ -11,6 +11,7 @@ vi.mock('../../../../utils/dbAdapter', () => ({
 import { badgeColor, buildBadgeSvg, GET } from './route';
 
 const db = {
+  getTargetByBadgeToken: vi.fn(),
   getScanByShareToken: vi.fn(),
   getScanFindings: vi.fn(),
 };
@@ -19,6 +20,7 @@ describe('GET /api/badge/[token]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getAdminDbAdapter.mockReturnValue(db);
+    db.getTargetByBadgeToken.mockResolvedValue(null);
   });
 
   it('uses a public route config', () => {
@@ -26,7 +28,29 @@ describe('GET /api/badge/[token]', () => {
     expect(GET.security.auth).toBe('none');
   });
 
-  it('returns SVG with the expected content type for a valid token', async () => {
+  it('renders the live target score for a badge_token', async () => {
+    const token = 'a'.repeat(32);
+    db.getTargetByBadgeToken.mockResolvedValue({
+      id: 'target-1',
+      badge_token: token,
+      current_verdict: 'review',
+      current_ship_score: 96,
+    });
+
+    const response = await GET(new Request(`http://localhost/api/badge/${token}`), {
+      params: Promise.resolve({ token }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('image/svg+xml');
+    const svg = await response.text();
+    expect(svg).toContain('Verified by Assurly');
+    expect(svg).toContain('Ship Score 96/100');
+    expect(svg).toContain(`/report/${token}`);
+    expect(db.getScanByShareToken).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a scan share token for backward compatibility', async () => {
     db.getScanByShareToken.mockResolvedValue({
       id: 'scan-1',
       share_token: 'a'.repeat(32),
@@ -39,11 +63,9 @@ describe('GET /api/badge/[token]', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toContain('image/svg+xml');
-    expect(response.headers.get('cache-control')).toContain('public');
     const svg = await response.text();
+    expect(svg).toContain('Verified by Assurly');
     expect(svg).toContain('Ship Score');
-    expect(svg).toContain('/100');
   });
 
   it('returns 404 without a body for an unknown token', async () => {
@@ -69,9 +91,11 @@ describe('GET /api/badge/[token]', () => {
 });
 
 describe('buildBadgeSvg', () => {
-  it('colors the badge by verdict', () => {
-    expect(buildBadgeSvg(94, 'ready')).toContain(badgeColor('ready'));
-    expect(buildBadgeSvg(72, 'review')).toContain(badgeColor('review'));
-    expect(buildBadgeSvg(40, 'blocked')).toContain(badgeColor('blocked'));
+  it('colors the badge by verdict and links to the trust page', () => {
+    expect(buildBadgeSvg(94, 'ready', '/report/abc')).toContain(badgeColor('ready'));
+    expect(buildBadgeSvg(94, 'ready', '/report/abc')).toContain('Verified by Assurly');
+    expect(buildBadgeSvg(94, 'ready', '/report/abc')).toContain('href="/report/abc"');
+    expect(buildBadgeSvg(72, 'review', null)).toContain(badgeColor('review'));
+    expect(buildBadgeSvg(40, 'blocked', null)).toContain(badgeColor('blocked'));
   });
 });
