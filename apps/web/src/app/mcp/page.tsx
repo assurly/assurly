@@ -134,9 +134,9 @@ export default function McpPage(): React.ReactElement {
             the URL scan is: it is how Assurly gets found, not what it charges for.
           </p>
           <p>
-            Paid plans (Guard, Agency) add what makes the gate <em>stick</em> after adoption —
+            Paid plans (Pro and OEM) add what makes the gate <em>stick</em> after adoption —
             continuous monitoring on every deploy, private repositories, auto-fix pull requests,
-            regression alerts, and white-label audit reports.
+            regression alerts, AI deep review, and the white-label keyed verdict for platforms.
           </p>
         </section>
       </main>

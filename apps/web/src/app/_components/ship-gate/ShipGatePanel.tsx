@@ -4,9 +4,11 @@ import type { ReactElement } from 'react';
 import { formatScanScopeSummary } from '../../../utils/browserScanner';
 import type { ShipGateReport } from '../../../utils/shipGate';
 import { getShipGateActionHint } from '../../../utils/shipGate';
+import type { BillingPlan } from '../../../utils/entitlements';
 import { ShipGateGroupRow } from './ShipGateGroupRow';
 
-export type ShipGateBillingPlan = 'free' | 'pro' | 'agency';
+/** The plan values this panel renders for. Kept aligned with the canonical enum. */
+export type ShipGateBillingPlan = BillingPlan;
 
 interface ShipGatePanelProps {
   report: ShipGateReport;

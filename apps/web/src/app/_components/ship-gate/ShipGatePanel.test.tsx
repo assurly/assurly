@@ -107,7 +107,7 @@ describe('ShipGatePanel share button copy', () => {
   it('formats share button labels by billing plan', () => {
     expect(getShareReportButtonLabel('pro', false)).toBe('Share report');
     expect(getShareReportButtonLabel('free', false)).toBe('Share report (Pro)');
-    expect(getShareReportButtonLabel('agency', false)).toBe('Share report (Pro)');
+    expect(getShareReportButtonLabel('oem', false)).toBe('Share report (Pro)');
     expect(getShareReportButtonLabel(undefined, false)).toBe('Share report (Pro)');
     expect(getShareReportButtonLabel('pro', true)).toBe('Creating link…');
   });

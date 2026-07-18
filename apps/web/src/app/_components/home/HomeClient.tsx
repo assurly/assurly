@@ -117,24 +117,21 @@ export default function HomeClient({
 
   const currencySymbol = currency === 'USD' ? '$' : '€';
 
+  // `guard*` keys are the Pro (per-app) subscription price — the ROI calculator
+  // below reads them. The OEM/platform tier is usage/seat based and quoted via
+  // sales, so it has no fixed number here.
   const prices = {
     USD: {
       free: 0,
       guardMonthly: 19,
       guardYearly: 149,
       guardMonthlyEquiv: 12.4,
-      agencyMonthly: 49,
-      agencyYearly: 399,
-      agencyMonthlyEquiv: 33.25,
     },
     EUR: {
       free: 0,
       guardMonthly: 17,
       guardYearly: 130,
       guardMonthlyEquiv: 10.8,
-      agencyMonthly: 43,
-      agencyYearly: 347,
-      agencyMonthlyEquiv: 28.9,
     },
   }[currency];
 
@@ -1469,8 +1466,8 @@ export default function HomeClient({
         <section id="pricing" className="pricing-section">
           <h2>Simple, Transparent Pricing</h2>
           <p className="pricing-subtitle">
-            Start free with URL scan and MCP access. Upgrade for continuous monitoring and peace of
-            mind — not a longer rule list.
+            Start free with the live proof-probe and one guarded app. Upgrade for a continuous
+            guardian on every deploy — or embed the verdict in your own platform.
           </p>
 
           <div className="pricing-controls-container">
@@ -1508,8 +1505,8 @@ export default function HomeClient({
                 </div>
               </div>
               <ul className="pricing-features">
-                <li>✓ Deployed URL scan (limited preview)</li>
-                <li>✓ Public repository scanning</li>
+                <li>✓ Live proof-probe: paste a URL, see what leaks</li>
+                <li>✓ One guarded app</li>
                 <li>✓ MCP server access for AI agents</li>
                 <li>✓ CLI scanner (unlimited local scans)</li>
                 <li>✓ Community support</li>
@@ -1523,7 +1520,7 @@ export default function HomeClient({
             <div className="pricing-card featured">
               <div className="pricing-badge">Most Popular</div>
               <div className="pricing-card-header">
-                <h3>Guard</h3>
+                <h3>Pro</h3>
                 <div className="pricing-price">
                   <span className="pricing-amount">
                     {currencySymbol}
@@ -1535,46 +1532,40 @@ export default function HomeClient({
                 </div>
               </div>
               <ul className="pricing-features">
-                <li>✓ Everything in Free</li>
-                <li>✓ Monitoring on every deploy</li>
+                <li>✓ Everything in Free, unlimited guarded apps</li>
+                <li>✓ Continuous Guardian on every deploy</li>
+                <li>✓ AI deep review (Layer 2 reasoning)</li>
+                <li>✓ Verified Ship Score badge + trust page</li>
+                <li>✓ Auto-fix pull requests &amp; regression alerts</li>
                 <li>✓ Private repository scanning</li>
-                <li>✓ Auto-fix pull requests</li>
-                <li>✓ Regression alerts</li>
               </ul>
               {renderAuthButton('primary', {
-                signIn: 'Start Guard Trial',
+                signIn: 'Start Pro Trial',
                 dashboard: 'Go to Dashboard',
               })}
             </div>
 
             <div className="pricing-card">
               <div className="pricing-card-header">
-                <h3>Agency</h3>
+                <h3>OEM / Platform</h3>
                 <div className="pricing-price">
-                  <span className="pricing-amount">
-                    {currencySymbol}
-                    {billingPeriod === 'yearly' ? prices.agencyYearly : prices.agencyMonthly}
-                  </span>
-                  <span className="pricing-period">
-                    {billingPeriod === 'yearly' ? '/ year' : '/ month'}
-                  </span>
+                  <span className="pricing-amount">Custom</span>
+                  <span className="pricing-period">usage / seat</span>
                 </div>
               </div>
               <ul className="pricing-features">
-                <li>✓ Everything in Guard</li>
-                <li>✓ White-label PDF audit reports</li>
-                <li>✓ 5 team seats included</li>
-                <li>✓ Shareable Ship Score badge</li>
-                <li>✓ Priority support</li>
+                <li>✓ Everything in Pro</li>
+                <li>✓ Keyed verdict API for your users</li>
                 <li>
-                  ✓ Bill the {currencySymbol}
-                  {prices.agencyMonthly}/mo audit fee to your client
+                  ✓ <code>assurly_verdict</code> MCP ship-gate
                 </li>
+                <li>✓ White-label “security-checked” widget</li>
+                <li>✓ Higher programmatic rate limits</li>
+                <li>✓ Volume pricing &amp; priority support</li>
               </ul>
-              {renderAuthButton('secondary', {
-                signIn: 'Start Agency Trial',
-                dashboard: 'Go to Dashboard',
-              })}
+              <a className="btn btn-secondary" href="#contact">
+                Contact Sales
+              </a>
             </div>
           </div>
         </section>
