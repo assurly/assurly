@@ -28,5 +28,16 @@ export function dedupeRepositoriesByGithubId(repositories: Repository[]): Reposi
     }
   }
 
-  return Array.from(byGithubId.values()).sort((a, b) => a.name.localeCompare(b.name));
+  // Sort deterministically and LOCALE-INDEPENDENTLY. `localeCompare` uses the
+  // runtime's default collation, which differs between Node (SSR) and the browser
+  // for mixed-case / `-` / `_` names — reordering the list on the client and
+  // triggering a hydration mismatch. `toLowerCase()` (Unicode-default, not locale
+  // sensitive) + code-point comparison is identical on both, with a stable id
+  // tiebreak so the order never depends on the environment.
+  return Array.from(byGithubId.values()).sort((a, b) => {
+    const an = a.name.toLowerCase();
+    const bn = b.name.toLowerCase();
+    if (an !== bn) return an < bn ? -1 : 1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
 }

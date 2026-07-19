@@ -23,6 +23,24 @@ describe('dedupeRepositoriesByGithubId', () => {
     expect(repositories[0]?.name).toBe('owner/repo');
   });
 
+  it('orders case-insensitively and locale-independently (SSR-stable, no localeCompare)', () => {
+    const repositories = dedupeRepositoriesByGithubId([
+      base({ id: 'id-3', name: 'tibco87/anima-privacy', github_repo_id: 3 }),
+      base({ id: 'id-1', name: 'vercel/chatbot', github_repo_id: 1 }),
+      base({ id: 'id-2', name: 'tibco87/Anima', github_repo_id: 2 }),
+      base({ id: 'id-4', name: 'vercel/eve', github_repo_id: 4 }),
+    ]);
+
+    // Deterministic across Node (SSR) and the browser: 'Anima' sorts next to
+    // 'anima-privacy' (case-insensitive), and 'chatbot' before 'eve'.
+    expect(repositories.map((repository) => repository.name)).toEqual([
+      'tibco87/Anima',
+      'tibco87/anima-privacy',
+      'vercel/chatbot',
+      'vercel/eve',
+    ]);
+  });
+
   it('prefers the newest record when both names are canonical', () => {
     const repositories = dedupeRepositoriesByGithubId([
       base({
