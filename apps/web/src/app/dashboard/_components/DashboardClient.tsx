@@ -48,7 +48,7 @@ import { ApiKeys } from './ApiKeys';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { DashboardTabs } from './DashboardTabs';
 import { PublicRepoConnect } from './PublicRepoConnect';
-import { DeployedUrlScan } from './DeployedUrlScan';
+import { DeployedUrlScanCard, DeployedUrlScanResults, useDeployedUrlScan } from './DeployedUrlScan';
 import { ScanWorkspace } from './ScanWorkspace';
 import { DashboardToast } from './DashboardToast';
 import { DashboardHeader } from './DashboardHeader';
@@ -163,6 +163,13 @@ function DashboardContent({
   const [scans, setScans] = useState<Scan[]>([]);
   const [selectedScan, setSelectedScan] = useState<Scan | null>(null);
   const [findings, setFindings] = useState<ScanFinding[]>([]);
+  // Which flow owns the wide results canvas: the repo scan (default) or a
+  // deployed-URL scan. "Last action wins" — flipped to 'url' when a URL scan
+  // starts (onActivate) and back to 'repo' on repo select / repo scan.
+  const [resultsView, setResultsView] = useState<'repo' | 'url'>('repo');
+  // The arrow's identity may change per render; the hook stores it in a ref and
+  // always calls the latest, so no memoisation is needed here.
+  const urlScan = useDeployedUrlScan(() => setResultsView('url'));
   const [repoDetailStatus, setRepoDetailStatus] = useState<RepoDetailStatus>('loading');
   // A scan that finished locally but could not be persisted (e.g. backend
   // misconfiguration). Kept in dedicated state so the 5s polling never wipes it.
@@ -240,6 +247,7 @@ function DashboardContent({
     }
 
     const reset = createRepoSelectionReset();
+    setResultsView('repo');
     setSelectedRepo(repo);
     setSelectedScan(reset.selectedScan);
     setFindings(reset.findings);
@@ -262,9 +270,19 @@ function DashboardContent({
   // server-side during save), so the dashboard verdict reflects the new result.
   const [verdictRefreshKey, setVerdictRefreshKey] = useState(0);
   const wasScanningRef = useRef(false);
+  // Set when a scan is kicked off from the tools column (Scan Public Repository),
+  // where the user is scrolled away from the results canvas. On completion we
+  // bring them to the TOP of the workspace so the verdict reads from the start.
+  const pendingWorkspaceScrollRef = useRef(false);
   useEffect(() => {
     if (wasScanningRef.current && !isScanning) {
       setVerdictRefreshKey((key) => key + 1);
+      if (pendingWorkspaceScrollRef.current) {
+        pendingWorkspaceScrollRef.current = false;
+        document
+          .getElementById('repo-scan-workspace')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
     wasScanningRef.current = isScanning;
   }, [isScanning]);
@@ -287,6 +305,7 @@ function DashboardContent({
         );
         handleSelectRepo(newRepo);
         autoStartScanRef.current = true;
+        pendingWorkspaceScrollRef.current = true;
       } catch (error: unknown) {
         console.error('Failed to import pending repository:', error);
       }
@@ -786,6 +805,7 @@ function DashboardContent({
       handleSelectRepo(newRepo);
       setPublicRepoInput('');
       autoStartScanRef.current = true;
+      pendingWorkspaceScrollRef.current = true;
       setToast({
         message: `Repository "${repoFullName}" connected successfully!`,
         type: 'success',
@@ -807,6 +827,7 @@ function DashboardContent({
   const triggerScan = async (): Promise<void> => {
     if (!selectedRepo || !org) return;
 
+    setResultsView('repo');
     setIsScanning(true);
     setScanProgress(0);
     setScanError(null);
@@ -1444,55 +1465,59 @@ function DashboardContent({
                   }}
                 />
 
-                <DeployedUrlScan loginUrl={loginUrl} />
+                <DeployedUrlScanCard scan={urlScan} />
 
                 <ApiKeys />
               </div>
 
-              <ScanWorkspace
-                selectedRepo={selectedRepo}
-                githubInstallationId={org?.github_installation_id}
-                billingPlan={org?.billing_plan}
-                selectedRepoScanCount={selectedRepoScanCount}
-                canJumpToScanResults={canJumpToScanResults}
-                onJumpToResults={() => {
-                  scrollToScanDetails();
-                }}
-                isScanning={isScanning}
-                onRunScan={triggerScan}
-                scanError={scanError}
-                onDismissScanError={() => {
-                  setScanError(null);
-                  setScanLogs([]);
-                }}
-                scanProgress={scanProgress}
-                scanLogs={scanLogs}
-                repoDetailStatus={repoDetailStatus}
-                displayedScans={displayedScans}
-                selectedScan={selectedScan}
-                onSelectScan={(scan) => {
-                  setShareError(null);
-                  setSelectedScan(scan);
-                }}
-                shipGateReport={shipGateReport}
-                fixSummary={fixSummary}
-                displayedFindings={displayedFindings}
-                findingsLimit={SAVE_FINDINGS_LIMIT}
-                selectedShareUrl={selectedShareUrl}
-                selectedBadgeMarkdown={selectedBadgeMarkdown}
-                fetchTrend={clientApi.trend}
-                onShare={
-                  org?.billing_plan === 'pro' && !selectedShareUrl
-                    ? () => void handleShareScan()
-                    : undefined
-                }
-                isSharing={sharingScanId === selectedScan?.id}
-                shareError={shareError}
-                fixingFindingId={fixingFindingId}
-                isFindingFixable={isFindingFixable}
-                onCreateFixPr={(finding) => void handleCreateFixPr(finding)}
-                onCreateBatchFixPr={() => void handleCreateBatchFixPr()}
-              />
+              {resultsView === 'url' && urlScan.hasActivity ? (
+                <DeployedUrlScanResults scan={urlScan} loginUrl={loginUrl} />
+              ) : (
+                <ScanWorkspace
+                  selectedRepo={selectedRepo}
+                  githubInstallationId={org?.github_installation_id}
+                  billingPlan={org?.billing_plan}
+                  selectedRepoScanCount={selectedRepoScanCount}
+                  canJumpToScanResults={canJumpToScanResults}
+                  onJumpToResults={() => {
+                    scrollToScanDetails();
+                  }}
+                  isScanning={isScanning}
+                  onRunScan={triggerScan}
+                  scanError={scanError}
+                  onDismissScanError={() => {
+                    setScanError(null);
+                    setScanLogs([]);
+                  }}
+                  scanProgress={scanProgress}
+                  scanLogs={scanLogs}
+                  repoDetailStatus={repoDetailStatus}
+                  displayedScans={displayedScans}
+                  selectedScan={selectedScan}
+                  onSelectScan={(scan) => {
+                    setShareError(null);
+                    setSelectedScan(scan);
+                  }}
+                  shipGateReport={shipGateReport}
+                  fixSummary={fixSummary}
+                  displayedFindings={displayedFindings}
+                  findingsLimit={SAVE_FINDINGS_LIMIT}
+                  selectedShareUrl={selectedShareUrl}
+                  selectedBadgeMarkdown={selectedBadgeMarkdown}
+                  fetchTrend={clientApi.trend}
+                  onShare={
+                    org?.billing_plan === 'pro' && !selectedShareUrl
+                      ? () => void handleShareScan()
+                      : undefined
+                  }
+                  isSharing={sharingScanId === selectedScan?.id}
+                  shareError={shareError}
+                  fixingFindingId={fixingFindingId}
+                  isFindingFixable={isFindingFixable}
+                  onCreateFixPr={(finding) => void handleCreateFixPr(finding)}
+                  onCreateBatchFixPr={() => void handleCreateBatchFixPr()}
+                />
+              )}
             </div>
           </>
         ) : (

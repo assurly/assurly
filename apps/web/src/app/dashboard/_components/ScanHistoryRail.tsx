@@ -21,6 +21,7 @@ export function ScanHistoryRail({
   onSelectScan,
 }: ScanHistoryRailProps): ReactElement {
   const chipRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const railRef = useRef<HTMLDivElement>(null);
   const duplicateBadges = useMemo(() => buildDuplicateShaBadges(scans), [scans]);
 
   useEffect(() => {
@@ -29,15 +30,24 @@ export function ScanHistoryRail({
     }
 
     const activeChip = chipRefs.current.get(selectedScanId);
-    if (typeof activeChip?.scrollIntoView !== 'function') {
+    const rail = railRef.current;
+    if (!activeChip || !rail || typeof rail.scrollBy !== 'function') {
       return;
     }
 
-    activeChip.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'start',
-    });
+    // Reveal the active chip HORIZONTALLY inside the rail only. `scrollIntoView`
+    // would also scroll the whole page vertically to the chip — jerking the user
+    // down to the middle of the scan workspace. Scrolling the rail's own overflow
+    // keeps the page position untouched.
+    const railRect = rail.getBoundingClientRect();
+    const chipRect = activeChip.getBoundingClientRect();
+    const overflowLeft = chipRect.left - railRect.left;
+    const overflowRight = chipRect.right - railRect.right;
+    if (overflowLeft < 0) {
+      rail.scrollBy({ left: overflowLeft - 8, behavior: 'smooth' });
+    } else if (overflowRight > 0) {
+      rail.scrollBy({ left: overflowRight + 8, behavior: 'smooth' });
+    }
   }, [selectedScanId, scans]);
 
   return (
@@ -47,7 +57,12 @@ export function ScanHistoryRail({
       aria-label={`Scan history, ${scans.length} scans`}
     >
       <h3 className="scan-history__heading">Scan history ({scans.length})</h3>
-      <div className="scan-history-rail" role="tablist" aria-label="Select scan by commit">
+      <div
+        ref={railRef}
+        className="scan-history-rail"
+        role="tablist"
+        aria-label="Select scan by commit"
+      >
         {scans.map((scan) => {
           const isSelected = selectedScanId === scan.id;
           const duplicateBadge = duplicateBadges.get(scan.id);

@@ -78,28 +78,29 @@ describe('ScanHistoryRail', () => {
     expect(onSelectScan).toHaveBeenCalledWith(scans[3]);
   });
 
-  it('scrolls the active scan chip into view when selection changes', () => {
+  it('reveals the active chip horizontally without scrolling the page vertically', () => {
     const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const scrollBy = vi.fn();
+    Element.prototype.scrollBy = scrollBy;
 
     const { rerender } = render(
       <ScanHistoryRail scans={scans} selectedScanId="scan-1" onSelectScan={vi.fn()} />,
     );
 
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'start',
-    });
+    const rail = screen.getByRole('tablist', { name: 'Select scan by commit' });
+    // Rail viewport spans x=0..200; the newly-selected chip sits off to the right.
+    vi.spyOn(rail, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 200 } as DOMRect);
+    const chip4 = screen.getByTestId('scan-history-chip-scan-4');
+    vi.spyOn(chip4, 'getBoundingClientRect').mockReturnValue({ left: 240, right: 320 } as DOMRect);
 
-    scrollIntoView.mockClear();
-
+    scrollBy.mockClear();
     rerender(<ScanHistoryRail scans={scans} selectedScanId="scan-4" onSelectScan={vi.fn()} />);
 
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'start',
-    });
+    // Only the rail scrolls horizontally; the page-scrolling scrollIntoView is
+    // never used, so the workspace above the rail stays put.
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollBy).toHaveBeenCalledWith({ left: 320 - 200 + 8, behavior: 'smooth' });
+    expect(scrollBy.mock.calls[0][0]).not.toHaveProperty('top');
   });
 
   it('contains horizontal scrolling inside the rail wrapper', () => {

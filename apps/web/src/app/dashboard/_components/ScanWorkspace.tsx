@@ -98,7 +98,7 @@ export function ScanWorkspace({
 }: ScanWorkspaceProps): ReactElement {
   if (!selectedRepo) {
     return (
-      <section className="dashboard-scan-workspace">
+      <section id="repo-scan-workspace" className="dashboard-scan-workspace">
         <div className="dashboard-empty-state dashboard-empty-state--panel">
           <span className="dashboard-empty-state__icon">
             <DashboardBuildingIcon className="dashboard-icon--xl" />
@@ -113,7 +113,7 @@ export function ScanWorkspace({
   }
 
   return (
-    <section className="dashboard-scan-workspace">
+    <section id="repo-scan-workspace" className="dashboard-scan-workspace">
       <SelectedRepoHeader
         repoName={selectedRepo.name}
         scanCount={selectedRepoScanCount}

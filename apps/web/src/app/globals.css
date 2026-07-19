@@ -3498,6 +3498,23 @@ footer .footer-links a:hover {
   color: var(--color-text-muted);
 }
 
+/* Small inline spinner for the deployed-URL results canvas loading state. */
+.dashboard-inline-spinner {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--color-border-strong);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: dashboard-inline-spin 0.8s linear infinite;
+}
+
+@keyframes dashboard-inline-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* One-time plaintext reveal — highlighted so it reads as "act now". */
 .api-keys__reveal {
   margin-top: 14px;
