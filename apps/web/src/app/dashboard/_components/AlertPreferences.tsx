@@ -45,6 +45,7 @@ export function AlertPreferences({ targetId }: AlertPreferencesProps): ReactElem
   }, [targetId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount-time prefs fetch
     void load();
   }, [load]);
 

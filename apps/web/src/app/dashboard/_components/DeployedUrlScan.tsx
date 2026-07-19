@@ -102,7 +102,9 @@ export function useDeployedUrlScan(onActivate?: () => void): DeployedUrlScanStat
 
   // Keep the latest callback without making runScan change identity every render.
   const onActivateRef = useRef(onActivate);
-  onActivateRef.current = onActivate;
+  useEffect(() => {
+    onActivateRef.current = onActivate;
+  }, [onActivate]);
 
   const isValidUrl = isLikelyScannableUrl(urlInput);
   const showInvalidHint = urlInput.trim().length > 0 && !isValidUrl;

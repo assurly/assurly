@@ -306,6 +306,8 @@ export interface DbAdapter {
   ): Promise<Scan>;
   getScan(scanId: string): Promise<Scan | null>;
   getRecentScans(repoId: string): Promise<Scan[]>;
+  /** Permanently deletes one scan. Findings/probe evidence cascade; fix outcomes null out. */
+  deleteScan(scanId: string): Promise<void>;
   getScanFindings(scanId: string): Promise<ScanFinding[]>;
   getFinding(findingId: string): Promise<ScanFinding | null>;
   setScanShareToken(scanId: string, shareToken: string): Promise<Scan>;
@@ -634,6 +636,16 @@ export class SupabaseDbAdapter implements DbAdapter {
 
   getRecentScans(repoId: string): Promise<Scan[]> {
     return this.fetchDb(`scans?select=*&repository_id=eq.${eq(repoId)}&order=created_at.desc`);
+  }
+
+  async deleteScan(scanId: string): Promise<void> {
+    // RLS scopes this DELETE to the caller's org (user token), so a member can
+    // only delete a scan on a repository their organization owns. Findings and
+    // probe evidence cascade; fix outcomes have their scan_id set null.
+    await this.fetchDb(`scans?id=eq.${eq(scanId)}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
+    });
   }
 
   getScanFindings(scanId: string): Promise<ScanFinding[]> {

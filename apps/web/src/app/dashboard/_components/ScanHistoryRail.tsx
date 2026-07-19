@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { Scan } from '../../../utils/dbAdapter';
+import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
 import {
   buildDuplicateShaBadges,
   formatCommitShaShort,
@@ -13,16 +14,28 @@ export interface ScanHistoryRailProps {
   scans: Scan[];
   selectedScanId: string | null;
   onSelectScan: (scan: Scan) => void;
+  /** When provided, each chip gets a delete control gated by a confirm dialog. */
+  onDeleteScan?: (scan: Scan) => void;
 }
 
 export function ScanHistoryRail({
   scans,
   selectedScanId,
   onSelectScan,
+  onDeleteScan,
 }: ScanHistoryRailProps): ReactElement {
   const chipRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const railRef = useRef<HTMLDivElement>(null);
   const duplicateBadges = useMemo(() => buildDuplicateShaBadges(scans), [scans]);
+
+  // The scan awaiting an explicit delete confirmation, or null when the dialog
+  // is closed. Only ever one dialog open at a time, so a single piece of state
+  // and a single accessible-dialog instance cover every chip.
+  const [confirmScan, setConfirmScan] = useState<Scan | null>(null);
+  const { menuRef: dialogRef, rememberTrigger } = useAccessibleMenu<HTMLDivElement>({
+    open: confirmScan !== null,
+    onClose: () => setConfirmScan(null),
+  });
 
   useEffect(() => {
     if (!selectedScanId) {
@@ -50,6 +63,19 @@ export function ScanHistoryRail({
     }
   }, [selectedScanId, scans]);
 
+  const openConfirm = (scan: Scan, trigger: HTMLButtonElement): void => {
+    // Remember the "×" so focus returns to it when the dialog closes.
+    rememberTrigger(trigger);
+    setConfirmScan(scan);
+  };
+
+  const confirmDelete = (): void => {
+    if (confirmScan) {
+      onDeleteScan?.(confirmScan);
+    }
+    setConfirmScan(null);
+  };
+
   return (
     <section
       className="scan-history"
@@ -68,46 +94,100 @@ export function ScanHistoryRail({
           const duplicateBadge = duplicateBadges.get(scan.id);
 
           return (
-            <button
-              key={scan.id}
-              ref={(element) => {
-                if (element) {
-                  chipRefs.current.set(scan.id, element);
-                  return;
-                }
-                chipRefs.current.delete(scan.id);
-              }}
-              type="button"
-              role="tab"
-              aria-selected={isSelected}
-              data-testid={`scan-history-chip-${scan.id}`}
-              className={[
-                'scan-history-rail__chip',
-                isSelected ? 'scan-history-rail__chip--active' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              onClick={() => onSelectScan(scan)}
-            >
-              <span
-                className={`scan-history-rail__status scan-history-rail__status--${scan.status}`}
-                aria-hidden="true"
-              />
-              <span className="scan-history-rail__label">
-                commit {formatCommitShaShort(scan.commit_sha)} ·{' '}
-                <time dateTime={scan.created_at} suppressHydrationWarning>
-                  {formatScanTime(scan.created_at)}
-                </time>
-              </span>
-              {duplicateBadge ? (
-                <span className="scan-history-rail__duplicate">
-                  {formatDuplicateShaBadge(duplicateBadge)}
+            <div key={scan.id} className="scan-history-rail__item" role="presentation">
+              <button
+                ref={(element) => {
+                  if (element) {
+                    chipRefs.current.set(scan.id, element);
+                    return;
+                  }
+                  chipRefs.current.delete(scan.id);
+                }}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                data-testid={`scan-history-chip-${scan.id}`}
+                className={[
+                  'scan-history-rail__chip',
+                  isSelected ? 'scan-history-rail__chip--active' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => onSelectScan(scan)}
+              >
+                <span
+                  className={`scan-history-rail__status scan-history-rail__status--${scan.status}`}
+                  aria-hidden="true"
+                />
+                <span className="scan-history-rail__label">
+                  commit {formatCommitShaShort(scan.commit_sha)} ·{' '}
+                  <time dateTime={scan.created_at} suppressHydrationWarning>
+                    {formatScanTime(scan.created_at)}
+                  </time>
                 </span>
+                {duplicateBadge ? (
+                  <span className="scan-history-rail__duplicate">
+                    {formatDuplicateShaBadge(duplicateBadge)}
+                  </span>
+                ) : null}
+              </button>
+
+              {onDeleteScan ? (
+                <button
+                  type="button"
+                  className="scan-history-rail__delete"
+                  data-testid={`scan-history-delete-${scan.id}`}
+                  aria-label={`Delete the scan of commit ${formatCommitShaShort(
+                    scan.commit_sha,
+                  )} from ${formatScanTime(scan.created_at)}`}
+                  onClick={(event) => openConfirm(scan, event.currentTarget)}
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
               ) : null}
-            </button>
+            </div>
           );
         })}
       </div>
+
+      {confirmScan ? (
+        <div
+          className="scan-delete-dialog__backdrop"
+          data-testid="scan-delete-dialog"
+          onClick={() => setConfirmScan(null)}
+        >
+          <div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="scan-delete-dialog-title"
+            aria-describedby="scan-delete-dialog-desc"
+            className="scan-delete-dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h4 id="scan-delete-dialog-title" className="scan-delete-dialog__title">
+              Delete scan?
+            </h4>
+            <p id="scan-delete-dialog-desc" className="scan-delete-dialog__desc">
+              Delete the scan of commit {formatCommitShaShort(confirmScan.commit_sha)} from{' '}
+              {formatScanTime(confirmScan.created_at)}? This permanently removes it and its
+              findings.
+            </p>
+            <div className="scan-delete-dialog__actions">
+              <button
+                type="button"
+                className="scan-delete-dialog__cancel"
+                onClick={() => setConfirmScan(null)}
+              >
+                Cancel
+              </button>
+              <button type="button" className="scan-delete-dialog__confirm" onClick={confirmDelete}>
+                Delete scan
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -195,6 +195,7 @@ function DashboardContent({
   const [shareUrlsByScanId, setShareUrlsByScanId] = useState<Record<string, string>>({});
   const [sharingScanId, setSharingScanId] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [deleteScanError, setDeleteScanError] = useState<string | null>(null);
   const [lastScanFileCount, setLastScanFileCount] = useState<number | null>(null);
   const [lastScanScope, setLastScanScope] = useState<ScanScope | null>(null);
   const scanAbortRef = useRef<boolean>(false);
@@ -255,6 +256,7 @@ function DashboardContent({
     setShareError(reset.shareError);
     setRepoDetailStatus(reset.repoDetailStatus);
     setScanError(null);
+    setDeleteScanError(null);
     setScanLogs([]);
   };
 
@@ -607,6 +609,89 @@ function DashboardContent({
     } finally {
       setSharingScanId(null);
     }
+  };
+
+  /**
+   * Removes one scan from history. Local (unsaved) scans are dropped from state
+   * only; persisted scans call DELETE /api/scans, which also re-syncs the repo
+   * target so the verdict card never goes stale. Optimistic UI with rollback on
+   * failure — same non-blocking error pattern as API-key revoke.
+   */
+  const handleDeleteScan = (scan: Scan): void => {
+    const previousScans = scans;
+    const previousSelected = selectedScan;
+    const previousLocalScan = localScan;
+    const previousLocalFindings = localFindings;
+    const previousFindings = findings;
+    const previousCount = scanCountsByRepoId[scan.repository_id];
+    const repoId = scan.repository_id;
+    const wasSelected = selectedScan?.id === scan.id;
+
+    const remainingDisplayed = displayedScans.filter((item) => item.id !== scan.id);
+    const nextSelected = wasSelected ? (remainingDisplayed[0] ?? null) : selectedScan;
+
+    setDeleteScanError(null);
+
+    // Local / unsaved scans never hit the API.
+    if (isLocalScanId(scan.id)) {
+      if (localScan?.id === scan.id) {
+        setLocalScan(null);
+        setLocalFindings([]);
+      } else {
+        setScans((current) => current.filter((item) => item.id !== scan.id));
+      }
+      setSelectedScan(nextSelected);
+      if (wasSelected) {
+        setFindings([]);
+      }
+      setScanCountsByRepoId((current) => ({
+        ...current,
+        [repoId]: Math.max(0, (current[repoId] ?? remainingDisplayed.length + 1) - 1),
+      }));
+      return;
+    }
+
+    // Optimistic remove for a persisted scan.
+    setScans((current) => current.filter((item) => item.id !== scan.id));
+    setSelectedScan(nextSelected);
+    if (wasSelected) {
+      setFindings([]);
+    }
+    setScanCountsByRepoId((current) => ({
+      ...current,
+      [repoId]: Math.max(0, (current[repoId] ?? remainingDisplayed.length + 1) - 1),
+    }));
+
+    void (async () => {
+      try {
+        await clientApi.deleteScan(scan.id);
+        // Target was re-synced server-side — refresh verdict cards + scan list.
+        setVerdictRefreshKey((key) => key + 1);
+        try {
+          const { scans: repoScans } = await clientApi.scans(repoId);
+          setScans(repoScans);
+          setScanCountsByRepoId((current) => ({ ...current, [repoId]: repoScans.length }));
+          setSelectedScan((prev) => {
+            if (!prev || prev.id === scan.id) {
+              return repoScans[0] ?? null;
+            }
+            return repoScans.some((item) => item.id === prev.id) ? prev : (repoScans[0] ?? null);
+          });
+        } catch {
+          // Delete already succeeded; a refresh failure is non-fatal.
+        }
+      } catch (error: unknown) {
+        setScans(previousScans);
+        setSelectedScan(previousSelected);
+        setLocalScan(previousLocalScan);
+        setLocalFindings(previousLocalFindings);
+        setFindings(previousFindings);
+        if (previousCount !== undefined) {
+          setScanCountsByRepoId((current) => ({ ...current, [repoId]: previousCount }));
+        }
+        setDeleteScanError(error instanceof Error ? error.message : 'Could not delete the scan.');
+      }
+    })();
   };
 
   const markFindingsFixed = (findingIds: string[], prUrl: string): void => {
@@ -1496,8 +1581,11 @@ function DashboardContent({
                   selectedScan={selectedScan}
                   onSelectScan={(scan) => {
                     setShareError(null);
+                    setDeleteScanError(null);
                     setSelectedScan(scan);
                   }}
+                  onDeleteScan={handleDeleteScan}
+                  deleteScanError={deleteScanError}
                   shipGateReport={shipGateReport}
                   fixSummary={fixSummary}
                   displayedFindings={displayedFindings}

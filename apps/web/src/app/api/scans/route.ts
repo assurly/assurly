@@ -4,7 +4,7 @@ import { ApiError, RATE_LIMITS, requireRouteUser, secureRoute } from '../../../u
 import { requireRepositoryAccess, requireScanAccess } from '../../../utils/authorization';
 import { resolveVerdictFromScanFindings } from '../../../utils/shipGate';
 import { GENERATOR_FINGERPRINTS } from '../../../utils/generatorFingerprint';
-import type { DbAdapter, Scan, ScanFinding } from '../../../utils/dbAdapter';
+import type { DbAdapter, ScanFinding } from '../../../utils/dbAdapter';
 
 const scanQuery = z
   .object({
@@ -70,23 +70,34 @@ export const GET = secureRoute(
   },
 );
 
+interface RepoTargetVerdictInput {
+  findings: ScanFinding[];
+  /** True file count the scan analyzed, when known (POST only). */
+  scannedFileCount?: number;
+  /** Detected AI builder, when known. Undefined preserves any prior value. */
+  generatorFingerprint?: string;
+  /** When the source scan ran; null falls back to now. */
+  lastCheckedAt: string | null;
+}
+
 /**
- * Refreshes the repo's `target` (the current-verdict projection) from a scan
- * that was just persisted. The scan is the source of truth, so this is
- * best-effort: a target-sync failure must never fail the scan save. It also
- * records the generator fingerprint (moat groundwork) without overwriting a
- * previously detected one when the client omits it.
+ * Recomputes and writes the repo's `target` (the current-verdict projection)
+ * from a set of scan findings. Shared by the scan SAVE (POST) and DELETE paths
+ * so the "Ship Score / READY-vs-NOT" card is derived by the exact same math in
+ * both — deleting the newest scan must recompute from the new newest remaining
+ * one, not leave a stale verdict. Best-effort: a target-sync failure must never
+ * turn a successful scan mutation into a 5xx.
  */
-async function syncRepoTargetFromScan(
+async function syncRepoTargetVerdict(
   db: DbAdapter,
-  body: z.infer<typeof saveScanBody>,
-  scan: Scan,
+  repoId: string,
+  input: RepoTargetVerdictInput,
 ): Promise<void> {
   try {
-    const repo = await db.getRepository(body.repoId);
+    const repo = await db.getRepository(repoId);
     if (!repo) return;
-    const verdict = resolveVerdictFromScanFindings(body.findings as unknown as ScanFinding[], {
-      scannedFileCount: body.scannedFileCount,
+    const verdict = resolveVerdictFromScanFindings(input.findings, {
+      scannedFileCount: input.scannedFileCount,
     });
     await db.upsertTarget({
       organizationId: repo.organization_id,
@@ -94,8 +105,8 @@ async function syncRepoTargetFromScan(
       identifier: repo.name,
       displayName: repo.name,
       repositoryId: repo.id,
-      // Preserve a prior fingerprint when this scan didn't detect one.
-      generatorFingerprint: body.generatorFingerprint ?? undefined,
+      // Preserve a prior fingerprint when the caller didn't detect one.
+      generatorFingerprint: input.generatorFingerprint ?? undefined,
       currentVerdict: verdict.status,
       currentShipScore: verdict.shipScore,
       verdictEvidence: {
@@ -105,12 +116,37 @@ async function syncRepoTargetFromScan(
         warningCount: verdict.warningCount,
         headline: verdict.headline,
       },
-      lastCheckedAt: scan.created_at ?? new Date().toISOString(),
+      lastCheckedAt: input.lastCheckedAt ?? new Date().toISOString(),
     });
   } catch (error) {
-    // Surfaced via the route's own 5xx logging only if it escapes; here we
-    // swallow it so the (already persisted) scan still returns 201.
+    // Swallowed so the (already persisted) scan mutation still succeeds.
     console.error('Failed to sync target from scan:', error);
+  }
+}
+
+/**
+ * Resets the repo's `target` back to the neutral "not yet scanned" verdict used
+ * for a repo with no scans (see `deriveCardFromLatestScan` in api/targets): an
+ * `unknown` verdict, no score, and no evidence. Called when the last scan of a
+ * repo is deleted. Best-effort, like `syncRepoTargetVerdict`.
+ */
+async function resetRepoTargetToNeutral(db: DbAdapter, repoId: string): Promise<void> {
+  try {
+    const repo = await db.getRepository(repoId);
+    if (!repo) return;
+    await db.upsertTarget({
+      organizationId: repo.organization_id,
+      kind: 'repo',
+      identifier: repo.name,
+      displayName: repo.name,
+      repositoryId: repo.id,
+      currentVerdict: 'unknown',
+      currentShipScore: null,
+      verdictEvidence: {},
+      lastCheckedAt: null,
+    });
+  } catch (error) {
+    console.error('Failed to reset target after deleting the last scan:', error);
   }
 }
 
@@ -146,7 +182,65 @@ export const POST = secureRoute(
       warnings,
       body.findings,
     );
-    await syncRepoTargetFromScan(context.db, body, scan);
+    await syncRepoTargetVerdict(context.db, body.repoId, {
+      findings: body.findings as unknown as ScanFinding[],
+      scannedFileCount: body.scannedFileCount,
+      generatorFingerprint: body.generatorFingerprint,
+      lastCheckedAt: scan.created_at ?? null,
+    });
     return NextResponse.json(scan, { status: 201 });
+  },
+);
+
+const deleteScanQuery = z.object({ scanId: z.string().uuid() }).strict();
+
+export const DELETE = secureRoute(
+  {
+    routeId: 'scans:delete',
+    auth: 'required',
+    csrf: true,
+    query: deleteScanQuery,
+    params: z.object({}).strict(),
+    body: z.undefined(),
+    bodyMode: 'none',
+    maxBodyBytes: 0,
+    rateLimit: RATE_LIMITS.write,
+  },
+  async ({ auth, query }) => {
+    const context = requireRouteUser(auth);
+    // Authorize + load the scan (repository_id / created_at) in one step.
+    const { scan } = await requireScanAccess(context, query.scanId);
+
+    await context.db.deleteScan(scan.id);
+
+    // Re-sync the repo target so the current-verdict card never goes stale:
+    // deleting the NEWEST scan must recompute the verdict from the new newest
+    // remaining scan (or reset to neutral when none remain). Deleting an older
+    // scan leaves the verdict untouched. Best-effort — a resync failure must
+    // never turn a successful delete into a 5xx.
+    try {
+      const remaining = await context.db.getRecentScans(scan.repository_id);
+      if (remaining.length === 0) {
+        await resetRepoTargetToNeutral(context.db, scan.repository_id);
+      } else {
+        // `remaining` is ordered created_at desc and no longer contains the
+        // deleted scan, so the deleted scan was the newest iff it is at least as
+        // recent as the newest survivor.
+        const newest = remaining[0];
+        const deletedWasNewest =
+          new Date(scan.created_at).getTime() >= new Date(newest.created_at).getTime();
+        if (deletedWasNewest) {
+          const findings = await context.db.getScanFindings(newest.id);
+          await syncRepoTargetVerdict(context.db, scan.repository_id, {
+            findings,
+            lastCheckedAt: newest.created_at,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to re-sync target after scan delete:', error);
+    }
+
+    return NextResponse.json({ ok: true });
   },
 );

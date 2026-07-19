@@ -112,4 +112,77 @@ describe('ScanHistoryRail', () => {
     expect(wrapper.className).toContain('scan-history');
     expect(rail.className).toContain('scan-history-rail');
   });
+
+  it('opens a confirm dialog from × without deleting until confirmed', () => {
+    const onDeleteScan = vi.fn();
+    render(
+      <ScanHistoryRail
+        scans={scans}
+        selectedScanId="scan-3"
+        onSelectScan={vi.fn()}
+        onDeleteScan={onDeleteScan}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('scan-history-delete-scan-3'));
+
+    expect(screen.getByTestId('scan-delete-dialog')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Delete scan?' })).toBeTruthy();
+    expect(onDeleteScan).not.toHaveBeenCalled();
+  });
+
+  it('closes the confirm dialog via Cancel without calling onDeleteScan', () => {
+    const onDeleteScan = vi.fn();
+    render(
+      <ScanHistoryRail
+        scans={scans}
+        selectedScanId="scan-3"
+        onSelectScan={vi.fn()}
+        onDeleteScan={onDeleteScan}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('scan-history-delete-scan-3'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByTestId('scan-delete-dialog')).toBeNull();
+    expect(onDeleteScan).not.toHaveBeenCalled();
+  });
+
+  it('closes the confirm dialog via Escape without calling onDeleteScan', () => {
+    const onDeleteScan = vi.fn();
+    render(
+      <ScanHistoryRail
+        scans={scans}
+        selectedScanId="scan-3"
+        onSelectScan={vi.fn()}
+        onDeleteScan={onDeleteScan}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('scan-history-delete-scan-3'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByTestId('scan-delete-dialog')).toBeNull();
+    expect(onDeleteScan).not.toHaveBeenCalled();
+  });
+
+  it('calls onDeleteScan with the target scan when Delete scan is confirmed', () => {
+    const onDeleteScan = vi.fn();
+    render(
+      <ScanHistoryRail
+        scans={scans}
+        selectedScanId="scan-3"
+        onSelectScan={vi.fn()}
+        onDeleteScan={onDeleteScan}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('scan-history-delete-scan-3'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete scan' }));
+
+    expect(onDeleteScan).toHaveBeenCalledTimes(1);
+    expect(onDeleteScan).toHaveBeenCalledWith(scans[2]);
+    expect(screen.queryByTestId('scan-delete-dialog')).toBeNull();
+  });
 });

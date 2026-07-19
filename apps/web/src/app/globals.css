@@ -4287,8 +4287,16 @@ button.dashboard-repo-selector-item {
   height: 0;
 }
 
-.scan-history-rail__chip {
+.scan-history-rail__item {
   scroll-snap-align: start;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: stretch;
+  position: relative;
+  min-width: 0;
+}
+
+.scan-history-rail__chip {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -4296,12 +4304,12 @@ button.dashboard-repo-selector-item {
   padding: 6px 12px;
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
   cursor: pointer;
   font-size: 0.8rem;
   font-family: inherit;
-  transition: all 0.2s ease;
+  transition: var(--transition-smooth);
   white-space: nowrap;
 }
 
@@ -4330,6 +4338,188 @@ button.dashboard-repo-selector-item {
 .scan-history-rail__duplicate {
   color: var(--color-text-muted);
   font-size: 0.75rem;
+}
+
+.scan-history-rail__delete {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -1px;
+  padding: 0;
+  min-width: 28px;
+  min-height: 100%;
+  border: 1px solid var(--color-border);
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.scan-history-rail__item:has(.scan-history-rail__delete) .scan-history-rail__chip {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.scan-history-rail__delete:hover,
+.scan-history-rail__delete:focus-visible {
+  color: var(--color-danger-text);
+  background: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+  outline: none;
+}
+
+.scan-history-rail__delete:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* Fine pointers: reveal × on hover/focus so the rail stays compact. */
+@media (hover: hover) and (pointer: fine) {
+  .scan-history-rail__delete {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .scan-history-rail__item:hover .scan-history-rail__delete,
+  .scan-history-rail__item:focus-within .scan-history-rail__delete {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* Touch / coarse pointers: × must always be visible and ≥ 44×44. */
+@media (pointer: coarse) {
+  .scan-history-rail__delete {
+    opacity: 1;
+    pointer-events: auto;
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+  }
+}
+
+.scan-history__error {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  color: var(--color-danger-text);
+  line-height: 1.4;
+}
+
+.scan-delete-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--color-canvas-deep) 72%, transparent);
+}
+
+.scan-delete-dialog {
+  width: min(100%, 420px);
+  max-width: 100%;
+  margin: 0;
+  padding: var(--space-5);
+  box-sizing: border-box;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-menu);
+  font-family: var(--font-family);
+}
+
+.scan-delete-dialog__title {
+  margin: 0 0 var(--space-3);
+  font-size: 1.05rem;
+  font-weight: 650;
+  color: var(--color-text);
+}
+
+.scan-delete-dialog__desc {
+  margin: 0 0 var(--space-5);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.scan-delete-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.scan-delete-dialog__cancel,
+.scan-delete-dialog__confirm {
+  min-height: var(--touch-target);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.scan-delete-dialog__cancel {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.scan-delete-dialog__cancel:hover,
+.scan-delete-dialog__cancel:focus-visible {
+  border-color: var(--color-border-strong);
+  outline: none;
+}
+
+.scan-delete-dialog__cancel:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.scan-delete-dialog__confirm {
+  border: 1px solid color-mix(in srgb, var(--color-danger) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 16%, var(--color-surface));
+  color: var(--color-danger-text);
+}
+
+.scan-delete-dialog__confirm:hover,
+.scan-delete-dialog__confirm:focus-visible {
+  background: color-mix(in srgb, var(--color-danger) 28%, var(--color-surface));
+  outline: none;
+}
+
+.scan-delete-dialog__confirm:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+@media (max-width: 480px) {
+  .scan-delete-dialog__backdrop {
+    align-items: flex-end;
+    padding: var(--space-3);
+  }
+
+  .scan-delete-dialog {
+    width: 100%;
+    border-radius: var(--radius-lg) var(--radius-lg) var(--radius-md) var(--radius-md);
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .scan-delete-dialog__actions {
+    flex-direction: column-reverse;
+  }
+
+  .scan-delete-dialog__cancel,
+  .scan-delete-dialog__confirm {
+    width: 100%;
+  }
 }
 
 .dashboard-repo-list-item {

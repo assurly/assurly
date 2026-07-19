@@ -33,6 +33,10 @@ export interface ScanWorkspaceProps {
   displayedScans: Scan[];
   selectedScan: Scan | null;
   onSelectScan: (scan: Scan) => void;
+  /** Permanently remove one scan from history (after in-rail confirm). */
+  onDeleteScan: (scan: Scan) => void;
+  /** Non-blocking error from a failed delete (same pattern as API-key revoke). */
+  deleteScanError: string | null;
   shipGateReport: ShipGateReport | null;
   fixSummary: ScanFixSummary | null;
   displayedFindings: ScanFinding[];
@@ -81,6 +85,8 @@ export function ScanWorkspace({
   displayedScans,
   selectedScan,
   onSelectScan,
+  onDeleteScan,
+  deleteScanError,
   shipGateReport,
   fixSummary,
   displayedFindings,
@@ -200,10 +206,16 @@ export function ScanWorkspace({
           <ScanDetailsSkeleton />
         ) : displayedScans.length > 0 ? (
           <div className="dashboard-scan-workspace__results">
+            {deleteScanError ? (
+              <p className="scan-history__error" role="alert">
+                {deleteScanError}
+              </p>
+            ) : null}
             <ScanHistoryRail
               scans={displayedScans}
               selectedScanId={selectedScan?.id ?? null}
               onSelectScan={onSelectScan}
+              onDeleteScan={onDeleteScan}
             />
 
             {repoDetailStatus === 'ready' && selectedScan && shipGateReport ? (

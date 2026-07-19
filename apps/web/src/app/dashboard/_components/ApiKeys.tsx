@@ -38,6 +38,7 @@ export function ApiKeys(): ReactElement {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount-time key list fetch
     void load();
   }, [load]);
 

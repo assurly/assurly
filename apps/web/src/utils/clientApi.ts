@@ -233,6 +233,13 @@ export const clientApi = {
     requestJson(`/api/scans?scanId=${encodeURIComponent(scanId)}`, findingsSchema),
   saveScan: (body: z.input<typeof saveScanBodySchema>): Promise<Scan> =>
     requestJson('/api/scans', scanSchema, jsonRequest('POST', saveScanBodySchema.parse(body))),
+  deleteScan: async (scanId: string): Promise<void> => {
+    await requestJson(
+      `/api/scans?scanId=${encodeURIComponent(scanId)}`,
+      z.object({ ok: z.boolean() }),
+      jsonRequest('DELETE'),
+    );
+  },
   checkout: (plan: 'monthly' | 'yearly'): Promise<{ url: string }> =>
     requestJson('/api/stripe/checkout', urlSchema, jsonRequest('POST', { plan })),
   portal: (): Promise<{ url: string }> =>
