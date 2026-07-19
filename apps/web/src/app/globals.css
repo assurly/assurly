@@ -3479,6 +3479,163 @@ footer .footer-links a:hover {
   padding: 0;
 }
 
+/* API keys card — extends the shared .dashboard-public-connect card language;
+   only the one-time reveal and the key list add their own styles. */
+.api-keys .dashboard-public-connect__copy code {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--color-text-secondary);
+  background-color: var(--color-canvas);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0 4px;
+  word-break: break-word;
+}
+
+.api-keys__empty {
+  margin: 14px 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+/* One-time plaintext reveal — highlighted so it reads as "act now". */
+.api-keys__reveal {
+  margin-top: 14px;
+  padding: 12px;
+  background-color: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+}
+
+.api-keys__reveal-title {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.api-keys__reveal-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.api-keys__plaintext {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--color-text);
+  word-break: break-all;
+  background-color: var(--color-canvas);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+
+.api-keys__copy {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  background-color: var(--color-border);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.api-keys__copy:hover {
+  color: var(--color-accent-hover);
+}
+
+/* Key list */
+.api-keys__list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.api-keys__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  background-color: var(--color-canvas);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.api-keys__item--revoked {
+  opacity: 0.55;
+}
+
+.api-keys__item-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.api-keys__item-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.api-keys__item-prefix {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.api-keys__item-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.api-keys__badge {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--color-accent);
+  background-color: var(--color-accent-soft);
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+}
+
+.api-keys__revoke {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-danger);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.api-keys__revoke:hover {
+  color: var(--color-danger-text);
+}
+
+.api-keys__revoked-tag {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .ownership-verify {
   margin-top: 16px;
   padding: 16px;

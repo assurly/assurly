@@ -1445,6 +1445,8 @@ function DashboardContent({
                 />
 
                 <DeployedUrlScan loginUrl={loginUrl} />
+
+                <ApiKeys />
               </div>
 
               <ScanWorkspace
@@ -1492,7 +1494,6 @@ function DashboardContent({
                 onCreateBatchFixPr={() => void handleCreateBatchFixPr()}
               />
             </div>
-            <ApiKeys />
           </>
         ) : (
           <ManualChecker onToast={handleCheckerToast} />
