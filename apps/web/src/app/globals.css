@@ -295,6 +295,16 @@ header .logo span {
   color: var(--accent-color);
 }
 
+/* The brand mark inside a site header .logo — sized to the wordmark, accent-coloured,
+   with a small gap standing in for the space that used to follow the emoji. */
+.site-logo-mark {
+  width: 1.05em;
+  height: 1.05em;
+  margin-right: 0.32em;
+  color: var(--color-accent);
+  flex: none;
+}
+
 /* Hamburger Menu Button */
 .hamburger-btn {
   display: none;
@@ -3174,12 +3184,14 @@ footer .footer-links a:hover {
   height: 1.25em;
 }
 
+/* Wordmark "Ass·url·y": white shell, green "url" — the word literally contains the
+   URL the product scans. The mark keeps the accent colour from `.assurly-logo`. */
 .assurly-logo__text {
-  color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .assurly-logo__accent {
-  color: var(--color-text);
+  color: var(--color-accent);
 }
 
 .dashboard-repo-list-item__name,

@@ -21,6 +21,24 @@ const SITE_DESCRIPTION =
 export const metadata: Metadata = {
   title: SITE_TITLE,
   description: SITE_DESCRIPTION,
+  // Icons. `app/favicon.ico` is auto-linked by the file convention; these add the
+  // scalable SVG (preferred by modern browsers), the PNG fallbacks, and the iOS
+  // home-screen icon. The maskable PNGs for Android live in the web manifest.
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
+  },
+  manifest: '/site.webmanifest',
+  // Installed-PWA / iOS home-screen behaviour.
+  appleWebApp: {
+    capable: true,
+    title: 'Assurly',
+    statusBarStyle: 'black-translucent',
+  },
   openGraph: {
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
@@ -46,6 +64,8 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   viewportFit: 'cover',
+  // Colours the mobile browser chrome and the PWA splash background to the tile.
+  themeColor: '#0A0A0B',
 };
 
 export default function RootLayout({

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import React from 'react';
+import { AssurlyMark } from '../_components/AssurlyMark';
 
 const PAGE_TITLE = 'Assurly MCP Server | Ship Gate for AI Agents';
 const PAGE_DESCRIPTION =
@@ -44,7 +45,8 @@ export default function McpPage(): React.ReactElement {
           ← Back to Home
         </Link>
         <div className="logo">
-          📦 Assur<span>ly</span>
+          <AssurlyMark className="site-logo-mark" />
+          Ass<span>url</span>y
         </div>
       </header>
 

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Assurly">
+  <!-- Flat cut for 32–48px: no filters, wider stance, bolder stroke. The gate is punched
+       through so the tile shows as a clean dark slot — legible where the rich master turns
+       to mud. -->
+  <defs>
+    <mask id="gateS" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect width="512" height="512" fill="white"/>
+      <rect x="112" y="262" width="288" height="40" rx="4" fill="black"/>
+    </mask>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0A0A0B"/>
+  <polyline points="134,392 256,112 378,392" fill="none" stroke="#13D492"
+            stroke-width="82" stroke-linecap="round" stroke-linejoin="round" mask="url(#gateS)"/>
+</svg>

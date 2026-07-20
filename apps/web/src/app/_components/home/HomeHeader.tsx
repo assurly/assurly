@@ -2,6 +2,7 @@
 
 import { useCallback, type ReactElement } from 'react';
 import { AuthButton } from './AuthButton';
+import { AssurlyMark } from '../AssurlyMark';
 import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
 
 interface HomeHeaderProps {
@@ -60,7 +61,8 @@ export function HomeHeader({
     <header className={joinClasses(menuOpen && 'site-header-menu-open')}>
       <div className="container nav-container">
         <div className="logo" id="header-logo">
-          📦 Assur<span>ly</span>
+          <AssurlyMark className="site-logo-mark" />
+          Ass<span>url</span>y
         </div>
         <button
           type="button"

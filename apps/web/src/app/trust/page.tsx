@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import { AssurlyMark } from '../_components/AssurlyMark';
 
 export const metadata = {
   title: 'Trust & Security · Assurly',
@@ -20,7 +21,8 @@ export default function TrustPage() {
           ← Back to Home
         </Link>
         <div className="logo">
-          📦 Assur<span>ly</span>
+          <AssurlyMark className="site-logo-mark" />
+          Ass<span>url</span>y
         </div>
       </header>
 

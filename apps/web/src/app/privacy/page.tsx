@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import { AssurlyMark } from '../_components/AssurlyMark';
 import { CookieInventoryTable } from '../_components/CookieInventoryTable';
 import { COOKIE_NAME } from '../../utils/auth';
 
@@ -11,7 +12,8 @@ export default function PrivacyPage() {
           ← Back to Home
         </Link>
         <div className="logo">
-          📦 Assur<span>ly</span>
+          <AssurlyMark className="site-logo-mark" />
+          Ass<span>url</span>y
         </div>
       </header>
 

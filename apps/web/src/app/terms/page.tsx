@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import { AssurlyMark } from '../_components/AssurlyMark';
 
 export default function TermsPage() {
   return (
@@ -9,7 +10,8 @@ export default function TermsPage() {
           ← Back to Home
         </Link>
         <div className="logo">
-          📦 Assur<span>ly</span>
+          <AssurlyMark className="site-logo-mark" />
+          Ass<span>url</span>y
         </div>
       </header>
 
