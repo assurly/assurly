@@ -662,7 +662,16 @@ export class SupabaseDbAdapter implements DbAdapter {
       headers: { Prefer: 'return=representation' },
       body: JSON.stringify({ share_token: shareToken }),
     });
-    return rows[0];
+    const scan = rows?.[0];
+    if (!scan) {
+      // A PATCH matching no row returns an empty array, not an error — an RLS
+      // policy filtering the row out is indistinguishable here from "no such
+      // scan". Returning `rows[0]` unchecked surfaced as an opaque TypeError
+      // one frame later, which is what masked the missing UPDATE grant as a
+      // bare 500 (see 20260720000000_scan_share_token_update).
+      throw new Error(`Supabase update matched no scan row (${scanId}).`);
+    }
+    return scan;
   }
 
   getScanByShareToken(shareToken: string): Promise<Scan | null> {

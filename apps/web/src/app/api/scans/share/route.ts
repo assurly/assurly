@@ -50,7 +50,17 @@ export const POST = secureRoute(
         scan = await context.db.setScanShareToken(body.scanId, shareToken);
       } catch (error: unknown) {
         const detail = error instanceof Error ? error.message : String(error);
-        if (/share_token|column|schema cache/i.test(detail)) {
+        // Two distinct ways the environment can lack share support, both of which
+        // must degrade to an actionable message rather than a bare 500:
+        //   * the `share_token` COLUMN is missing (20260626120000 not applied)
+        //   * the UPDATE grant/policy is missing (20260720000000 not applied) —
+        //     Postgres answers "permission denied", or RLS filters the row out
+        //     and the adapter reports that no row matched.
+        if (
+          /share_token|column|schema cache|permission denied|row-level security|matched no scan row/i.test(
+            detail,
+          )
+        ) {
           throw new ApiError(
             503,
             'share_unavailable',
