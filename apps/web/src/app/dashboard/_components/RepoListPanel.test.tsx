@@ -148,4 +148,23 @@ describe('RepoListPanel', () => {
     expect(screen.getByText('No repositories connected.')).toBeTruthy();
     expect(screen.queryByTestId('repo-list-filter')).toBeNull();
   });
+
+  it('renders Adjust GitHub App permissions as a CTA when installation exists', () => {
+    renderPanel({ hasGitHubInstallation: true });
+
+    const permissionsCta = screen.getByTestId('repo-list-permissions-cta');
+    expect(permissionsCta.tagName).toBe('A');
+    expect(permissionsCta.getAttribute('href')).toBe('/api/github/install/start');
+    expect(permissionsCta.className).toContain('repo-list-panel__cta');
+    expect(permissionsCta.textContent).toBe('Adjust GitHub App permissions');
+  });
+
+  it('renders Install Assurly App CTA when installation is missing', () => {
+    renderPanel({ hasGitHubInstallation: false });
+
+    expect(screen.queryByTestId('repo-list-permissions-cta')).toBeNull();
+    const installCta = screen.getByRole('link', { name: 'Install Assurly App' });
+    expect(installCta.className).toContain('repo-list-panel__cta');
+    expect(installCta.getAttribute('href')).toBe('/api/github/install/start');
+  });
 });

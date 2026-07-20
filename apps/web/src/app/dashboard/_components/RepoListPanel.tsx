@@ -99,7 +99,7 @@ export function RepoListPanel({
               Install the GitHub App to automatically check pull requests and connect private
               repositories.
             </p>
-            <a className="repo-list-panel__install-link" href="/api/github/install/start">
+            <a className="repo-list-panel__cta" href="/api/github/install/start">
               Install Assurly App
             </a>
           </div>
@@ -107,7 +107,11 @@ export function RepoListPanel({
 
         {hasGitHubInstallation ? (
           <div className="repo-list-panel__permissions">
-            <a className="repo-list-panel__permissions-link" href="/api/github/install/start">
+            <a
+              className="repo-list-panel__cta"
+              href="/api/github/install/start"
+              data-testid="repo-list-permissions-cta"
+            >
               Adjust GitHub App permissions
             </a>
           </div>
