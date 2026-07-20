@@ -52,6 +52,7 @@ import { DeployedUrlScanCard, DeployedUrlScanResults, useDeployedUrlScan } from 
 import { ScanWorkspace } from './ScanWorkspace';
 import { DashboardToast } from './DashboardToast';
 import { DashboardHeader } from './DashboardHeader';
+import { DashboardSplash } from './DashboardSplash';
 import {
   createRepoSelectionReset,
   findingsMatchScan,
@@ -68,6 +69,7 @@ import {
   type PublicRepoConnectSession,
 } from './publicRepoInputReset';
 import { scrollToScanDetails } from '../../../utils/scrollToScanDetails';
+import { consumeDashboardSplashRequest } from '../../../utils/splashSignal';
 
 type DashboardTab = DashboardMainTab;
 
@@ -146,6 +148,34 @@ function DashboardContent({
   loginUrl = '/api/auth/login',
 }: DashboardContentProps): React.ReactElement {
   const searchParams = useSearchParams();
+
+  // Splash plays on every entry to the dashboard *from the landing page*: the
+  // OAuth callback signals the first login via ?welcome=1, and landing
+  // navigations signal every return via a per-tab sessionStorage flag. Both are
+  // consumed on mount, so the splash never replays on a plain refresh or on
+  // internal dashboard navigation.
+  const [showSplash, setShowSplash] = useState<boolean>(() => searchParams.get('welcome') === '1');
+
+  useEffect(() => {
+    const fromCallback = new URLSearchParams(window.location.search).get('welcome') === '1';
+    const fromLanding = consumeDashboardSplashRequest();
+    if (!fromCallback && !fromLanding) return;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShowSplash(true);
+
+    if (fromCallback) {
+      // Strip ?welcome=1 so a refresh does not replay the splash.
+      const params = new URLSearchParams(window.location.search);
+      params.delete('welcome');
+      const query = params.toString();
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`,
+      );
+    }
+  }, []);
 
   const [user] = useState<User | null>(initialSession.user);
   const [org] = useState<Organization | null>(initialSession.organization);
@@ -1494,6 +1524,7 @@ function DashboardContent({
   // AUTHORIZED DASHBOARD VIEW
   return (
     <div className="dashboard-page">
+      {showSplash ? <DashboardSplash onDone={() => setShowSplash(false)} /> : null}
       {toast ? <DashboardToast toast={toast} onDismiss={() => setToast(null)} /> : null}
 
       <DashboardHeader

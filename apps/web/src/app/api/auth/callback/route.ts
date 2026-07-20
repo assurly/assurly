@@ -48,7 +48,9 @@ export const GET = secureRoute(
       await userDb.createOrganization(`${String(name).slice(0, 80)}'s Workspace`);
     }
 
-    const response = NextResponse.redirect(`${appUrl}/dashboard`);
+    // `welcome=1` triggers the one-time post-login splash on the dashboard; the
+    // client strips the param on mount so a refresh never replays it.
+    const response = NextResponse.redirect(`${appUrl}/dashboard?welcome=1`);
     // Use append so the PKCE code-verifier clearing cookie emitted by
     // exchangeCodeForSession above is preserved. Using set() would replace all
     // Set-Cookie headers with only assurly-session. The session itself is

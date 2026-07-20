@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { requestDashboardSplash } from '../../../utils/splashSignal';
 
 interface AuthButtonProps {
   authenticated: boolean;
@@ -49,6 +50,9 @@ export function AuthButton({
           return;
         }
         e.preventDefault();
+        // Entering the dashboard from the landing page — request the splash for
+        // this navigation (consumed once on the dashboard side).
+        requestDashboardSplash();
         router.push('/dashboard');
       }
       // For the login URL, allow the natural full-page navigation to proceed.

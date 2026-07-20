@@ -8256,3 +8256,265 @@ body {
 .verified-fix__step-link:hover {
   text-decoration: underline;
 }
+
+.dashboard-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: grid;
+  place-items: center;
+  /* Respect notches/rounded corners; keep breathing room on every device. */
+  padding: max(env(safe-area-inset-top), 16px) clamp(16px, 5vw, 24px)
+    max(env(safe-area-inset-bottom), 16px);
+  background:
+    radial-gradient(120% 90% at 50% 30%, var(--color-accent-soft) 0%, transparent 55%),
+    var(--color-canvas-deep);
+  animation: dashboard-splash-in var(--duration-normal) var(--ease-standard) both;
+  transition:
+    opacity 380ms var(--ease-standard),
+    visibility 380ms var(--ease-standard);
+}
+
+.dashboard-splash--leaving {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.dashboard-splash__stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(20px, 4.5vh, 28px);
+  /* Cap the width, but never exceed the padded viewport (no horizontal scroll). */
+  width: min(440px, 100%);
+  animation: dashboard-splash-rise 560ms var(--ease-standard) both;
+}
+
+.dashboard-splash__brand {
+  max-width: 100%;
+  animation: dashboard-splash-brand 620ms var(--ease-standard) 120ms both;
+}
+
+.dashboard-splash__logo {
+  font-size: clamp(1.8rem, 7.5vw, 2.6rem);
+  letter-spacing: -0.01em;
+}
+
+.dashboard-splash__terminal {
+  width: 100%;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  animation: dashboard-splash-rise 640ms var(--ease-standard) 260ms both;
+}
+
+.dashboard-splash__titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 clamp(11px, 3.5vw, 14px);
+  height: clamp(34px, 10vw, 38px);
+  background-color: var(--color-surface-subtle);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dashboard-splash__dot {
+  width: 11px;
+  height: 11px;
+  border-radius: var(--radius-pill);
+  flex: 0 0 auto;
+}
+
+.dashboard-splash__dot--red {
+  background-color: hsl(0 70% 58%);
+}
+.dashboard-splash__dot--amber {
+  background-color: hsl(38 90% 55%);
+}
+.dashboard-splash__dot--green {
+  background-color: hsl(140 60% 48%);
+}
+
+.dashboard-splash__title {
+  margin-left: 8px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: clamp(0.64rem, 2.8vw, 0.72rem);
+  color: var(--color-text-muted);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dashboard-splash__body {
+  padding: clamp(16px, 4.5vw, 22px) clamp(16px, 4.5vw, 22px) clamp(18px, 5vw, 24px);
+  font-family: var(--font-mono);
+  font-size: clamp(0.8rem, 3.4vw, 0.9rem);
+  line-height: 1.6;
+  min-height: clamp(112px, 34vw, 132px);
+}
+
+.dashboard-splash__line {
+  display: flex;
+  align-items: baseline;
+  gap: clamp(6px, 2vw, 8px);
+  white-space: nowrap;
+}
+
+.dashboard-splash__prompt {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.dashboard-splash__cwd {
+  color: var(--color-info);
+}
+
+.dashboard-splash__cmd {
+  color: var(--color-text);
+  display: inline-flex;
+  align-items: center;
+}
+
+.dashboard-splash__caret {
+  display: inline-block;
+  width: 8px;
+  height: 1.05em;
+  margin-left: 2px;
+  background-color: var(--color-accent);
+  translate: 0 0.12em;
+  animation: dashboard-splash-caret 1s steps(1, end) infinite;
+}
+
+.dashboard-splash__out {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  opacity: 0;
+  translate: 0 4px;
+  transition:
+    opacity 320ms var(--ease-standard),
+    translate 320ms var(--ease-standard);
+}
+
+.dashboard-splash__out--visible {
+  opacity: 1;
+  translate: 0 0;
+}
+
+.dashboard-splash__muted {
+  color: var(--color-text-secondary);
+}
+
+.dashboard-splash__result-text {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.dashboard-splash__check {
+  width: clamp(17px, 5vw, 20px);
+  height: clamp(17px, 5vw, 20px);
+  flex: 0 0 auto;
+  color: var(--color-accent);
+}
+
+.dashboard-splash__check-ring {
+  stroke-dasharray: 63;
+  stroke-dashoffset: 63;
+  transition: stroke-dashoffset 500ms var(--ease-standard);
+}
+
+.dashboard-splash__check-mark {
+  stroke-dasharray: 20;
+  stroke-dashoffset: 20;
+  transition: stroke-dashoffset 340ms var(--ease-standard) 320ms;
+}
+
+.dashboard-splash__result.dashboard-splash__out--visible .dashboard-splash__check-ring,
+.dashboard-splash__result.dashboard-splash__out--visible .dashboard-splash__check-mark {
+  stroke-dashoffset: 0;
+}
+
+@keyframes dashboard-splash-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dashboard-splash-rise {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes dashboard-splash-brand {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes dashboard-splash-caret {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-splash,
+  .dashboard-splash__stage,
+  .dashboard-splash__brand,
+  .dashboard-splash__terminal {
+    animation: none;
+  }
+
+  .dashboard-splash__caret {
+    animation: none;
+  }
+
+  .dashboard-splash__out {
+    transition: none;
+  }
+
+  .dashboard-splash__check-ring,
+  .dashboard-splash__check-mark {
+    transition: none;
+  }
+}
+
+/* Short viewports (landscape phones, split-screen): tighten vertical rhythm so
+   the brand + terminal always fit above the fold without scrolling. */
+@media (max-height: 520px) {
+  .dashboard-splash__stage {
+    gap: clamp(12px, 3vh, 18px);
+  }
+
+  .dashboard-splash__logo {
+    font-size: clamp(1.5rem, 6vh, 2.1rem);
+  }
+
+  .dashboard-splash__body {
+    min-height: 0;
+  }
+}
