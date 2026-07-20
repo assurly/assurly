@@ -358,6 +358,8 @@ export interface DbAdapter {
   /** Request-time key auth (service role). Returns null when no key hashes to this. */
   getApiKeyByHash(keyHash: string): Promise<ApiKeyAuthContext | null>;
   revokeApiKey(id: string): Promise<void>;
+  /** Hard-delete a key row. Callers must ensure the key is already revoked. */
+  deleteApiKey(id: string): Promise<void>;
   touchApiKey(id: string): Promise<void>;
 }
 
@@ -968,6 +970,15 @@ export class SupabaseDbAdapter implements DbAdapter {
       method: 'PATCH',
       headers: { Prefer: 'return=minimal' },
       body: JSON.stringify({ revoked_at: new Date().toISOString() }),
+    });
+  }
+
+  async deleteApiKey(id: string): Promise<void> {
+    // RLS scopes this DELETE to the caller's org. The route must refuse live keys
+    // before calling here — deleting an active key would silently break agents.
+    await this.fetchDb(`api_keys?id=eq.${eq(id)}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
     });
   }
 

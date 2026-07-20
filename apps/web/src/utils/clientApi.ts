@@ -144,6 +144,7 @@ const apiKeySchema = z.object({
 const apiKeysListSchema = z.object({ keys: z.array(apiKeySchema) });
 const apiKeyCreatedSchema = z.object({ apiKey: z.string(), key: apiKeySchema });
 const apiKeyRevokedSchema = z.object({ revoked: z.boolean() });
+const apiKeyDeletedSchema = z.object({ deleted: z.boolean() });
 export type ApiKeySummary = z.infer<typeof apiKeySchema>;
 
 const githubRepositorySchema = z.object({
@@ -277,6 +278,12 @@ export const clientApi = {
         `/api/api-keys/${encodeURIComponent(id)}/revoke`,
         apiKeyRevokedSchema,
         jsonRequest('POST'),
+      ),
+    delete: (id: string): Promise<{ deleted: boolean }> =>
+      requestJson(
+        `/api/api-keys/${encodeURIComponent(id)}`,
+        apiKeyDeletedSchema,
+        jsonRequest('DELETE'),
       ),
   },
 };

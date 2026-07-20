@@ -13,6 +13,7 @@ import { GET as githubDiscover } from './github/discover/route';
 import { GET as githubPublicScan } from './github/public-scan/route';
 import { POST as githubWebhook } from './github/webhook/route';
 import { POST as repositories } from './repositories/route';
+import { DELETE as apiKeysDelete } from './api-keys/[id]/route';
 import { DELETE as scansDelete, GET as scansRead, POST as scansCreate } from './scans/route';
 import { POST as stripeCheckout } from './stripe/checkout/route';
 import { POST as stripePortal } from './stripe/portal/route';
@@ -61,6 +62,13 @@ const routes: RouteContract[] = [
   { name: 'scans read', method: 'GET', auth: 'required', csrf: false, handler: scansRead },
   { name: 'scans create', method: 'POST', auth: 'required', csrf: true, handler: scansCreate },
   { name: 'scans delete', method: 'DELETE', auth: 'required', csrf: true, handler: scansDelete },
+  {
+    name: 'API keys delete',
+    method: 'DELETE',
+    auth: 'required',
+    csrf: true,
+    handler: apiKeysDelete,
+  },
   {
     name: 'Stripe checkout',
     method: 'POST',

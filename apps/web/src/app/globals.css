@@ -3498,6 +3498,17 @@ footer .footer-links a:hover {
   color: var(--color-text-muted);
 }
 
+.api-keys__secret-warning {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--color-danger-text);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, var(--color-border));
+  border-radius: var(--radius-sm);
+}
+
 /* Small inline spinner for the deployed-URL results canvas loading state. */
 .dashboard-inline-spinner {
   display: inline-block;
@@ -3576,9 +3587,13 @@ footer .footer-links a:hover {
   gap: 8px;
 }
 
+.api-keys__list--revoked {
+  margin-top: 10px;
+}
+
 .api-keys__item {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px 12px;
@@ -3586,38 +3601,66 @@ footer .footer-links a:hover {
   background-color: var(--color-canvas);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
+  min-width: 0;
 }
 
 .api-keys__item--revoked {
   opacity: 0.55;
 }
 
+.api-keys__item-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .api-keys__item-main {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: baseline;
   gap: 4px 8px;
   min-width: 0;
+  width: 100%;
 }
 
 .api-keys__item-label {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--color-text);
-  word-break: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .api-keys__item-prefix {
+  flex: 0 0 auto;
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--color-text-muted);
+}
+
+.api-keys__item-meta {
+  margin: 0;
+  min-width: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .api-keys__item-side {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
 
 .api-keys__badge {
@@ -3651,6 +3694,92 @@ footer .footer-links a:hover {
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.api-keys__delete {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  min-width: 28px;
+  min-height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.api-keys__delete:hover,
+.api-keys__delete:focus-visible {
+  color: var(--color-danger-text);
+  background: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+  outline: none;
+}
+
+.api-keys__delete:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .api-keys__delete {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .api-keys__item:hover .api-keys__delete,
+  .api-keys__item:focus-within .api-keys__delete {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (pointer: coarse) {
+  .api-keys__delete {
+    opacity: 1;
+    pointer-events: auto;
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+  }
+}
+
+.api-keys__revoked {
+  margin-top: 14px;
+  min-width: 0;
+}
+
+.api-keys__revoked-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--touch-target);
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  list-style: none;
+}
+
+.api-keys__revoked-summary::-webkit-details-marker {
+  display: none;
+}
+
+.api-keys__revoked-summary::before {
+  content: '▸';
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  transition: transform 0.15s ease;
+}
+
+.api-keys__revoked[open] > .api-keys__revoked-summary::before {
+  transform: rotate(90deg);
 }
 
 .ownership-verify {
