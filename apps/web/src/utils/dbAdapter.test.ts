@@ -127,4 +127,58 @@ describe('user database adapter', () => {
       expect(JSON.stringify(init.headers)).toContain('return=minimal');
     });
   });
+
+  describe('deletes must prove a row actually went', () => {
+    // Regression: under RLS a DELETE that matches no row is NOT an error — it
+    // simply affects zero rows and returns success. With `Prefer: return=minimal`
+    // the adapter discarded the body, so "deleted" and "deleted nothing" were
+    // indistinguishable: with the api_keys DELETE policy missing, the route
+    // answered 200 {"deleted":true} while every key survived, and the dashboard's
+    // optimistic removal silently diverged from the database until a refresh
+    // brought the rows back. Both delete paths must now fail loudly instead.
+    function stubDeleteResponse(rows: unknown): ReturnType<typeof vi.fn> {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify(rows), { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
+
+    it('deleteApiKey throws when the delete matched no row', async () => {
+      stubDeleteResponse([]);
+      await expect(getUserDbAdapter('jwt').deleteApiKey('key-1')).rejects.toThrow(
+        /matched no api_keys row/i,
+      );
+    });
+
+    it('deleteApiKey resolves and asks for the deleted row back', async () => {
+      const fetchMock = stubDeleteResponse([{ id: 'key-1' }]);
+
+      await expect(getUserDbAdapter('jwt').deleteApiKey('key-1')).resolves.toBeUndefined();
+
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      expect(init.method).toBe('DELETE');
+      // `return=minimal` here would reintroduce the silent no-op.
+      expect(JSON.stringify(init.headers)).toContain('return=representation');
+    });
+
+    it('deleteScan throws when the delete matched no row', async () => {
+      stubDeleteResponse([]);
+      await expect(getUserDbAdapter('jwt').deleteScan('scan-1')).rejects.toThrow(
+        /matched no scans row/i,
+      );
+    });
+
+    it('deleteScan resolves and asks for the deleted row back', async () => {
+      const fetchMock = stubDeleteResponse([{ id: 'scan-1' }]);
+
+      await expect(getUserDbAdapter('jwt').deleteScan('scan-1')).resolves.toBeUndefined();
+
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      expect(init.method).toBe('DELETE');
+      expect(JSON.stringify(init.headers)).toContain('return=representation');
+    });
+  });
 });

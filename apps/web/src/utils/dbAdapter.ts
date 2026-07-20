@@ -644,10 +644,16 @@ export class SupabaseDbAdapter implements DbAdapter {
     // RLS scopes this DELETE to the caller's org (user token), so a member can
     // only delete a scan on a repository their organization owns. Findings and
     // probe evidence cascade; fix outcomes have their scan_id set null.
-    await this.fetchDb(`scans?id=eq.${eq(scanId)}`, {
+    //
+    // `return=representation` so a zero-row delete is caught rather than reported
+    // as success — see deleteApiKey for the failure this guards against.
+    const rows = await this.fetchDb<Scan[]>(`scans?id=eq.${eq(scanId)}`, {
       method: 'DELETE',
-      headers: { Prefer: 'return=minimal' },
+      headers: { Prefer: 'return=representation' },
     });
+    if (!rows?.length) {
+      throw new Error(`Supabase delete matched no scans row (${scanId}).`);
+    }
   }
 
   getScanFindings(scanId: string): Promise<ScanFinding[]> {
@@ -976,10 +982,19 @@ export class SupabaseDbAdapter implements DbAdapter {
   async deleteApiKey(id: string): Promise<void> {
     // RLS scopes this DELETE to the caller's org. The route must refuse live keys
     // before calling here — deleting an active key would silently break agents.
-    await this.fetchDb(`api_keys?id=eq.${eq(id)}`, {
+    //
+    // `return=representation` is load-bearing: under RLS a DELETE that matches no
+    // row is NOT an error, it just affects zero rows. With `return=minimal` that
+    // is indistinguishable from a real delete, which is exactly how a missing
+    // DELETE policy reported success while every key survived the round trip.
+    // Asserting a row came back turns that silent no-op into a loud failure.
+    const rows = await this.fetchDb<ApiKeyRow[]>(`api_keys?id=eq.${eq(id)}`, {
       method: 'DELETE',
-      headers: { Prefer: 'return=minimal' },
+      headers: { Prefer: 'return=representation' },
     });
+    if (!rows?.length) {
+      throw new Error(`Supabase delete matched no api_keys row (${id}).`);
+    }
   }
 
   async touchApiKey(id: string): Promise<void> {
