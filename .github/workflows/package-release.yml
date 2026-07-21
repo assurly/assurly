@@ -41,8 +41,9 @@ jobs:
     needs: package
     runs-on: ubuntu-latest
     permissions:
+      # `id-token: write` was only needed to sign provenance attestations. Publishing
+      # no longer does that, so the OIDC token is dropped — least privilege.
       contents: read
-      id-token: write
     steps:
       - name: Require explicit publish confirmation
         run: |
@@ -59,11 +60,21 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build:cli
       - run: npm run build -w @assurly/mcp-server
+      # Published WITHOUT --provenance on purpose. npm can only resolve a provenance
+      # attestation when the source repository is public; this one is private, so npm
+      # rendered "Unable to find the source commit for this package… verify the source
+      # before using this package" on every published version (1.0.0–1.0.2). An
+      # attestation nobody can verify is worse than none: it makes a claim and then
+      # shows a warning that erodes trust in a security product.
+      #
+      # To bring provenance back, publish these packages from a PUBLIC repository —
+      # splitting the CLI/scanner/MCP packages out of the private SaaS repo. Then the
+      # attestation resolves and actually means something to the people installing it.
       - name: Publish scanner-core, CLI, and MCP server (dependency order)
         run: |
-          npm publish --provenance -w packages/scanner-core
-          npm publish --provenance -w packages/cli
-          npm publish --provenance -w packages/mcp-server
+          npm publish -w packages/scanner-core
+          npm publish -w packages/cli
+          npm publish -w packages/mcp-server
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -72,7 +83,7 @@ jobs:
 # Prerequisites before the first publish:
 # - Create the @assurly npm org and configure 2FA on the publishing account.
 # - Add NPM_TOKEN (Automation token with publish access) to repository secrets.
-# - Align each package repository.url with this GitHub repository (required for publishConfig.provenance).
+# - Keep each package repository.url pointing at this GitHub repository.
 # - Choose and tag the first public version (currently 1.0.0 in all three packages).
 # Publish order: scanner-core → cli → mcp-server (mcp-server depends on exact published versions).
 # Other release surfaces remain separate authorized operations: a signed GitHub release/tag for the Action
