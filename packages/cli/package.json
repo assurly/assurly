@@ -1,7 +1,7 @@
 {
   "name": "assurly",
-  "version": "1.0.2",
-  "description": "Core CLI for Assurly production readiness verification",
+  "version": "1.0.3",
+  "description": "Pre-deploy ship gate for AI-built SaaS — scan a Next.js, Supabase, Stripe and Vercel project locally and get one trusted verdict before you ship. No upload, no sign-up.",
   "keywords": [
     "cli",
     "security",
@@ -12,7 +12,14 @@
     "supabase",
     "stripe",
     "vercel",
-    "ai-generated-code"
+    "ai-generated-code",
+    "lovable",
+    "v0",
+    "bolt",
+    "replit",
+    "rls",
+    "security-scanner",
+    "vibe-coding"
   ],
   "homepage": "https://assurly.dev",
   "main": "dist/index.js",
@@ -37,10 +44,11 @@
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "engines": {
-    "node": ">=20.9"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc",
@@ -48,7 +56,7 @@
     "test": "vitest run src"
   },
   "dependencies": {
-    "@assurly/scanner-core": "1.0.2",
+    "@assurly/scanner-core": "1.0.3",
     "chalk": "^4.1.2",
     "commander": "^11.1.0",
     "ora": "^5.4.1",
@@ -69,5 +77,9 @@
     "directory": "packages/cli"
   },
   "license": "MIT",
-  "author": "Assurly"
+  "author": "Assurly",
+  "bugs": {
+    "url": "https://assurly.dev/#contact",
+    "email": "support@assurly.dev"
+  }
 }

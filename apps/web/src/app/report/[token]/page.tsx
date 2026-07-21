@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
 import { ShipGatePanel } from '../../_components/ship-gate/ShipGatePanel';
 import { buildShipGateFromScanFindings } from '../../../utils/shipGate';
@@ -8,6 +9,16 @@ import { toPublicTrustProjection } from '../../../utils/publicTrust';
 interface ReportPageProps {
   params: Promise<{ token: string }>;
 }
+
+/**
+ * A shared report is reachable by anyone holding the token — that is the point — but it
+ * names a customer's repository and lists their unfixed security findings. Letting a
+ * crawler index one would put a customer's weaknesses into public search results, so
+ * these pages are kept out of every index regardless of where the link ends up.
+ */
+export const metadata: Metadata = {
+  robots: { index: false, follow: false, nocache: true },
+};
 
 const VERDICT_LABEL: Record<string, string> = {
   ready: 'Ready to ship',

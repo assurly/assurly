@@ -5,13 +5,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.reportFindings = reportFindings;
 const chalk_1 = __importDefault(require("chalk"));
+const terminalUi_1 = require("./terminalUi");
 /**
  * Renders the scan results in a clean, color-coded, professional console layout.
  */
-function reportFindings(findings) {
-    console.log('\n' + chalk_1.default.bold.cyan('=================================================='));
-    console.log(chalk_1.default.bold.cyan('             Assurly Scan Results               '));
-    console.log(chalk_1.default.bold.cyan('==================================================') + '\n');
+function reportFindings(findings, caps = (0, terminalUi_1.detectTerminalCapabilities)()) {
+    console.log('\n' + chalk_1.default.dim((0, terminalUi_1.frameTop)('Scan Results', caps)) + '\n');
     if (findings.length === 0) {
         console.log(chalk_1.default.bold.green('  ✔ Success! No configuration or security issues found.'));
         console.log(chalk_1.default.green('    Your project is production-ready! 🚀\n'));
@@ -54,8 +53,8 @@ function reportFindings(findings) {
     // medium-confidence error-severity finding is a "review" item, not a
     // blocker). The ship/no-ship verdict is owned exclusively by
     // printShipGateSummary() in shipGateReporter.ts.
-    console.log(chalk_1.default.bold.cyan('--------------------------------------------------'));
-    console.log(chalk_1.default.gray('  See the Ship Gate verdict below for the deploy decision.\n'));
+    console.log(chalk_1.default.dim((0, terminalUi_1.frameBottom)(caps)));
+    console.log(chalk_1.default.dim('  See the Ship Gate verdict below for the deploy decision.'));
 }
 /**
  * Format and print a single finding.

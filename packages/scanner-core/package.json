@@ -1,7 +1,7 @@
 {
   "name": "@assurly/scanner-core",
-  "version": "1.0.2",
-  "description": "Browser-safe static analysis rules shared by Assurly surfaces",
+  "version": "1.0.3",
+  "description": "Static analysis rules that catch what breaks AI-built SaaS in production — missing Supabase RLS, unverified Stripe webhooks, leaked service keys. Runs in Node or the browser.",
   "keywords": [
     "static-analysis",
     "security",
@@ -11,7 +11,10 @@
     "stripe",
     "vercel",
     "rls",
-    "code-scanner"
+    "code-scanner",
+    "ai-generated-code",
+    "sast",
+    "security-rules"
   ],
   "homepage": "https://assurly.dev",
   "license": "MIT",
@@ -20,11 +23,12 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "engines": {
-    "node": ">=20.9"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "repository": {
@@ -47,5 +51,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "bugs": {
+    "url": "https://assurly.dev/#contact",
+    "email": "support@assurly.dev"
   }
 }

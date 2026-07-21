@@ -12,10 +12,15 @@ import { setupGitHubAction } from './ci';
 
 const program = new Command();
 
+// Read from package.json rather than hardcoding: the literal had drifted to 1.0.0
+// while the package shipped 1.0.2, so `assurly --version` misreported itself in
+// every bug report. `dist/index.js` sits one level under the package root.
+const { version } = require('../package.json') as { version: string };
+
 program
   .name('assurly')
-  .description('Production-Readiness Verifier for B2B SaaS and Indie Hackers projects')
-  .version('1.0.0');
+  .description('Pre-deploy ship gate for AI-built SaaS — one verdict before you ship')
+  .version(version);
 
 program
   .command('scan', { isDefault: true })

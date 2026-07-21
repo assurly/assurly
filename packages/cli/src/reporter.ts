@@ -1,13 +1,20 @@
 import chalk from 'chalk';
 import { Finding } from './types';
+import {
+  detectTerminalCapabilities,
+  frameBottom,
+  frameTop,
+  type TerminalCapabilities,
+} from './terminalUi';
 
 /**
  * Renders the scan results in a clean, color-coded, professional console layout.
  */
-export function reportFindings(findings: Finding[]): void {
-  console.log('\n' + chalk.bold.cyan('=================================================='));
-  console.log(chalk.bold.cyan('             Assurly Scan Results               '));
-  console.log(chalk.bold.cyan('==================================================') + '\n');
+export function reportFindings(
+  findings: Finding[],
+  caps: TerminalCapabilities = detectTerminalCapabilities(),
+): void {
+  console.log('\n' + chalk.dim(frameTop('Scan Results', caps)) + '\n');
 
   if (findings.length === 0) {
     console.log(chalk.bold.green('  ✔ Success! No configuration or security issues found.'));
@@ -55,8 +62,8 @@ export function reportFindings(findings: Finding[]): void {
   // medium-confidence error-severity finding is a "review" item, not a
   // blocker). The ship/no-ship verdict is owned exclusively by
   // printShipGateSummary() in shipGateReporter.ts.
-  console.log(chalk.bold.cyan('--------------------------------------------------'));
-  console.log(chalk.gray('  See the Ship Gate verdict below for the deploy decision.\n'));
+  console.log(chalk.dim(frameBottom(caps)));
+  console.log(chalk.dim('  See the Ship Gate verdict below for the deploy decision.'));
 }
 
 /**
