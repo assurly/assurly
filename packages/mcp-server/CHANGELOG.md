@@ -3,6 +3,16 @@
 All notable changes to `@assurly/mcp-server` are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.0.4
+
+### Fixed
+
+- The `scan_project` tool inherited a stack-detection bug from `assurly`: in a
+  workspace monorepo it read only the root `package.json`, so it reported the
+  stack as unknown and skipped every Stripe and Supabase rule. Fixed by bumping
+  the bundled `assurly` dependency to 1.0.4, which now merges dependencies across
+  all workspace members. See the `assurly` changelog for detail.
+
 ## 1.0.3
 
 ### Fixed

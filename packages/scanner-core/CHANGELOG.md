@@ -3,6 +3,13 @@
 All notable changes to `@assurly/scanner-core` are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.0.4
+
+- No code changes. Version kept in lockstep with `assurly` and
+  `@assurly/mcp-server`, which pin exact internal dependency versions, so all
+  three are released together. The 1.0.4 fix lives in `assurly` (workspace-aware
+  stack detection).
+
 ## 1.0.3
 
 ### Fixed

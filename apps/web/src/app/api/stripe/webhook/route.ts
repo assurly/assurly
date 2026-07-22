@@ -11,6 +11,11 @@ import { getAdminDbAdapter } from '../../../../utils/dbAdapter';
 import { getStripeClient, getStripeWebhookSecret } from '../../../../utils/stripe';
 import { processStripeEvent, StripeBillingValidationError } from '../../../../utils/stripeBilling';
 
+// Stripe retries webhooks that don't respond within its own timeout, and this handler makes
+// several sequential Stripe API calls (retrieve session, subscription, customer) before it can
+// acknowledge — give it headroom above Vercel's default serverless duration.
+export const maxDuration = 30;
+
 export const POST = secureRoute(
   {
     routeId: 'stripe:webhook',

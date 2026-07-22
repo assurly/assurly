@@ -3,6 +3,22 @@
 All notable changes to `assurly` are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.0.4
+
+### Fixed
+
+- Stack detection now reads every `package.json` in the project, not just the one
+  at the scanned root. In a workspace monorepo (npm/pnpm/yarn workspaces,
+  Turborepo, Nx) the root manifest is usually a bare workspace pointer with no
+  dependencies of its own, and the real framework/database/payments packages live
+  in nested manifests such as `apps/web/package.json`. The root-only read reported
+  `Framework: unknown / Database: none / Payments: none` on such repos, which
+  silently disabled every Stripe and Supabase rule — both gate on the detected
+  stack — so a monorepo scanned "clean" for exactly the two categories the tool
+  exists to check. Detection now merges dependencies across all workspace members
+  (still skipping `node_modules`, `.git`, `dist`, and other build folders) and a
+  malformed manifest in one member no longer blanks out detection for the rest.
+
 ## 1.0.3
 
 ### Added
