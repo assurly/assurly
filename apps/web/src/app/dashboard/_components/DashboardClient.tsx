@@ -53,6 +53,7 @@ import { ScanWorkspace } from './ScanWorkspace';
 import { DashboardToast } from './DashboardToast';
 import { DashboardHeader } from './DashboardHeader';
 import { DashboardSplash } from './DashboardSplash';
+import { SiteFooter } from '../../_components/SiteFooter';
 import {
   createRepoSelectionReset,
   findingsMatchScan,
@@ -1643,6 +1644,8 @@ function DashboardContent({
           <ManualChecker onToast={handleCheckerToast} />
         )}
       </main>
+
+      <SiteFooter variant="compact" />
     </div>
   );
 }

@@ -26,7 +26,7 @@ describe('Legal Pages Component Structure', () => {
 
     expect(
       within(cookiesSection!).getByRole('heading', {
-        name: /6\. Cookies and Similar Technologies/i,
+        name: /10\. Cookies and Similar Technologies/i,
       }),
     ).toBeTruthy();
     expect(within(cookiesSection!).getByRole('table')).toBeTruthy();

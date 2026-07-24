@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { ApiError, emptyObjectSchema, RATE_LIMITS, secureRoute } from '../../../utils/apiSecurity';
+import { CONTACT_SUBJECT_VALUES } from '../../../utils/contactSubjects';
 
 const contactBody = z
   .object({
@@ -11,7 +12,7 @@ const contactBody = z
       .max(100)
       .refine((value) => !/[\u0000-\u001f\u007f]/.test(value)),
     email: z.string().email().max(254),
-    subject: z.enum(['technical', 'bug', 'business', 'other']),
+    subject: z.enum(CONTACT_SUBJECT_VALUES),
     message: z
       .string()
       .trim()

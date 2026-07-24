@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { AssurlyMark } from '../_components/AssurlyMark';
+import { SiteFooter } from '../_components/SiteFooter';
 
 export default function TermsPage() {
   return (
@@ -133,6 +134,7 @@ export default function TermsPage() {
           </p>
         </section>
       </main>
+      <SiteFooter variant="full" />
     </div>
   );
 }

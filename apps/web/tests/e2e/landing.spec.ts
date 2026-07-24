@@ -15,10 +15,11 @@ test.describe('Landing page', () => {
 
     const section = page.locator('#how-it-works');
     await expect(section.locator('h2')).toHaveText('How It Works');
-    await expect(section.getByRole('heading', { name: '1. URL Scan' })).toBeVisible();
-    await expect(section.getByRole('heading', { name: '2. Ship Score' })).toBeVisible();
-    await expect(section.getByRole('heading', { name: '3. One-Click Fix' })).toBeVisible();
-    await expect(section.getByRole('heading', { name: '4. Continuous Monitoring' })).toBeVisible();
+    await expect(section.getByRole('heading', { name: 'URL Scan' })).toBeVisible();
+    await expect(section.getByRole('heading', { name: 'Ship Score' })).toBeVisible();
+    await expect(section.getByRole('heading', { name: 'One-Click Fix' })).toBeVisible();
+    await expect(section.getByRole('heading', { name: 'Continuous Monitoring' })).toBeVisible();
+    await expect(section.locator('.feature-step-numeral')).toHaveCount(4);
   });
 
   test('pricing cards show Free, Guard, and Agency value bullets', async ({ page }) => {
@@ -55,7 +56,9 @@ test.describe('Landing page', () => {
   test('footer does not mention exit readiness', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('footer')).not.toContainText(/exit readiness/i);
-    await expect(page.locator('footer')).toContainText('Pre-deploy Ship Gate');
+    await expect(page.locator('footer')).toContainText(
+      'Know what will break in production — before you deploy.',
+    );
   });
 
   test('testimonials omit fabricated aggregate metrics', async ({ page }) => {

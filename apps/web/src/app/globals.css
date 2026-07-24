@@ -763,9 +763,150 @@ header.site-header-menu-open {
 }
 
 .feature-icon {
-  font-size: 1.8rem;
-  color: var(--accent-color);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
   margin-bottom: 16px;
+  border-radius: 8px;
+  background-color: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.feature-icon .home-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.feature-step-numeral {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 2.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--color-accent);
+  margin-bottom: 16px;
+  opacity: 0.9;
+}
+
+.home-icon {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+}
+
+.home-icon--sm {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.home-icon--inline {
+  width: 1.1em;
+  height: 1.1em;
+  color: var(--color-accent);
+}
+
+.pricing-feature-icon {
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.2em;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.repo-selector-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.repo-selector-name .home-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  color: var(--color-text-muted);
+}
+
+.repo-tag-stars .home-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.inline-status-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.demo-log-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--accent-color);
+  font-weight: bold;
+  font-size: 0.85rem;
+  border-bottom: 1px dashed var(--border-color);
+  padding-bottom: 4px;
+}
+
+.demo-log-heading .home-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.demo-log-suggestion {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.demo-log-suggestion .home-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin-top: 0.15em;
+  flex-shrink: 0;
+}
+
+.demo-log-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 12px;
+  margin-top: 16px;
+  color: var(--color-error);
+  font-weight: bold;
+}
+
+.demo-log-error .home-icon {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.scanner-error-row {
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+}
+
+.scanner-error-row .home-icon {
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15em;
+  flex-shrink: 0;
+}
+
+.fomo-card .feature-icon {
+  margin-bottom: 0;
 }
 
 .feature-card h3 {
@@ -1029,6 +1170,9 @@ header.site-header-menu-open {
 }
 
 .pricing-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   font-size: 0.9rem;
   color: var(--text-secondary);
   line-height: 1.4;
@@ -1629,6 +1773,262 @@ footer {
   font-size: 0.9rem;
 }
 
+/* ==========================================================================
+   Site footer (landing full + dashboard compact)
+   ========================================================================== */
+
+.site-footer {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-top: auto;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  background-color: var(--color-canvas);
+}
+
+.site-footer a {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: color var(--duration-normal) var(--ease-standard);
+}
+
+.site-footer a:hover {
+  color: var(--color-accent);
+}
+
+.site-footer a:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+}
+
+.site-footer--full {
+  padding: var(--space-12) 0 var(--space-8);
+  text-align: left;
+}
+
+.site-footer__inner {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.site-footer__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
+  gap: var(--space-8) var(--space-6);
+  align-items: start;
+}
+
+.site-footer__brand {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.site-footer__brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  width: fit-content;
+  max-width: 100%;
+  min-height: var(--touch-target);
+  padding: 6px 2px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.site-footer__brand-link:hover {
+  color: var(--color-text);
+}
+
+.site-footer__wordmark span {
+  color: var(--color-accent);
+}
+
+.site-footer__descriptor,
+.site-footer__copyright {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  max-width: 28ch;
+}
+
+.site-footer__copyright {
+  margin-top: var(--space-2);
+}
+
+.site-footer__column {
+  min-width: 0;
+}
+
+.site-footer__heading {
+  margin: 0 0 var(--space-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.site-footer__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.site-footer__list a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch-target);
+  padding: 6px 2px;
+  font-size: 0.9rem;
+  max-width: 100%;
+  word-break: break-word;
+}
+
+/* Compact dashboard utility bar */
+.site-footer--compact {
+  padding: var(--space-3) var(--space-6);
+  text-align: left;
+  background-color: var(--color-surface-subtle);
+  flex-shrink: 0;
+}
+
+.site-footer__compact-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.site-footer__compact-copy {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.site-footer__compact-nav {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.site-footer__compact-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+}
+
+.site-footer__compact-list li {
+  display: inline-flex;
+  align-items: center;
+}
+
+.site-footer__compact-list li:not(:last-child)::after {
+  content: '·';
+  margin-inline: var(--space-2);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.site-footer__compact-list a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch-target);
+  padding: 6px 2px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .site-footer--full {
+    padding: var(--space-10) 0 var(--space-6);
+  }
+
+  .site-footer__grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+    gap: var(--space-6);
+  }
+
+  .site-footer__brand {
+    grid-column: 1 / -1;
+  }
+
+  .site-footer--compact {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .site-footer__compact-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+}
+
+@media (max-width: 576px) {
+  .site-footer__grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-5);
+  }
+
+  .site-footer__descriptor,
+  .site-footer__copyright {
+    max-width: none;
+  }
+
+  .site-footer__compact-list {
+    gap: 0;
+  }
+
+  .site-footer__compact-list a {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 480px) {
+  .site-footer--full {
+    padding: var(--space-8) 0 var(--space-5);
+  }
+
+  .site-footer--compact {
+    padding: var(--space-2) var(--space-4) var(--space-3);
+  }
+}
+
+@media (max-width: 360px) {
+  .site-footer__compact-list {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .site-footer__compact-list li:not(:last-child)::after {
+    display: none;
+  }
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
@@ -1761,8 +2161,14 @@ footer {
 }
 
 .toast-icon {
+  display: inline-flex;
+  align-items: center;
   color: var(--color-success);
-  font-weight: bold;
+}
+
+.toast-icon .home-icon {
+  width: 1rem;
+  height: 1rem;
 }
 
 .toast-message {
@@ -1906,6 +2312,20 @@ footer {
     padding: 20px;
   }
 
+  .feature-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .feature-icon .home-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .feature-step-numeral {
+    font-size: 2.15rem;
+  }
+
   /* Demo preview responsiveness */
   .demo-preview {
     padding: 40px 0;
@@ -2033,15 +2453,12 @@ footer {
     flex-direction: column;
     gap: 2px;
   }
-
-  footer {
-    padding: 30px 0;
-  }
 }
 
 @media (max-width: 480px) {
+  /* Keep .legal-container unpadded so SiteFooter can full-bleed like the landing page.
+     .legal-header / .legal-content already carry their own horizontal padding. */
   .container,
-  .legal-container,
   .dashboard-main {
     padding-inline: var(--space-4);
   }
@@ -2589,17 +3006,21 @@ footer {
 }
 
 .info-icon {
-  font-size: 1.5rem;
-  color: var(--accent-color);
-  background: var(--accent-glow);
   width: 44px;
   height: 44px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  border: 1px solid rgba(160, 84, 48, 0.2);
+  background-color: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  color: var(--color-accent);
   flex-shrink: 0;
+}
+
+.info-icon .home-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .info-item strong {
@@ -2785,6 +3206,13 @@ footer {
   align-items: center;
 }
 
+/* Full-bleed footer inside centered legal layout; pin to viewport bottom on short pages. */
+.legal-container > .site-footer {
+  align-self: stretch;
+  width: 100%;
+  margin-top: auto;
+}
+
 .legal-header {
   width: 100%;
   max-width: 800px;
@@ -2827,6 +3255,62 @@ footer {
 
 .legal-section {
   margin-bottom: 36px;
+}
+
+/* Legal tables (privacy policy: legal bases, sub-processors, retention).
+   The wrapper is the scroll container so a wide table scrolls inside itself
+   instead of forcing the whole page to scroll horizontally on a phone. */
+.legal-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 16px 0 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.legal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  min-width: 460px;
+}
+
+.legal-table th,
+.legal-table td {
+  padding: 12px 14px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.legal-table th {
+  color: var(--text-primary);
+  font-weight: 600;
+  background-color: var(--color-surface-raised);
+  white-space: nowrap;
+}
+
+.legal-table td {
+  color: var(--text-secondary);
+}
+
+.legal-table tbody tr:last-child th,
+.legal-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+@media (max-width: 576px) {
+  .legal-table {
+    font-size: 0.86rem;
+    min-width: 380px;
+  }
+
+  .legal-table th,
+  .legal-table td {
+    padding: 10px;
+  }
 }
 
 .legal-section h2 {
@@ -3018,84 +3502,6 @@ footer {
 }
 
 /* Footer layout updates */
-footer .footer-container {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px 24px;
-}
-
-footer .footer-container > p {
-  margin: 0;
-  flex: 1 1 220px;
-  min-width: 0;
-}
-
-footer .footer-links {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px 20px;
-  flex: 0 1 auto;
-}
-
-footer .footer-links a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 6px 2px;
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  transition: var(--transition-smooth);
-}
-
-footer .footer-links a:hover {
-  color: var(--accent-color);
-}
-
-@media (max-width: 768px) {
-  footer .footer-container {
-    justify-content: center;
-  }
-
-  footer .footer-container > p {
-    flex-basis: 100%;
-    text-align: center;
-  }
-
-  footer .footer-links {
-    justify-content: center;
-    width: 100%;
-  }
-}
-
-@media (max-width: 576px) {
-  footer .footer-container {
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  footer .footer-links {
-    gap: 6px 16px;
-    max-width: 100%;
-  }
-
-  footer .footer-links a {
-    min-height: 44px;
-    padding-inline: 4px;
-  }
-}
-
-@media (max-width: 360px) {
-  footer .footer-links {
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
-}
 
 /* ==========================================================================
    B2B SaaS Dashboard Responsive Styles
@@ -3219,9 +3625,10 @@ footer .footer-links a:hover {
 }
 
 .dashboard-main {
+  flex: 1 1 auto;
   max-width: 1200px;
   margin: 40px auto 0 auto;
-  padding: 0 24px;
+  padding: 0 24px 40px;
   overflow-x: clip;
   width: 100%;
   min-width: 0;
@@ -3230,10 +3637,11 @@ footer .footer-links a:hover {
 
 .dashboard-page {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background-color: var(--color-canvas);
   color: var(--color-text);
   font-family: system-ui, sans-serif;
-  padding-bottom: 60px;
   overflow-x: hidden;
   max-width: 100vw;
 }
@@ -5583,6 +5991,10 @@ button.dashboard-repo-selector-item {
 }
 
 .conversion-wall-box h4 {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   font-size: 1.25rem;
   margin-bottom: 8px;
   color: var(--text-primary);
@@ -5729,6 +6141,9 @@ button.dashboard-repo-selector-item {
 }
 
 .repo-tag-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 0.7rem;
   background-color: rgba(245, 158, 11, 0.1);
   color: var(--color-warning);
@@ -7775,7 +8190,12 @@ body {
   .features-grid,
   .pricing-grid,
   .faq-list {
-    overflow-x: hidden !important;
+    /* `clip`, not `hidden`: setting overflow-x to hidden forces the computed
+       overflow-y from visible to auto, turning these into scroll containers that
+       clip vertical overflow. That cut off the top of the -2px hover lift on
+       cards below 1024px. `clip` contains horizontal overflow without creating a
+       scroll container, so overflow-y stays visible. */
+    overflow-x: clip !important;
     max-width: 100% !important;
     word-wrap: break-word;
     overflow-wrap: break-word;

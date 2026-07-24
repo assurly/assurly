@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
 import {
   scanSqlMigration,
   scanStripeWebhook,
@@ -16,17 +15,45 @@ import {
 import { clientApi, githubApi, type GitHubRepository } from '../../../utils/clientApi';
 import { sanitizeGitHubOwner } from '../../../utils/scanProxy';
 import { isLikelyScannableUrl } from '../../../utils/urlValidation';
+import {
+  CONTACT_SUBJECTS,
+  DEFAULT_CONTACT_SUBJECT,
+  type ContactSubject,
+} from '../../../utils/contactSubjects';
 import { ShipGatePanel } from '../ship-gate/ShipGatePanel';
 import { buildShipGateFromWebFindings, type ShipGateReport } from '../../../utils/shipGate';
 import { ProofEvidence, type ProofEvidenceItem } from '../../dashboard/_components/ProofEvidence';
+import { SiteFooter } from '../SiteFooter';
 import { AuthButton } from './AuthButton';
 import { CurrencyToggle } from './CurrencyToggle';
 import { HomeHeader } from './HomeHeader';
+import {
+  HomeCheckIcon,
+  HomeClockIcon,
+  HomeCopyIcon,
+  HomeCreditCardIcon,
+  HomeDatabaseZapIcon,
+  HomeFeatherIcon,
+  HomeFolderIcon,
+  HomeLayersIcon,
+  HomeLightbulbIcon,
+  HomeLockIcon,
+  HomeMailIcon,
+  HomeMonitorCheckIcon,
+  HomeSearchIcon,
+  HomeShieldCheckIcon,
+  HomeStarIcon,
+  HomeTimerIcon,
+  HomeWrenchIcon,
+  HomeXIcon,
+} from './HomeIcons';
 import { Testimonials } from './Testimonials';
 
 interface HomeClientProps {
   initialAuthenticated: boolean;
   loginUrl?: string;
+  /** Preselected contact subject, resolved server-side from `?subject=`. */
+  initialContactSubject?: ContactSubject;
 }
 
 async function readApiErrorMessage(response: Response, fallback: string): Promise<string> {
@@ -53,6 +80,7 @@ function isRateLimitMessage(message: string): boolean {
 export default function HomeClient({
   initialAuthenticated,
   loginUrl = '/api/auth/login',
+  initialContactSubject = DEFAULT_CONTACT_SUBJECT,
 }: HomeClientProps): React.ReactElement {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const isAuthenticated = initialAuthenticated;
@@ -62,7 +90,7 @@ export default function HomeClient({
   // Contact form state
   const [contactName, setContactName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
-  const [contactSubject, setContactSubject] = useState('technical');
+  const [contactSubject, setContactSubject] = useState<ContactSubject>(initialContactSubject);
   const [contactMessage, setContactMessage] = useState('');
   const [isSubmittingContact, setIsSubmittingContact] = useState(false);
   const [contactFeedback, setContactFeedback] = useState<{
@@ -77,6 +105,40 @@ export default function HomeClient({
       if (contactTimeoutRef.current) {
         clearTimeout(contactTimeoutRef.current);
       }
+    };
+  }, []);
+
+  /**
+   * Re-apply hash scrolling after mount.
+   *
+   * The browser resolves `#contact` before this client page has rendered its
+   * sections, so a direct load of `/#contact` — the link the Privacy Policy uses
+   * for data-subject requests — silently lands at the top of the page instead of
+   * the form. Scrolling again once the sections exist fixes every cross-page
+   * anchor (`#features`, `#pricing`, `#contact`), not just this one.
+   */
+  useEffect(() => {
+    const targetId = window.location.hash.slice(1);
+    if (!targetId) return;
+
+    let cancelled = false;
+    // Instant, not smooth: this is a deep link, so the visitor should arrive at the
+    // section the way native hash navigation would. A smooth animation across
+    // several thousand pixels is also easily interrupted by layout shifts below.
+    const jumpToTarget = () => {
+      if (cancelled) return;
+      document.getElementById(targetId)?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    };
+
+    // First pass after paint; a second pass once late content (images, deferred
+    // sections) has settled, so the target does not drift out from under us.
+    const frame = requestAnimationFrame(jumpToTarget);
+    const settle = setTimeout(jumpToTarget, 400);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      clearTimeout(settle);
     };
   }, []);
 
@@ -278,8 +340,8 @@ export default function HomeClient({
     setScanError(null);
     setScanProgress(0);
     setScanLogs([
-      '⚙ Initializing Assurly Scanner...',
-      `📥 Fetching repository tree for "${repoFullName}"...`,
+      'Initializing Assurly Scanner...',
+      `Fetching repository tree for "${repoFullName}"...`,
     ]);
 
     const allFindings: { severity: 'error' | 'warning'; file: string; message: string }[] = [];
@@ -326,8 +388,8 @@ export default function HomeClient({
       setScanProgress(15);
       setScanLogs((prev) => [
         ...prev,
-        `✓ Found ${tree.length} files in repository.`,
-        '🔍 Detecting stack and analyzing project structure...',
+        `Found ${tree.length} files in repository.`,
+        'Detecting stack and analyzing project structure...',
       ]);
 
       const fetchFileContent = async (filePath: string): Promise<Response> => {
@@ -412,15 +474,15 @@ export default function HomeClient({
       setScanProgress(30);
       setScanLogs((prev) => [
         ...prev,
-        `✓ Framework: ${detectedFramework}`,
-        `✓ Supabase: ${hasSupabase ? 'Detected' : 'Not Detected'}`,
-        `✓ Stripe: ${hasStripe ? 'Detected' : 'Not Detected'}`,
-        '🛡 Running Ship Gate checks...',
+        `Framework: ${detectedFramework}`,
+        `Supabase: ${hasSupabase ? 'Detected' : 'Not Detected'}`,
+        `Stripe: ${hasStripe ? 'Detected' : 'Not Detected'}`,
+        'Running Ship Gate checks...',
       ]);
 
       const sqlToScan = sqlFiles.filter((path) => selectedFiles.has(path));
       for (const sqlPath of sqlToScan) {
-        setScanLogs((prev) => [...prev, `⚙ Reading ${sqlPath}...`]);
+        setScanLogs((prev) => [...prev, `Reading ${sqlPath}...`]);
         try {
           const res = await fetchFileContent(sqlPath);
           if (res.ok) {
@@ -435,7 +497,7 @@ export default function HomeClient({
             );
             setScanLogs((prev) => [
               ...prev,
-              `  ✓ Scanned ${sqlPath}: ${scan.errorCount} errors, ${scan.warningCount} warnings.`,
+              `  Scanned ${sqlPath}: ${scan.errorCount} errors, ${scan.warningCount} warnings.`,
             ]);
           }
         } catch {
@@ -449,7 +511,7 @@ export default function HomeClient({
         .filter((p) => p.toLowerCase().includes('stripe') || p.toLowerCase().includes('webhook'))
         .filter((path) => selectedFiles.has(path));
       for (const webhookPath of stripeToScan) {
-        setScanLogs((prev) => [...prev, `⚙ Reading ${webhookPath}...`]);
+        setScanLogs((prev) => [...prev, `Reading ${webhookPath}...`]);
         try {
           const res = await fetchFileContent(webhookPath);
           if (res.ok) {
@@ -464,7 +526,7 @@ export default function HomeClient({
             );
             setScanLogs((prev) => [
               ...prev,
-              `  ✓ Scanned ${webhookPath}: ${scan.errorCount} errors.`,
+              `  Scanned ${webhookPath}: ${scan.errorCount} errors.`,
             ]);
           }
         } catch {
@@ -476,7 +538,7 @@ export default function HomeClient({
 
       const envExamplePath = envFiles.find((p) => p.endsWith('.env.example')) || envFiles[0];
       if (envExamplePath) {
-        setScanLogs((prev) => [...prev, `⚙ Reading env configuration from ${envExamplePath}...`]);
+        setScanLogs((prev) => [...prev, `Reading env configuration from ${envExamplePath}...`]);
         try {
           const envRes = await fetchFileContent(envExamplePath);
           if (envRes.ok) {
@@ -507,10 +569,7 @@ export default function HomeClient({
                 message: f.message,
               })),
             );
-            setScanLogs((prev) => [
-              ...prev,
-              `  ✓ Checked env variables: ${scan.errorCount} errors.`,
-            ]);
+            setScanLogs((prev) => [...prev, `  Checked env variables: ${scan.errorCount} errors.`]);
           }
         } catch {
           // Continue scanning
@@ -589,7 +648,7 @@ export default function HomeClient({
       }
 
       setScanProgress(100);
-      setScanLogs((prev) => [...prev, '🏁 Scan finished. Generating report.']);
+      setScanLogs((prev) => [...prev, 'Scan finished. Generating report.']);
 
       const errorCount = allFindings.filter((f) => f.severity === 'error').length;
       const warningCount = allFindings.filter((f) => f.severity === 'warning').length;
@@ -712,7 +771,9 @@ export default function HomeClient({
       {/* Toast Notification */}
       {toast && (
         <div className="toast-notification">
-          <span className="toast-icon">✔</span>
+          <span className="toast-icon">
+            <HomeCheckIcon />
+          </span>
           <span className="toast-message">{toast.message}</span>
         </div>
       )}
@@ -766,8 +827,16 @@ export default function HomeClient({
                 transition: 'var(--transition-smooth)',
               }}
             >
-              {copied ? 'Copied! ✓' : 'npx assurly scan'}
-              {!copied && <span style={{ opacity: 0.6 }}>📋</span>}
+              {copied ? (
+                <>
+                  Copied! <HomeCheckIcon className="home-icon--sm" />
+                </>
+              ) : (
+                <>
+                  npx assurly scan
+                  <HomeCopyIcon className="home-icon--sm" style={{ opacity: 0.6 }} />
+                </>
+              )}
             </code>
           </div>
         </section>
@@ -791,32 +860,40 @@ export default function HomeClient({
           </p>
           <div className="features-grid">
             <div className="feature-card">
-              <div className="feature-icon">🌐</div>
-              <h3>1. URL Scan</h3>
+              <span className="feature-step-numeral" aria-hidden="true">
+                1
+              </span>
+              <h3>URL Scan</h3>
               <p>
                 Paste your live app URL. Assurly probes Supabase RLS exposure, secrets in the
                 production bundle, and security headers — no repository required.
               </p>
             </div>
             <div className="feature-card">
-              <div className="feature-icon">📊</div>
-              <h3>2. Ship Score</h3>
+              <span className="feature-step-numeral" aria-hidden="true">
+                2
+              </span>
+              <h3>Ship Score</h3>
               <p>
                 One trusted verdict: blockers you must fix, warnings you can review, and noise you
                 can safely ignore — tuned for high-confidence production risks.
               </p>
             </div>
             <div className="feature-card">
-              <div className="feature-icon">🔧</div>
-              <h3>3. One-Click Fix</h3>
+              <span className="feature-step-numeral" aria-hidden="true">
+                3
+              </span>
+              <h3>One-Click Fix</h3>
               <p>
                 Open an auto-fix pull request for common misconfigurations, or copy an AI fix prompt
                 straight into Cursor or Claude Code.
               </p>
             </div>
             <div className="feature-card">
-              <div className="feature-icon">📡</div>
-              <h3>4. Continuous Monitoring</h3>
+              <span className="feature-step-numeral" aria-hidden="true">
+                4
+              </span>
+              <h3>Continuous Monitoring</h3>
               <p>
                 Connect GitHub to scan every deploy, catch regressions early, and keep your Ship
                 Score badge current.
@@ -896,7 +973,10 @@ export default function HomeClient({
                   fontWeight: 'bold',
                 }}
               >
-                ❌ {urlScanError}
+                <div className="scanner-error-row">
+                  <HomeXIcon />
+                  <span>{urlScanError}</span>
+                </div>
               </div>
             )}
 
@@ -922,7 +1002,10 @@ export default function HomeClient({
 
                 {!isAuthenticated ? (
                   <div className="conversion-wall-box">
-                    <h4>🔒 Full Runtime Findings are Locked</h4>
+                    <h4>
+                      <HomeLockIcon className="home-icon--inline" />
+                      Full Runtime Findings are Locked
+                    </h4>
                     <p>
                       Sign in to unlock the complete findings list, exact probe details, and
                       remediation guidance for your deployed app.
@@ -988,8 +1071,11 @@ export default function HomeClient({
                 style={{ textAlign: 'center', margin: '20px 0', color: 'var(--text-secondary)' }}
               >
                 <div className="pulse-loader" style={{ margin: '0 auto 10px auto' }}></div>
-                <span>
-                  🔍 Fetching public repositories for <strong>{ownerSearched}</strong>...
+                <span className="inline-status-row">
+                  <HomeSearchIcon className="home-icon--sm" />
+                  <span>
+                    Fetching public repositories for <strong>{ownerSearched}</strong>...
+                  </span>
                 </span>
               </div>
             )}
@@ -1020,10 +1106,16 @@ export default function HomeClient({
                       }}
                     >
                       <div className="repo-selector-title">
-                        <span>📁 {repo.name}</span>
+                        <span className="repo-selector-name">
+                          <HomeFolderIcon />
+                          {repo.name}
+                        </span>
                         <div className="repo-selector-meta">
                           {repo.language && <span className="repo-tag-lang">{repo.language}</span>}
-                          <span className="repo-tag-stars">★ {repo.stargazers_count}</span>
+                          <span className="repo-tag-stars">
+                            <HomeStarIcon />
+                            {repo.stargazers_count}
+                          </span>
                         </div>
                       </div>
                       {repo.description && (
@@ -1045,7 +1137,10 @@ export default function HomeClient({
                   fontWeight: 'bold',
                 }}
               >
-                ❌ {scanError}
+                <div className="scanner-error-row">
+                  <HomeXIcon />
+                  <span>{scanError}</span>
+                </div>
                 {isRateLimitMessage(scanError) && !isAuthenticated ? (
                   <div style={{ marginTop: '12px' }}>
                     <button
@@ -1120,7 +1215,10 @@ export default function HomeClient({
                 </div>
 
                 <div className="conversion-wall-box">
-                  <h4>🔒 Detailed Security Report is Locked</h4>
+                  <h4>
+                    <HomeLockIcon className="home-icon--inline" />
+                    Detailed Security Report is Locked
+                  </h4>
                   <p>
                     Connect your GitHub account to unlock the full list of findings, see the exact
                     file lines, and automatically fix these configuration errors.
@@ -1186,17 +1284,9 @@ export default function HomeClient({
                 </span>
               </div>
 
-              <div
-                style={{
-                  marginTop: '12px',
-                  color: 'var(--accent-color)',
-                  fontWeight: 'bold',
-                  fontSize: '0.85rem',
-                  borderBottom: '1px dashed var(--border-color)',
-                  paddingBottom: '4px',
-                }}
-              >
-                🔍 Scanning schema.sql...
+              <div className="demo-log-heading">
+                <HomeSearchIcon />
+                Scanning schema.sql...
               </div>
               <div className="log-line" style={{ paddingLeft: '8px' }}>
                 <span className="log-badge error">ERROR</span>
@@ -1205,21 +1295,14 @@ export default function HomeClient({
                   (RLS) is not enabled.
                 </span>
               </div>
-              <div className="log-suggestion" style={{ paddingLeft: '8px' }}>
-                💡 Add: ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+              <div className="log-suggestion demo-log-suggestion" style={{ paddingLeft: '8px' }}>
+                <HomeLightbulbIcon />
+                <span>Add: ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;</span>
               </div>
 
-              <div
-                style={{
-                  marginTop: '12px',
-                  color: 'var(--accent-color)',
-                  fontWeight: 'bold',
-                  fontSize: '0.85rem',
-                  borderBottom: '1px dashed var(--border-color)',
-                  paddingBottom: '4px',
-                }}
-              >
-                🔍 Scanning app/api/stripe/webhook/route.ts...
+              <div className="demo-log-heading">
+                <HomeSearchIcon />
+                Scanning app/api/stripe/webhook/route.ts...
               </div>
               <div className="log-line" style={{ paddingLeft: '8px' }}>
                 <span className="log-badge error">ERROR</span>
@@ -1227,20 +1310,14 @@ export default function HomeClient({
                   Stripe webhook endpoint lacks signature verification.
                 </span>
               </div>
-              <div className="log-suggestion" style={{ paddingLeft: '8px' }}>
-                💡 Use: stripe.webhooks.constructEvent(body, sig, secret)
+              <div className="log-suggestion demo-log-suggestion" style={{ paddingLeft: '8px' }}>
+                <HomeLightbulbIcon />
+                <span>Use: stripe.webhooks.constructEvent(body, sig, secret)</span>
               </div>
 
-              <div
-                style={{
-                  borderTop: '1px solid var(--border-color)',
-                  paddingTop: '12px',
-                  marginTop: '16px',
-                  color: 'var(--color-error)',
-                  fontWeight: 'bold',
-                }}
-              >
-                ❌ 2 errors found. Fix before deploying to production.
+              <div className="demo-log-error">
+                <HomeXIcon />
+                <span>2 errors found. Fix before deploying to production.</span>
               </div>
             </div>
           </div>
@@ -1258,7 +1335,9 @@ export default function HomeClient({
           <h2>Why Assurly?</h2>
           <div className="features-grid">
             <div className="feature-card">
-              <div className="feature-icon">🛡️</div>
+              <div className="feature-icon">
+                <HomeMonitorCheckIcon />
+              </div>
               <h3>Local-First Scanning</h3>
               <p>
                 Manual web checks run in your browser and CLI scans run on your machine. GitHub web
@@ -1267,7 +1346,9 @@ export default function HomeClient({
               </p>
             </div>
             <div className="feature-card">
-              <div className="feature-icon">⚡</div>
+              <div className="feature-icon">
+                <HomeFeatherIcon />
+              </div>
               <h3>Zero-Bundle Overhead</h3>
               <p>
                 Assurly runs as a development-only tool. It adds exactly 0kb to your final
@@ -1275,7 +1356,9 @@ export default function HomeClient({
               </p>
             </div>
             <div className="feature-card">
-              <div className="feature-icon">🤝</div>
+              <div className="feature-icon">
+                <HomeLayersIcon />
+              </div>
               <h3>Indie-Stack Native</h3>
               <p>
                 Deep out-of-the-box rule configurations for Next.js, Supabase Row-Level Security,
@@ -1283,7 +1366,9 @@ export default function HomeClient({
               </p>
             </div>
             <div className="feature-card">
-              <div className="feature-icon">🤖</div>
+              <div className="feature-icon">
+                <HomeWrenchIcon />
+              </div>
               <h3>Auto-Fix Engine</h3>
               <p>
                 Quickly repair common misconfigured variables or missing database scripts with
@@ -1316,9 +1401,10 @@ export default function HomeClient({
           <div className="fomo-grid">
             <div className="fomo-card">
               <span className="fomo-badge-danger">Severe Risk</span>
-              <h3>
-                <span>🔒</span> Missing Supabase RLS
-              </h3>
+              <div className="feature-icon">
+                <HomeDatabaseZapIcon />
+              </div>
+              <h3>Missing Supabase RLS</h3>
               <p className="fomo-description">
                 <strong>Cost: €20,000+ GDPR fine & reputation ruin.</strong> Leaving a profiles or
                 users table readable without Row-Level Security allows competitors to scrape your
@@ -1327,9 +1413,10 @@ export default function HomeClient({
             </div>
             <div className="fomo-card">
               <span className="fomo-badge-danger">Financial Loss</span>
-              <h3>
-                <span>💳</span> Webhook Spoofing
-              </h3>
+              <div className="feature-icon">
+                <HomeCreditCardIcon />
+              </div>
+              <h3>Webhook Spoofing</h3>
               <p className="fomo-description">
                 <strong>
                   Cost: {currencySymbol}100 - {currencySymbol}10,000+ in api usage & unpaid
@@ -1341,9 +1428,10 @@ export default function HomeClient({
             </div>
             <div className="fomo-card">
               <span className="fomo-badge-danger">User Dropoff</span>
-              <h3>
-                <span>🚀</span> RSC Leaks & Cold Starts
-              </h3>
+              <div className="feature-icon">
+                <HomeTimerIcon />
+              </div>
+              <h3>RSC Leaks & Cold Starts</h3>
               <p className="fomo-description">
                 <strong>Cost: 15% - 30% checkout conversion loss.</strong> Importing server-side
                 database libraries inside client files increases serverless bundle sizes, causing
@@ -1505,11 +1593,26 @@ export default function HomeClient({
                 </div>
               </div>
               <ul className="pricing-features">
-                <li>✓ Live proof-probe: paste a URL, see what leaks</li>
-                <li>✓ One guarded app</li>
-                <li>✓ MCP server access for AI agents</li>
-                <li>✓ CLI scanner (unlimited local scans)</li>
-                <li>✓ Community support</li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>Live proof-probe: paste a URL, see what leaks</span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>One guarded app</span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>MCP server access for AI agents</span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>CLI scanner (unlimited local scans)</span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>Community support</span>
+                </li>
               </ul>
               {renderAuthButton('secondary', {
                 signIn: 'Get Started Free',
@@ -1532,12 +1635,30 @@ export default function HomeClient({
                 </div>
               </div>
               <ul className="pricing-features">
-                <li>✓ Everything in Free, unlimited guarded apps</li>
-                <li>✓ Continuous Guardian on every deploy</li>
-                <li>✓ AI deep review (Layer 2 reasoning)</li>
-                <li>✓ Verified Ship Score badge + trust page</li>
-                <li>✓ Auto-fix pull requests &amp; regression alerts</li>
-                <li>✓ Private repository scanning</li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>Everything in Free, unlimited guarded apps</span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>Continuous Guardian on every deploy</span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>AI deep review (Layer 2 reasoning)</span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>Verified Ship Score badge + trust page</span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>Auto-fix pull requests &amp; regression alerts</span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>Private repository scanning</span>
+                </li>
               </ul>
               {renderAuthButton('primary', {
                 signIn: 'Start Pro Trial',
@@ -1554,14 +1675,32 @@ export default function HomeClient({
                 </div>
               </div>
               <ul className="pricing-features">
-                <li>✓ Everything in Pro</li>
-                <li>✓ Keyed verdict API for your users</li>
                 <li>
-                  ✓ <code>assurly_verdict</code> MCP ship-gate
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>Everything in Pro</span>
                 </li>
-                <li>✓ White-label “security-checked” widget</li>
-                <li>✓ Higher programmatic rate limits</li>
-                <li>✓ Volume pricing &amp; priority support</li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>Keyed verdict API for your users</span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>
+                    <code>assurly_verdict</code> MCP ship-gate
+                  </span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>White-label “security-checked” widget</span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>Higher programmatic rate limits</span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>Volume pricing &amp; priority support</span>
+                </li>
               </ul>
               <a className="btn btn-secondary" href="#contact">
                 Contact Sales
@@ -1594,21 +1733,27 @@ export default function HomeClient({
 
                 <div className="info-links">
                   <div className="info-item">
-                    <span className="info-icon">✉</span>
+                    <span className="info-icon">
+                      <HomeMailIcon />
+                    </span>
                     <div>
                       <strong>Email Us</strong>
                       <p>support@assurly.dev</p>
                     </div>
                   </div>
                   <div className="info-item">
-                    <span className="info-icon">⏱</span>
+                    <span className="info-icon">
+                      <HomeClockIcon />
+                    </span>
                     <div>
                       <strong>Response Time</strong>
                       <p>Usually within 24 hours</p>
                     </div>
                   </div>
                   <div className="info-item">
-                    <span className="info-icon">🔒</span>
+                    <span className="info-icon">
+                      <HomeShieldCheckIcon />
+                    </span>
                     <div>
                       <strong>Privacy Assurance</strong>
                       <p>
@@ -1652,12 +1797,13 @@ export default function HomeClient({
                   <select
                     id="contact-subject"
                     value={contactSubject}
-                    onChange={(e) => setContactSubject(e.target.value)}
+                    onChange={(e) => setContactSubject(e.target.value as ContactSubject)}
                   >
-                    <option value="technical">Technical Support</option>
-                    <option value="bug">Bug Report</option>
-                    <option value="business">Business / Acquisition Inquiry</option>
-                    <option value="other">Other</option>
+                    {CONTACT_SUBJECTS.map((subject) => (
+                      <option key={subject.value} value={subject.value}>
+                        {subject.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -1685,7 +1831,8 @@ export default function HomeClient({
                   <div
                     className={`feedback-message ${contactFeedback.success ? 'success' : 'error'}`}
                   >
-                    {contactFeedback.success ? '✔' : '❌'} {contactFeedback.message}
+                    {contactFeedback.success ? <HomeCheckIcon /> : <HomeXIcon />}{' '}
+                    {contactFeedback.message}
                   </div>
                 )}
               </form>
@@ -1694,17 +1841,7 @@ export default function HomeClient({
         </section>
       </main>
 
-      {/* Footer */}
-      <footer>
-        <div className="container footer-container">
-          <p>© 2026 Assurly. Pre-deploy Ship Gate for AI-built SaaS. Licensed under MIT.</p>
-          <div className="footer-links">
-            <Link href="/privacy">Privacy Policy</Link>
-            <Link href="/privacy#cookies">Cookies</Link>
-            <Link href="/terms">Terms of Service</Link>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter variant="full" />
     </div>
   );
 }

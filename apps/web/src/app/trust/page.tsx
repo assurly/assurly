@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { AssurlyMark } from '../_components/AssurlyMark';
+import { SiteFooter } from '../_components/SiteFooter';
 
 export const metadata = {
   title: 'Trust & Security · Assurly',
@@ -148,6 +149,7 @@ export default function TrustPage() {
           </p>
         </section>
       </main>
+      <SiteFooter variant="full" />
     </div>
   );
 }

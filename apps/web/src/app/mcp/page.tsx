@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import React from 'react';
 import { AssurlyMark } from '../_components/AssurlyMark';
+import { SiteFooter } from '../_components/SiteFooter';
 
 const PAGE_TITLE = 'Assurly MCP Server | Ship Gate for AI Agents';
 const PAGE_DESCRIPTION =
@@ -142,6 +143,7 @@ export default function McpPage(): React.ReactElement {
           </p>
         </section>
       </main>
+      <SiteFooter variant="full" />
     </div>
   );
 }
