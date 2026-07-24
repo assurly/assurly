@@ -1032,6 +1032,16 @@ header.site-header-menu-open {
   font-weight: 700;
 }
 
+/* The badge is styled for the inactive (dark) button. Once the button is
+   selected its background becomes the accent colour, which is exactly the
+   badge's own text colour — accent on accent, so the discount became
+   unreadable. Invert the badge on the active button: a dark chip carrying the
+   accent text, which stays legible and reads as deliberate. */
+.billing-toggle-btn.active .discount-badge {
+  background-color: var(--color-canvas);
+  color: var(--accent-color);
+}
+
 /* Pricing Controls Wrapper & Currency Toggle Switch */
 .pricing-controls-container {
   display: flex;
