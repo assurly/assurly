@@ -11,6 +11,8 @@ export const CONTACT_SUBJECTS = [
   { value: 'technical', label: 'Technical Support' },
   { value: 'bug', label: 'Bug Report' },
   { value: 'privacy', label: 'Privacy / Data Protection' },
+  { value: 'terms', label: 'Terms of Service' },
+  { value: 'trust', label: 'Trust & Security' },
   { value: 'business', label: 'Business / Acquisition Inquiry' },
   { value: 'other', label: 'Other' },
 ] as const;
@@ -36,7 +38,8 @@ export function isContactSubject(value: unknown): value is ContactSubject {
 
 /**
  * Query parameter used to preselect a subject, e.g. `/?subject=privacy#contact`.
- * Linked from the Privacy Policy so a data-subject request lands on the form with
- * the right category already chosen.
+ * Linked from the Privacy Policy and the Terms of Service so a data-subject
+ * request, a contract question, or a withdrawal declaration lands on the form
+ * with the right category already chosen.
  */
 export const CONTACT_SUBJECT_PARAM = 'subject';

@@ -3331,6 +3331,15 @@ footer {
   padding-bottom: 8px;
 }
 
+/* Subsection headings. The base `h3` is 1.4rem — the same size as
+   `.legal-section h2` — which flattened the hierarchy on the policy pages once
+   they grew numbered subsections. */
+.legal-section h3 {
+  font-size: 1.05rem;
+  color: var(--text-primary);
+  margin: 24px 0 10px;
+}
+
 .legal-section p {
   font-size: 1rem;
   line-height: 1.7;
@@ -3338,7 +3347,8 @@ footer {
   margin-bottom: 16px;
 }
 
-.legal-section ul {
+.legal-section ul,
+.legal-section ol {
   padding-left: 24px;
   margin-bottom: 20px;
 }
@@ -3374,6 +3384,35 @@ footer {
   border-bottom: none;
   padding-bottom: 0;
   margin-bottom: 12px;
+}
+
+/* Model withdrawal declaration (Terms of Service §8.1). A quoted block the
+   consumer can copy. It wraps rather than scrolls, so the placeholders stay
+   readable at any width without adding a second scroll container. */
+.legal-model-form {
+  margin: 16px 0 20px;
+  padding: 20px;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent-color);
+  border-radius: 8px;
+  background-color: var(--color-surface-raised);
+  overflow-wrap: break-word;
+}
+
+.legal-model-form p {
+  margin-bottom: 10px;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.legal-model-form p:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 576px) {
+  .legal-model-form {
+    padding: 16px;
+  }
 }
 
 .legal-cookie-policy-version {
@@ -3426,6 +3465,43 @@ footer {
   font-family: var(--font-mono);
   font-size: 0.82rem;
   word-break: break-word;
+}
+
+/* WCAG 2.2 SC 2.4.11 "Focus Not Obscured (Minimum)", AA — the reference standard
+   under the European Accessibility Act since 28 June 2025.
+
+   The notice is `position: fixed` at the bottom, so a link sitting in the bottom
+   strip of the viewport can be entirely hidden behind it when it receives
+   keyboard focus. Measured on a 390x740 phone, the notice covers 29% of the
+   viewport and two in-page links were fully behind it.
+
+   `scroll-padding-bottom` makes the browser treat that strip as out of bounds, so
+   focus- and hash-driven scrolling lands the target above the notice instead of
+   under it. It applies only while the notice is in the DOM, so dismissing it
+   restores normal scrolling. The values are deliberately a little larger than the
+   notice: overshooting only scrolls slightly further, undershooting fails the
+   criterion. */
+html:has(.cookie-notice) {
+  scroll-padding-bottom: 140px;
+}
+
+/* Second, independent guarantee: reserve scrollable space at the end of the
+   document so the last elements on the page — the footer's legal links — can
+   always be scrolled clear of the notice rather than being permanently pinned
+   under it. The notice is `position: fixed`, so this padding does not move it;
+   it just gives the document somewhere to go. */
+body:has(.cookie-notice) {
+  padding-bottom: 140px;
+}
+
+@media (max-width: 640px) {
+  html:has(.cookie-notice) {
+    scroll-padding-bottom: 250px;
+  }
+
+  body:has(.cookie-notice) {
+    padding-bottom: 250px;
+  }
 }
 
 .cookie-notice {

@@ -3,7 +3,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CookieNotice } from './CookieNotice';
-import { COOKIE_NOTICE_STORAGE_KEY } from '../../utils/cookieNoticeStorage';
+import {
+  COOKIE_NOTICE_STORAGE_KEY,
+  resetCookieNoticeSessionState,
+} from '../../utils/cookieNoticeStorage';
 import { COOKIE_POLICY_VERSION } from '../../utils/cookieInventory';
 
 function createLocalStorageMock(): Storage {
@@ -33,6 +36,7 @@ function createLocalStorageMock(): Storage {
 
 describe('CookieNotice', () => {
   beforeEach(() => {
+    resetCookieNoticeSessionState();
     Object.defineProperty(window, 'localStorage', {
       configurable: true,
       value: createLocalStorageMock(),
@@ -73,5 +77,34 @@ describe('CookieNotice', () => {
       version?: string;
     };
     expect(stored.version).toBe(COOKIE_POLICY_VERSION);
+  });
+
+  it('still dismisses when localStorage is unavailable', async () => {
+    // Safari private mode and blocked site data both throw on write. Without the
+    // in-memory fallback the button would throw and the notice could never close.
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: {
+        ...createLocalStorageMock(),
+        getItem() {
+          throw new Error('storage disabled');
+        },
+        setItem() {
+          throw new Error('storage disabled');
+        },
+      },
+    });
+
+    render(<CookieNotice />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cookie-notice')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Got it/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('cookie-notice')).toBeNull();
+    });
   });
 });

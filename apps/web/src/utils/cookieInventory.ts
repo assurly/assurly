@@ -1,5 +1,18 @@
 import { COOKIE_NAME } from './sessionCookie';
 
+/**
+ * Drives re-notification: a visitor who dismissed the notice sees it again once
+ * this value changes (see cookieNoticeStorage).
+ *
+ * Bump it when the INVENTORY below changes — a new cookie, a changed purpose or
+ * duration, a new recipient. Do not bump it for prose edits to the policy page.
+ * Re-showing a purely informational notice because a sentence was reworded is
+ * noise, and noise is what trains people to dismiss notices without reading them.
+ *
+ * If a non-essential cookie is ever introduced, this constant is not enough: that
+ * requires prior opt-in consent with a granular, equally-prominent reject option,
+ * which this notice deliberately does not implement.
+ */
 export const COOKIE_POLICY_VERSION = '2026-06-27';
 
 export type CookieCategory = 'strictly-necessary';
