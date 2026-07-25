@@ -3323,6 +3323,801 @@ footer {
   }
 }
 
+/* The scroll wrappers are keyboard-focusable (tabIndex on the element), so they
+   need a visible focus ring — a scrollable region a keyboard user cannot see
+   they have entered is worse than one they cannot reach. */
+.legal-table-wrap:focus-visible {
+  outline: 3px solid var(--color-focus, var(--accent-color));
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   Code on content pages (MCP setup, legal pages)
+   --------------------------------------------------------------------------
+   `<pre>` and `<code>` previously had no rules at all: transparent background,
+   zero padding, and the browser's default `monospace` instead of the Geist Mono
+   the app already loads. Worse, `<pre>` defaults to `overflow-x: visible`, and
+   the page-level `overflow-x: clip` safety net then CLIPPED the overflow instead
+   of scrolling it — on a 390px viewport the Claude Code install command rendered
+   501px wide inside a 342px column, so 159px of it was unreachable and
+   unselectable. An install command you cannot copy is a broken page.
+   -------------------------------------------------------------------------- */
+
+/* MCP /mcp page: copyable code blocks + install client tabs. */
+.code-block-wrap {
+  position: relative;
+  margin: var(--space-4) 0 var(--space-5);
+  max-width: 100%;
+  min-width: 0;
+}
+
+.code-block-wrap .code-block {
+  margin: 0;
+  /* Room for the absolutely positioned copy control. */
+  padding-top: calc(var(--space-4) + var(--touch-target) + var(--space-2));
+}
+
+.code-block-copy {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target);
+  min-width: var(--touch-target);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 6px);
+  background-color: var(--color-surface);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+/* Accent fill REQUIRES a dark label — never leave --text-primary on
+   --color-accent (1.64:1). Copied/failed are outline feedback states and must
+   stay distinguishable from the filled hover, so they are excluded here and
+   win while active. Guarded by (hover: hover) so touch taps do not stick. */
+@media (hover: hover) {
+  .code-block-copy:hover:not(.code-block-copy--copied):not(.code-block-copy--failed) {
+    background-color: var(--color-accent);
+    color: var(--color-canvas);
+    border-color: var(--color-accent);
+  }
+}
+
+.code-block-copy:focus-visible:not(.code-block-copy--copied):not(.code-block-copy--failed) {
+  background-color: var(--color-accent);
+  color: var(--color-canvas);
+  border-color: var(--color-accent);
+}
+
+.code-block-copy--copied {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  background-color: var(--color-surface);
+}
+
+.code-block-copy--failed {
+  color: var(--color-warning);
+  border-color: var(--color-warning);
+  background-color: var(--color-surface);
+}
+
+.code-block-copy:focus-visible {
+  outline: 3px solid var(--color-focus, var(--accent-color));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .code-block-copy {
+    transition: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   MCP product page (/mcp) — wider than legal pages; own layout tokens.
+   Do not reuse or mutate .legal-* rules from here.
+   -------------------------------------------------------------------------- */
+
+.mcp-container {
+  min-height: 100vh;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.mcp-container > .site-footer {
+  align-self: stretch;
+  width: 100%;
+  margin-top: auto;
+}
+
+.mcp-header {
+  width: 100%;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-canvas);
+  /* Override the global sticky `header` chrome so this product page owns its
+     surface without borrowing the landing-page translucent bar. */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  position: sticky;
+  top: 0;
+  z-index: 10002;
+  padding: var(--space-4) 0;
+}
+
+.mcp-header-inner {
+  width: 100%;
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.mcp-header-logo {
+  flex: none;
+}
+
+.mcp-header-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2) var(--space-5);
+  min-width: 0;
+}
+
+.mcp-header-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch-target);
+  padding-inline: var(--space-1);
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Text links — accent colour, not a filled chip. Current page stays
+   --text-primary so hover and aria-current never look the same. */
+@media (hover: hover) {
+  .mcp-header-nav a:hover:not([aria-current='page']) {
+    color: var(--color-accent);
+  }
+}
+
+.mcp-header-nav a:focus-visible:not([aria-current='page']) {
+  color: var(--color-accent);
+}
+
+.mcp-header-nav a[aria-current='page'] {
+  color: var(--text-primary);
+}
+
+.mcp-header-nav a:focus-visible {
+  outline: 3px solid var(--color-focus, var(--accent-color));
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.mcp-content {
+  width: 100%;
+  max-width: var(--content-width);
+  padding: var(--space-10) var(--space-6) var(--space-16);
+  min-width: 0;
+}
+
+.mcp-hero {
+  margin-bottom: var(--space-12);
+  max-width: 40rem;
+}
+
+.mcp-hero h1 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-3);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.mcp-hero-lead {
+  font-size: 1.1rem;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-6);
+}
+
+.mcp-hero .code-block-wrap {
+  margin-top: 0;
+}
+
+.mcp-hero-meta {
+  margin: var(--space-5) 0 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.mcp-hero-meta a {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.mcp-hero-meta a:hover {
+  color: var(--color-accent-hover);
+}
+
+.mcp-hero-meta a:focus-visible {
+  outline: 3px solid var(--color-focus, var(--accent-color));
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.mcp-one-click {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
+}
+
+.mcp-section > .mcp-one-click {
+  margin-top: 0;
+}
+
+/* Cursor and VS Code are equal install targets, so they share one style — a
+   primary/secondary split read as an endorsement of one client over the other.
+   Both rest dark and fill with accent on hover. */
+.mcp-one-click-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target);
+  min-width: var(--touch-target);
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 0.95rem;
+  background-color: var(--color-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--color-border);
+  transition: var(--transition-smooth);
+}
+
+/* The accent fill REQUIRES flipping the label dark. Keeping the resting light
+   label would put #FAFAFA on the accent green — 1.6:1, unreadable. That is the
+   same accent-on-accent trap that hid this button's label once already, so the
+   colour is set here rather than inherited from the resting state.
+   `:focus-visible` shares the treatment so keyboard users get the same
+   affordance as the mouse; the 2px outline offset keeps the focus ring legible
+   against the filled background. */
+.mcp-one-click-btn:hover,
+.mcp-one-click-btn:focus-visible {
+  background-color: var(--color-accent);
+  color: var(--color-canvas);
+  border-color: var(--color-accent);
+}
+
+.mcp-one-click-btn:focus-visible {
+  outline: 3px solid var(--color-focus, var(--accent-color));
+  outline-offset: 2px;
+}
+
+.mcp-section {
+  margin-bottom: var(--space-10);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.mcp-section h2 {
+  font-size: 1.4rem;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-2);
+}
+
+.mcp-section p {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-4);
+}
+
+.mcp-section ul,
+.mcp-section ol:not(.mcp-agent-loop) {
+  margin: 0 0 var(--space-4);
+  padding-left: 1.4rem;
+}
+
+.mcp-section li {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+
+.mcp-section strong {
+  color: var(--text-primary);
+}
+
+/* Prose links inside a section — deliberately NOT buttons.
+   `.mcp-section a` (0,1,1) outranks `.mcp-one-click-btn--primary` (0,1,0), so
+   without this exclusion the generic link colour repainted the primary button's
+   label accent-on-accent: green text on the green button, contrast 1:1, the
+   label invisible. The hero escaped it only because it sits outside .mcp-section.
+   Scoping by "is not a button" keeps any future button dropped into a section
+   safe, instead of patching one component at a time. */
+.mcp-section a:not(.mcp-one-click-btn) {
+  color: var(--color-accent);
+}
+
+.mcp-section a:not(.mcp-one-click-btn):hover {
+  color: var(--color-accent-hover);
+}
+
+.mcp-content code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 6px);
+  background-color: var(--color-surface-subtle);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.mcp-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--space-4) 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.mcp-table-wrap:focus-visible {
+  outline: 3px solid var(--color-focus, var(--accent-color));
+  outline-offset: 2px;
+}
+
+.mcp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  min-width: 460px;
+}
+
+.mcp-table th,
+.mcp-table td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.mcp-table th {
+  color: var(--text-primary);
+  font-weight: 600;
+  background-color: var(--color-surface-raised);
+  white-space: nowrap;
+}
+
+.mcp-table td {
+  color: var(--text-secondary);
+}
+
+.mcp-table tbody tr:last-child th,
+.mcp-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.mcp-table code {
+  padding: 0;
+  border: none;
+  background: none;
+  white-space: nowrap;
+}
+
+/* Explains why only two clients get a one-click button. Without it the two
+   config-file clients read as second-class support rather than as a limitation
+   of what those clients expose. Sits directly under the buttons, where the
+   question actually occurs to the reader. */
+.mcp-install-note {
+  margin-top: var(--space-4);
+  margin-bottom: var(--space-3);
+  font-size: 0.92rem;
+  color: var(--color-text-secondary);
+}
+
+.mcp-prerequisites {
+  margin-bottom: var(--space-4);
+}
+
+.mcp-install-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-5);
+  scrollbar-width: thin;
+}
+
+.mcp-install-tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: none;
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+/* Active stays a raised surface — never accent at rest — so "selected" and
+   "hovered" remain answerable without moving the mouse. */
+.mcp-install-tab--active {
+  background-color: var(--color-surface-subtle);
+  color: var(--text-primary);
+}
+
+/* Accent fill REQUIRES a dark label. Active tabs are excluded so selection
+   never collapses into the hover affordance. */
+@media (hover: hover) {
+  .mcp-install-tab:hover:not(.mcp-install-tab--active) {
+    background-color: var(--color-accent);
+    color: var(--color-canvas);
+  }
+}
+
+.mcp-install-tab:focus-visible:not(.mcp-install-tab--active) {
+  background-color: var(--color-accent);
+  color: var(--color-canvas);
+}
+
+.mcp-install-tab:focus-visible {
+  outline: 3px solid var(--color-focus, var(--accent-color));
+  outline-offset: 2px;
+}
+
+.mcp-install-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.mcp-install-panel[hidden] {
+  display: none;
+}
+
+/* Typical agent loop — semantic <ol> styled as a horizontal flow on wide
+   viewports; stacks into a readable vertical sequence below 768px. */
+.mcp-agent-loop {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  counter-reset: none;
+}
+
+.mcp-agent-loop-step {
+  position: relative;
+  flex: 1 1 10rem;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-subtle);
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.mcp-agent-loop-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  border-radius: var(--radius-pill);
+  background-color: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  flex: none;
+}
+
+.mcp-agent-loop-body {
+  min-width: 0;
+}
+
+.mcp-agent-loop-body strong {
+  color: var(--text-primary);
+}
+
+@media (min-width: 1024px) {
+  .mcp-agent-loop {
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+
+  .mcp-agent-loop-step {
+    flex: 1 1 0;
+  }
+
+  .mcp-agent-loop-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: calc(var(--space-3) * -1);
+    width: var(--space-3);
+    height: 2px;
+    background-color: var(--color-border-strong);
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .mcp-header-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  /*
+   * The landing-page mobile drawer targets bare `header nav` and hides it until
+   * `.open`. This product page has no hamburger — keep its nav in flow.
+   */
+  .mcp-header nav,
+  .mcp-header-nav {
+    position: static;
+    top: auto;
+    left: auto;
+    width: auto;
+    min-height: 0;
+    height: auto;
+    z-index: auto;
+    background: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: center;
+    padding: 0;
+    gap: var(--space-1) var(--space-4);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+    overflow: visible;
+    transition: none;
+  }
+
+  .mcp-header nav a,
+  .mcp-header-nav a {
+    width: auto;
+    font-size: 0.95rem;
+    font-weight: 500;
+    padding-block: var(--space-2);
+    padding-inline: var(--space-1);
+    border-bottom: none;
+  }
+}
+
+@media (max-width: 576px) {
+  .mcp-table {
+    font-size: 0.86rem;
+    min-width: 380px;
+  }
+
+  .mcp-table th,
+  .mcp-table td {
+    padding: var(--space-3);
+  }
+
+  .mcp-agent-loop-step {
+    flex: 1 1 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .mcp-content,
+  .mcp-header-inner {
+    padding-inline: var(--space-4);
+  }
+
+  .mcp-install-tab {
+    font-size: 0.8rem;
+    padding: var(--space-2);
+  }
+
+  .mcp-one-click {
+    flex-direction: column;
+  }
+
+  .mcp-one-click-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 360px) {
+  .mcp-content {
+    padding-top: var(--space-6);
+  }
+
+  .mcp-hero {
+    margin-bottom: var(--space-8);
+  }
+
+  .mcp-hero h1 {
+    font-size: 1.75rem;
+  }
+
+  .mcp-header {
+    padding: var(--space-3) 0;
+  }
+
+  .mcp-header nav,
+  .mcp-header-nav {
+    flex-wrap: nowrap;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .mcp-header nav a,
+  .mcp-header-nav a {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .mcp-hero-lead {
+    font-size: 1rem;
+    margin-bottom: var(--space-4);
+  }
+
+  .mcp-hero .code-block-wrap {
+    margin-bottom: var(--space-3);
+  }
+
+  .mcp-hero .mcp-one-click {
+    flex-direction: row;
+    margin-top: var(--space-3);
+    margin-bottom: var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .mcp-hero .mcp-one-click-btn {
+    flex: 1 1 0;
+    width: auto;
+    padding-inline: var(--space-3);
+    font-size: 0.85rem;
+  }
+}
+
+.legal-content pre,
+.code-block {
+  /* `auto`, not `scroll`: no phantom scrollbar when the snippet already fits. */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Belt and braces against a long unbroken token stretching the column and
+     re-introducing page-level overflow. */
+  max-width: 100%;
+  min-width: 0;
+  margin: 16px 0 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 8px);
+  background-color: var(--color-surface-subtle);
+  /* Anchor the scrollbar's inline size so it never overlaps the first line. */
+  scrollbar-width: thin;
+}
+
+.legal-content pre code,
+.code-block code {
+  display: block;
+  /* Exact characters matter in a config snippet, so it scrolls instead of
+     wrapping — indentation and line breaks stay unambiguous. */
+  white-space: pre;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.65;
+  color: var(--text-primary);
+  /* Reset the inline-code chip styling below; a chip inside a block is noise. */
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.legal-content pre:focus-visible,
+.code-block:focus-visible {
+  outline: 3px solid var(--color-focus, var(--accent-color));
+  outline-offset: 2px;
+}
+
+/* Inline code: identifiers, cookie names, env vars, file paths. */
+.legal-content code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  padding: 1px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm, 6px);
+  background-color: var(--color-surface-subtle);
+  color: var(--text-primary);
+  /* Identifiers like `sb-*-auth-token-code-verifier` are longer than a phone
+     column; break them rather than push the page sideways. */
+  overflow-wrap: anywhere;
+}
+
+/* Inside a data table the chip styling is noise, and `overflow-wrap: anywhere`
+   is actively wrong: it broke `assurly_scan_path` into "assurly_sc / an_path".
+   An identifier that is split mid-token is no longer copy-pasteable and reads as
+   a rendering bug. Keep it whole and let the wrapper scroll instead — that is
+   what the wrapper is for. */
+.legal-table code {
+  padding: 0;
+  border: none;
+  background: none;
+  white-space: nowrap;
+}
+
+/* The cookie inventory has its own, longer identifiers and already opts into
+   `word-break: break-word` below — it only needs the chip removed, not the
+   nowrap, which would stretch that table far wider than the tool table. */
+.legal-cookie-table code {
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+@media (max-width: 576px) {
+  .legal-content pre,
+  .code-block {
+    padding: 14px;
+    margin: 14px 0 18px;
+  }
+
+  .legal-content pre code,
+  .code-block code {
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .legal-content pre code,
+  .code-block code {
+    font-size: 0.75rem;
+  }
+}
+
 .legal-section h2 {
   font-size: 1.4rem;
   color: var(--text-primary);

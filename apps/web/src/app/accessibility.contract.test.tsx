@@ -9,6 +9,7 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
 }));
 import ManualChecker from './dashboard/_components/manual-checker/ManualChecker';
+import McpPage from './mcp/page';
 import PrivacyPage from './privacy/page';
 import TermsPage from './terms/page';
 
@@ -65,6 +66,28 @@ describe('accessibility and responsive UI contracts', () => {
     expect(html).toContain('role="tabpanel"');
   });
 
+  it('gives MCP page copy controls and install tabs accessible names', () => {
+    const html = renderToStaticMarkup(<McpPage />);
+    expectNamedButtons(html);
+    expect(html).toContain('role="tablist"');
+    expect(html).toContain('aria-controls="mcp-install-panel-cursor"');
+    expect(html).toContain('aria-controls="mcp-install-panel-claude"');
+    expect(html).toContain('aria-controls="mcp-install-panel-vscode"');
+    expect(html).toContain('aria-controls="mcp-install-panel-windsurf"');
+    expect(html).toContain('aria-controls="mcp-install-panel-other"');
+    expect(html).toContain('id="mcp-install-panel-cursor"');
+    expect(html).toContain('id="mcp-install-panel-claude"');
+    expect(html).toContain('id="mcp-install-panel-vscode"');
+    expect(html).toContain('id="mcp-install-panel-windsurf"');
+    expect(html).toContain('id="mcp-install-panel-other"');
+    expect(html).toContain('role="tabpanel"');
+    expect(html).toContain('aria-label="Copy');
+    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('aria-label="One-click install"');
+    expect(html).toContain('Add to Cursor');
+    expect(html).toContain('Add to VS Code');
+  });
+
   it('centralizes UI primitives and keeps focus, touch, and reduced-motion safeguards', () => {
     expect(tokensCss).toContain('--touch-target: 44px');
     expect(tokensCss).toContain('--color-focus: var(--color-accent)');
@@ -81,6 +104,117 @@ describe('accessibility and responsive UI contracts', () => {
     expect(globalsCss).toContain('cursor: inherit');
     expect(globalsCss).toContain('.profile-trigger-btn *');
     expect(globalsCss).toMatch(/\.profile-trigger-btn \*[\s\S]*cursor:\s*pointer/);
+  });
+
+  it('never lets a contextual link rule repaint a button label', () => {
+    // This bug class has shipped twice: the "Save ~35%" badge went accent-on-accent
+    // inside the selected billing toggle, and `.mcp-section a` (0,1,1) outranked
+    // `.mcp-one-click-btn--primary` (0,1,0) and painted the button's label green on
+    // its own green background — contrast 1:1, the label simply gone. Both times the
+    // component looked correct in isolation and broke only in one context.
+    //
+    // A generic descendant link rule must therefore exclude buttons rather than
+    // rely on every button out-specifying it.
+    const sectionLinkRules = [...globalsCss.matchAll(/^\s*\.mcp-section a([^{,]*)\s*[,{]/gm)].map(
+      (match) => match[1].trim(),
+    );
+    expect(sectionLinkRules.length).toBeGreaterThan(0);
+    for (const qualifier of sectionLinkRules) {
+      expect(
+        qualifier.includes(':not(.mcp-one-click-btn)'),
+        `\`.mcp-section a${qualifier}\` is unscoped and will repaint button labels`,
+      ).toBe(true);
+    }
+  });
+
+  it('unifies /mcp hover fills without collapsing copied, selected, or current states', () => {
+    // Accent fill without a dark label is the same failure mode as above:
+    // --text-primary on --color-accent measures 1.64:1. Every filled hover /
+    // focus-visible block must flip to --color-canvas in the same declaration.
+    const declarationBlocks = [...globalsCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({
+      selectors: match[1].replace(/\/\*[\s\S]*?\*\//g, '').trim(),
+      body: match[2],
+    }));
+
+    const mcpFillControls = ['.mcp-one-click-btn', '.code-block-copy', '.mcp-install-tab'];
+    const filledBlocks = declarationBlocks.filter(
+      ({ selectors, body }) =>
+        mcpFillControls.some((control) => selectors.includes(control)) &&
+        /background-color:\s*var\(--color-accent\)/.test(body),
+    );
+    expect(filledBlocks.length).toBeGreaterThan(0);
+    for (const { selectors, body } of filledBlocks) {
+      expect(
+        /color:\s*var\(--color-canvas\)/.test(body),
+        `Accent fill on \`${selectors}\` is missing color: var(--color-canvas)`,
+      ).toBe(true);
+      expect(
+        /color:\s*var\(--text-primary\)/.test(body),
+        `Accent fill on \`${selectors}\` still sets --text-primary (1.64:1)`,
+      ).toBe(false);
+    }
+
+    // Copied / failed are outline feedback — hovering must not paint them as a
+    // filled hover. The hover selector excludes those modifiers.
+    expect(globalsCss).toMatch(
+      /\.code-block-copy:hover:not\(\.code-block-copy--copied\):not\(\.code-block-copy--failed\)/,
+    );
+    expect(globalsCss).toMatch(
+      /\.code-block-copy:focus-visible:not\(\.code-block-copy--copied\):not\(\.code-block-copy--failed\)/,
+    );
+    expect(globalsCss).toMatch(
+      /\.code-block-copy--copied\s*\{[^}]*background-color:\s*var\(--color-surface\)/,
+    );
+    expect(globalsCss).toMatch(
+      /\.code-block-copy--failed\s*\{[^}]*background-color:\s*var\(--color-surface\)/,
+    );
+
+    // Selected tab rests on a surface, never accent, and hover excludes active.
+    expect(globalsCss).toMatch(
+      /\.mcp-install-tab--active\s*\{[^}]*background-color:\s*var\(--color-surface-subtle\)/,
+    );
+    expect(globalsCss).not.toMatch(
+      /\.mcp-install-tab--active\s*\{[^}]*background-color:\s*var\(--color-accent\)/,
+    );
+    expect(globalsCss).toMatch(/\.mcp-install-tab:hover:not\(\.mcp-install-tab--active\)/);
+
+    // Header nav links are text, not chips; current page stays distinct from hover.
+    expect(globalsCss).toMatch(/\.mcp-header-nav a:hover:not\(\[aria-current=['"]page['"]\]\)/);
+    expect(globalsCss).toMatch(
+      /\.mcp-header-nav a\[aria-current=['"]page['"]\]\s*\{[^}]*color:\s*var\(--text-primary\)/,
+    );
+    const headerNavHoverFill = declarationBlocks.some(
+      ({ selectors, body }) =>
+        selectors.includes('.mcp-header-nav a') &&
+        /:hover/.test(selectors) &&
+        /background-color:\s*var\(--color-accent\)/.test(body),
+    );
+    expect(headerNavHoverFill).toBe(false);
+
+    // Filled / accent hovers must not stick on touch devices.
+    expect(globalsCss).toMatch(
+      /@media\s*\(\s*hover:\s*hover\s*\)\s*\{[\s\S]*?\.code-block-copy:hover:not\(\.code-block-copy--copied\):not\(\.code-block-copy--failed\)/,
+    );
+    expect(globalsCss).toMatch(
+      /@media\s*\(\s*hover:\s*hover\s*\)\s*\{[\s\S]*?\.mcp-install-tab:hover:not\(\.mcp-install-tab--active\)/,
+    );
+    expect(globalsCss).toMatch(
+      /@media\s*\(\s*hover:\s*hover\s*\)\s*\{[\s\S]*?\.mcp-header-nav a:hover:not\(\[aria-current=['"]page['"]\]\)/,
+    );
+
+    // Touch targets and focus rings stay intact for the unified controls.
+    for (const control of ['.code-block-copy', '.mcp-install-tab', '.mcp-header-nav a']) {
+      expect(globalsCss).toMatch(
+        new RegExp(
+          `${control.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{[^}]*min-height:\\s*var\\(--touch-target\\)`,
+        ),
+      );
+      expect(globalsCss).toMatch(
+        new RegExp(
+          `${control.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:focus-visible\\s*\\{[^}]*outline:`,
+        ),
+      );
+    }
   });
 
   it('states the server transit boundary consistently on both legal pages', () => {
