@@ -47,6 +47,14 @@ export interface VerdictToolConfig {
   fetchImpl?: typeof fetch;
 }
 
+/** Shape-only per-rule fix outcome from the hosted verdict API. */
+interface HostedFixOutcome {
+  ruleId?: string;
+  outcome?: 'verified_fixed' | 'still_open' | 'regressed' | string;
+  /** ISO-8601 timestamp of the re-probe that produced this observation. */
+  observedAt?: string;
+}
+
 /** The shape-only verdict the hosted `GET /api/v1/verdict` returns. */
 interface HostedVerdict {
   status?: string;
@@ -59,6 +67,35 @@ interface HostedVerdict {
   trustPageUrl?: string | null;
   badgeUrl?: string | null;
   activeProbeAllowed?: boolean;
+  fixOutcomes?: HostedFixOutcome[];
+}
+
+/**
+ * Formats stored fix outcomes for the agent-facing text block.
+ *
+ * Outcomes reflect the *last re-probe*, not the agent's working tree. Always
+ * include the observation timestamp and the "not yet verified" guidance so a
+ * post-edit `assurly_verdict` call cannot be read as "your fix failed" when
+ * nothing was measured after the edit. We deliberately do NOT map `still_open`
+ * to `isError` for the same reason — see `handleVerdict`.
+ */
+export function formatFixOutcomesText(outcomes: HostedFixOutcome[]): string {
+  if (outcomes.length === 0) {
+    return 'Fix outcomes: none recorded yet. After deploying a claimed fix, re-probe before treating it as done.';
+  }
+
+  const lines = outcomes.map((entry) => {
+    const ruleId = entry.ruleId ?? 'unknown-rule';
+    const outcome = entry.outcome ?? 'unknown';
+    const when = entry.observedAt ?? 'unknown time';
+    return `  · ${ruleId}: ${outcome} · observed ${when}`;
+  });
+
+  return [
+    'Fix outcomes (last re-probe only — may predate your latest edit):',
+    ...lines,
+    'Not yet verified against your latest changes — deploy and re-probe. An unverified claim is not done.',
+  ].join('\n');
 }
 
 function formatScanToolResult(result: ScanProjectResult): CallToolResult {
@@ -112,7 +149,15 @@ function errorResult(text: string): CallToolResult {
  * repo — it never scans or probes locally, and never triggers an active probe on
  * the hosted side (the API is read-only over existing verdicts). For a target the
  * caller's org has not ownership-verified, the hosted API returns the passive
- * verdict only. Shape-only: coarse category + generic remediation, never evidence.
+ * verdict only. Shape-only: coarse category + generic remediation + per-rule
+ * fix outcomes (`ruleId`/`outcome`/`observedAt`), never evidence.
+ *
+ * `isError` stays `status === 'blocked'` only. Fix outcomes (`still_open` /
+ * `regressed`) are NOT errors: the tool cannot know which finding the agent
+ * claimed to fix, outcomes may predate the agent's latest edit, and crying wolf
+ * on stale `still_open` would train agents to ignore the gate. Enforcement of
+ * "re-verify after claiming a fix" lives in the agent contract
+ * (`GATE_RULES_SNIPPET`) plus the explicit "not yet verified" wording below.
  */
 export async function handleVerdict(
   input: VerdictInput,
@@ -161,6 +206,7 @@ export async function handleVerdict(
   const status = verdict.status ?? 'unknown';
   const score = typeof verdict.shipScore === 'number' ? `${verdict.shipScore}/100` : 'n/a';
   const shipReady = status === 'ready';
+  const fixOutcomes = Array.isArray(verdict.fixOutcomes) ? verdict.fixOutcomes : [];
 
   const lines: string[] = [
     `Assurly verdict: ${status.toUpperCase()} · Ship Score ${score}`,
@@ -176,6 +222,7 @@ export async function handleVerdict(
         : status === 'unknown'
           ? 'No published verdict for this target yet. Scan it in Assurly first.'
           : 'Review the issues in the Assurly dashboard before shipping.',
+    formatFixOutcomesText(fixOutcomes),
     verdict.trustPageUrl ? `Trust page: ${verdict.trustPageUrl}` : '',
   ].filter((line) => line.length > 0);
 
@@ -184,7 +231,8 @@ export async function handleVerdict(
       { type: 'text', text: lines.join('\n') },
       { type: 'text', text: JSON.stringify(verdict, null, 2) },
     ],
-    // A blocked verdict is a real ship-gate failure the agent should act on.
+    // Blocked status is the only ship-gate halt. See docstring for why fix
+    // outcomes never widen isError.
     isError: status === 'blocked',
   };
 }

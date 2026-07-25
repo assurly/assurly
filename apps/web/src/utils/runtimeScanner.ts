@@ -547,6 +547,11 @@ export interface ScanLiveUrlResult {
   evidence: ProbeEvidence[];
   /** Whether the active plan came from AI or the deterministic fallback. */
   planSource?: 'ai' | 'deterministic';
+  /**
+   * HTML + fetched bundle text captured during the scan. Used server-side for
+   * generator fingerprinting only — never include this in a client JSON response.
+   */
+  pageText: string;
 }
 
 export async function scanLiveUrlWithEvidence(
@@ -637,7 +642,12 @@ export async function scanLiveUrlWithEvidence(
     evidence.push(...exposure.evidence);
   }
 
-  return { findings, evidence, ...(planSource ? { planSource } : {}) };
+  return {
+    findings,
+    evidence,
+    pageText: bundleTextAccum,
+    ...(planSource ? { planSource } : {}),
+  };
 }
 
 export async function scanLiveUrl(

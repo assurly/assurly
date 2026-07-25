@@ -30,7 +30,7 @@ describe('POST /api/scan-url', () => {
     process.env = { ...originalEnv };
     resetRateLimitsForTests();
     scanLiveUrlMock.mockReset();
-    scanLiveUrlMock.mockResolvedValue({ findings: [], evidence: [] });
+    scanLiveUrlMock.mockResolvedValue({ findings: [], evidence: [], pageText: '' });
     requireUserMock.mockReset();
     // Default: anonymous caller (no session) → secureRoute treats optional auth as null.
     requireUserMock.mockRejectedValue(new AuthenticationError());
@@ -236,6 +236,101 @@ describe('POST /api/scan-url', () => {
         identifier: 'https://myapp.lovable.app',
       }),
     );
+  });
+
+  it('persists a detected generator fingerprint on the url target after scan', async () => {
+    const getOrganizationByUserId = vi
+      .fn()
+      .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
+    const upsertTarget = vi.fn().mockResolvedValue({
+      id: 'target-1',
+      ownership_verified: true,
+      identifier: 'https://myapp.lovable.app',
+    });
+    const getTargetByIdentifier = vi
+      .fn()
+      .mockResolvedValue({ id: 'target-1', ownership_verified: true });
+    const getTargets = vi.fn().mockResolvedValue([{ id: 'target-1' }]);
+    requireUserMock.mockResolvedValue({
+      user: { id: 'user-1' },
+      accessToken: 'token',
+      db: {
+        getOrganizationByUserId,
+        insertProbeEvidence: vi.fn(),
+        upsertTarget,
+        getTargetByIdentifier,
+        getTargets,
+      },
+    });
+    scanLiveUrlMock.mockResolvedValue({
+      findings: [],
+      evidence: [],
+      pageText: '<script src="https://cdn.gpteng.co/gptengineer.js"></script>',
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://myapp.lovable.app' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(upsertTarget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'org-1',
+        kind: 'url',
+        identifier: 'https://myapp.lovable.app',
+        generatorFingerprint: 'lovable',
+      }),
+    );
+    // pageText must never leak to the client response.
+    const json = await response.json();
+    expect(json).not.toHaveProperty('pageText');
+    expect(JSON.stringify(json)).not.toContain('gpteng.co');
+  });
+
+  it('does not fabricate a generator fingerprint when detection is absent', async () => {
+    const getOrganizationByUserId = vi
+      .fn()
+      .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
+    const upsertTarget = vi.fn().mockResolvedValue({
+      id: 'target-1',
+      ownership_verified: false,
+      identifier: 'https://custom.example.com',
+    });
+    const getTargetByIdentifier = vi.fn().mockResolvedValue(null);
+    const getTargets = vi.fn().mockResolvedValue([]);
+    requireUserMock.mockResolvedValue({
+      user: { id: 'user-1' },
+      accessToken: 'token',
+      db: {
+        getOrganizationByUserId,
+        insertProbeEvidence: vi.fn(),
+        upsertTarget,
+        getTargetByIdentifier,
+        getTargets,
+      },
+    });
+    scanLiveUrlMock.mockResolvedValue({
+      findings: [],
+      evidence: [],
+      pageText: '<html><body>Hello</body></html>',
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://custom.example.com' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    // Target creation upsert only — never write generatorFingerprint: 'unknown'.
+    expect(upsertTarget).toHaveBeenCalledTimes(1);
+    expect(upsertTarget.mock.calls[0][0]).not.toHaveProperty('generatorFingerprint');
   });
 
   it('does NOT run the active probe for an authenticated scan on an UNVERIFIED URL target', async () => {

@@ -43,6 +43,9 @@ Warnings (review):
 const VERDICT_SAMPLE = `Assurly verdict: BLOCKED · Ship Score 42/100
 Target: my-app.vercel.app
 Top issue: Database exposure — Enable RLS on public tables
+Fix outcomes (last re-probe only — may predate your latest edit):
+  · runtime-supabase-rls-open: still_open · observed 2026-07-18T06:00:00.000Z
+Not yet verified against your latest changes — deploy and re-probe. An unverified claim is not done.
 Trust page: https://assurly.dev/trust/my-app`;
 
 const GATE_RULES_SNIPPET = `# Assurly ship gate
@@ -50,6 +53,7 @@ Before deploying, pushing to production, or claiming the app is ready to ship:
 1. Call assurly_scan_path (or assurly_scan_files) on the project.
 2. Fix every blocker; re-scan until the verdict is READY TO SHIP.
 3. If a deployed URL or repo is in scope, call assurly_verdict. A blocked verdict is returned with isError: true — stop and do not ship.
+4. After you claim a fix for a hosted finding: deploy, then call assurly_verdict again and confirm a post-deploy re-probe recorded verified_fixed for that rule. Fix outcomes include an observed timestamp — they reflect the last re-probe, not your working tree. An unverified claim is not done.
 Do not skip this gate or ask the user whether to run it.`;
 
 const HOSTED_VERDICT_ENV = `{
@@ -136,12 +140,16 @@ export default function McpPage(): React.ReactElement {
           <p>
             <code>assurly_verdict</code> reads the hosted API only — it never scans locally and
             never triggers an active probe. Pass exactly one of <code>url</code> or{' '}
-            <code>repo</code> (<code>owner/name</code>). Example:
+            <code>repo</code> (<code>owner/name</code>). Alongside status and Ship Score it returns
+            per-rule <code>fixOutcomes</code> (<code>ruleId</code>, <code>outcome</code>,{' '}
+            <code>observedAt</code>) — shape-only, from the last re-probe. Example:
           </p>
           <CodeBlock code={VERDICT_SAMPLE} label="Example assurly_verdict output" />
           <p>
             When the hosted status is <code>blocked</code>, the tool returns that text with{' '}
-            <code>isError: true</code>, so the agent stops instead of shipping.
+            <code>isError: true</code>, so the agent stops instead of shipping. Fix outcomes alone
+            do not set <code>isError</code> — they may predate the agent&apos;s latest edit. After
+            claiming a fix, deploy and re-probe; treat an unverified claim as not done.
           </p>
         </section>
 
@@ -179,9 +187,11 @@ export default function McpPage(): React.ReactElement {
                     <code>assurly_verdict</code>
                   </td>
                   <td>
-                    Read the hosted ship verdict (status, Ship Score, top issue) for a deployed URL
-                    or repository. Requires <code>ASSURLY_API_KEY</code>; a blocked verdict is
-                    returned as an error so the agent stops instead of shipping.
+                    Read the hosted ship verdict (status, Ship Score, top issue, and per-rule fix
+                    outcomes with observation times) for a deployed URL or repository. Requires{' '}
+                    <code>ASSURLY_API_KEY</code>; a blocked verdict is returned as an error so the
+                    agent stops instead of shipping. Fix outcomes reflect the last re-probe — after
+                    claiming a fix, deploy and re-probe before treating it as done.
                   </td>
                 </tr>
               </tbody>

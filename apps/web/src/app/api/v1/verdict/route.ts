@@ -31,15 +31,16 @@ function appBaseUrl(): string | null {
 }
 
 /**
- * Programmatic, keyed verdict API (Phase 7) — the read-only surface the MCP
- * `assurly_verdict` tool and OEM callers hit.
+ * Programmatic, keyed verdict API (Phase 7 + Proof-of-Fix) — the read-only
+ * surface the MCP `assurly_verdict` tool and OEM callers hit.
  *
- * READ-ONLY and SHAPE-ONLY: it reads one target row for the key's org and
- * projects it through `toPublicTrustProjection` (verdict, score, freshness,
- * coarse category, generic remediation) — never evidence, PII, or the exposed
- * table name. It NEVER triggers an active probe: resolution goes through the
- * ownership gate (`isActiveProbeAllowed`) but has no probe/scan/re-probe code
- * path, so a stranger/unverified URL can only ever get the passive verdict.
+ * READ-ONLY and SHAPE-ONLY: it reads one target row (and stored fix outcomes)
+ * for the key's org and projects them through `toPublicTrustProjection` plus
+ * per-rule `{ ruleId, outcome, observedAt }` — never evidence, PII, finding
+ * messages, file paths, or the exposed table name. It NEVER triggers an active
+ * probe: resolution goes through the ownership gate (`isActiveProbeAllowed`)
+ * but has no probe/scan/re-probe code path, so a stranger/unverified URL can
+ * only ever get the passive verdict.
  */
 export const GET = secureRoute(
   {

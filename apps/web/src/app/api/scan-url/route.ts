@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { runDeepReview } from '../../../utils/ai/deepReview';
 import { buildShipGateFromWebFindings } from '../../../utils/shipGate';
 import { ApiError, emptyObjectSchema, RATE_LIMITS, secureRoute } from '../../../utils/apiSecurity';
+import { detectGeneratorFingerprint } from '../../../utils/generatorFingerprint';
 import { scanLiveUrlWithEvidence, type ProbeEvidence } from '../../../utils/runtimeScanner';
 import { assertScannableUrl, UrlSafetyError } from '../../../utils/urlSafety';
 import { isActiveProbeAllowed, normalizeUrlIdentifier } from '../../../utils/ownership';
@@ -144,6 +145,32 @@ async function persistEvidence(auth: AuthContext, evidence: ProbeEvidence[]): Pr
   }
 }
 
+/**
+ * Persists a detected AI-builder fingerprint on the url target (best-effort).
+ * Only writes when detection is confident (`!== 'unknown'`); leaving
+ * `generator_fingerprint` null is the honest answer when no signal is present,
+ * and merge-upsert preserves a previously detected value when this scan finds none.
+ */
+async function persistGeneratorFingerprint(
+  db: DbAdapter,
+  organizationId: string,
+  identifier: string,
+  pageText: string,
+): Promise<void> {
+  const fingerprint = detectGeneratorFingerprint({ pageText });
+  if (fingerprint === 'unknown') return;
+  try {
+    await db.upsertTarget({
+      organizationId,
+      kind: 'url',
+      identifier,
+      generatorFingerprint: fingerprint,
+    });
+  } catch (error) {
+    console.warn('[Assurly] failed to persist generator fingerprint:', (error as Error).message);
+  }
+}
+
 export const POST = secureRoute(
   {
     routeId: 'scan:url',
@@ -174,7 +201,7 @@ export const POST = secureRoute(
     // point — the UI cannot bypass it. The planner never runs around this gate.
     const gate = auth ? await resolveUrlTargetGate(auth, parsedUrl.toString()) : PASSIVE_GATE;
 
-    const { findings, evidence, planSource } = await scanLiveUrlWithEvidence(
+    const { findings, evidence, planSource, pageText } = await scanLiveUrlWithEvidence(
       parsedUrl.toString(),
       fetch,
       undefined,
@@ -189,6 +216,17 @@ export const POST = secureRoute(
     });
 
     if (auth) await persistEvidence(auth, evidence);
+
+    // Seed the moat corpus grouping: persist a detected fingerprint on the url
+    // target created above. pageText stays server-side — never returned to the client.
+    if (auth && gate.organizationId && gate.targetRow) {
+      await persistGeneratorFingerprint(
+        auth.db,
+        gate.organizationId,
+        normalizeUrlIdentifier(parsedUrl.toString()),
+        pageText ?? '',
+      );
+    }
 
     // Verified-fix baseline (Phase 5): when the ownership-gated active probe runs,
     // record the currently-open runtime findings so a later re-probe (after a fix

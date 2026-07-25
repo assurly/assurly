@@ -94,8 +94,10 @@ export function createAssurlyMcpServer(): McpServer {
       title: 'Get the hosted Assurly ship verdict',
       description:
         'Pre-deploy ship gate: read the hosted Assurly verdict (Ready/Review/Blocked + ship score + ' +
-        'top issue + one-line fix) for a deployed URL or a repo. Reads the hosted Assurly API — it does ' +
-        'not scan locally and never triggers an active probe. Requires ASSURLY_API_KEY in the environment.',
+        'top issue + one-line fix + per-rule fix outcomes with observation times) for a deployed URL or a repo. ' +
+        'Fix outcomes reflect the last re-probe only — after claiming a fix, deploy and re-probe before treating ' +
+        'it as done. Reads the hosted Assurly API — it does not scan locally and never triggers an active probe. ' +
+        'Requires ASSURLY_API_KEY in the environment.',
       inputSchema: {
         url: z
           .string()

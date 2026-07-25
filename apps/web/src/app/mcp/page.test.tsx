@@ -63,8 +63,12 @@ describe('McpPage', () => {
     expect(html).toContain('What your agent gets back');
     expect(html).toContain('isError: true');
     expect(html).toContain('Assurly verdict: BLOCKED · Ship Score 42/100');
+    expect(html).toContain('Fix outcomes (last re-probe only');
+    expect(html).toContain('observed 2026-07-18T06:00:00.000Z');
+    expect(html).toContain('An unverified claim is not done');
     expect(html).toContain('REVIEW RECOMMENDED');
     expect(html).toContain('Make the gate automatic');
+    expect(html).toContain('deploy and re-probe');
     expect(html).toContain('Connect the hosted verdict');
     expect(html).toContain('ASSURLY_API_KEY');
     expect(html).toContain('^20.19.0 || &gt;=22.12.0');
