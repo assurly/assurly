@@ -14,11 +14,14 @@ and after the `/mcp` page is live.
 
 ## Prerequisites (must be true before submitting)
 
-- [ ] `@assurly/mcp-server` is published to npm with provenance (the green
-      "provenance" badge shows on the npm page).
+- [ ] `@assurly/mcp-server` is published to npm. **Note:** these packages are
+      published _without_ provenance on purpose — npm cannot verify a provenance
+      attestation that points at a private repository, so signing it would show a
+      warning rather than the green badge. Do not treat a missing provenance badge
+      as a blocker; see the comments in `.github/workflows/package-release.yml`.
 - [ ] `npx -y @assurly/mcp-server` starts cleanly for a stranger (no repo, no build).
 - [ ] The package README sells the value in the first paragraph and has copy-paste
-      Cursor + Claude Code config (done).
+      config for Cursor, Claude Code, VS Code, and Windsurf (done).
 - [ ] `keywords` include `mcp`, `model-context-protocol`, `cursor`, `claude-code`
       (done in `package.json`).
 - [ ] `https://assurly.dev/mcp` is live and reachable.
@@ -37,6 +40,28 @@ and after the `/mcp` page is live.
 | **PulseMCP** (pulsemcp.com)                                 | Curated MCP server list + newsletter                | Submit via its add-server form                                                                                |
 | **awesome-mcp-servers** (GitHub)                            | The reference "awesome" list                        | Open a PR adding Assurly under the security/testing category                                                  |
 | **Cursor Directory** (cursor.directory)                     | Cursor-specific MCP + rules directory               | Submit via its contribution flow                                                                              |
+| **Windsurf MCP registry**                                   | Windsurf's in-app MCP marketplace                   | See the note below — this listing is the only way to earn an "Add to Windsurf" button                         |
+
+## Why the Windsurf listing is worth chasing
+
+`/mcp` shows one-click install buttons for Cursor and VS Code only, because those
+are the two clients whose URL handler accepts an arbitrary server config
+(`cursor://anysphere.cursor-deeplink/mcp/install?config=…` and
+`https://vscode.dev/redirect/mcp/install?config=…`).
+
+Windsurf's deeplink is different: `windsurf://windsurf-mcp-registry?serverName=…`
+only **opens the registry page for a server already in their marketplace** — it
+cannot install from a payload. So an "Add to Windsurf" button is impossible until
+Assurly is listed there, and shipping one before that would point users at a page
+that does not exist.
+
+Getting listed therefore buys a real feature, not just a backlink. Once it lands,
+add the button to `OneClickInstall.tsx` and drop Windsurf from the explanatory
+note under the buttons.
+
+Claude Code will never get a button: it is a CLI, and `claude mcp add …` is a
+terminal command with no URL handler behind it. That is a permanent limitation,
+not a gap to close.
 
 ## Submission content (reuse across all of them)
 
@@ -45,7 +70,11 @@ and after the `/mcp` page is live.
 - **Install:** `npx -y @assurly/mcp-server`
 - **Category:** Security / Code quality / Testing
 - **One-liner:** see the pitch above
-- **Tools:** `assurly_scan_path`, `assurly_scan_files`, `assurly_explain_rule`
+- **Tools:** `assurly_scan_path`, `assurly_scan_files`, `assurly_explain_rule`,
+  `assurly_verdict`
+- **Differentiator worth stating in the listing:** a blocked `assurly_verdict`
+  returns `isError: true`, so the agent halts instead of shipping — it is a gate,
+  not a suggestion.
 - **Config snippet** (identical to the README and `/mcp` page):
   ```json
   {
