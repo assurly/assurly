@@ -58,12 +58,24 @@ function effectiveConfidence(confidence: FindingConfidence | undefined): Finding
   return confidence ?? 'high';
 }
 
+/**
+ * Agent-stack findings may be error+high for triage priority, but they audit
+ * the developer's tooling — not the app under ship — and must never gate
+ * deploy. They are also kept off `HIGH_CONFIDENCE_BLOCKER_RULE_IDS`.
+ */
+function isAgentStackRuleId(ruleId: string | undefined): boolean {
+  return typeof ruleId === 'string' && ruleId.startsWith('agent-');
+}
+
 function isBlockerFinding(finding: ShipGateFindingInput): boolean {
+  if (isAgentStackRuleId(finding.ruleId)) return false;
   return finding.severity === 'error' && effectiveConfidence(finding.confidence) === 'high';
 }
 
 function isReviewFinding(finding: ShipGateFindingInput): boolean {
-  return finding.severity === 'error' && effectiveConfidence(finding.confidence) !== 'high';
+  if (finding.severity !== 'error') return false;
+  if (isAgentStackRuleId(finding.ruleId)) return true;
+  return effectiveConfidence(finding.confidence) !== 'high';
 }
 
 function isWarningFinding(finding: ShipGateFindingInput): boolean {

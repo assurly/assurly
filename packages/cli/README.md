@@ -21,7 +21,7 @@ You should reach for it when you are asking:
 
 ## What it checks
 
-Eleven rule areas, all evaluated against your source on your machine:
+Twelve rule areas, all evaluated against your source on your machine:
 
 | Area                        | Examples                                                                               |
 | --------------------------- | -------------------------------------------------------------------------------------- |
@@ -36,6 +36,7 @@ Eleven rule areas, all evaluated against your source on your machine:
 | TypeScript strictness       | `strict` disabled, hiding real type errors                                             |
 | CI integration              | missing GitHub Actions checks                                                          |
 | Deeper stack                | cross-cutting integration risks                                                        |
+| Agent stack                 | MCP client configs and instruction files (shell MCP, inline secrets, hidden prompts)   |
 
 ## What you get
 
@@ -78,6 +79,9 @@ npx assurly scan --path . --json
 
 # attempt safe automatic fixes for configuration issues
 npx assurly scan --path . --fix
+
+# focused mode: agent stack only (MCP configs + instruction files)
+npx assurly scan --agent
 
 # scaffold a GitHub Actions workflow
 npx assurly init

@@ -10,6 +10,7 @@ import { rscRules } from './rscRules';
 import { coldStartRules } from './coldStartRules';
 import { sqlSafetyRules } from './sqlSafetyRules';
 import { deeperStackRules } from './deeperStackRules';
+import { agentStackRules } from './agentStackRules';
 
 /**
  * Array containing all static analysis rules implemented in Assurly.
@@ -26,4 +27,5 @@ export const allRules: Rule[] = [
   coldStartRules,
   sqlSafetyRules,
   deeperStackRules,
+  agentStackRules,
 ];

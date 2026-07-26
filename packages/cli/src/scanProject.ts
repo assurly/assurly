@@ -24,9 +24,23 @@ function ruleErrorMessage(error: unknown): string {
   return String(error);
 }
 
-export async function runAllRules(context: ProjectContext): Promise<Finding[]> {
+export interface RunRulesOptions {
+  /**
+   * When true, run only the agent-stack surface (MCP configs + instruction
+   * files) and skip application rules. Used by `assurly scan --agent` and the
+   * `assurly_scan_agent` MCP tool. Agent rules still run in the default full
+   * scan — this flag is focused mode, not an opt-in.
+   */
+  agentOnly?: boolean;
+}
+
+export async function runAllRules(
+  context: ProjectContext,
+  options: RunRulesOptions = {},
+): Promise<Finding[]> {
+  const rules = options.agentOnly ? allRules.filter((rule) => rule.id === 'agent-stack') : allRules;
   const findings: Finding[] = [];
-  for (const rule of allRules) {
+  for (const rule of rules) {
     try {
       const ruleFindings = await rule.run(context);
       findings.push(...ruleFindings);
@@ -52,10 +66,13 @@ function buildScanProjectResult(findings: Finding[], context: ProjectContext): S
   };
 }
 
-export async function scanProjectDirectory(projectPath: string): Promise<ScanProjectResult> {
+export async function scanProjectDirectory(
+  projectPath: string,
+  options: RunRulesOptions = {},
+): Promise<ScanProjectResult> {
   const resolvedPath = path.resolve(projectPath);
   const context = buildContext(resolvedPath);
-  const findings = await runAllRules(context);
+  const findings = await runAllRules(context, options);
   return buildScanProjectResult(findings, context);
 }
 
@@ -66,6 +83,7 @@ export interface ScanProjectFileInput {
 
 export async function scanProjectFiles(
   files: readonly ScanProjectFileInput[],
+  options: RunRulesOptions = {},
 ): Promise<ScanProjectResult> {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'assurly-scan-'));
   try {
@@ -75,7 +93,7 @@ export async function scanProjectFiles(
       fs.mkdirSync(path.dirname(fullPath), { recursive: true });
       fs.writeFileSync(fullPath, file.content, 'utf8');
     }
-    return await scanProjectDirectory(tempDir);
+    return await scanProjectDirectory(tempDir, options);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

@@ -12,6 +12,7 @@ export const ASSURLY_MCP_TOOL_NAMES = [
   'assurly_scan_files',
   'assurly_explain_rule',
   'assurly_verdict',
+  'assurly_scan_agent',
 ] as const;
 
 export type AssurlyMcpToolName = (typeof ASSURLY_MCP_TOOL_NAMES)[number];
@@ -138,6 +139,17 @@ export async function handleScanPath(input: ScanPathInput): Promise<CallToolResu
 export async function handleScanFiles(input: ScanFilesInput): Promise<CallToolResult> {
   const result = await scanProjectFiles(input.files);
   return formatScanToolResult(result);
+}
+
+/**
+ * Advisory audit of the developer's agent environment (MCP configs +
+ * instruction files). `isError` stays false under all outcomes — this is not a
+ * ship gate.
+ */
+export async function handleScanAgent(input: ScanPathInput): Promise<CallToolResult> {
+  const result = await scanProjectDirectory(input.path, { agentOnly: true });
+  const formatted = formatScanToolResult(result);
+  return { ...formatted, isError: false };
 }
 
 function errorResult(text: string): CallToolResult {

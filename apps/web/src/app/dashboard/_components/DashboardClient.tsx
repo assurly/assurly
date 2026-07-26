@@ -18,9 +18,11 @@ import {
   scanStripeMissingSubscriptionEvents,
   scanStripeWebhookIdempotency,
   scanSupabaseDeepPolicies,
+  scanAgentStack,
   incompleteScanFinding,
   selectFiles,
   buildScanScope,
+  isAgentStackFile,
   isScannableFile,
   rankFilesByRelevance,
   WebFinding,
@@ -1116,13 +1118,16 @@ function DashboardContent({
       const sqlFiles: string[] = [];
       const envFiles: string[] = [];
       const codeFiles: string[] = [];
+      const agentFiles: string[] = [];
 
       for (const node of tree) {
         if (node.type !== 'blob') continue;
         if (!isScannableFile(node.path)) continue;
         const pathLower = node.path.toLowerCase();
 
-        if (pathLower.endsWith('.sql')) {
+        if (isAgentStackFile(node.path)) {
+          agentFiles.push(node.path);
+        } else if (pathLower.endsWith('.sql')) {
           sqlFiles.push(node.path);
         } else if (
           pathLower.endsWith('.env.example') ||
@@ -1209,7 +1214,13 @@ function DashboardContent({
         .map((node) => node.path);
 
       const filesToFetch = [
-        ...new Set([...sqlToScan, ...codeToScan, ...envExamplePaths, ...workflowPaths]),
+        ...new Set([
+          ...sqlToScan,
+          ...codeToScan,
+          ...envExamplePaths,
+          ...workflowPaths,
+          ...agentFiles,
+        ]),
       ];
       setScanLogs((prev) => [...prev, `📥 Fetching ${filesToFetch.length} file(s) in parallel...`]);
       await prefetchContents(filesToFetch);
@@ -1325,6 +1336,18 @@ function DashboardContent({
           if (csScan.findings.length > 0) {
             allFindings.push(...csScan.findings);
           }
+        }
+      }
+
+      // Agent stack — MCP configs and instruction files (advisory; never blocks).
+      if (agentFiles.length > 0) {
+        setScanLogs((prev) => [...prev, `🤖 Scanning ${agentFiles.length} agent-stack file(s)...`]);
+        for (const agentPath of agentFiles) {
+          if (scanAbortRef.current) break;
+          const content = await loadFileContent(agentPath);
+          if (content === null) continue;
+          const agentScan = scanAgentStack(content, agentPath);
+          allFindings.push(...agentScan.findings);
         }
       }
 

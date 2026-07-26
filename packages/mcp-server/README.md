@@ -14,6 +14,7 @@ The agent that wrote your app can now check it: **write code → `assurly_scan_p
 | `assurly_scan_files`   | Scan in-memory `{ path, content }[]` files                    | Local   |
 | `assurly_explain_rule` | Explain a rule id and how to fix it                           | Local   |
 | `assurly_verdict`      | Read the hosted ship verdict for a deployed URL or repository | Hosted  |
+| `assurly_scan_agent`   | Advisory audit of MCP configs and agent instruction files     | Local   |
 
 `assurly_verdict` returns the status, Ship Score, and top issue, and sets `isError: true` when the verdict is **blocked** — so the agent stops instead of shipping. It requires `ASSURLY_API_KEY` (see [Connect the hosted verdict](#connect-the-hosted-verdict)).
 
@@ -44,7 +45,7 @@ Add this server next to your other MCP entries:
 }
 ```
 
-After saving, restart Cursor (or reload MCP) and confirm the four `assurly_*` tools appear.
+After saving, restart Cursor (or reload MCP) and confirm the five `assurly_*` tools appear.
 
 ## Claude Code
 
@@ -126,7 +127,7 @@ Point the client at `npx` with these arguments:
 
 | Symptom                           | Fix                                                                                                                |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Tools do not appear               | Restart the client or reload MCP, then confirm the four `assurly_*` tools are listed.                              |
+| Tools do not appear               | Restart the client or reload MCP, then confirm the five `assurly_*` tools are listed.                              |
 | `ASSURLY_API_KEY is not set`      | Create a key in the Assurly dashboard (Settings → API keys) and expose it to this MCP server as `ASSURLY_API_KEY`. |
 | `invalid or revoked (401)`        | The key is no longer valid. Issue a new one.                                                                       |
 | `Provide exactly one of url/repo` | `assurly_verdict` takes one target, not both and not neither.                                                      |

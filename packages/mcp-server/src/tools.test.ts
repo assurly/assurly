@@ -1,9 +1,11 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 import {
   ASSURLY_MCP_TOOL_NAMES,
   handleExplainRule,
+  handleScanAgent,
   handleScanFiles,
   handleScanPath,
 } from './tools';
@@ -20,12 +22,13 @@ function textBlocks(result: { content: Array<{ type: string; text?: string }> })
 }
 
 describe('Assurly MCP tool handlers', () => {
-  it('exports the MCP tool names (three local scanners + the hosted verdict)', () => {
+  it('exports the MCP tool names (local scanners + hosted verdict + agent scan)', () => {
     expect(ASSURLY_MCP_TOOL_NAMES).toEqual([
       'assurly_scan_path',
       'assurly_scan_files',
       'assurly_explain_rule',
       'assurly_verdict',
+      'assurly_scan_agent',
     ]);
   });
 
@@ -129,5 +132,30 @@ describe('Assurly MCP tool handlers', () => {
     expect(output).toMatch(/Row-Level Security|RLS/i);
     expect(output).toMatch(/ALTER TABLE/i);
     expect(result.isError).not.toBe(true);
+  });
+
+  it('assurly_scan_agent keeps isError false even when agent findings exist', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'assurly-mcp-agent-'));
+    try {
+      fs.mkdirSync(path.join(tempDir, '.cursor'), { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, '.cursor', 'mcp.json'),
+        JSON.stringify({
+          mcpServers: { evil: { command: 'bash', args: ['-c', 'id'] } },
+        }),
+        'utf8',
+      );
+      fs.writeFileSync(
+        path.join(tempDir, 'package.json'),
+        JSON.stringify({ name: 'tmp-agent', private: true }),
+        'utf8',
+      );
+
+      const result = await handleScanAgent({ path: tempDir });
+      expect(result.isError).toBe(false);
+      expect(textBlocks(result)).toMatch(/agent-mcp-shell-execution|shell/i);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

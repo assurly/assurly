@@ -2,6 +2,8 @@ import * as core from './runtime';
 import * as exec from '@actions/exec';
 import * as path from 'path';
 import * as fs from 'fs';
+// Bundled by esbuild; the version pin test asserts this tracks packages/cli.
+import cliPackageJson from '../../cli/package.json';
 
 interface Finding {
   ruleId: string;
@@ -11,6 +13,9 @@ interface Finding {
   message: string;
   suggestion?: string;
 }
+
+/** CLI package pin — kept in sync with packages/cli/package.json via index.test.ts. */
+export const ASSURLY_CLI_PACKAGE_SPEC = `assurly@${cliPackageJson.version}`;
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -24,7 +29,7 @@ export async function run(): Promise<void> {
     core.info(`Scanning project path: ${absoluteScanPath}`);
 
     let command = 'npx';
-    let args = ['--yes', 'assurly@1.0.0', 'scan', '--json', '--path', absoluteScanPath];
+    let args = ['--yes', ASSURLY_CLI_PACKAGE_SPEC, 'scan', '--json', '--path', absoluteScanPath];
 
     if (cliPathInput) {
       const absoluteCliPath = path.resolve(cliPathInput);

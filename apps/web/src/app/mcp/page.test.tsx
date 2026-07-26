@@ -119,7 +119,8 @@ describe('McpPage', () => {
     expect(html).toContain('Add to VS Code');
     expect(html).toContain('https://www.npmjs.com/package/@assurly/mcp-server');
     expect(html).toContain(`v${version}`);
-    expect(html).toContain('free · 4 tools · MIT');
+    const toolCount = registeredToolNames().length;
+    expect(html).toContain(`free · ${toolCount} tools · MIT`);
     // One-click buttons appear in the hero and again at the top of Install.
     expect(html.match(/Add to Cursor/g)?.length).toBeGreaterThanOrEqual(2);
   });

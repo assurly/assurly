@@ -117,7 +117,7 @@ export default function McpPage(): React.ReactElement {
           <CodeBlock code={MCP_INSTALL_COMMAND} label="Install command" />
           <OneClickInstall />
           <p className="mcp-hero-meta">
-            free · 4 tools · MIT ·{' '}
+            free · 5 tools · MIT ·{' '}
             <a href={MCP_NPM_PACKAGE_URL} rel="noopener noreferrer">
               v{MCP_SERVER_VERSION}
             </a>
@@ -194,6 +194,15 @@ export default function McpPage(): React.ReactElement {
                     claiming a fix, deploy and re-probe before treating it as done.
                   </td>
                 </tr>
+                <tr>
+                  <td>
+                    <code>assurly_scan_agent</code>
+                  </td>
+                  <td>
+                    Advisory audit of MCP client configs and agent instruction files only. Never
+                    blocks ship (<code>isError</code> stays false).
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -256,7 +265,7 @@ export default function McpPage(): React.ReactElement {
             </li>
             <li>
               <strong>Tools not appearing after install.</strong> Restart the client or reload MCP,
-              then confirm the four <code>assurly_*</code> tools are listed.
+              then confirm the five <code>assurly_*</code> tools are listed.
             </li>
             <li>
               <strong>Missing API key.</strong> <code>{ERR_API_KEY_MISSING}</code>

@@ -1,8 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as core from './runtime';
 import * as exec from '@actions/exec';
 import * as fs from 'fs';
-import { run } from './index';
+import { ASSURLY_CLI_PACKAGE_SPEC, run } from './index';
 
 vi.mock('./runtime', () => {
   const summaryMock = {
@@ -41,6 +42,15 @@ describe('Assurly GitHub Action', () => {
     vi.clearAllMocks();
   });
 
+  it('pins the CLI package version to packages/cli/package.json', () => {
+    const cliVersion = (
+      JSON.parse(readFileSync(new URL('../../cli/package.json', import.meta.url), 'utf8')) as {
+        version: string;
+      }
+    ).version;
+    expect(ASSURLY_CLI_PACKAGE_SPEC).toBe(`assurly@${cliVersion}`);
+  });
+
   it('runs npx assurly when no custom cli-path is provided and succeeds with no findings', async () => {
     vi.mocked(core.getInput).mockImplementation((name: string) => {
       if (name === 'path') return '.';
@@ -59,7 +69,7 @@ describe('Assurly GitHub Action', () => {
     expect(core.getInput).toHaveBeenCalledWith('path');
     expect(exec.exec).toHaveBeenCalledWith(
       'npx',
-      ['--yes', 'assurly@1.0.0', 'scan', '--json', '--path', expect.any(String)],
+      ['--yes', ASSURLY_CLI_PACKAGE_SPEC, 'scan', '--json', '--path', expect.any(String)],
       expect.any(Object),
     );
     expect(core.setOutput).toHaveBeenCalledWith('findings-count', '0');

@@ -7,6 +7,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import {
   handleExplainRule,
+  handleScanAgent,
   handleScanFiles,
   handleScanPath,
   handleVerdict,
@@ -118,6 +119,21 @@ export function createAssurlyMcpServer(): McpServer {
           apiKey: process.env.ASSURLY_API_KEY?.trim() || undefined,
         },
       ),
+  );
+
+  server.registerTool(
+    'assurly_scan_agent',
+    {
+      title: 'Scan the agent stack',
+      description:
+        'Advisory audit of the AI agent setup only — MCP client configs (.cursor/mcp.json, etc.) and ' +
+        'instruction files (README, CLAUDE.md, AGENTS.md, .cursorrules). Does not scan application ' +
+        'source. Never blocks ship; isError stays false under all outcomes.',
+      inputSchema: {
+        path: z.string().describe('Absolute or relative path to the project root to scan'),
+      },
+    },
+    async ({ path: projectPath }) => handleScanAgent({ path: projectPath }),
   );
 
   return server;

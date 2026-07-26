@@ -9,8 +9,11 @@ import {
   scanRscDataLeaks,
   scanColdStart,
   scanEdgeRuntime,
+  scanAgentStack,
   incompleteScanFinding,
+  isAgentStackFile,
   selectFiles,
+  type WebFinding,
 } from '../../../utils/browserScanner';
 import { clientApi, githubApi, type GitHubRepository } from '../../../utils/clientApi';
 import { sanitizeGitHubOwner } from '../../../utils/scanProxy';
@@ -412,12 +415,15 @@ export default function HomeClient({
       const sqlFiles: string[] = [];
       const envFiles: string[] = [];
       const codeFiles: string[] = [];
+      const agentFiles: string[] = [];
 
       for (const node of tree) {
         if (node.type !== 'blob') continue;
         const pathLower = node.path.toLowerCase();
 
-        if (pathLower.endsWith('.sql')) {
+        if (isAgentStackFile(node.path)) {
+          agentFiles.push(node.path);
+        } else if (pathLower.endsWith('.sql')) {
           sqlFiles.push(node.path);
         } else if (
           pathLower.endsWith('.env.example') ||
@@ -628,6 +634,24 @@ export default function HomeClient({
           }
         } catch {
           // Skip unreadable files
+        }
+      }
+
+      for (const agentPath of agentFiles) {
+        try {
+          const res = await fetchFileContent(agentPath);
+          if (!res.ok) continue;
+          const content = await res.text();
+          const agentScan = scanAgentStack(content, agentPath);
+          allFindings.push(
+            ...agentScan.findings.map((finding: WebFinding) => ({
+              severity: finding.severity,
+              file: agentPath,
+              message: finding.message,
+            })),
+          );
+        } catch {
+          // Skip unreadable agent-stack files
         }
       }
 
