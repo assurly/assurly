@@ -20,10 +20,16 @@ import { POST as stripePortal } from './stripe/portal/route';
 import { POST as stripeWebhook } from './stripe/webhook/route';
 import { GET as canaryCallback } from './canary/[token]/route';
 import { GET as canaryList, POST as canaryIssue } from './targets/[id]/canary/route';
+import {
+  DELETE as prodWatchDisable,
+  GET as prodWatchGet,
+  PUT as prodWatchEnable,
+} from './targets/[id]/prod-watch/route';
+import { GET as cronProdWatch } from './cron/prod-watch/route';
 
 interface RouteContract {
   name: string;
-  method: 'GET' | 'POST' | 'DELETE';
+  method: 'GET' | 'POST' | 'DELETE' | 'PUT';
   auth: AuthMode;
   csrf: boolean;
   handler: SecuredRouteHandler<unknown, unknown, unknown>;
@@ -100,6 +106,34 @@ const routes: RouteContract[] = [
     auth: 'required',
     csrf: true,
     handler: canaryIssue,
+  },
+  {
+    name: 'prod-watch get',
+    method: 'GET',
+    auth: 'required',
+    csrf: false,
+    handler: prodWatchGet,
+  },
+  {
+    name: 'prod-watch enable',
+    method: 'PUT',
+    auth: 'required',
+    csrf: true,
+    handler: prodWatchEnable,
+  },
+  {
+    name: 'prod-watch disable',
+    method: 'DELETE',
+    auth: 'required',
+    csrf: true,
+    handler: prodWatchDisable,
+  },
+  {
+    name: 'cron prod-watch',
+    method: 'GET',
+    auth: 'none',
+    csrf: false,
+    handler: cronProdWatch,
   },
 ];
 

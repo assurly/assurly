@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/guardian",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/prod-watch",
+      "schedule": "15 6 * * *"
     }
   ]
 }

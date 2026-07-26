@@ -301,6 +301,81 @@ export interface RecordCanaryTokenHitInput {
   userAgentHash: string | null;
 }
 
+export type ProdWatchLastStatus =
+  | 'never'
+  | 'clear'
+  | 'abuse_sequence'
+  | 'not_checked'
+  | 'error';
+
+export interface ProdWatchSubscription {
+  id: string;
+  organization_id: string;
+  target_id: string;
+  enabled: boolean;
+  supabase_project_ref: string;
+  access_token_ciphertext: string;
+  last_checked_at: string | null;
+  last_status: ProdWatchLastStatus;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Client-safe subscription view — ciphertext never included. */
+export interface ProdWatchSubscriptionPublic {
+  id: string;
+  organization_id: string;
+  target_id: string;
+  enabled: boolean;
+  supabase_project_ref: string;
+  last_checked_at: string | null;
+  last_status: ProdWatchLastStatus;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpsertProdWatchSubscriptionInput {
+  organizationId: string;
+  targetId: string;
+  enabled: boolean;
+  supabaseProjectRef: string;
+  accessTokenCiphertext: string;
+}
+
+export interface ProdWatchSignalRow {
+  id: string;
+  organization_id: string;
+  target_id: string;
+  bucket_start: string;
+  shape_counts: Record<string, number>;
+  distinct_tables: number;
+  verdict: 'clear' | 'abuse_sequence' | 'not_checked';
+  created_at: string;
+}
+
+export interface InsertProdWatchSignalInput {
+  organizationId: string;
+  targetId: string;
+  bucketStart: string;
+  shapeCounts: Record<string, number>;
+  distinctTables: number;
+  verdict: 'clear' | 'abuse_sequence' | 'not_checked';
+}
+
+export interface ProdWatchIncidentRow {
+  id: string;
+  organization_id: string;
+  target_id: string;
+  rule_id: string;
+  status: 'open' | 'closed';
+  first_seen_at: string;
+  last_seen_at: string;
+  last_alerted_at: string | null;
+  alert_count: number;
+}
+
 export interface StripeBillingEvent {
   eventId: string;
   eventType: string;
@@ -430,6 +505,40 @@ export interface DbAdapter {
   getCanaryTokenByHash(tokenHash: string): Promise<CanaryTokenAuthRow | null>;
   recordCanaryTokenHit(input: RecordCanaryTokenHitInput): Promise<void>;
   revokeCanaryToken(id: string): Promise<void>;
+  /** Prod Watch — ciphertext included for cron decrypt only (service role). */
+  getProdWatchSubscription(targetId: string): Promise<ProdWatchSubscription | null>;
+  listEnabledProdWatchSubscriptions(): Promise<ProdWatchSubscription[]>;
+  upsertProdWatchSubscription(
+    input: UpsertProdWatchSubscriptionInput,
+  ): Promise<ProdWatchSubscriptionPublic>;
+  /** Disable + delete credential + purge derived rows for the target. */
+  revokeProdWatchSubscription(targetId: string): Promise<void>;
+  updateProdWatchSubscriptionStatus(input: {
+    targetId: string;
+    lastStatus: ProdWatchLastStatus;
+    lastError: string | null;
+    lastCheckedAt: string;
+  }): Promise<void>;
+  insertProdWatchSignal(input: InsertProdWatchSignalInput): Promise<void>;
+  listProdWatchSignals(targetId: string): Promise<ProdWatchSignalRow[]>;
+  purgeProdWatchSignalsOlderThan(isoCutoff: string): Promise<void>;
+  getOpenProdWatchIncident(
+    targetId: string,
+    ruleId: string,
+  ): Promise<ProdWatchIncidentRow | null>;
+  upsertOpenProdWatchIncident(input: {
+    organizationId: string;
+    targetId: string;
+    ruleId: string;
+    lastSeenAt: string;
+    lastAlertedAt: string;
+  }): Promise<ProdWatchIncidentRow>;
+  touchProdWatchIncident(input: {
+    id: string;
+    lastSeenAt: string;
+    alerted: boolean;
+  }): Promise<void>;
+  closeProdWatchIncident(input: { targetId: string; ruleId: string }): Promise<void>;
 }
 
 function eq(value: string | number): string {
@@ -1160,6 +1269,188 @@ export class SupabaseDbAdapter implements DbAdapter {
       body: JSON.stringify({ revoked_at: new Date().toISOString() }),
     });
   }
+
+  getProdWatchSubscription(targetId: string): Promise<ProdWatchSubscription | null> {
+    return this.first(`prod_watch_subscriptions?select=*&target_id=eq.${eq(targetId)}`);
+  }
+
+  listEnabledProdWatchSubscriptions(): Promise<ProdWatchSubscription[]> {
+    return this.fetchDb(
+      'prod_watch_subscriptions?select=*&enabled=is.true&order=last_checked_at.asc.nullsfirst',
+    );
+  }
+
+  async upsertProdWatchSubscription(
+    input: UpsertProdWatchSubscriptionInput,
+  ): Promise<ProdWatchSubscriptionPublic> {
+    const rows = await this.fetchDb<ProdWatchSubscription[]>(
+      'prod_watch_subscriptions?on_conflict=target_id',
+      {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify({
+          organization_id: input.organizationId,
+          target_id: input.targetId,
+          enabled: input.enabled,
+          supabase_project_ref: input.supabaseProjectRef,
+          access_token_ciphertext: input.accessTokenCiphertext,
+          updated_at: new Date().toISOString(),
+        }),
+      },
+    );
+    return toProdWatchPublic(rows[0]);
+  }
+
+  async revokeProdWatchSubscription(targetId: string): Promise<void> {
+    await this.fetchDb(`prod_watch_signals?target_id=eq.${eq(targetId)}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
+    });
+    await this.fetchDb(`prod_watch_incidents?target_id=eq.${eq(targetId)}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
+    });
+    await this.fetchDb(`prod_watch_subscriptions?target_id=eq.${eq(targetId)}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
+    });
+  }
+
+  async updateProdWatchSubscriptionStatus(input: {
+    targetId: string;
+    lastStatus: ProdWatchLastStatus;
+    lastError: string | null;
+    lastCheckedAt: string;
+  }): Promise<void> {
+    await this.fetchDb(`prod_watch_subscriptions?target_id=eq.${eq(input.targetId)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        last_status: input.lastStatus,
+        last_error: input.lastError,
+        last_checked_at: input.lastCheckedAt,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+  }
+
+  async insertProdWatchSignal(input: InsertProdWatchSignalInput): Promise<void> {
+    await this.fetchDb('prod_watch_signals', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        organization_id: input.organizationId,
+        target_id: input.targetId,
+        bucket_start: input.bucketStart,
+        shape_counts: input.shapeCounts,
+        distinct_tables: input.distinctTables,
+        verdict: input.verdict,
+      }),
+    });
+  }
+
+  listProdWatchSignals(targetId: string): Promise<ProdWatchSignalRow[]> {
+    return this.fetchDb(
+      `prod_watch_signals?select=*&target_id=eq.${eq(targetId)}&order=bucket_start.desc`,
+    );
+  }
+
+  async purgeProdWatchSignalsOlderThan(isoCutoff: string): Promise<void> {
+    await this.fetchDb(`prod_watch_signals?created_at=lt.${eq(isoCutoff)}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
+    });
+  }
+
+  getOpenProdWatchIncident(
+    targetId: string,
+    ruleId: string,
+  ): Promise<ProdWatchIncidentRow | null> {
+    return this.first(
+      `prod_watch_incidents?select=*&target_id=eq.${eq(targetId)}&rule_id=eq.${eq(ruleId)}&status=eq.open`,
+    );
+  }
+
+  async upsertOpenProdWatchIncident(input: {
+    organizationId: string;
+    targetId: string;
+    ruleId: string;
+    lastSeenAt: string;
+    lastAlertedAt: string;
+  }): Promise<ProdWatchIncidentRow> {
+    const existing = await this.getOpenProdWatchIncident(input.targetId, input.ruleId);
+    if (existing) {
+      const rows = await this.fetchDb<ProdWatchIncidentRow[]>(
+        `prod_watch_incidents?id=eq.${eq(existing.id)}`,
+        {
+          method: 'PATCH',
+          headers: { Prefer: 'return=representation' },
+          body: JSON.stringify({
+            last_seen_at: input.lastSeenAt,
+            last_alerted_at: input.lastAlertedAt,
+            alert_count: existing.alert_count + 1,
+          }),
+        },
+      );
+      return rows[0];
+    }
+    const rows = await this.fetchDb<ProdWatchIncidentRow[]>('prod_watch_incidents', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        organization_id: input.organizationId,
+        target_id: input.targetId,
+        rule_id: input.ruleId,
+        status: 'open',
+        last_seen_at: input.lastSeenAt,
+        last_alerted_at: input.lastAlertedAt,
+        alert_count: 1,
+      }),
+    });
+    return rows[0];
+  }
+
+  async touchProdWatchIncident(input: {
+    id: string;
+    lastSeenAt: string;
+    alerted: boolean;
+  }): Promise<void> {
+    const body: Record<string, string | number> = { last_seen_at: input.lastSeenAt };
+    if (input.alerted) {
+      body.last_alerted_at = input.lastSeenAt;
+    }
+    await this.fetchDb(`prod_watch_incidents?id=eq.${eq(input.id)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async closeProdWatchIncident(input: { targetId: string; ruleId: string }): Promise<void> {
+    await this.fetchDb(
+      `prod_watch_incidents?target_id=eq.${eq(input.targetId)}&rule_id=eq.${eq(input.ruleId)}&status=eq.open`,
+      {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ status: 'closed' }),
+      },
+    );
+  }
+}
+
+function toProdWatchPublic(row: ProdWatchSubscription): ProdWatchSubscriptionPublic {
+  return {
+    id: row.id,
+    organization_id: row.organization_id,
+    target_id: row.target_id,
+    enabled: row.enabled,
+    supabase_project_ref: row.supabase_project_ref,
+    last_checked_at: row.last_checked_at,
+    last_status: row.last_status,
+    last_error: row.last_error,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
 }
 
 export function getUserDbAdapter(accessToken: string): DbAdapter {

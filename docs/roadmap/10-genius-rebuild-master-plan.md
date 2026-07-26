@@ -834,6 +834,20 @@ Leverage and dependency both point to this order. We do not reorder without upda
 
 **The genius rebuild is complete — Phases 0–8 are all shipped and browser/live-verified. There is no Phase 9.**
 
+### Post-rebuild — Watch Production (D5c + D7) · 2026-07-26
+
+Not part of the original 0–8 sequence. Spec: [`phase-watch-production.md`](./phase-watch-production.md).
+
+- [x] **D7 CRA readiness** — `docs/cra-scope-assessment.md`, CRA reporting runbook, `npm run sbom:published`
+      (CycloneDX for published packages), `disclosureContact` shared by Trust §13 / `security.txt` / runbook
+      (+ consistency test). No claim of CRA compliance.
+- [x] **D5c Prod Watch** — derived-signal anon-key abuse monitor; opt-in off by default; feature flag
+      `ASSURLY_PROD_WATCH_ENABLED` off by default; no raw logs / no IPs persisted (proven by test);
+      migration `20260726120000_prod_watch.sql` written — **not applied to prod until owner approves**.
+- [ ] **Legal gate (open)** — draft proposals in `docs/legal/DRAFT-prod-watch-privacy-terms-trust.md`
+      await counsel sign-off; live Privacy/Terms still contain `[LEGAL ENTITY NAME]` placeholders.
+      Do not set `ASSURLY_PROD_WATCH_ENABLED=1` in production until that gate closes.
+
 ---
 
 ## 9. Glossary

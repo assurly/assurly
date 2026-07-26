@@ -104,6 +104,10 @@ export const CONSEQUENCE_MAP: Record<string, ConsequenceEntry> = {
     consequence:
       'This is a canary you planted on purpose — Assurly will alert if anyone ever uses it. It is not a leaked secret.',
   },
+  'prod-supabase-anon-abuse-sequence': {
+    consequence:
+      'Recent production API traffic matched the classic anon-key abuse pattern (schema probe, then table enumeration, then bulk reads). Treat this as an observation to investigate — not proof of a breach, and not a ship blocker.',
+  },
 
   // --- Stripe / payments -------------------------------------------------------
   'stripe-webhook-signature': {
