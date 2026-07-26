@@ -1,6 +1,6 @@
 {
   "name": "@assurly/scanner-core",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "description": "Static analysis rules that catch what breaks AI-built SaaS in production — missing Supabase RLS, unverified Stripe webhooks, leaked service keys. Runs in Node or the browser.",
   "keywords": [
     "static-analysis",
