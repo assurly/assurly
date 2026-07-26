@@ -18,6 +18,7 @@
     "build:web": "npm run build -w apps/web",
     "build:action": "npm run build -w packages/github-action",
     "build:vscode": "npm run build:scanner && npm run vscode:prepublish -w packages/vscode-extension",
+    "build:artifacts": "npm run build:cli && npm run build -w packages/mcp-server && npm run build:action && npm run build:vscode",
     "pack:release": "npm pack -w packages/scanner-core -w packages/cli --dry-run && npm run package:vsix -w packages/vscode-extension",
     "test:action": "npm test -w packages/github-action",
     "test": "npm test --workspaces --if-present",

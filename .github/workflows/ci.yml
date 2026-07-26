@@ -68,6 +68,42 @@ jobs:
       - name: Run tests
         run: npm test
 
+  artifacts:
+    name: Committed build artifacts match source
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Rebuild every committed artifact
+        run: npm run build:artifacts
+
+      # This repository commits its build output: packages/*/dist and the CLI
+      # bundle vendored into the VS Code extension. Vitest runs against the
+      # TypeScript sources, so a stale artifact passes every test while shipping
+      # different behaviour to npm — which is exactly what happened once: a
+      # deliberate-break check left `isAgentStackRuleId` returning false in
+      # packages/scanner-core/dist/shipGate.js after the source was restored,
+      # so the published CLI would have blocked deploys on advisory agent-stack
+      # findings. Rebuilding and diffing makes that drift fail here instead.
+      - name: Fail if any artifact drifted from source
+        run: |
+          if ! git diff --exit-code --stat -- '*/dist/*' '*/vendor/*'; then
+            echo "::error::Committed build artifacts are out of date. Run 'npm run build:artifacts' and commit the result."
+            exit 1
+          fi
+
   dogfood:
     name: Assurly self-scan (dogfood gate)
     runs-on: ubuntu-latest
