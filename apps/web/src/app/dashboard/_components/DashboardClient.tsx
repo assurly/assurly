@@ -48,7 +48,7 @@ import { buildShipGateFromScanFindings } from '../../../utils/shipGate';
 import { RepoListPanel } from './RepoListPanel';
 import { VerdictCardsSection } from './VerdictCardsSection';
 import { ApiKeys } from './ApiKeys';
-import { CanaryTokens } from './CanaryTokens';
+import { CanaryTokens, CanaryTokensNotice } from './CanaryTokens';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { DashboardTabs } from './DashboardTabs';
 import { PublicRepoConnect } from './PublicRepoConnect';
@@ -119,6 +119,43 @@ function isLocalScanId(id: string): boolean {
  */
 function isLocalFindingId(id: string): boolean {
   return id.startsWith('find-');
+}
+
+/**
+ * Picks the canary panel for a repository, given what we currently know about
+ * its target.
+ *
+ * Four outcomes, each stating something that is true at the moment it renders.
+ * The one that matters is `loading`: a repository's target arrives on a separate
+ * request, so during that window the map is empty for every repository — and
+ * telling someone to scan a repository they scanned last week is worse than
+ * saying nothing, because it reads as the feature being broken.
+ */
+export function renderCanaryPanel(
+  lookup: { status: 'loading' | 'ready' | 'error'; byRepoId: Record<string, string> },
+  repositoryId: string,
+): React.ReactElement {
+  const targetId = lookup.byRepoId[repositoryId];
+  if (targetId) return <CanaryTokens targetId={targetId} />;
+
+  if (lookup.status === 'loading') {
+    return <CanaryTokensNotice>Loading canary tokens for this repository…</CanaryTokensNotice>;
+  }
+
+  if (lookup.status === 'error') {
+    return (
+      <CanaryTokensNotice>
+        Could not load canary tokens for this repository. Refresh to try again.
+      </CanaryTokensNotice>
+    );
+  }
+
+  return (
+    <CanaryTokensNotice>
+      Scan this repository once to enable canary tokens. A canary is a fake credential you plant
+      where a thief might look — if anyone ever uses it, Assurly records a hit.
+    </CanaryTokensNotice>
+  );
 }
 
 /**
@@ -306,8 +343,20 @@ function DashboardContent({
   // Verdict cards re-fetch whenever a scan finishes (the target was refreshed
   // server-side during save), so the dashboard verdict reflects the new result.
   const [verdictRefreshKey, setVerdictRefreshKey] = useState(0);
-  /** Real UUID target ids keyed by repository id — synthetic `repo:…` cards are omitted. */
-  const [targetIdByRepoId, setTargetIdByRepoId] = useState<Record<string, string>>({});
+  /**
+   * Real UUID target ids keyed by repository id — synthetic `repo:…` cards are
+   * omitted.
+   *
+   * The status is carried alongside the map rather than inferred from it. An
+   * empty map means "no repository has a target", which during the initial
+   * fetch is indistinguishable from "we have not asked yet" — and the canary
+   * panel used that emptiness to tell people to scan a repository they had
+   * already scanned.
+   */
+  const [targetLookup, setTargetLookup] = useState<{
+    status: 'loading' | 'ready' | 'error';
+    byRepoId: Record<string, string>;
+  }>({ status: 'loading', byRepoId: {} });
   const wasScanningRef = useRef(false);
   // Set when a scan is kicked off from the tools column (Scan Public Repository),
   // where the user is scrolled away from the results canvas. On completion we
@@ -339,10 +388,13 @@ function DashboardContent({
             next[target.repositoryId] = target.id;
           }
         }
-        setTargetIdByRepoId(next);
+        setTargetLookup({ status: 'ready', byRepoId: next });
       })
       .catch(() => {
-        // Non-fatal — canary panel simply stays hidden until targets load.
+        if (cancelled) return;
+        // Non-fatal, but not silent: without this the panel would sit on
+        // "loading" forever and look broken rather than retryable.
+        setTargetLookup({ status: 'error', byRepoId: {} });
       });
     return () => {
       cancelled = true;
@@ -1665,27 +1717,7 @@ function DashboardContent({
 
                 <ApiKeys />
 
-                {selectedRepo ? (
-                  targetIdByRepoId[selectedRepo.id] ? (
-                    <CanaryTokens targetId={targetIdByRepoId[selectedRepo.id]!} />
-                  ) : (
-                    // A repository has no real target row until its first scan
-                    // completes, and canaries hang off the target. Rendering
-                    // nothing here made the feature look absent rather than
-                    // pending — say which step is missing instead.
-                    <section
-                      className="dashboard-public-connect api-keys canary-tokens"
-                      aria-label="Canary tokens"
-                    >
-                      <h4 className="dashboard-public-connect__title">Canary tokens</h4>
-                      <p className="dashboard-public-connect__copy">
-                        Scan this repository once to enable canary tokens. A canary is a fake
-                        credential you plant where a thief might look — if anyone ever uses it,
-                        Assurly records a hit.
-                      </p>
-                    </section>
-                  )
-                ) : null}
+                {selectedRepo ? renderCanaryPanel(targetLookup, selectedRepo.id) : null}
               </div>
 
               {resultsView === 'url' && urlScan.hasActivity ? (

@@ -1,12 +1,40 @@
 'use client';
 
-import { useCallback, useEffect, useState, type FormEvent, type ReactElement } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
 import { ClientApiError, clientApi, type CanaryTokenSummary } from '../../../utils/clientApi';
 import { formatApiKeyDay, formatApiKeyMetadata } from '../../../utils/apiKeyDisplay';
 
 export interface CanaryTokensProps {
   targetId: string;
+}
+
+/**
+ * The panel shell carrying an explanation instead of controls.
+ *
+ * Canaries hang off a target, and a caller may not have one — because the
+ * repository has not been scanned yet, or because its targets are still
+ * loading, or because that lookup failed. Those are three different facts and
+ * each deserves a different sentence. Rendering nothing conflated them with
+ * "this feature does not exist", which is how the panel was reported missing.
+ *
+ * Callers pick the sentence; the shell stays here so the heading, framing and
+ * classes cannot drift from the live panel below.
+ */
+export function CanaryTokensNotice({ children }: { children: ReactNode }): ReactElement {
+  return (
+    <section className="dashboard-public-connect api-keys canary-tokens" aria-label="Canary tokens">
+      <h4 className="dashboard-public-connect__title">Canary tokens</h4>
+      <p className="dashboard-public-connect__copy">{children}</p>
+    </section>
+  );
 }
 
 /**
@@ -132,16 +160,10 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
 
   if (ownershipBlocked) {
     return (
-      <section
-        className="dashboard-public-connect api-keys canary-tokens"
-        aria-label="Canary tokens"
-      >
-        <h4 className="dashboard-public-connect__title">Canary tokens</h4>
-        <p className="dashboard-public-connect__copy">
-          Verify ownership of this app first. Canary tokens are fake credentials you plant in your
-          own systems — Assurly alerts if anyone ever uses one.
-        </p>
-      </section>
+      <CanaryTokensNotice>
+        Verify ownership of this app first. Canary tokens are fake credentials you plant in your own
+        systems — Assurly alerts if anyone ever uses one.
+      </CanaryTokensNotice>
     );
   }
 
