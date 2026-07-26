@@ -50,7 +50,7 @@ import {
   HomeWrenchIcon,
   HomeXIcon,
 } from './HomeIcons';
-import { Testimonials } from './Testimonials';
+import { ProofPoints } from './ProofPoints';
 
 interface HomeClientProps {
   initialAuthenticated: boolean;
@@ -1734,7 +1734,7 @@ export default function HomeClient({
         </section>
 
         {/* Social Proof */}
-        <Testimonials />
+        <ProofPoints />
 
         {/* Support & Contact Section */}
         <section id="contact" className="contact-section">
