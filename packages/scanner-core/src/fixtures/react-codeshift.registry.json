@@ -1,0 +1,28 @@
+{
+  "_capturedAt": "2026-07-26T07:38:24.314Z",
+  "_source": "https://registry.npmjs.org/react-codeshift",
+  "name": "react-codeshift",
+  "description": "🚫 Placeholder to prevent dependency confusion.",
+  "dist-tags": {
+    "latest": "1.0.0"
+  },
+  "versions": {
+    "1.0.0": {
+      "name": "react-codeshift",
+      "version": "1.0.0",
+      "description": "🚫 Placeholder to prevent dependency confusion.",
+      "repository": null
+    }
+  },
+  "time": {
+    "created": "2026-01-14T21:02:51.762Z",
+    "modified": "2026-01-14T21:02:52.176Z"
+  },
+  "maintainers": [
+    {
+      "name": "debugducky",
+      "email": "debugducky@ceriksen.com"
+    }
+  ],
+  "repository": null
+}

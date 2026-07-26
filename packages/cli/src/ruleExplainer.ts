@@ -163,6 +163,48 @@ const SCANNER_RULE_EXPLANATIONS: Record<
     howToFix:
       'Remove directives that tell the agent to send credentials or `.env` contents to a remote endpoint.',
   },
+  'dep-nonexistent-package': {
+    title: 'Dependency does not exist on npm',
+    explanation:
+      'A newly added dependency has never been published to the npm registry. AI models sometimes hallucinate plausible package names; installing one fails the build and can be pre-registered by an attacker.',
+    howToFix:
+      'Remove the package or replace it with the real name you intended. Confirm the package at registry.npmjs.org before merging.',
+  },
+  'dep-typosquat-suspect': {
+    title: 'Suspected typosquat dependency',
+    explanation:
+      'A newly added dependency is young, barely downloaded, and within edit distance 2 of a popular package name — a classic typosquat of a real package.',
+    howToFix:
+      'Verify the publisher and the intended package name. If you meant the popular neighbour named in the finding, fix the typo rather than installing the lookalike.',
+  },
+  'dep-slopsquat-suspect': {
+    title: 'Suspected slopsquat dependency',
+    explanation:
+      'A newly added dependency borrows a popular package name, has only one published version with no repository, and almost no downloads — the shape of an AI-hallucinated name that was pre-registered (or a defensive placeholder with the same shape).',
+    howToFix:
+      'Confirm the publisher and source. Prefer the real package behind the borrowed name. Age alone is not proof of safety — pre-registered squats wait.',
+  },
+  'dep-new-unvetted': {
+    title: 'Young, low-adoption dependency',
+    explanation:
+      'A newly added dependency was published recently and has very few weekly downloads. That alone is not proof of malice, but it deserves a second look before merge.',
+    howToFix:
+      'Confirm the package source and publisher. Prefer well-known packages when an equivalent exists.',
+  },
+  'dep-registry-unavailable': {
+    title: 'npm registry lookup unavailable',
+    explanation:
+      'Assurly could not verify the package against the npm registry (timeout, outage, or rate limit). The PR check continues without blocking on provenance.',
+    howToFix:
+      'Retry the check later, or manually confirm the package exists on registry.npmjs.org before merging.',
+  },
+  'assurly-canary-planted': {
+    title: 'Assurly canary token (intentional)',
+    explanation:
+      'An Assurly canary token (`ask_canary_…`) was found. This is an intentional tripwire you planted — not a leaked credential. Assurly alerts if the token is ever used.',
+    howToFix:
+      'Keep the canary planted. If you receive a canary-hit alert, treat nearby real secrets as compromised and rotate them.',
+  },
 };
 
 const blockerRuleIds = new Set<string>(HIGH_CONFIDENCE_BLOCKER_RULE_IDS);

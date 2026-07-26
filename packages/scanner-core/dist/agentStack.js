@@ -7,6 +7,7 @@ exports.isAgentStackFile = isAgentStackFile;
 exports.scanAgentMcpConfig = scanAgentMcpConfig;
 exports.scanAgentInstructionFile = scanAgentInstructionFile;
 exports.scanAgentStack = scanAgentStack;
+const canaryToken_1 = require("./canaryToken");
 const result = (findings) => ({
     errorCount: findings.filter((finding) => finding.severity === 'error').length,
     warningCount: findings.filter((finding) => finding.severity === 'warning').length,
@@ -116,6 +117,9 @@ function isAgentStackFile(filePath) {
 function looksLikeLiveSecret(value) {
     const trimmed = value.trim();
     if (!trimmed || PLACEHOLDER_ENV_VALUE.test(trimmed))
+        return false;
+    // Planted Assurly canaries are intentional tripwires, not leaked credentials.
+    if ((0, canaryToken_1.isAssurlyCanaryToken)(trimmed) || (0, canaryToken_1.containsAssurlyCanaryToken)(trimmed))
         return false;
     if (/^sk_live_[A-Za-z0-9]+/.test(trimmed))
         return true;

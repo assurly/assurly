@@ -22,6 +22,8 @@ export const RATE_LIMITS = {
   sensitive: { limit: 10, windowSeconds: 60 },
   expensive: { limit: 5, windowSeconds: 60 },
   public: { limit: 60, windowSeconds: 60 },
+  /** Canary callback: legitimate traffic ≈ 0; tighter than public to blunt enumeration. */
+  canaryCallback: { limit: 20, windowSeconds: 60 },
   contact: { limit: 5, windowSeconds: 600 },
   webhook: { limit: 300, windowSeconds: 60 },
   // Plan-based quotas for programmatic API-key callers (Phase 7/8). Keyed on the

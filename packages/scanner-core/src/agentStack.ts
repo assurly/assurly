@@ -16,6 +16,7 @@
  */
 // Type-only import: avoids a runtime circular dependency with index.ts.
 import type { FindingConfidence as Confidence, ScannerFinding, Severity } from './index';
+import { containsAssurlyCanaryToken, isAssurlyCanaryToken } from './canaryToken';
 
 export interface AgentStackScanResult {
   errorCount: number;
@@ -174,6 +175,8 @@ export function isAgentStackFile(filePath: string): boolean {
 function looksLikeLiveSecret(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed || PLACEHOLDER_ENV_VALUE.test(trimmed)) return false;
+  // Planted Assurly canaries are intentional tripwires, not leaked credentials.
+  if (isAssurlyCanaryToken(trimmed) || containsAssurlyCanaryToken(trimmed)) return false;
   if (/^sk_live_[A-Za-z0-9]+/.test(trimmed)) return true;
   if (/^sk-ant-[A-Za-z0-9_\-]+/.test(trimmed)) return true;
   if (/^ghp_[A-Za-z0-9]+/.test(trimmed)) return true;

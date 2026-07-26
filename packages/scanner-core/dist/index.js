@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.buildShipGateReport = exports.buildIssueGroups = exports.scanAgentStack = exports.scanAgentMcpConfig = exports.scanAgentInstructionFile = exports.redactEnvKey = exports.isAgentStackFile = exports.isAgentMcpConfigFile = exports.isAgentInstructionFile = exports.isHighConfidenceBlockerRuleId = exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = exports.scanStripeWebhookIdempotency = exports.scanStripeMissingSubscriptionEvents = exports.scanStripeLiveKeyInDev = exports.scanStripeLifecycle = exports.scanSupabaseStorage = exports.scanSupabasePolicies = exports.scanSupabaseDeepPolicies = exports.scanAuthLinkedMigrationNoRls = exports.scanServiceRoleBypass = exports.scanServerActionAuth = exports.scanRouteHandlerAuth = exports.scanAuthBoundary = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.rankFilesByRelevance = exports.isScannableFile = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = void 0;
+exports.getTopNpmPackageCorpus = exports.findBorrowedCorpusName = exports.evaluateNewDependencies = exports.evaluateDependencyProvenance = exports.diffAddedDependencies = exports.contiguousTokenRuns = exports.collectDependencyNames = exports.DEP_YOUNG_AGE_DAYS = exports.DEP_TYPOSQUAT_SUSPECT = exports.DEP_SLOPSQUAT_SUSPECT = exports.DEP_SCAN_CAPPED = exports.DEP_REGISTRY_UNAVAILABLE = exports.DEP_PROXIMITY_MAX_DISTANCE = exports.DEP_NONEXISTENT_PACKAGE = exports.DEP_NEW_UNVETTED = exports.DEP_LOW_DOWNLOADS = exports.DEP_DEFAULT_EVAL_CAP = exports.scanAgentStack = exports.scanAgentMcpConfig = exports.scanAgentInstructionFile = exports.redactEnvKey = exports.isAgentStackFile = exports.isAgentMcpConfigFile = exports.isAgentInstructionFile = exports.isHighConfidenceBlockerRuleId = exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = exports.scanStripeWebhookIdempotency = exports.scanStripeMissingSubscriptionEvents = exports.scanStripeLiveKeyInDev = exports.scanStripeLifecycle = exports.scanSupabaseStorage = exports.scanSupabasePolicies = exports.scanSupabaseDeepPolicies = exports.scanAuthLinkedMigrationNoRls = exports.scanServiceRoleBypass = exports.scanServerActionAuth = exports.scanRouteHandlerAuth = exports.scanAuthBoundary = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.rankFilesByRelevance = exports.isScannableFile = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = void 0;
+exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.buildShipGateReport = exports.buildIssueGroups = exports.isAssurlyCanaryToken = exports.isAssurlyCanaryBody = exports.extractAssurlyCanaryToken = exports.containsAssurlyCanaryToken = exports.ASSURLY_CANARY_PREFIX = exports.ASSURLY_CANARY_IN_TEXT = exports.findNearestCorpusMatch = exports.damerauLevenshtein = exports.tokenizePackageName = exports.scopeOwnsBorrowedName = exports.parsePackageJsonDependencies = exports.isAbandonedShape = void 0;
 exports.selectFiles = selectFiles;
 exports.incompleteScanFinding = incompleteScanFinding;
 exports.scanStripeWebhook = scanStripeWebhook;
@@ -26,6 +27,7 @@ Object.defineProperty(exports, "rankFilesByRelevance", { enumerable: true, get: 
 const authBoundary_1 = require("./authBoundary");
 const supabasePolicies_1 = require("./supabasePolicies");
 const stripeLifecycle_1 = require("./stripeLifecycle");
+const canaryToken_1 = require("./canaryToken");
 const result = (findings) => ({
     errorCount: findings.filter((finding) => finding.severity === 'error').length,
     warningCount: findings.filter((finding) => finding.severity === 'warning').length,
@@ -554,6 +556,19 @@ function scanExampleFileSecrets(exampleContent, exampleFile, findings) {
         if (!line || line.startsWith('#'))
             return;
         const key = line.split('=')[0]?.trim();
+        // Planted Assurly canaries are intentional — informational, never a leak.
+        if ((0, canaryToken_1.containsAssurlyCanaryToken)(line)) {
+            findings.push({
+                ruleId: 'assurly-canary-planted',
+                severity: 'warning',
+                confidence: 'high',
+                file: exampleFile,
+                line: index + 1,
+                message: 'Assurly canary token detected. This is an intentional tripwire, not a leaked credential.',
+                suggestion: 'Keep the canary planted. If Assurly alerts on canary use, treat it as a confirmed exposure and rotate real secrets.',
+            });
+            return;
+        }
         if (/^NEXT_PUBLIC_(?:SUPABASE_SERVICE_ROLE_KEY|STRIPE_(?:SECRET_KEY|SK))\s*=/.test(line))
             findings.push({
                 ruleId: 'public-secret',
@@ -650,6 +665,38 @@ Object.defineProperty(exports, "redactEnvKey", { enumerable: true, get: function
 Object.defineProperty(exports, "scanAgentInstructionFile", { enumerable: true, get: function () { return agentStack_1.scanAgentInstructionFile; } });
 Object.defineProperty(exports, "scanAgentMcpConfig", { enumerable: true, get: function () { return agentStack_1.scanAgentMcpConfig; } });
 Object.defineProperty(exports, "scanAgentStack", { enumerable: true, get: function () { return agentStack_1.scanAgentStack; } });
+var dependencyProvenance_1 = require("./dependencyProvenance");
+Object.defineProperty(exports, "DEP_DEFAULT_EVAL_CAP", { enumerable: true, get: function () { return dependencyProvenance_1.DEP_DEFAULT_EVAL_CAP; } });
+Object.defineProperty(exports, "DEP_LOW_DOWNLOADS", { enumerable: true, get: function () { return dependencyProvenance_1.DEP_LOW_DOWNLOADS; } });
+Object.defineProperty(exports, "DEP_NEW_UNVETTED", { enumerable: true, get: function () { return dependencyProvenance_1.DEP_NEW_UNVETTED; } });
+Object.defineProperty(exports, "DEP_NONEXISTENT_PACKAGE", { enumerable: true, get: function () { return dependencyProvenance_1.DEP_NONEXISTENT_PACKAGE; } });
+Object.defineProperty(exports, "DEP_PROXIMITY_MAX_DISTANCE", { enumerable: true, get: function () { return dependencyProvenance_1.DEP_PROXIMITY_MAX_DISTANCE; } });
+Object.defineProperty(exports, "DEP_REGISTRY_UNAVAILABLE", { enumerable: true, get: function () { return dependencyProvenance_1.DEP_REGISTRY_UNAVAILABLE; } });
+Object.defineProperty(exports, "DEP_SCAN_CAPPED", { enumerable: true, get: function () { return dependencyProvenance_1.DEP_SCAN_CAPPED; } });
+Object.defineProperty(exports, "DEP_SLOPSQUAT_SUSPECT", { enumerable: true, get: function () { return dependencyProvenance_1.DEP_SLOPSQUAT_SUSPECT; } });
+Object.defineProperty(exports, "DEP_TYPOSQUAT_SUSPECT", { enumerable: true, get: function () { return dependencyProvenance_1.DEP_TYPOSQUAT_SUSPECT; } });
+Object.defineProperty(exports, "DEP_YOUNG_AGE_DAYS", { enumerable: true, get: function () { return dependencyProvenance_1.DEP_YOUNG_AGE_DAYS; } });
+Object.defineProperty(exports, "collectDependencyNames", { enumerable: true, get: function () { return dependencyProvenance_1.collectDependencyNames; } });
+Object.defineProperty(exports, "contiguousTokenRuns", { enumerable: true, get: function () { return dependencyProvenance_1.contiguousTokenRuns; } });
+Object.defineProperty(exports, "diffAddedDependencies", { enumerable: true, get: function () { return dependencyProvenance_1.diffAddedDependencies; } });
+Object.defineProperty(exports, "evaluateDependencyProvenance", { enumerable: true, get: function () { return dependencyProvenance_1.evaluateDependencyProvenance; } });
+Object.defineProperty(exports, "evaluateNewDependencies", { enumerable: true, get: function () { return dependencyProvenance_1.evaluateNewDependencies; } });
+Object.defineProperty(exports, "findBorrowedCorpusName", { enumerable: true, get: function () { return dependencyProvenance_1.findBorrowedCorpusName; } });
+Object.defineProperty(exports, "getTopNpmPackageCorpus", { enumerable: true, get: function () { return dependencyProvenance_1.getTopNpmPackageCorpus; } });
+Object.defineProperty(exports, "isAbandonedShape", { enumerable: true, get: function () { return dependencyProvenance_1.isAbandonedShape; } });
+Object.defineProperty(exports, "parsePackageJsonDependencies", { enumerable: true, get: function () { return dependencyProvenance_1.parsePackageJsonDependencies; } });
+Object.defineProperty(exports, "scopeOwnsBorrowedName", { enumerable: true, get: function () { return dependencyProvenance_1.scopeOwnsBorrowedName; } });
+Object.defineProperty(exports, "tokenizePackageName", { enumerable: true, get: function () { return dependencyProvenance_1.tokenizePackageName; } });
+var editDistance_1 = require("./editDistance");
+Object.defineProperty(exports, "damerauLevenshtein", { enumerable: true, get: function () { return editDistance_1.damerauLevenshtein; } });
+Object.defineProperty(exports, "findNearestCorpusMatch", { enumerable: true, get: function () { return editDistance_1.findNearestCorpusMatch; } });
+var canaryToken_2 = require("./canaryToken");
+Object.defineProperty(exports, "ASSURLY_CANARY_IN_TEXT", { enumerable: true, get: function () { return canaryToken_2.ASSURLY_CANARY_IN_TEXT; } });
+Object.defineProperty(exports, "ASSURLY_CANARY_PREFIX", { enumerable: true, get: function () { return canaryToken_2.ASSURLY_CANARY_PREFIX; } });
+Object.defineProperty(exports, "containsAssurlyCanaryToken", { enumerable: true, get: function () { return canaryToken_2.containsAssurlyCanaryToken; } });
+Object.defineProperty(exports, "extractAssurlyCanaryToken", { enumerable: true, get: function () { return canaryToken_2.extractAssurlyCanaryToken; } });
+Object.defineProperty(exports, "isAssurlyCanaryBody", { enumerable: true, get: function () { return canaryToken_2.isAssurlyCanaryBody; } });
+Object.defineProperty(exports, "isAssurlyCanaryToken", { enumerable: true, get: function () { return canaryToken_2.isAssurlyCanaryToken; } });
 /** Runs Phase 3 deeper-stack scanners over the supplied project sources. */
 function runDeeperStackScans(sources, options = {}) {
     const { includeEdgeRuntime = true } = options;

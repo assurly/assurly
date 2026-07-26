@@ -240,6 +240,67 @@ export interface CreateApiKeyInput {
   plan: BillingPlan;
 }
 
+/** Cached npm registry metadata (global, service-role only). */
+export interface NpmPackageCacheRow {
+  package_name: string;
+  exists_on_registry: boolean | null;
+  created_at_registry: string | null;
+  weekly_downloads: number | null;
+  version_count: number | null;
+  has_repository: boolean | null;
+  metadata_fetched_at: string;
+  downloads_fetched_at: string | null;
+}
+
+export interface UpsertNpmPackageCacheInput {
+  packageName: string;
+  existsOnRegistry: boolean | null;
+  createdAtRegistry: string | null;
+  weeklyDownloads: number | null;
+  versionCount: number | null;
+  hasRepository: boolean | null;
+  metadataFetchedAt: string;
+  downloadsFetchedAt: string | null;
+}
+
+/** Safe canary row for client surfaces — `token_hash` is never included. */
+export interface CanaryTokenRow {
+  id: string;
+  organization_id: string;
+  target_id: string;
+  token_prefix: string;
+  label: string;
+  last_hit_at: string | null;
+  hit_count: number;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+export interface CreateCanaryTokenInput {
+  organizationId: string;
+  targetId: string;
+  tokenHash: string;
+  tokenPrefix: string;
+  label: string;
+}
+
+/** Service-role lookup shape for the public callback. */
+export interface CanaryTokenAuthRow {
+  id: string;
+  organization_id: string;
+  target_id: string;
+  token_prefix: string;
+  revoked_at: string | null;
+}
+
+export interface RecordCanaryTokenHitInput {
+  canaryTokenId: string;
+  organizationId: string;
+  targetId: string;
+  sourceHash: string;
+  userAgentHash: string | null;
+}
+
 export interface StripeBillingEvent {
   eventId: string;
   eventType: string;
@@ -361,6 +422,14 @@ export interface DbAdapter {
   /** Hard-delete a key row. Callers must ensure the key is already revoked. */
   deleteApiKey(id: string): Promise<void>;
   touchApiKey(id: string): Promise<void>;
+  /** Service-role npm registry cache (global; not org-scoped). */
+  getNpmPackageCache(packageName: string): Promise<NpmPackageCacheRow | null>;
+  upsertNpmPackageCache(input: UpsertNpmPackageCacheInput): Promise<void>;
+  createCanaryToken(input: CreateCanaryTokenInput): Promise<CanaryTokenRow>;
+  listCanaryTokens(targetId: string): Promise<CanaryTokenRow[]>;
+  getCanaryTokenByHash(tokenHash: string): Promise<CanaryTokenAuthRow | null>;
+  recordCanaryTokenHit(input: RecordCanaryTokenHitInput): Promise<void>;
+  revokeCanaryToken(id: string): Promise<void>;
 }
 
 function eq(value: string | number): string {
@@ -370,6 +439,10 @@ function eq(value: string | number): string {
 /** api_keys columns safe to expose to a client — `key_hash` is deliberately absent. */
 const API_KEY_SAFE_COLUMNS =
   'id,organization_id,label,key_prefix,plan,last_used_at,revoked_at,created_at';
+
+/** canary_tokens columns safe to expose — `token_hash` is deliberately absent. */
+const CANARY_TOKEN_SAFE_COLUMNS =
+  'id,organization_id,target_id,token_prefix,label,last_hit_at,hit_count,revoked_at,created_at';
 
 export class SupabaseDbAdapter implements DbAdapter {
   constructor(
@@ -1003,6 +1076,88 @@ export class SupabaseDbAdapter implements DbAdapter {
       method: 'PATCH',
       headers: { Prefer: 'return=minimal' },
       body: JSON.stringify({ last_used_at: new Date().toISOString() }),
+    });
+  }
+
+  getNpmPackageCache(packageName: string): Promise<NpmPackageCacheRow | null> {
+    return this.first(
+      `npm_package_cache?select=package_name,exists_on_registry,created_at_registry,weekly_downloads,version_count,has_repository,metadata_fetched_at,downloads_fetched_at&package_name=eq.${eq(packageName)}`,
+    );
+  }
+
+  async upsertNpmPackageCache(input: UpsertNpmPackageCacheInput): Promise<void> {
+    await this.fetchDb('npm_package_cache', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        package_name: input.packageName,
+        exists_on_registry: input.existsOnRegistry,
+        created_at_registry: input.createdAtRegistry,
+        weekly_downloads: input.weeklyDownloads,
+        version_count: input.versionCount,
+        has_repository: input.hasRepository,
+        metadata_fetched_at: input.metadataFetchedAt,
+        downloads_fetched_at: input.downloadsFetchedAt,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+  }
+
+  async createCanaryToken(input: CreateCanaryTokenInput): Promise<CanaryTokenRow> {
+    const rows = await this.fetchDb<CanaryTokenRow[]>(
+      `canary_tokens?select=${CANARY_TOKEN_SAFE_COLUMNS}`,
+      {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({
+          organization_id: input.organizationId,
+          target_id: input.targetId,
+          token_hash: input.tokenHash,
+          token_prefix: input.tokenPrefix,
+          label: input.label,
+        }),
+      },
+    );
+    return rows[0];
+  }
+
+  listCanaryTokens(targetId: string): Promise<CanaryTokenRow[]> {
+    return this.fetchDb(
+      `canary_tokens?select=${CANARY_TOKEN_SAFE_COLUMNS}&target_id=eq.${eq(targetId)}&order=created_at.desc`,
+    );
+  }
+
+  getCanaryTokenByHash(tokenHash: string): Promise<CanaryTokenAuthRow | null> {
+    return this.first(
+      `canary_tokens?select=id,organization_id,target_id,token_prefix,revoked_at&token_hash=eq.${eq(tokenHash)}`,
+    );
+  }
+
+  async recordCanaryTokenHit(input: RecordCanaryTokenHitInput): Promise<void> {
+    await this.fetchDb('canary_token_hits', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        canary_token_id: input.canaryTokenId,
+        organization_id: input.organizationId,
+        target_id: input.targetId,
+        source_hash: input.sourceHash,
+        user_agent_hash: input.userAgentHash,
+      }),
+    });
+    // Best-effort counter bump; hit row is the source of truth.
+    await this.fetchDb(`canary_tokens?id=eq.${eq(input.canaryTokenId)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ last_hit_at: new Date().toISOString() }),
+    }).catch(() => undefined);
+  }
+
+  async revokeCanaryToken(id: string): Promise<void> {
+    await this.fetchDb(`canary_tokens?id=eq.${eq(id)}&revoked_at=is.null`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ revoked_at: new Date().toISOString() }),
     });
   }
 }

@@ -1,5 +1,6 @@
 import { lookup } from 'node:dns/promises';
 import { Agent } from 'undici';
+import { containsAssurlyCanaryToken, isAssurlyCanaryToken } from '@assurly/scanner-core';
 import type { WebFinding } from './browserScanner';
 import type { ClaudeClientDeps } from './ai/claudeClient';
 import { extractHeuristicTableNames, planRedTeamProbes } from './ai/redTeamPlanner';
@@ -205,6 +206,10 @@ export function scanBundleForSecretsWithEvidence(bundleText: string): {
     for (const match of bundleText.matchAll(pattern.regex)) {
       const value = match[0];
       if (!value || seen.has(value)) continue;
+      // Planted Assurly canaries are intentional tripwires, not leaks.
+      if (containsAssurlyCanaryToken(value) || isAssurlyCanaryToken(value)) {
+        continue;
+      }
 
       if (pattern.label === 'JWT token' && !isServiceRoleJwt(value)) {
         continue;

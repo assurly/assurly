@@ -16,6 +16,7 @@ import {
   scanStripeMissingSubscriptionEvents,
   scanStripeWebhookIdempotency,
 } from './stripeLifecycle';
+import { containsAssurlyCanaryToken } from './canaryToken';
 
 export type Severity = 'error' | 'warning';
 
@@ -634,6 +635,23 @@ function scanExampleFileSecrets(
     const line = raw.trim();
     if (!line || line.startsWith('#')) return;
     const key = line.split('=')[0]?.trim();
+
+    // Planted Assurly canaries are intentional — informational, never a leak.
+    if (containsAssurlyCanaryToken(line)) {
+      findings.push({
+        ruleId: 'assurly-canary-planted',
+        severity: 'warning',
+        confidence: 'high',
+        file: exampleFile,
+        line: index + 1,
+        message:
+          'Assurly canary token detected. This is an intentional tripwire, not a leaked credential.',
+        suggestion:
+          'Keep the canary planted. If Assurly alerts on canary use, treat it as a confirmed exposure and rotate real secrets.',
+      });
+      return;
+    }
+
     if (/^NEXT_PUBLIC_(?:SUPABASE_SERVICE_ROLE_KEY|STRIPE_(?:SECRET_KEY|SK))\s*=/.test(line))
       findings.push({
         ruleId: 'public-secret',
@@ -761,6 +779,49 @@ export {
   scanAgentMcpConfig,
   scanAgentStack,
 } from './agentStack';
+
+export {
+  DEP_DEFAULT_EVAL_CAP,
+  DEP_LOW_DOWNLOADS,
+  DEP_NEW_UNVETTED,
+  DEP_NONEXISTENT_PACKAGE,
+  DEP_PROXIMITY_MAX_DISTANCE,
+  DEP_REGISTRY_UNAVAILABLE,
+  DEP_SCAN_CAPPED,
+  DEP_SLOPSQUAT_SUSPECT,
+  DEP_TYPOSQUAT_SUSPECT,
+  DEP_YOUNG_AGE_DAYS,
+  collectDependencyNames,
+  contiguousTokenRuns,
+  diffAddedDependencies,
+  evaluateDependencyProvenance,
+  evaluateNewDependencies,
+  findBorrowedCorpusName,
+  getTopNpmPackageCorpus,
+  isAbandonedShape,
+  parsePackageJsonDependencies,
+  scopeOwnsBorrowedName,
+  tokenizePackageName,
+  type BorrowedNameMatch,
+  type DependencyProvenanceScanResult,
+  type DependencyProvenanceSignals,
+  type PackageJsonDependencies,
+} from './dependencyProvenance';
+
+export {
+  damerauLevenshtein,
+  findNearestCorpusMatch,
+  type NearestCorpusMatch,
+} from './editDistance';
+
+export {
+  ASSURLY_CANARY_IN_TEXT,
+  ASSURLY_CANARY_PREFIX,
+  containsAssurlyCanaryToken,
+  extractAssurlyCanaryToken,
+  isAssurlyCanaryBody,
+  isAssurlyCanaryToken,
+} from './canaryToken';
 
 export interface DeeperStackScanOptions {
   /**

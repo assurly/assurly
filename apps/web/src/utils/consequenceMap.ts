@@ -79,6 +79,32 @@ export const CONSEQUENCE_MAP: Record<string, ConsequenceEntry> = {
       'A private credential is shipped to the browser where anyone can read it. Treat it as compromised and rotate it before it is abused.',
   },
 
+  // --- Dependency provenance / slopsquat --------------------------------------
+  'dep-nonexistent-package': {
+    consequence:
+      'This pull request adds a package that does not exist on npm — the install will fail, and an attacker can register the name before you notice.',
+  },
+  'dep-typosquat-suspect': {
+    consequence:
+      'This pull request adds a package whose name is one or two characters off a popular one. That is how typosquat attacks steal install-time secrets.',
+  },
+  'dep-slopsquat-suspect': {
+    consequence:
+      'This pull request adds a package that borrows a popular name but has no real release history — the shape of an AI-hallucinated dependency an attacker can pre-register.',
+  },
+  'dep-new-unvetted': {
+    consequence:
+      'This pull request adds a very new, barely used package. It may be fine — but a wrong dependency is how supply-chain attacks start.',
+  },
+  'dep-registry-unavailable': {
+    consequence:
+      'We could not double-check this new dependency against npm right now, so provenance was skipped for this check.',
+  },
+  'assurly-canary-planted': {
+    consequence:
+      'This is a canary you planted on purpose — Assurly will alert if anyone ever uses it. It is not a leaked secret.',
+  },
+
   // --- Stripe / payments -------------------------------------------------------
   'stripe-webhook-signature': {
     consequence:

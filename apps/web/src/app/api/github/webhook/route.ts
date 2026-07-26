@@ -34,8 +34,22 @@ import {
   selectFiles,
   type WebFinding,
 } from '../../../../utils/browserScanner';
+import { scanPrNewDependencies } from '../../../../utils/prDependencyScan';
+import type { NpmRegistryCacheStore } from '../../../../utils/npmRegistry';
+import { attachSecretExposureWindows } from '../../../../utils/secretExposureWindow';
 
 export const maxDuration = 60;
+
+const gitRefSchema = z
+  .object({
+    sha: z.string().regex(/^[a-f0-9]{40,64}$/i),
+    ref: z
+      .string()
+      .min(1)
+      .max(255)
+      .refine((value) => !value.includes('..') && !value.includes('\0')),
+  })
+  .passthrough();
 
 const pullRequestWebhookSchema = z
   .object({
@@ -49,25 +63,62 @@ const pullRequestWebhookSchema = z
           .min(3)
           .max(201)
           .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
+        private: z.boolean().optional(),
       })
       .passthrough(),
     pull_request: z
       .object({
-        head: z
-          .object({
-            sha: z.string().regex(/^[a-f0-9]{40,64}$/i),
-            ref: z
-              .string()
-              .min(1)
-              .max(255)
-              .refine((value) => !value.includes('..') && !value.includes('\0')),
-          })
-          .passthrough(),
+        head: gitRefSchema,
+        base: gitRefSchema.optional(),
       })
       .passthrough(),
   })
   .passthrough();
 type PullRequestWebhook = z.infer<typeof pullRequestWebhookSchema>;
+
+function createNpmCacheStore(db: DbAdapter): NpmRegistryCacheStore {
+  return {
+    async get(packageName) {
+      const row = await db.getNpmPackageCache(packageName);
+      if (!row) return null;
+      return {
+        packageName: row.package_name,
+        existsOnRegistry: row.exists_on_registry,
+        createdAtRegistry: row.created_at_registry,
+        weeklyDownloads: row.weekly_downloads,
+        versionCount: row.version_count,
+        hasRepository: row.has_repository,
+        metadataFetchedAt: row.metadata_fetched_at,
+        downloadsFetchedAt: row.downloads_fetched_at,
+      };
+    },
+    async upsert(entry) {
+      await db.upsertNpmPackageCache({
+        packageName: entry.packageName,
+        existsOnRegistry: entry.existsOnRegistry,
+        createdAtRegistry: entry.createdAtRegistry,
+        weeklyDownloads: entry.weeklyDownloads,
+        versionCount: entry.versionCount,
+        hasRepository: entry.hasRepository,
+        metadataFetchedAt: entry.metadataFetchedAt ?? new Date().toISOString(),
+        downloadsFetchedAt: entry.downloadsFetchedAt ?? null,
+      });
+    },
+  };
+}
+
+async function tryFetchGitHubFile(
+  token: string,
+  repositoryName: string,
+  path: string,
+  ref: string,
+): Promise<string | null> {
+  try {
+    return await fetchGitHubFile(token, repositoryName, path, ref, 512 * 1024);
+  } catch {
+    return null;
+  }
+}
 
 const treeSchema = z
   .object({
@@ -190,10 +241,18 @@ export function getScannerFileLimit(value = process.env.SCANNER_MAX_FILES): numb
   return Number.isSafeInteger(parsed) ? Math.min(1000, Math.max(1, parsed)) : 100;
 }
 
-async function scanPullRequest(
+/**
+ * Runs the PR check. Exported for degradation tests — production callers use
+ * the webhook `after()` path only.
+ */
+export async function scanPullRequest(
   db: DbAdapter,
   repository: Repository,
   payload: PullRequestWebhook,
+  options: {
+    fetchImpl?: typeof fetch;
+    registryFetchImpl?: typeof fetch;
+  } = {},
 ): Promise<void> {
   const installationId = String(payload.installation.id);
   const repositoryName = payload.repository.full_name;
@@ -263,6 +322,63 @@ async function scanPullRequest(
       const coldStartResult = scanColdStart(content, path);
       findings.push(...coldStartResult.findings.map((finding) => ({ ...finding, path })));
     }
+  }
+
+  // Dependency provenance (slopsquat guard): only newly added deps vs base ref.
+  // Degrades to warnings when npm is unreachable — never fails the PR check.
+  try {
+    const baseSha = payload.pull_request.base?.sha;
+    const packageJsonPaths = tree
+      .filter((node) => node.type === 'blob' && /(^|\/)package\.json$/i.test(node.path))
+      .map((node) => node.path)
+      .slice(0, 5);
+    for (const manifestPath of packageJsonPaths) {
+      const headManifest = await tryFetchGitHubFile(token, repositoryName, manifestPath, commitSha);
+      const baseManifest = baseSha
+        ? await tryFetchGitHubFile(token, repositoryName, manifestPath, baseSha)
+        : null;
+      const depScan = await scanPrNewDependencies({
+        headPackageJson: headManifest,
+        basePackageJson: baseManifest,
+        manifestPath,
+        cache: createNpmCacheStore(db),
+        registry: options.registryFetchImpl ? { fetchImpl: options.registryFetchImpl } : undefined,
+      });
+      findings.push(
+        ...depScan.findings.map((finding) => ({
+          ...finding,
+          path: finding.file ?? manifestPath,
+        })),
+      );
+    }
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        service: 'assurly-api',
+        route: 'github:webhook:dependency-scan',
+        status: 'degraded',
+        errorType: error instanceof Error ? error.name : 'UnknownError',
+      }),
+    );
+  }
+
+  // Exposure window for secret findings (context only — never a new blocker).
+  try {
+    await attachSecretExposureWindows(findings, {
+      token,
+      repositoryName,
+      isPrivate: payload.repository.private === true,
+      fetchImpl: options.fetchImpl,
+    });
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        service: 'assurly-api',
+        route: 'github:webhook:exposure-window',
+        status: 'degraded',
+        errorType: error instanceof Error ? error.name : 'UnknownError',
+      }),
+    );
   }
 
   const errors = findings.filter((finding) => finding.severity === 'error').length;

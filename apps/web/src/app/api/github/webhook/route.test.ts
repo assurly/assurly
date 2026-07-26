@@ -32,6 +32,8 @@ const db = {
   saveScan: vi.fn(),
   getRecentScans: vi.fn(),
   getScanFindings: vi.fn(),
+  getNpmPackageCache: vi.fn().mockResolvedValue(null),
+  upsertNpmPackageCache: vi.fn().mockResolvedValue(undefined),
 };
 
 function request(overrides: { body?: string; secret?: string; delivery?: string } = {}) {

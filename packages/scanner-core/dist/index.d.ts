@@ -54,6 +54,9 @@ export { scanAuthLinkedMigrationNoRls, scanSupabaseDeepPolicies, scanSupabasePol
 export { scanStripeLifecycle, scanStripeLiveKeyInDev, scanStripeMissingSubscriptionEvents, scanStripeWebhookIdempotency, } from './stripeLifecycle';
 export { HIGH_CONFIDENCE_BLOCKER_RULE_IDS, isHighConfidenceBlockerRuleId, type HighConfidenceBlockerRuleId, } from './blockerAllowlist';
 export { isAgentInstructionFile, isAgentMcpConfigFile, isAgentStackFile, redactEnvKey, scanAgentInstructionFile, scanAgentMcpConfig, scanAgentStack, } from './agentStack';
+export { DEP_DEFAULT_EVAL_CAP, DEP_LOW_DOWNLOADS, DEP_NEW_UNVETTED, DEP_NONEXISTENT_PACKAGE, DEP_PROXIMITY_MAX_DISTANCE, DEP_REGISTRY_UNAVAILABLE, DEP_SCAN_CAPPED, DEP_SLOPSQUAT_SUSPECT, DEP_TYPOSQUAT_SUSPECT, DEP_YOUNG_AGE_DAYS, collectDependencyNames, contiguousTokenRuns, diffAddedDependencies, evaluateDependencyProvenance, evaluateNewDependencies, findBorrowedCorpusName, getTopNpmPackageCorpus, isAbandonedShape, parsePackageJsonDependencies, scopeOwnsBorrowedName, tokenizePackageName, type BorrowedNameMatch, type DependencyProvenanceScanResult, type DependencyProvenanceSignals, type PackageJsonDependencies, } from './dependencyProvenance';
+export { damerauLevenshtein, findNearestCorpusMatch, type NearestCorpusMatch, } from './editDistance';
+export { ASSURLY_CANARY_IN_TEXT, ASSURLY_CANARY_PREFIX, containsAssurlyCanaryToken, extractAssurlyCanaryToken, isAssurlyCanaryBody, isAssurlyCanaryToken, } from './canaryToken';
 export interface DeeperStackScanOptions {
     /**
      * Whether to run `scanEdgeRuntime`. The CLI and web already wire the edge

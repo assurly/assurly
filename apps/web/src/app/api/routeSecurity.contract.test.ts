@@ -18,6 +18,8 @@ import { DELETE as scansDelete, GET as scansRead, POST as scansCreate } from './
 import { POST as stripeCheckout } from './stripe/checkout/route';
 import { POST as stripePortal } from './stripe/portal/route';
 import { POST as stripeWebhook } from './stripe/webhook/route';
+import { GET as canaryCallback } from './canary/[token]/route';
+import { GET as canaryList, POST as canaryIssue } from './targets/[id]/canary/route';
 
 interface RouteContract {
   name: string;
@@ -78,6 +80,27 @@ const routes: RouteContract[] = [
   },
   { name: 'Stripe portal', method: 'POST', auth: 'required', csrf: true, handler: stripePortal },
   { name: 'Stripe webhook', method: 'POST', auth: 'none', csrf: false, handler: stripeWebhook },
+  {
+    name: 'canary callback',
+    method: 'GET',
+    auth: 'none',
+    csrf: false,
+    handler: canaryCallback,
+  },
+  {
+    name: 'canary list',
+    method: 'GET',
+    auth: 'required',
+    csrf: false,
+    handler: canaryList,
+  },
+  {
+    name: 'canary issue',
+    method: 'POST',
+    auth: 'required',
+    csrf: true,
+    handler: canaryIssue,
+  },
 ];
 
 describe('API route security contract', () => {
