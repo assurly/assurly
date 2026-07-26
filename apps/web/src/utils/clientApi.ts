@@ -147,6 +147,46 @@ const apiKeyRevokedSchema = z.object({ revoked: z.boolean() });
 const apiKeyDeletedSchema = z.object({ deleted: z.boolean() });
 export type ApiKeySummary = z.infer<typeof apiKeySchema>;
 
+const canaryTokenSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  tokenPrefix: z.string(),
+  hitCount: z.number(),
+  lastHitAt: z.string().nullable(),
+  revokedAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+const canaryListSchema = z.object({
+  targetId: z.string(),
+  prefix: z.string(),
+  tokens: z.array(canaryTokenSchema),
+});
+const canaryIssuedSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  tokenPrefix: z.string(),
+  token: z.string(),
+  plantHint: z.string(),
+  createdAt: z.string(),
+});
+const canaryRevokedSchema = z.object({ revoked: z.boolean() });
+export type CanaryTokenSummary = z.infer<typeof canaryTokenSchema>;
+
+const dependencyProvenanceFindingSchema = z.object({
+  ruleId: z.string(),
+  severity: z.enum(['error', 'warning']),
+  confidence: z.enum(['high', 'medium', 'low']).optional(),
+  file: z.string().optional(),
+  line: z.number().optional(),
+  message: z.string(),
+  suggestion: z.string().optional(),
+});
+const dependencyProvenanceSchema = z.object({
+  evaluatedDependencies: z.array(z.string()),
+  findings: z.array(dependencyProvenanceFindingSchema),
+});
+export type DependencyProvenanceFinding = z.infer<typeof dependencyProvenanceFindingSchema>;
+
 const githubRepositorySchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -286,6 +326,49 @@ export const clientApi = {
         jsonRequest('DELETE'),
       ),
   },
+  canary: {
+    list: (
+      targetId: string,
+    ): Promise<{ targetId: string; prefix: string; tokens: CanaryTokenSummary[] }> =>
+      requestJson(`/api/targets/${encodeURIComponent(targetId)}/canary`, canaryListSchema),
+    issue: (
+      targetId: string,
+      label?: string,
+    ): Promise<{
+      id: string;
+      label: string;
+      tokenPrefix: string;
+      token: string;
+      plantHint: string;
+      createdAt: string;
+    }> =>
+      requestJson(
+        `/api/targets/${encodeURIComponent(targetId)}/canary`,
+        canaryIssuedSchema,
+        jsonRequest('POST', label ? { label } : {}),
+      ),
+    revoke: (targetId: string, tokenId: string): Promise<{ revoked: boolean }> =>
+      requestJson(
+        `/api/targets/${encodeURIComponent(targetId)}/canary/${encodeURIComponent(tokenId)}/revoke`,
+        canaryRevokedSchema,
+        jsonRequest('POST'),
+      ),
+  },
+  dependencyProvenance: (
+    packages: string[],
+    options?: { manifestPath?: string },
+  ): Promise<{
+    evaluatedDependencies: string[];
+    findings: DependencyProvenanceFinding[];
+  }> =>
+    requestJson(
+      '/api/dependencies/provenance',
+      dependencyProvenanceSchema,
+      jsonRequest('POST', {
+        packages,
+        ...(options?.manifestPath ? { manifestPath: options.manifestPath } : {}),
+      }),
+    ),
 };
 
 export const githubApi = {

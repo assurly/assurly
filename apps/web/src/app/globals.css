@@ -4968,6 +4968,56 @@ body:has(.cookie-notice) {
   transform: rotate(90deg);
 }
 
+/* Canary tokens — reuse api-keys list/reveal language; hits block is unique. */
+.canary-tokens__hits {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, var(--color-border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface));
+  min-width: 0;
+}
+
+.canary-tokens__hits-title {
+  margin: 0 0 6px;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--color-text-primary);
+}
+
+.canary-tokens__hits-copy {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
+.canary-tokens__hits-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.canary-tokens__hits-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  min-width: 0;
+  font-size: 0.78rem;
+}
+
+.canary-tokens__hits-meta {
+  flex: 1 1 100%;
+  color: var(--color-text-muted);
+  min-width: 0;
+  word-break: break-word;
+}
+
 .ownership-verify {
   margin-top: 16px;
   padding: 16px;

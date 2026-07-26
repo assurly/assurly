@@ -7,6 +7,7 @@ import { isLikelyScannableUrl } from '../../../utils/urlValidation';
 import { ShipGatePanel } from '../../_components/ship-gate/ShipGatePanel';
 import { DeepReviewPanel, type DeepReviewView } from './DeepReviewPanel';
 import { AlertPreferences } from './AlertPreferences';
+import { CanaryTokens } from './CanaryTokens';
 import { OwnershipVerify } from './OwnershipVerify';
 import { ProofEvidence, type ProofEvidenceItem } from './ProofEvidence';
 
@@ -316,7 +317,10 @@ export function DeployedUrlScanResults({
           />
         ) : null}
         {scanResults.target?.ownershipVerified ? (
-          <AlertPreferences targetId={scanResults.target.id} />
+          <>
+            <AlertPreferences targetId={scanResults.target.id} />
+            <CanaryTokens targetId={scanResults.target.id} />
+          </>
         ) : null}
         <p className="dashboard-url-scan-hint">
           This is a runtime probe of your live URL — fix the items above on your host or in your

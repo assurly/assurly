@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useEffectEvent, useRef, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { collectDependencyNames, parsePackageJsonDependencies } from '@assurly/scanner-core';
 import type { User, Organization, Repository, Scan, ScanFinding } from '../../../utils/dbAdapter';
 import {
   scanSqlMigration,
@@ -47,6 +48,7 @@ import { buildShipGateFromScanFindings } from '../../../utils/shipGate';
 import { RepoListPanel } from './RepoListPanel';
 import { VerdictCardsSection } from './VerdictCardsSection';
 import { ApiKeys } from './ApiKeys';
+import { CanaryTokens } from './CanaryTokens';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { DashboardTabs } from './DashboardTabs';
 import { PublicRepoConnect } from './PublicRepoConnect';
@@ -304,6 +306,8 @@ function DashboardContent({
   // Verdict cards re-fetch whenever a scan finishes (the target was refreshed
   // server-side during save), so the dashboard verdict reflects the new result.
   const [verdictRefreshKey, setVerdictRefreshKey] = useState(0);
+  /** Real UUID target ids keyed by repository id — synthetic `repo:…` cards are omitted. */
+  const [targetIdByRepoId, setTargetIdByRepoId] = useState<Record<string, string>>({});
   const wasScanningRef = useRef(false);
   // Set when a scan is kicked off from the tools column (Scan Public Repository),
   // where the user is scrolled away from the results canvas. On completion we
@@ -321,6 +325,29 @@ function DashboardContent({
     }
     wasScanningRef.current = isScanning;
   }, [isScanning]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void clientApi
+      .targets()
+      .then(({ targets }) => {
+        if (cancelled) return;
+        const next: Record<string, string> = {};
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        for (const target of targets) {
+          if (target.kind === 'repo' && target.repositoryId && uuid.test(target.id)) {
+            next[target.repositoryId] = target.id;
+          }
+        }
+        setTargetIdByRepoId(next);
+      })
+      .catch(() => {
+        // Non-fatal — canary panel simply stays hidden until targets load.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [verdictRefreshKey, repos]);
 
   useEffect(() => {
     const pendingRepo = window.localStorage.getItem('last_scanned_public_repo');
@@ -1351,6 +1378,35 @@ function DashboardContent({
         }
       }
 
+      // Dependency provenance — server proxy (never hit npm from the browser).
+      // Degrade silently: a registry outage must not fail the rest of the scan.
+      if (packageJsonText && !scanAbortRef.current) {
+        try {
+          const parsedManifest = parsePackageJsonDependencies(packageJsonText);
+          const declared = parsedManifest ? [...collectDependencyNames(parsedManifest)] : [];
+          if (declared.length > 0) {
+            setScanLogs((prev) => [
+              ...prev,
+              `📦 Checking dependency provenance (${declared.length} package(s))...`,
+            ]);
+            const depResult = await clientApi.dependencyProvenance(declared);
+            for (const finding of depResult.findings) {
+              allFindings.push({
+                ruleId: finding.ruleId,
+                severity: finding.severity,
+                confidence: finding.confidence,
+                file: finding.file,
+                line: finding.line,
+                message: finding.message,
+                suggestion: finding.suggestion,
+              });
+            }
+          }
+        } catch {
+          // Intentionally empty — provenance is best-effort on the dashboard path.
+        }
+      }
+
       // Check for missing GitHub Actions workflow with an Assurly scan step
       let hasScanWorkflow = false;
       for (const workflowPath of workflowPaths) {
@@ -1608,6 +1664,28 @@ function DashboardContent({
                 <DeployedUrlScanCard scan={urlScan} />
 
                 <ApiKeys />
+
+                {selectedRepo ? (
+                  targetIdByRepoId[selectedRepo.id] ? (
+                    <CanaryTokens targetId={targetIdByRepoId[selectedRepo.id]!} />
+                  ) : (
+                    // A repository has no real target row until its first scan
+                    // completes, and canaries hang off the target. Rendering
+                    // nothing here made the feature look absent rather than
+                    // pending — say which step is missing instead.
+                    <section
+                      className="dashboard-public-connect api-keys canary-tokens"
+                      aria-label="Canary tokens"
+                    >
+                      <h4 className="dashboard-public-connect__title">Canary tokens</h4>
+                      <p className="dashboard-public-connect__copy">
+                        Scan this repository once to enable canary tokens. A canary is a fake
+                        credential you plant where a thief might look — if anyone ever uses it,
+                        Assurly records a hit.
+                      </p>
+                    </section>
+                  )
+                ) : null}
               </div>
 
               {resultsView === 'url' && urlScan.hasActivity ? (

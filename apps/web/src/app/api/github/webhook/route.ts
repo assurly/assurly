@@ -35,7 +35,7 @@ import {
   type WebFinding,
 } from '../../../../utils/browserScanner';
 import { scanPrNewDependencies } from '../../../../utils/prDependencyScan';
-import type { NpmRegistryCacheStore } from '../../../../utils/npmRegistry';
+import { createDbNpmCacheStore } from '../../../../utils/dependencyProvenanceLookup';
 import { attachSecretExposureWindows } from '../../../../utils/secretExposureWindow';
 
 export const maxDuration = 60;
@@ -75,37 +75,6 @@ const pullRequestWebhookSchema = z
   })
   .passthrough();
 type PullRequestWebhook = z.infer<typeof pullRequestWebhookSchema>;
-
-function createNpmCacheStore(db: DbAdapter): NpmRegistryCacheStore {
-  return {
-    async get(packageName) {
-      const row = await db.getNpmPackageCache(packageName);
-      if (!row) return null;
-      return {
-        packageName: row.package_name,
-        existsOnRegistry: row.exists_on_registry,
-        createdAtRegistry: row.created_at_registry,
-        weeklyDownloads: row.weekly_downloads,
-        versionCount: row.version_count,
-        hasRepository: row.has_repository,
-        metadataFetchedAt: row.metadata_fetched_at,
-        downloadsFetchedAt: row.downloads_fetched_at,
-      };
-    },
-    async upsert(entry) {
-      await db.upsertNpmPackageCache({
-        packageName: entry.packageName,
-        existsOnRegistry: entry.existsOnRegistry,
-        createdAtRegistry: entry.createdAtRegistry,
-        weeklyDownloads: entry.weeklyDownloads,
-        versionCount: entry.versionCount,
-        hasRepository: entry.hasRepository,
-        metadataFetchedAt: entry.metadataFetchedAt ?? new Date().toISOString(),
-        downloadsFetchedAt: entry.downloadsFetchedAt ?? null,
-      });
-    },
-  };
-}
 
 async function tryFetchGitHubFile(
   token: string,
@@ -341,7 +310,7 @@ export async function scanPullRequest(
         headPackageJson: headManifest,
         basePackageJson: baseManifest,
         manifestPath,
-        cache: createNpmCacheStore(db),
+        cache: createDbNpmCacheStore(db),
         registry: options.registryFetchImpl ? { fetchImpl: options.registryFetchImpl } : undefined,
       });
       findings.push(

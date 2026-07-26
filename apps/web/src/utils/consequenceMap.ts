@@ -105,6 +105,40 @@ export const CONSEQUENCE_MAP: Record<string, ConsequenceEntry> = {
       'This is a canary you planted on purpose — Assurly will alert if anyone ever uses it. It is not a leaked secret.',
   },
 
+  // --- Agent stack (MCP configs & instruction files) --------------------------
+  'agent-mcp-unpinned-version': {
+    consequence:
+      'Your AI coding agent can silently pick up a different MCP server on the next run — the tool it trusts today may not be the one it runs tomorrow.',
+  },
+  'agent-mcp-shell-execution': {
+    consequence:
+      'Your AI agent can execute arbitrary shell commands through this MCP setup, so a compromised tool can change files, run scripts, or touch production systems as you.',
+  },
+  'agent-mcp-insecure-endpoint': {
+    consequence:
+      'Your agent’s tool traffic travels over an unencrypted connection, so someone on the network can see or alter what the agent sends and receives — including credentials.',
+  },
+  'agent-mcp-inline-secret': {
+    consequence:
+      'A live credential sits in an agent config file that is often committed or synced. Anyone with that file can use the secret as you.',
+  },
+  'agent-mcp-unscoped-package': {
+    consequence:
+      'Your agent may install an MCP package from a name that is easy to typo or impersonate — a wrong install can run attacker code in your development environment.',
+  },
+  'agent-hidden-instruction': {
+    consequence:
+      'Hidden text can steer your AI agent without you seeing it — it may follow instructions you never meant to approve.',
+  },
+  'agent-instruction-override': {
+    consequence:
+      'A project file tries to make your AI agent ignore its safety rules or hide what it is doing, so it can act without your knowledge.',
+  },
+  'agent-exfiltration-directive': {
+    consequence:
+      'Instructions tell your AI agent to send secrets or private data somewhere else — a planted leak path out of your project.',
+  },
+
   // --- Stripe / payments -------------------------------------------------------
   'stripe-webhook-signature': {
     consequence:

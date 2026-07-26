@@ -8,16 +8,13 @@
 import {
   DEP_DEFAULT_EVAL_CAP,
   diffAddedDependencies,
-  evaluateNewDependencies,
   parsePackageJsonDependencies,
-  type DependencyProvenanceSignals,
   type ScannerFinding,
 } from '@assurly/scanner-core';
 import {
-  lookupNpmPackages,
-  type NpmRegistryCacheStore,
-  type NpmRegistryClientOptions,
-} from './npmRegistry';
+  evaluateNamedDependencies,
+  type EvaluateNamedDependenciesInput,
+} from './dependencyProvenanceLookup';
 
 export interface PrDependencyScanInput {
   /** package.json text at the PR head (required to evaluate). */
@@ -28,8 +25,8 @@ export interface PrDependencyScanInput {
   manifestPath?: string;
   /** Cap on new deps evaluated per PR. */
   cap?: number;
-  registry?: NpmRegistryClientOptions;
-  cache?: NpmRegistryCacheStore;
+  registry?: EvaluateNamedDependenciesInput['registry'];
+  cache?: EvaluateNamedDependenciesInput['cache'];
 }
 
 export interface PrDependencyScanResult {
@@ -59,59 +56,16 @@ export async function scanPrNewDependencies(
     return { addedDependencies: [], findings: [] };
   }
 
-  const manifestPath = input.manifestPath ?? 'package.json';
-  const cap = input.cap ?? DEP_DEFAULT_EVAL_CAP;
-  const toLookup = added.slice(0, cap);
-
-  let metadata;
-  try {
-    metadata = await lookupNpmPackages(toLookup, {
-      ...input.registry,
-      cache: input.cache ?? input.registry?.cache,
-    });
-  } catch {
-    // Absolute last resort: every lookup unavailable, still finish the PR.
-    metadata = toLookup.map((packageName) => ({
-      packageName,
-      exists: null,
-      ageDays: null,
-      weeklyDownloads: null,
-      versionCount: null,
-      hasRepository: null,
-      unavailable: true,
-    }));
-  }
-
-  const signals: DependencyProvenanceSignals[] = metadata.map((entry) => ({
-    packageName: entry.packageName,
-    file: manifestPath,
-    // When metadata says unavailable, force exists=null so we emit the warning
-    // rule rather than silently skipping.
-    exists: entry.unavailable && entry.exists !== false ? null : entry.exists,
-    ageDays: entry.ageDays,
-    weeklyDownloads: entry.weeklyDownloads,
-    versionCount: entry.versionCount,
-    hasRepository: entry.hasRepository,
-  }));
-
-  // Preserve overflow packages in the signals list so evaluateNewDependencies
-  // can emit the cap warning with the full count.
-  const overflowSignals: DependencyProvenanceSignals[] = added.slice(cap).map((name) => ({
-    packageName: name,
-    file: manifestPath,
-    exists: null,
-    ageDays: null,
-    weeklyDownloads: null,
-    versionCount: null,
-    hasRepository: null,
-  }));
-
-  const evaluated = evaluateNewDependencies([...signals, ...overflowSignals], {
-    cap,
+  const result = await evaluateNamedDependencies({
+    packageNames: added,
+    manifestPath: input.manifestPath ?? 'package.json',
+    cap: input.cap ?? DEP_DEFAULT_EVAL_CAP,
+    registry: input.registry,
+    cache: input.cache,
   });
 
   return {
     addedDependencies: added,
-    findings: evaluated.findings,
+    findings: result.findings,
   };
 }

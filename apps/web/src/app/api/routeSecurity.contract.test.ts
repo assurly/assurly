@@ -20,6 +20,8 @@ import { POST as stripePortal } from './stripe/portal/route';
 import { POST as stripeWebhook } from './stripe/webhook/route';
 import { GET as canaryCallback } from './canary/[token]/route';
 import { GET as canaryList, POST as canaryIssue } from './targets/[id]/canary/route';
+import { POST as canaryRevoke } from './targets/[id]/canary/[tokenId]/revoke/route';
+import { POST as dependencyProvenance } from './dependencies/provenance/route';
 
 interface RouteContract {
   name: string;
@@ -100,6 +102,20 @@ const routes: RouteContract[] = [
     auth: 'required',
     csrf: true,
     handler: canaryIssue,
+  },
+  {
+    name: 'canary revoke',
+    method: 'POST',
+    auth: 'required',
+    csrf: true,
+    handler: canaryRevoke,
+  },
+  {
+    name: 'dependency provenance',
+    method: 'POST',
+    auth: 'required',
+    csrf: true,
+    handler: dependencyProvenance,
   },
 ];
 

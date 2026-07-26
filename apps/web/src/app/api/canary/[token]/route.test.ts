@@ -115,6 +115,22 @@ describe('canary callback oracle safety', () => {
     expect(body).not.toContain('org-secret-id');
     expect(body).not.toContain('target-secret-id');
   });
+
+  it('does not record a hit for a revoked canary (still byte-identical)', async () => {
+    db.getCanaryTokenByHash.mockResolvedValue({
+      id: 'c1',
+      organization_id: 'org-secret-id',
+      target_id: 'target-secret-id',
+      token_prefix: `${ASSURLY_CANARY_PREFIX}bbbbbb`,
+      revoked_at: '2026-07-20T00:00:00.000Z',
+    });
+    const response = await GET(new Request(`http://localhost/api/canary/${VALID}`), {
+      params: Promise.resolve({ token: VALID }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(JSON.stringify(CANARY_CALLBACK_BODY));
+    expect(db.recordCanaryTokenHit).not.toHaveBeenCalled();
+  });
 });
 
 describe('canary callback rate limit', () => {
