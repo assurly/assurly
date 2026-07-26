@@ -163,6 +163,53 @@ const SCANNER_RULE_EXPLANATIONS: Record<
     howToFix:
       'Remove directives that tell the agent to send credentials or `.env` contents to a remote endpoint.',
   },
+  'supply-install-scripts-unreviewed': {
+    title: 'Install scripts present without an allowScripts allowlist',
+    explanation:
+      'The lockfile marks packages with hasInstallScript, but root package.json has no allowScripts and .npmrc does not set ignore-scripts=true. Under npm 12 those scripts are blocked by default — without an allowlist you have not recorded which ones you trust.',
+    howToFix:
+      'Run `npm install-scripts --allow-scripts-pending`, then pin exact versions in root package.json allowScripts (or set ignore-scripts=true if you intend to run none).',
+  },
+  'supply-allowscripts-unpinned': {
+    title: 'allowScripts entry is not pinned to an exact version',
+    explanation:
+      'A bare package name or `name@*` in allowScripts grants install-script execution to every version forever — including a release published tomorrow after a package takeover.',
+    howToFix: 'Pin an exact version (e.g. `"pkg@1.2.3": true`). Avoid bare names and `name@*`.',
+  },
+  'supply-allowscripts-stale': {
+    title: 'allowScripts lists a package not in the lockfile',
+    explanation:
+      'A dead allowlist entry is not merely untidy. If that name is later re-added — by an agent recalling a package it once used, or by someone registering an abandoned name (see dep-slopsquat-suspect) — it installs with script execution already approved.',
+    howToFix: 'Remove stale keys with `npm install-scripts prune`, or delete the entry by hand.',
+  },
+  'supply-allowscripts-invalid': {
+    title: 'allowScripts key is silently dropped by npm',
+    explanation:
+      'npm rejects allowScripts keys that use ranges (^/~/>=/<) or dist-tags (latest/next). The author believes the entry grants something it does not.',
+    howToFix:
+      'Use a bare name, `name@*`, or exact versions joined by `||` (e.g. `"pkg@1.0.0||2.0.0": true`).',
+  },
+  'supply-allowscripts-in-workspace': {
+    title: 'allowScripts declared in a workspace package',
+    explanation:
+      'npm only reads allowScripts from the workspace root. A sub-workspace declaration is silently ignored.',
+    howToFix:
+      'Move the allowScripts map into the root package.json, then remove it from the workspace package.',
+  },
+  'supply-non-registry-dependency': {
+    title: 'Non-registry dependency (git / URL / tarball)',
+    explanation:
+      'A dependency comes from git, a URL, or a remote tarball. npm 12 blocks those by default unless allow-git / allow-remote is set deliberately.',
+    howToFix:
+      'Prefer a registry package with a pinned version. If the non-registry source is intentional, set the matching npm allow flag on purpose — not because an agent needed the install to succeed.',
+  },
+  'supply-npm-below-v12': {
+    title: 'Project permits npm below 12',
+    explanation:
+      'packageManager or engines.npm allows npm below 12, so install-script allowlisting and related defaults do not apply.',
+    howToFix:
+      'Pin npm 12+, e.g. `"packageManager": "npm@12.0.1"` or `"engines": { "npm": ">=12" }`.',
+  },
   'dep-nonexistent-package': {
     title: 'Dependency does not exist on npm',
     explanation:

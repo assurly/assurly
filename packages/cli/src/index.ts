@@ -33,23 +33,33 @@ program
     'Focused mode: scan only the agent stack (MCP configs and instruction files)',
     false,
   )
+  .option(
+    '--supply',
+    'Focused mode: scan only install-time trust (npm allowScripts / lockfile scripts)',
+    false,
+  )
   .action(async (options) => {
     const targetDir = path.resolve(options.path);
     const agentOnly = Boolean(options.agent);
-    const spinner = ora(
-      chalk.cyan(
-        agentOnly
+    const supplyOnly = Boolean(options.supply);
+    const focusedLabel =
+      agentOnly && supplyOnly
+        ? 'Scanning agent stack and install-time trust...'
+        : agentOnly
           ? 'Scanning agent stack (MCP configs and instruction files)...'
-          : 'Detecting stack and scanning configurations...',
-      ),
-    ).start();
+          : supplyOnly
+            ? 'Scanning install-time trust (allowScripts / lockfile scripts)...'
+            : 'Detecting stack and scanning configurations...';
+    const spinner = ora(chalk.cyan(focusedLabel)).start();
 
     try {
       spinner.text = chalk.cyan(
-        agentOnly ? 'Running agent-stack checks...' : 'Running production-readiness checks...',
+        agentOnly || supplyOnly
+          ? 'Running focused checks...'
+          : 'Running production-readiness checks...',
       );
 
-      let scanResult = await scanProjectDirectory(targetDir, { agentOnly });
+      let scanResult = await scanProjectDirectory(targetDir, { agentOnly, supplyOnly });
       const { context } = scanResult;
       let { findings } = scanResult;
       let shipGate = scanResult.report;
@@ -61,7 +71,7 @@ program
         const fixed = await applyFixesInteractive(targetDir, findings);
         if (fixed > 0) {
           console.log(chalk.green(`\nApplied ${fixed} auto-fix(es). Re-running scan...\n`));
-          scanResult = await scanProjectDirectory(targetDir, { agentOnly });
+          scanResult = await scanProjectDirectory(targetDir, { agentOnly, supplyOnly });
           findings = scanResult.findings;
           shipGate = scanResult.report;
         } else {

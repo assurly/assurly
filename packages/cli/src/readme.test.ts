@@ -30,6 +30,7 @@ const RULE_AREA_LABELS: Record<string, string> = {
   'database-migration-safety': 'SQL / migration safety',
   'deeper-stack-rules': 'Deeper stack',
   'agent-stack': 'Agent stack',
+  'supply-chain': 'Install-time trust',
 };
 
 describe('CLI README', () => {

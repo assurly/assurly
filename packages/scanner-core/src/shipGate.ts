@@ -67,14 +67,28 @@ function isAgentStackRuleId(ruleId: string | undefined): boolean {
   return typeof ruleId === 'string' && ruleId.startsWith('agent-');
 }
 
+/**
+ * Install-time trust (`supply-*`) findings are intentionally warning-only —
+ * npm 12 is new and most projects will light up on first scan. Keeping ids off
+ * `HIGH_CONFIDENCE_BLOCKER_RULE_IDS` was not enough for `agent-*` (severity can
+ * still be raised); route `supply-*` away from blockers here too.
+ */
+function isSupplyChainRuleId(ruleId: string | undefined): boolean {
+  return typeof ruleId === 'string' && ruleId.startsWith('supply-');
+}
+
+function isNonBlockingAdvisoryRuleId(ruleId: string | undefined): boolean {
+  return isAgentStackRuleId(ruleId) || isSupplyChainRuleId(ruleId);
+}
+
 function isBlockerFinding(finding: ShipGateFindingInput): boolean {
-  if (isAgentStackRuleId(finding.ruleId)) return false;
+  if (isNonBlockingAdvisoryRuleId(finding.ruleId)) return false;
   return finding.severity === 'error' && effectiveConfidence(finding.confidence) === 'high';
 }
 
 function isReviewFinding(finding: ShipGateFindingInput): boolean {
   if (finding.severity !== 'error') return false;
-  if (isAgentStackRuleId(finding.ruleId)) return true;
+  if (isNonBlockingAdvisoryRuleId(finding.ruleId)) return true;
   return effectiveConfidence(finding.confidence) !== 'high';
 }
 

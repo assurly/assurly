@@ -139,6 +139,36 @@ export const CONSEQUENCE_MAP: Record<string, ConsequenceEntry> = {
       'Instructions tell your AI agent to send secrets or private data somewhere else — a planted leak path out of your project.',
   },
 
+  // --- Install-time trust (npm allowScripts / lockfile scripts) ----------------
+  'supply-install-scripts-unreviewed': {
+    consequence:
+      'Dependencies can run code on your machine at install time, and you have not written down which ones you allow — so the next install (or an agent fixing a failed install) may approve more than you meant.',
+  },
+  'supply-allowscripts-unpinned': {
+    consequence:
+      'You approved install scripts for every future version of a package. A release published tomorrow — or after a package takeover — can run on your machine without another review.',
+  },
+  'supply-allowscripts-stale': {
+    consequence:
+      'An old allowlist entry sits ready for a package name you no longer use. If that name comes back (or is registered by someone else), it installs with script execution already approved.',
+  },
+  'supply-allowscripts-invalid': {
+    consequence:
+      'You think a package is allowed to run install scripts, but npm silently ignored the allowlist entry — so your protection is not what the file suggests.',
+  },
+  'supply-allowscripts-in-workspace': {
+    consequence:
+      'A workspace package lists install-script permissions that npm never reads, so the allowlist you edited has no effect at install time.',
+  },
+  'supply-non-registry-dependency': {
+    consequence:
+      'Code is pulled from git or a remote tarball instead of the registry. That path skips the usual package publish checks and can change without a version bump you review.',
+  },
+  'supply-npm-below-v12': {
+    consequence:
+      'This project still allows older npm, so the install-script defaults and allowlist behaviour you may be counting on are not in force.',
+  },
+
   // --- Stripe / payments -------------------------------------------------------
   'stripe-webhook-signature': {
     consequence:

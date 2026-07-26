@@ -32,13 +32,32 @@ export interface RunRulesOptions {
    * scan — this flag is focused mode, not an opt-in.
    */
   agentOnly?: boolean;
+  /**
+   * When true, run only the install-time trust surface (`supply-*` / allowScripts)
+   * and skip application rules. Used by `assurly scan --supply`. Supply rules
+   * still run in the default full scan — this flag is focused mode, not an opt-in.
+   */
+  supplyOnly?: boolean;
+}
+
+function selectRules(options: RunRulesOptions): typeof allRules {
+  if (options.agentOnly && options.supplyOnly) {
+    return allRules.filter((rule) => rule.id === 'agent-stack' || rule.id === 'supply-chain');
+  }
+  if (options.agentOnly) {
+    return allRules.filter((rule) => rule.id === 'agent-stack');
+  }
+  if (options.supplyOnly) {
+    return allRules.filter((rule) => rule.id === 'supply-chain');
+  }
+  return allRules;
 }
 
 export async function runAllRules(
   context: ProjectContext,
   options: RunRulesOptions = {},
 ): Promise<Finding[]> {
-  const rules = options.agentOnly ? allRules.filter((rule) => rule.id === 'agent-stack') : allRules;
+  const rules = selectRules(options);
   const findings: Finding[] = [];
   for (const rule of rules) {
     try {

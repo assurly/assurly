@@ -48,8 +48,20 @@ function ruleErrorMessage(error) {
         return error.message;
     return String(error);
 }
+function selectRules(options) {
+    if (options.agentOnly && options.supplyOnly) {
+        return rules_1.allRules.filter((rule) => rule.id === 'agent-stack' || rule.id === 'supply-chain');
+    }
+    if (options.agentOnly) {
+        return rules_1.allRules.filter((rule) => rule.id === 'agent-stack');
+    }
+    if (options.supplyOnly) {
+        return rules_1.allRules.filter((rule) => rule.id === 'supply-chain');
+    }
+    return rules_1.allRules;
+}
 async function runAllRules(context, options = {}) {
-    const rules = options.agentOnly ? rules_1.allRules.filter((rule) => rule.id === 'agent-stack') : rules_1.allRules;
+    const rules = selectRules(options);
     const findings = [];
     for (const rule of rules) {
         try {

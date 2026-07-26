@@ -19,6 +19,10 @@ exports.isHighConfidenceBlockerRuleId = isHighConfidenceBlockerRuleId;
  * environment — not the app under ship — and blocking on them would destroy
  * trust on the first scan. See `agentStack.ts` and `shipGate.ts`.
  *
+ * Install-time trust rule ids (`supply-*`) must NEVER appear here either.
+ * They are warning-only by product decision (npm 12 is new; blocking week-one
+ * migrations uninstalls the gate). See `supplyChain.ts` and `shipGate.ts`.
+ *
  * Dependency provenance blockers require near-certainty:
  *   - dep-nonexistent-package: registry 404 (cannot install → blocking is free)
  *   - dep-typosquat-suspect: young AND low downloads AND edit distance ≤ 2

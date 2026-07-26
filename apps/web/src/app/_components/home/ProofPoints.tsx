@@ -21,7 +21,7 @@ import React from 'react';
  */
 
 /** Rule areas in packages/cli/src/rules/index.ts (`allRules`). */
-const RULE_AREA_COUNT = 12;
+const RULE_AREA_COUNT = 13;
 
 /** Tools in packages/mcp-server/src/tools.ts (`ASSURLY_MCP_TOOL_NAMES`). */
 const MCP_TOOL_COUNT = 5;
@@ -40,7 +40,7 @@ export const PROOF_POINTS: ProofPoint[] = [
     id: 'rules',
     claim: `${RULE_AREA_COUNT} rule areas`,
     detail:
-      'Supabase row-level security, Stripe webhook signatures, secrets in client bundles, React Server Component leaks, migration safety, connection pooling, edge compatibility, cold starts, and the agent tooling itself.',
+      'Supabase row-level security, Stripe webhook signatures, secrets in client bundles, React Server Component leaks, migration safety, connection pooling, edge compatibility, cold starts, agent tooling, and install-time trust (npm allowScripts).',
     href: 'https://www.npmjs.com/package/assurly',
     linkLabel: 'Read the rule list',
     external: true,

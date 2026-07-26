@@ -15,6 +15,12 @@ export interface RunRulesOptions {
      * scan — this flag is focused mode, not an opt-in.
      */
     agentOnly?: boolean;
+    /**
+     * When true, run only the install-time trust surface (`supply-*` / allowScripts)
+     * and skip application rules. Used by `assurly scan --supply`. Supply rules
+     * still run in the default full scan — this flag is focused mode, not an opt-in.
+     */
+    supplyOnly?: boolean;
 }
 export declare function runAllRules(context: ProjectContext, options?: RunRulesOptions): Promise<Finding[]>;
 export declare function scanProjectDirectory(projectPath: string, options?: RunRulesOptions): Promise<ScanProjectResult>;

@@ -62,15 +62,24 @@ program
     .option('-j, --json', 'Output findings in raw JSON format', false)
     .option('-f, --fix', 'Automatically attempt to fix configuration issues', false)
     .option('--agent', 'Focused mode: scan only the agent stack (MCP configs and instruction files)', false)
+    .option('--supply', 'Focused mode: scan only install-time trust (npm allowScripts / lockfile scripts)', false)
     .action(async (options) => {
     const targetDir = path.resolve(options.path);
     const agentOnly = Boolean(options.agent);
-    const spinner = (0, ora_1.default)(chalk_1.default.cyan(agentOnly
-        ? 'Scanning agent stack (MCP configs and instruction files)...'
-        : 'Detecting stack and scanning configurations...')).start();
+    const supplyOnly = Boolean(options.supply);
+    const focusedLabel = agentOnly && supplyOnly
+        ? 'Scanning agent stack and install-time trust...'
+        : agentOnly
+            ? 'Scanning agent stack (MCP configs and instruction files)...'
+            : supplyOnly
+                ? 'Scanning install-time trust (allowScripts / lockfile scripts)...'
+                : 'Detecting stack and scanning configurations...';
+    const spinner = (0, ora_1.default)(chalk_1.default.cyan(focusedLabel)).start();
     try {
-        spinner.text = chalk_1.default.cyan(agentOnly ? 'Running agent-stack checks...' : 'Running production-readiness checks...');
-        let scanResult = await (0, scanProject_1.scanProjectDirectory)(targetDir, { agentOnly });
+        spinner.text = chalk_1.default.cyan(agentOnly || supplyOnly
+            ? 'Running focused checks...'
+            : 'Running production-readiness checks...');
+        let scanResult = await (0, scanProject_1.scanProjectDirectory)(targetDir, { agentOnly, supplyOnly });
         const { context } = scanResult;
         let { findings } = scanResult;
         let shipGate = scanResult.report;
@@ -80,7 +89,7 @@ program
             const fixed = await (0, fixer_1.applyFixesInteractive)(targetDir, findings);
             if (fixed > 0) {
                 console.log(chalk_1.default.green(`\nApplied ${fixed} auto-fix(es). Re-running scan...\n`));
-                scanResult = await (0, scanProject_1.scanProjectDirectory)(targetDir, { agentOnly });
+                scanResult = await (0, scanProject_1.scanProjectDirectory)(targetDir, { agentOnly, supplyOnly });
                 findings = scanResult.findings;
                 shipGate = scanResult.report;
             }

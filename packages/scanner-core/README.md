@@ -19,12 +19,11 @@ Each rule carries an honest **confidence** so the Ship Gate can separate the thr
 
 Detection is intentionally **precise over exhaustive**: a rule that can't be defended to a senior engineer in 30 seconds is not a blocker.
 
-> **Rule set is frozen (2026-07-13).** The static rules are a stable, high-trust free funnel — not the
-> product's differentiator. Per the [genius-rebuild master plan](../../docs/roadmap/10-genius-rebuild-master-plan.md),
-> the product's center of gravity is moving to runtime proof-of-exploit + an AI reasoning layer, because a
-> fixed rulebook is exactly what a general LLM commoditizes. **Do not add net-new rules** unless a change
-> demonstrably raises _trust/precision_ of the existing gate (fewer false positives, better confidence
-> calibration). Depth now comes from the runtime probe and the AI layer, not from more static rules.
+> **Static rules stay high-trust and few.** Prefer raising precision of the existing gate over growing
+> the rulebook. Net-new static surfaces (e.g. install-time trust / `supply-*`) are exceptions when they
+> audit a durable local trust artefact with zero network and clear false-positive discipline. Depth
+> otherwise comes from the runtime probe and the AI layer — see the
+> [genius-rebuild master plan](../../docs/roadmap/10-genius-rebuild-master-plan.md).
 
 ## Usage
 

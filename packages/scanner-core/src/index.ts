@@ -781,6 +781,28 @@ export {
 } from './agentStack';
 
 export {
+  SUPPLY_ALLOWSCRIPTS_IN_WORKSPACE,
+  SUPPLY_ALLOWSCRIPTS_INVALID,
+  SUPPLY_ALLOWSCRIPTS_STALE,
+  SUPPLY_ALLOWSCRIPTS_UNPINNED,
+  SUPPLY_CHAIN_RULE_IDS,
+  SUPPLY_INSTALL_SCRIPTS_UNREVIEWED,
+  SUPPLY_NON_REGISTRY_DEPENDENCY,
+  SUPPLY_NPM_BELOW_V12,
+  classifyAllowScriptsKey,
+  enginesNpmPermitsBelow12,
+  isSupplyChainRuleId,
+  packageNameFromLockKey,
+  parsePackageManagerNpmMajor,
+  readIgnoreScriptsFromNpmrc,
+  scanSupplyChain,
+  type SupplyChainRuleId,
+  type SupplyChainScanInput,
+  type SupplyChainScanResult,
+  type WorkspacePackageJsonInput,
+} from './supplyChain';
+
+export {
   DEP_DEFAULT_EVAL_CAP,
   DEP_LOW_DOWNLOADS,
   DEP_NEW_UNVETTED,
