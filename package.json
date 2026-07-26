@@ -20,6 +20,7 @@
     "build:vscode": "npm run build:scanner && npm run vscode:prepublish -w packages/vscode-extension",
     "build:artifacts": "npm run build:cli && npm run build -w packages/mcp-server && npm run build:action && npm run build:vscode",
     "pack:release": "npm pack -w packages/scanner-core -w packages/cli --dry-run && npm run package:vsix -w packages/vscode-extension",
+    "sbom:published": "node scripts/generate-sbom.mjs",
     "test:action": "npm test -w packages/github-action",
     "test": "npm test --workspaces --if-present",
     "scan:self": "npm run build:cli && ASSURLY_DOGFOOD_MAX_BLOCKERS=2 node packages/cli/dist/index.js scan -p .",

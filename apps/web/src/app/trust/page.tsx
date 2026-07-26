@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { AssurlyMark } from '../_components/AssurlyMark';
 import { SiteFooter } from '../_components/SiteFooter';
-import { CONTACT_SUBJECT_PARAM } from '../../utils/contactSubjects';
+import { DISCLOSURE_CONTACT_PATH } from '../../utils/disclosureContact';
 
 export const metadata = {
   title: 'Trust & Security · Assurly',
@@ -19,8 +19,11 @@ export const metadata = {
  * nothing. Contact points mirror the Privacy Policy and Terms: a deep link into
  * the contact form with the subject preselected, so a vulnerability report is
  * never lost to a spam filter.
+ *
+ * Vulnerability intake must stay aligned with security.txt and the CRA runbook
+ * via DISCLOSURE_CONTACT_PATH — see craContactConsistency.test.ts.
  */
-const TRUST_CONTACT_HREF = `/?${CONTACT_SUBJECT_PARAM}=trust#contact`;
+const TRUST_CONTACT_HREF = DISCLOSURE_CONTACT_PATH;
 
 export default function TrustPage() {
   return (
