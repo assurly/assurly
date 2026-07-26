@@ -1,0 +1,787 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.5.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:2a52ea03-8a10-4410-9a82-0c2550b0f61a",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-07-26T08:04:06.786Z",
+    "lifecycles": [
+      {
+        "phase": "pre-build"
+      }
+    ],
+    "tools": [
+      {
+        "vendor": "npm",
+        "name": "cli",
+        "version": "11.12.1"
+      }
+    ],
+    "component": {
+      "bom-ref": "assurly-monorepo@1.0.0",
+      "type": "library",
+      "name": "assurly",
+      "version": "1.0.4",
+      "scope": "required",
+      "description": "Production-Readiness Verifier for AI-generated code",
+      "purl": "pkg:npm/assurly-monorepo@1.0.0",
+      "properties": [
+        {
+          "name": "cdx:npm:package:private",
+          "value": "true"
+        }
+      ],
+      "externalReferences": [],
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    "properties": [
+      {
+        "name": "assurly:sbom-generated-by",
+        "value": "scripts/generate-sbom.mjs"
+      },
+      {
+        "name": "assurly:workspace",
+        "value": "packages/cli"
+      }
+    ]
+  },
+  "components": [
+    {
+      "bom-ref": "@ts-morph/common@0.21.0",
+      "type": "library",
+      "name": "@ts-morph/common",
+      "version": "0.21.0",
+      "scope": "required",
+      "purl": "pkg:npm/%40ts-morph/common@0.21.0",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@ts-morph/common/-/common-0.21.0.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "112d75d0c9a77b9562e32a542abb5541f5c50ed0ac0d7894886c45e882d5944f747430f87dda42d4b4a3c9d97f9a5ef12562920d9c14603db390e78f312acf04"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "cli-cursor@3.1.0",
+      "type": "library",
+      "name": "cli-cursor",
+      "version": "3.1.0",
+      "scope": "required",
+      "purl": "pkg:npm/cli-cursor@3.1.0",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/cli-cursor/-/cli-cursor-3.1.0.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "23fcc7030b0a7fd16a1a85cce16591002a1bf7e48dba465377de03585e7b138b68a2e46e95b0b171487a44a5043909584c7267ce43ccc92bcf35a6922cd7cb67"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "cli-spinners@2.9.2",
+      "type": "library",
+      "name": "cli-spinners",
+      "version": "2.9.2",
+      "scope": "required",
+      "purl": "pkg:npm/cli-spinners@2.9.2",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/cli-spinners/-/cli-spinners-2.9.2.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "cb0a95fb9326c8be04ef26d780acace03ba065b5f4142e8b9f0ae18eeca42239caf64f0e41a710edac462a78c35d63619ecd31a2dddb648e61e791fcca8f5c26"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "clone@1.0.4",
+      "type": "library",
+      "name": "clone",
+      "version": "1.0.4",
+      "scope": "required",
+      "purl": "pkg:npm/clone@1.0.4",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/clone/-/clone-1.0.4.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "2501d9d90316ea5dda1ff8fac42a904e163ff4e1f80fff65b37e1c8245018847a87114d4d38b477ca3c1b142b53ea64251033b1a20342085c94ae5c723ae0a6e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "code-block-writer@12.0.0",
+      "type": "library",
+      "name": "code-block-writer",
+      "version": "12.0.0",
+      "scope": "required",
+      "purl": "pkg:npm/code-block-writer@12.0.0",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/code-block-writer/-/code-block-writer-12.0.0.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "ab874c14c957b4a4775cd047c8c1edff7a7060d03af440e4d34965a0c39a69430a3d45c1c3a9695ed6eedcc3151bafee3a28469d10ce964caab0e344523eb4fb"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "commander@11.1.0",
+      "type": "library",
+      "name": "commander",
+      "version": "11.1.0",
+      "scope": "required",
+      "purl": "pkg:npm/commander@11.1.0",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/commander/-/commander-11.1.0.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "c8f55abdfc82711866a2b0bbad69641e7d796f8c03560566040ee457841506c17b92fffd4ca2406c05d54f1bd39f03fc1c72a34422430a529b7228984bba740d"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "defaults@1.0.4",
+      "type": "library",
+      "name": "defaults",
+      "version": "1.0.4",
+      "scope": "required",
+      "purl": "pkg:npm/defaults@1.0.4",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/defaults/-/defaults-1.0.4.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "785b9a2e8cbf4716a5bf692bfa5a8c9549eb0d657ede3e299633882602c8848d39f0841f589eef5e1c84207bbe1ed0bbdfc9251802d8c4e2833b46d03f7b60f0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "is-interactive@1.0.0",
+      "type": "library",
+      "name": "is-interactive",
+      "version": "1.0.0",
+      "scope": "required",
+      "purl": "pkg:npm/is-interactive@1.0.0",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/is-interactive/-/is-interactive-1.0.0.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "d87bc810a468a92eb682e102faa063a6f46e6dd5fdd7458232e25367e23dcafa8a536ff5d9e48be78f47330b5a6dbe28ba9763dac30fe7493e5c97c1ffc244eb"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "is-unicode-supported@0.1.0",
+      "type": "library",
+      "name": "is-unicode-supported",
+      "version": "0.1.0",
+      "scope": "required",
+      "purl": "pkg:npm/is-unicode-supported@0.1.0",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/is-unicode-supported/-/is-unicode-supported-0.1.0.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "927c46daae140b7bbcb2d446c8054908e771166bf90d989171d94868041701b49f2726be3a1a29368b4b42bb2d061aaeaaee19a6e29b0dcffc4ba9a05e03c53f"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "log-symbols@4.1.0",
+      "type": "library",
+      "name": "log-symbols",
+      "version": "4.1.0",
+      "scope": "required",
+      "purl": "pkg:npm/log-symbols@4.1.0",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/log-symbols/-/log-symbols-4.1.0.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "f173efa4003cbb285fb5ebbca48bd0c69259ed2618769522bd9a46cbab05b01b8a458ffbad019abde75e07c68af99932ababa930554bffd016eaf398cdf4722e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "mimic-fn@2.1.0",
+      "type": "library",
+      "name": "mimic-fn",
+      "version": "2.1.0",
+      "scope": "required",
+      "purl": "pkg:npm/mimic-fn@2.1.0",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/mimic-fn/-/mimic-fn-2.1.0.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "3aa6ce939a0441e019f165d6c9d96ef47263cfd59574422f6a63027179aea946234e49c7fecaac5af850def830285451d47a63bcd04a437ee76c9818cc6a8672"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "minimatch@7.4.9",
+      "type": "library",
+      "name": "minimatch",
+      "version": "7.4.9",
+      "scope": "required",
+      "purl": "pkg:npm/minimatch@7.4.9",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/minimatch/-/minimatch-7.4.9.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "06b83f7e9fe20150ce4281f192e3796c4621c9095987175d23bf325ac09b784c131d742394d2ed8890d4b29d46229b55a8c23bfe0909333e2f540734d66a6807"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "mkdirp@2.1.6",
+      "type": "library",
+      "name": "mkdirp",
+      "version": "2.1.6",
+      "scope": "required",
+      "purl": "pkg:npm/mkdirp@2.1.6",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/mkdirp/-/mkdirp-2.1.6.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "fa112721379d73c2c0b483fdbb71c90c521d70b576bd73f7deca8b2c8ce4bf50dbd733bfd4ec5bbd87f4635382fd2fd0a397711d77a9a1f866c4bd363ec29ef8"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "onetime@5.1.2",
+      "type": "library",
+      "name": "onetime",
+      "version": "5.1.2",
+      "scope": "required",
+      "purl": "pkg:npm/onetime@5.1.2",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/onetime/-/onetime-5.1.2.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "91ba5a4921894d674063928f55e30e2974ab3edafc0bc0bbc287496dcb1de758d19e60fe199bbc63456853a0e6e59e2f5abd0883fd4d2ae59129fee3e5a6984a"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "ora@5.4.1",
+      "type": "library",
+      "name": "ora",
+      "version": "5.4.1",
+      "scope": "required",
+      "purl": "pkg:npm/ora@5.4.1",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/ora/-/ora-5.4.1.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "e5be98f39b4fc5967b432b4ef81433cac5b7d47264bb6edc4489646c05da371f8175c562f8b951166557cde17a6bb242c09a72c397386fe61254899022b069b9"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "path-browserify@1.0.1",
+      "type": "library",
+      "name": "path-browserify",
+      "version": "1.0.1",
+      "scope": "required",
+      "purl": "pkg:npm/path-browserify@1.0.1",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/path-browserify/-/path-browserify-1.0.1.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "6fbba8d9409439865c9c5ff7203d25ba53898bf6da7f16b5c4f7bb64fb1a9a6052a634964248cdc65b7adf96064b632247d1a3bee5c2b73d9e9abde36eccfdf2"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "restore-cursor@3.1.0",
+      "type": "library",
+      "name": "restore-cursor",
+      "version": "3.1.0",
+      "scope": "required",
+      "purl": "pkg:npm/restore-cursor@3.1.0",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/restore-cursor/-/restore-cursor-3.1.0.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "97eb1279fcc7a63e6a8a6845484e5af27b9f65800cdec05254c00fb589260bee041f66a7486684317483d22cd141bbbd9dfc90f72e49ad59a9ec4f2866b523bc"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "signal-exit@3.0.7",
+      "type": "library",
+      "name": "signal-exit",
+      "version": "3.0.7",
+      "scope": "required",
+      "purl": "pkg:npm/signal-exit@3.0.7",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/signal-exit/-/signal-exit-3.0.7.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "c270f6644fa5f923c2feea12d2f5de13d2f5fb4c2e68ca8a95fcfd00c528dfc26cc8b48159215c1d1d51ae2eb62d9735daf2ebd606f78e5ee2c10860c2901b19"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "ts-morph@20.0.0",
+      "type": "library",
+      "name": "ts-morph",
+      "version": "20.0.0",
+      "scope": "required",
+      "purl": "pkg:npm/ts-morph@20.0.0",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/ts-morph/-/ts-morph-20.0.0.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "255984272d96a30e67ffce08de282d84bf6cb9d43cab38e1ffa8b8b666029ba22a63228594d6c9662ee805d8f2a9c59259846edc2b4bd316d3e9f4b4dc449922"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "wcwidth@1.0.1",
+      "type": "library",
+      "name": "wcwidth",
+      "version": "1.0.1",
+      "scope": "required",
+      "purl": "pkg:npm/wcwidth@1.0.1",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/wcwidth/-/wcwidth-1.0.1.tgz"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "5c73c4c12d2ae936b172f1bce7ef046246e20aec765ed586da691ce3b360d80efb050bbdf83a8838995d493e0780f92e79aeddbca4a3e55817dcfd5de2b5bc4e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "assurly@1.0.4",
+      "type": "library",
+      "name": "cli",
+      "version": "1.0.4",
+      "scope": "required",
+      "author": "Assurly",
+      "description": "Pre-deploy ship gate for AI-built SaaS — scan a Next.js, Supabase, Stripe and Vercel project locally and get one trusted verdict before you ship. No upload, no sign-up.",
+      "purl": "pkg:npm/assurly@1.0.4",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/assurly/assurly.git"
+        },
+        {
+          "type": "website",
+          "url": "https://assurly.dev"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://assurly.dev/#contact"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    },
+    {
+      "bom-ref": "@assurly/scanner-core@1.0.4",
+      "type": "library",
+      "name": "scanner-core",
+      "version": "1.0.4",
+      "scope": "required",
+      "author": "Assurly",
+      "description": "Static analysis rules that catch what breaks AI-built SaaS in production — missing Supabase RLS, unverified Stripe webhooks, leaked service keys. Runs in Node or the browser.",
+      "purl": "pkg:npm/%40assurly/scanner-core@1.0.4",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/assurly/assurly.git"
+        },
+        {
+          "type": "website",
+          "url": "https://assurly.dev"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://assurly.dev/#contact"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "assurly-monorepo@1.0.0",
+      "dependsOn": ["@assurly/scanner-core@1.0.4"]
+    },
+    {
+      "ref": "@ts-morph/common@0.21.0",
+      "dependsOn": ["minimatch@7.4.9", "mkdirp@2.1.6", "path-browserify@1.0.1"]
+    },
+    {
+      "ref": "cli-cursor@3.1.0",
+      "dependsOn": ["restore-cursor@3.1.0"]
+    },
+    {
+      "ref": "cli-spinners@2.9.2",
+      "dependsOn": []
+    },
+    {
+      "ref": "clone@1.0.4",
+      "dependsOn": []
+    },
+    {
+      "ref": "code-block-writer@12.0.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "commander@11.1.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "defaults@1.0.4",
+      "dependsOn": ["clone@1.0.4"]
+    },
+    {
+      "ref": "is-interactive@1.0.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "is-unicode-supported@0.1.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "log-symbols@4.1.0",
+      "dependsOn": ["is-unicode-supported@0.1.0"]
+    },
+    {
+      "ref": "mimic-fn@2.1.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "minimatch@7.4.9",
+      "dependsOn": []
+    },
+    {
+      "ref": "mkdirp@2.1.6",
+      "dependsOn": []
+    },
+    {
+      "ref": "onetime@5.1.2",
+      "dependsOn": ["mimic-fn@2.1.0"]
+    },
+    {
+      "ref": "ora@5.4.1",
+      "dependsOn": [
+        "cli-cursor@3.1.0",
+        "cli-spinners@2.9.2",
+        "is-interactive@1.0.0",
+        "is-unicode-supported@0.1.0",
+        "log-symbols@4.1.0",
+        "wcwidth@1.0.1"
+      ]
+    },
+    {
+      "ref": "path-browserify@1.0.1",
+      "dependsOn": []
+    },
+    {
+      "ref": "restore-cursor@3.1.0",
+      "dependsOn": ["onetime@5.1.2", "signal-exit@3.0.7"]
+    },
+    {
+      "ref": "signal-exit@3.0.7",
+      "dependsOn": []
+    },
+    {
+      "ref": "ts-morph@20.0.0",
+      "dependsOn": ["@ts-morph/common@0.21.0", "code-block-writer@12.0.0"]
+    },
+    {
+      "ref": "wcwidth@1.0.1",
+      "dependsOn": ["defaults@1.0.4"]
+    },
+    {
+      "ref": "assurly@1.0.4",
+      "dependsOn": [
+        "@assurly/scanner-core@1.0.4",
+        "commander@11.1.0",
+        "ora@5.4.1",
+        "ts-morph@20.0.0"
+      ]
+    },
+    {
+      "ref": "@assurly/scanner-core@1.0.4",
+      "dependsOn": []
+    }
+  ]
+}

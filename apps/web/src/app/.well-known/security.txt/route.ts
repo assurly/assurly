@@ -1,3 +1,4 @@
+import { disclosureContactUrl } from '../../../utils/disclosureContact';
 import { getApplicationUrl } from '../../../utils/env';
 
 /**
@@ -9,6 +10,10 @@ import { getApplicationUrl } from '../../../utils/env';
  * on each request. RFC 9116 requires an expiry under a year, and a hardcoded one
  * silently rots — a stale security.txt tells a researcher the contact is
  * abandoned, which is worse than not publishing one at all.
+ *
+ * Contact must stay aligned with Trust §13 and
+ * docs/runbooks/cra-actively-exploited-vulnerability-reporting.md — see
+ * craContactConsistency.test.ts.
  */
 
 /** How long a served file claims to stay valid. Well inside RFC 9116's one-year ceiling. */
@@ -24,7 +29,7 @@ export function GET(): Response {
     '# Assurly — coordinated vulnerability disclosure',
     '# Full policy, scope, and safe harbour: ' + `${appUrl}/trust`,
     '',
-    `Contact: ${appUrl}/?subject=trust#contact`,
+    `Contact: ${disclosureContactUrl(appUrl)}`,
     `Policy: ${appUrl}/trust`,
     `Expires: ${expires}`,
     'Preferred-Languages: en, sk',

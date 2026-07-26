@@ -1,0 +1,99 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.5.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:a2637ba8-cc38-4749-9978-74b31b1304d7",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-07-26T08:04:06.143Z",
+    "lifecycles": [
+      {
+        "phase": "pre-build"
+      }
+    ],
+    "tools": [
+      {
+        "vendor": "npm",
+        "name": "cli",
+        "version": "11.12.1"
+      }
+    ],
+    "component": {
+      "bom-ref": "assurly-monorepo@1.0.0",
+      "type": "library",
+      "name": "@assurly/scanner-core",
+      "version": "1.0.4",
+      "scope": "required",
+      "description": "Production-Readiness Verifier for AI-generated code",
+      "purl": "pkg:npm/assurly-monorepo@1.0.0",
+      "properties": [
+        {
+          "name": "cdx:npm:package:private",
+          "value": "true"
+        }
+      ],
+      "externalReferences": [],
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ]
+    },
+    "properties": [
+      {
+        "name": "assurly:sbom-generated-by",
+        "value": "scripts/generate-sbom.mjs"
+      },
+      {
+        "name": "assurly:workspace",
+        "value": "packages/scanner-core"
+      }
+    ]
+  },
+  "components": [
+    {
+      "bom-ref": "@assurly/scanner-core@1.0.4",
+      "type": "library",
+      "name": "scanner-core",
+      "version": "1.0.4",
+      "scope": "required",
+      "author": "Assurly",
+      "description": "Static analysis rules that catch what breaks AI-built SaaS in production — missing Supabase RLS, unverified Stripe webhooks, leaked service keys. Runs in Node or the browser.",
+      "purl": "pkg:npm/%40assurly/scanner-core@1.0.4",
+      "properties": [],
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/assurly/assurly.git"
+        },
+        {
+          "type": "website",
+          "url": "https://assurly.dev"
+        },
+        {
+          "type": "issue-tracker",
+          "url": "https://assurly.dev/#contact"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "assurly-monorepo@1.0.0",
+      "dependsOn": []
+    },
+    {
+      "ref": "@assurly/scanner-core@1.0.4",
+      "dependsOn": []
+    }
+  ]
+}
