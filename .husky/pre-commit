@@ -1,1 +1,16 @@
 npx lint-staged
+
+# lint-staged runs prettier over staged sources, which rewrites them *after*
+# any build the author already ran. packages/*/dist and the VS Code vendor
+# bundle are committed and are what ships to npm and the marketplace, so a
+# commit that reformats a source file leaves the artifacts one pass behind.
+# That drift shipped three times before this hook existed — once leaving a
+# deliberate-break `return false` in a compiled ship-gate rule.
+#
+# Rebuild and restage whenever a package source is part of the commit. Costs
+# ~6s, and only on commits that can actually cause the drift.
+if git diff --cached --name-only | grep -qE '^packages/[^/]+/src/'; then
+  echo "pre-commit: package sources changed, rebuilding committed artifacts"
+  npm run build:artifacts >/dev/null
+  git add packages/*/dist packages/vscode-extension/vendor
+fi

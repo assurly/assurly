@@ -139,7 +139,9 @@ function evaluateDependencyProvenance(signals, options = {}) {
         return finding(exports.DEP_NONEXISTENT_PACKAGE, 'error', 'high', file, `Newly added dependency '${name}' does not exist on the npm registry — it has never been published.`, `Remove '${name}' or replace it with a real package. AI models sometimes hallucinate plausible package names.`);
     }
     const corpus = options.corpus ?? topNpmPackages_1.TOP_NPM_PACKAGE_NAMES;
-    const corpusSet = options.corpus !== undefined ? new Set(options.corpus.map((entry) => entry.toLowerCase())) : topNpmPackages_1.TOP_NPM_PACKAGE_NAME_SET;
+    const corpusSet = options.corpus !== undefined
+        ? new Set(options.corpus.map((entry) => entry.toLowerCase()))
+        : topNpmPackages_1.TOP_NPM_PACKAGE_NAME_SET;
     const ageDays = signals.ageDays;
     const downloads = signals.weeklyDownloads;
     const young = ageDays !== null && ageDays < exports.DEP_YOUNG_AGE_DAYS;
