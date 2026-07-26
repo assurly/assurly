@@ -61,12 +61,16 @@ program
     .option('-p, --path <dir>', 'Root directory of the project to scan', '.')
     .option('-j, --json', 'Output findings in raw JSON format', false)
     .option('-f, --fix', 'Automatically attempt to fix configuration issues', false)
+    .option('--agent', 'Focused mode: scan only the agent stack (MCP configs and instruction files)', false)
     .action(async (options) => {
     const targetDir = path.resolve(options.path);
-    const spinner = (0, ora_1.default)(chalk_1.default.cyan('Detecting stack and scanning configurations...')).start();
+    const agentOnly = Boolean(options.agent);
+    const spinner = (0, ora_1.default)(chalk_1.default.cyan(agentOnly
+        ? 'Scanning agent stack (MCP configs and instruction files)...'
+        : 'Detecting stack and scanning configurations...')).start();
     try {
-        spinner.text = chalk_1.default.cyan('Running production-readiness checks...');
-        let scanResult = await (0, scanProject_1.scanProjectDirectory)(targetDir);
+        spinner.text = chalk_1.default.cyan(agentOnly ? 'Running agent-stack checks...' : 'Running production-readiness checks...');
+        let scanResult = await (0, scanProject_1.scanProjectDirectory)(targetDir, { agentOnly });
         const { context } = scanResult;
         let { findings } = scanResult;
         let shipGate = scanResult.report;
@@ -76,7 +80,7 @@ program
             const fixed = await (0, fixer_1.applyFixesInteractive)(targetDir, findings);
             if (fixed > 0) {
                 console.log(chalk_1.default.green(`\nApplied ${fixed} auto-fix(es). Re-running scan...\n`));
-                scanResult = await (0, scanProject_1.scanProjectDirectory)(targetDir);
+                scanResult = await (0, scanProject_1.scanProjectDirectory)(targetDir, { agentOnly });
                 findings = scanResult.findings;
                 shipGate = scanResult.report;
             }

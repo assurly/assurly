@@ -12,6 +12,7 @@ const rscRules_1 = require("./rscRules");
 const coldStartRules_1 = require("./coldStartRules");
 const sqlSafetyRules_1 = require("./sqlSafetyRules");
 const deeperStackRules_1 = require("./deeperStackRules");
+const agentStackRules_1 = require("./agentStackRules");
 /**
  * Array containing all static analysis rules implemented in Assurly.
  */
@@ -27,4 +28,5 @@ exports.allRules = [
     coldStartRules_1.coldStartRules,
     sqlSafetyRules_1.sqlSafetyRules,
     deeperStackRules_1.deeperStackRules,
+    agentStackRules_1.agentStackRules,
 ];

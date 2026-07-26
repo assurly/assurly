@@ -48,9 +48,10 @@ function ruleErrorMessage(error) {
         return error.message;
     return String(error);
 }
-async function runAllRules(context) {
+async function runAllRules(context, options = {}) {
+    const rules = options.agentOnly ? rules_1.allRules.filter((rule) => rule.id === 'agent-stack') : rules_1.allRules;
     const findings = [];
-    for (const rule of rules_1.allRules) {
+    for (const rule of rules) {
         try {
             const ruleFindings = await rule.run(context);
             findings.push(...ruleFindings);
@@ -75,13 +76,13 @@ function buildScanProjectResult(findings, context) {
         markdown: (0, scanner_core_1.formatShipGateMarkdown)(report),
     };
 }
-async function scanProjectDirectory(projectPath) {
+async function scanProjectDirectory(projectPath, options = {}) {
     const resolvedPath = path.resolve(projectPath);
     const context = (0, detector_1.buildContext)(resolvedPath);
-    const findings = await runAllRules(context);
+    const findings = await runAllRules(context, options);
     return buildScanProjectResult(findings, context);
 }
-async function scanProjectFiles(files) {
+async function scanProjectFiles(files, options = {}) {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'assurly-scan-'));
     try {
         for (const file of files) {
@@ -90,7 +91,7 @@ async function scanProjectFiles(files) {
             fs.mkdirSync(path.dirname(fullPath), { recursive: true });
             fs.writeFileSync(fullPath, file.content, 'utf8');
         }
-        return await scanProjectDirectory(tempDir);
+        return await scanProjectDirectory(tempDir, options);
     }
     finally {
         fs.rmSync(tempDir, { recursive: true, force: true });

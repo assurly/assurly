@@ -79,6 +79,46 @@ const SCANNER_RULE_EXPLANATIONS = {
         explanation: 'An LLM provider key is reachable from browser bundles, allowing quota theft.',
         howToFix: 'Proxy model calls through a server route with authentication and rate limits.',
     },
+    'agent-mcp-unpinned-version': {
+        title: 'MCP package installed without a pinned version',
+        explanation: 'An MCP server is launched via npx/bunx/pnpm dlx without `@version`, so a later publish can change behaviour without you noticing.',
+        howToFix: 'Pin the package version in the MCP args (e.g. `@org/server@1.2.3`).',
+    },
+    'agent-mcp-shell-execution': {
+        title: 'MCP server runs through a shell',
+        explanation: 'The MCP config invokes bash/sh/zsh/curl/wget/eval (or pipes into a shell), which can execute arbitrary commands from the agent session.',
+        howToFix: 'Point the MCP entry at a dedicated executable or package runner, not a raw shell.',
+    },
+    'agent-mcp-insecure-endpoint': {
+        title: 'MCP server uses insecure remote HTTP',
+        explanation: 'A remote MCP `url` uses `http://` to a non-loopback host, so tool traffic and credentials can be intercepted.',
+        howToFix: 'Use `https://` for remote endpoints, or `http://` only for localhost/127.0.0.1.',
+    },
+    'agent-mcp-inline-secret': {
+        title: 'Live credential embedded in MCP config',
+        explanation: 'An `env` value in the MCP config looks like a live credential. These files are often committed or synced across machines.',
+        howToFix: 'Replace the literal with a placeholder and load the secret from the environment or a secret manager.',
+    },
+    'agent-mcp-unscoped-package': {
+        title: 'MCP server uses an unscoped package',
+        explanation: 'The MCP package name has no `@org/` scope, which makes typosquatting and mistaken installs easier.',
+        howToFix: 'Prefer a scoped package from a known publisher when one is available.',
+    },
+    'agent-hidden-instruction': {
+        title: 'Hidden instruction in an agent-readable file',
+        explanation: 'Instruction-like text is concealed in an HTML comment or with zero-width characters — invisible to readers but still seen by models.',
+        howToFix: 'Move agent instructions into visible prose, or remove the hidden directive.',
+    },
+    'agent-instruction-override': {
+        title: 'Instruction file tries to override the agent',
+        explanation: 'The file contains phrasing that attempts to discard prior instructions or hide actions from the user.',
+        howToFix: 'Remove override/jailbreak phrasing from project instruction files.',
+    },
+    'agent-exfiltration-directive': {
+        title: 'Instruction file directs secret exfiltration',
+        explanation: 'Secret-related terms appear next to a network send directive (POST/send/curl), a common exfiltration pattern in poisoned docs.',
+        howToFix: 'Remove directives that tell the agent to send credentials or `.env` contents to a remote endpoint.',
+    },
 };
 const blockerRuleIds = new Set(scanner_core_1.HIGH_CONFIDENCE_BLOCKER_RULE_IDS);
 function explanationFromCliRule(ruleId) {

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.buildShipGateReport = exports.buildIssueGroups = exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = exports.scanStripeWebhookIdempotency = exports.scanStripeMissingSubscriptionEvents = exports.scanStripeLiveKeyInDev = exports.scanStripeLifecycle = exports.scanSupabaseStorage = exports.scanSupabasePolicies = exports.scanSupabaseDeepPolicies = exports.scanAuthLinkedMigrationNoRls = exports.scanServiceRoleBypass = exports.scanServerActionAuth = exports.scanRouteHandlerAuth = exports.scanAuthBoundary = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.rankFilesByRelevance = exports.isScannableFile = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = void 0;
+exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.buildShipGateReport = exports.buildIssueGroups = exports.scanAgentStack = exports.scanAgentMcpConfig = exports.scanAgentInstructionFile = exports.redactEnvKey = exports.isAgentStackFile = exports.isAgentMcpConfigFile = exports.isAgentInstructionFile = exports.isHighConfidenceBlockerRuleId = exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = exports.scanStripeWebhookIdempotency = exports.scanStripeMissingSubscriptionEvents = exports.scanStripeLiveKeyInDev = exports.scanStripeLifecycle = exports.scanSupabaseStorage = exports.scanSupabasePolicies = exports.scanSupabaseDeepPolicies = exports.scanAuthLinkedMigrationNoRls = exports.scanServiceRoleBypass = exports.scanServerActionAuth = exports.scanRouteHandlerAuth = exports.scanAuthBoundary = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.rankFilesByRelevance = exports.isScannableFile = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = void 0;
 exports.selectFiles = selectFiles;
 exports.incompleteScanFinding = incompleteScanFinding;
 exports.scanStripeWebhook = scanStripeWebhook;
@@ -639,48 +639,17 @@ Object.defineProperty(exports, "scanStripeLifecycle", { enumerable: true, get: f
 Object.defineProperty(exports, "scanStripeLiveKeyInDev", { enumerable: true, get: function () { return stripeLifecycle_2.scanStripeLiveKeyInDev; } });
 Object.defineProperty(exports, "scanStripeMissingSubscriptionEvents", { enumerable: true, get: function () { return stripeLifecycle_2.scanStripeMissingSubscriptionEvents; } });
 Object.defineProperty(exports, "scanStripeWebhookIdempotency", { enumerable: true, get: function () { return stripeLifecycle_2.scanStripeWebhookIdempotency; } });
-/**
- * High-confidence blocker ruleIds (error + confidence high, or legacy error without confidence).
- *
- * The Phase 0 target was "~12 or fewer". Phase 3 added five genuinely
- * high-precision blockers to the existing nine, landing at 14. Every entry here
- * must be near-certain when it fires; heuristic rules stay review/warning only.
- * Notably, the two auth-boundary "no visible guard" rules
- * (auth-server-action-no-check, auth-route-handler-unprotected) are error+medium
- * → review, NOT blockers, because public forms and public routes legitimately
- * run without auth — so they are deliberately absent from this list.
- *
- *  1. stripe-webhook-signature
- *  2. database-migration-safety
- *  3. supabase-rls
- *  4. supabase-service-role-leak
- *  5. public-secret
- *  6. stripe-secret-leak
- *  7. undocumented-env
- *  8. ai-llm-key-in-client
- *  9. database-connection-pooling (CLI)
- * 10. auth-service-role-bypass
- * 11. supabase-policy-permissive
- * 12. supabase-migration-auth-linked-no-rls
- * 13. stripe-live-key-in-dev
- * 14. vercel-edge-node-mismatch
- */
-exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = [
-    'stripe-webhook-signature',
-    'database-migration-safety',
-    'supabase-rls',
-    'supabase-service-role-leak',
-    'public-secret',
-    'stripe-secret-leak',
-    'undocumented-env',
-    'ai-llm-key-in-client',
-    'database-connection-pooling',
-    'auth-service-role-bypass',
-    'supabase-policy-permissive',
-    'supabase-migration-auth-linked-no-rls',
-    'stripe-live-key-in-dev',
-    'vercel-edge-node-mismatch',
-];
+var blockerAllowlist_1 = require("./blockerAllowlist");
+Object.defineProperty(exports, "HIGH_CONFIDENCE_BLOCKER_RULE_IDS", { enumerable: true, get: function () { return blockerAllowlist_1.HIGH_CONFIDENCE_BLOCKER_RULE_IDS; } });
+Object.defineProperty(exports, "isHighConfidenceBlockerRuleId", { enumerable: true, get: function () { return blockerAllowlist_1.isHighConfidenceBlockerRuleId; } });
+var agentStack_1 = require("./agentStack");
+Object.defineProperty(exports, "isAgentInstructionFile", { enumerable: true, get: function () { return agentStack_1.isAgentInstructionFile; } });
+Object.defineProperty(exports, "isAgentMcpConfigFile", { enumerable: true, get: function () { return agentStack_1.isAgentMcpConfigFile; } });
+Object.defineProperty(exports, "isAgentStackFile", { enumerable: true, get: function () { return agentStack_1.isAgentStackFile; } });
+Object.defineProperty(exports, "redactEnvKey", { enumerable: true, get: function () { return agentStack_1.redactEnvKey; } });
+Object.defineProperty(exports, "scanAgentInstructionFile", { enumerable: true, get: function () { return agentStack_1.scanAgentInstructionFile; } });
+Object.defineProperty(exports, "scanAgentMcpConfig", { enumerable: true, get: function () { return agentStack_1.scanAgentMcpConfig; } });
+Object.defineProperty(exports, "scanAgentStack", { enumerable: true, get: function () { return agentStack_1.scanAgentStack; } });
 /** Runs Phase 3 deeper-stack scanners over the supplied project sources. */
 function runDeeperStackScans(sources, options = {}) {
     const { includeEdgeRuntime = true } = options;

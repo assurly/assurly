@@ -38,8 +38,25 @@ var ASSURLY_MCP_TOOL_NAMES = [
   "assurly_scan_path",
   "assurly_scan_files",
   "assurly_explain_rule",
-  "assurly_verdict"
+  "assurly_verdict",
+  "assurly_scan_agent"
 ];
+function formatFixOutcomesText(outcomes) {
+  if (outcomes.length === 0) {
+    return "Fix outcomes: none recorded yet. After deploying a claimed fix, re-probe before treating it as done.";
+  }
+  const lines = outcomes.map((entry) => {
+    const ruleId = entry.ruleId ?? "unknown-rule";
+    const outcome = entry.outcome ?? "unknown";
+    const when = entry.observedAt ?? "unknown time";
+    return `  \xB7 ${ruleId}: ${outcome} \xB7 observed ${when}`;
+  });
+  return [
+    "Fix outcomes (last re-probe only \u2014 may predate your latest edit):",
+    ...lines,
+    "Not yet verified against your latest changes \u2014 deploy and re-probe. An unverified claim is not done."
+  ].join("\n");
+}
 function formatScanToolResult(result) {
   const payload = {
     verdict: result.report.headline,
@@ -79,6 +96,11 @@ async function handleScanPath(input) {
 async function handleScanFiles(input) {
   const result = await (0, import_scanProject.scanProjectFiles)(input.files);
   return formatScanToolResult(result);
+}
+async function handleScanAgent(input) {
+  const result = await (0, import_scanProject.scanProjectDirectory)(input.path, { agentOnly: true });
+  const formatted = formatScanToolResult(result);
+  return { ...formatted, isError: false };
 }
 function errorResult(text) {
   return { content: [{ type: "text", text }], isError: true };
@@ -120,10 +142,12 @@ async function handleVerdict(input, config) {
   const status = verdict.status ?? "unknown";
   const score = typeof verdict.shipScore === "number" ? `${verdict.shipScore}/100` : "n/a";
   const shipReady = status === "ready";
+  const fixOutcomes = Array.isArray(verdict.fixOutcomes) ? verdict.fixOutcomes : [];
   const lines = [
     `Assurly verdict: ${status.toUpperCase()} \xB7 Ship Score ${score}`,
     verdict.displayName || verdict.identifier ? `Target: ${verdict.displayName ?? verdict.identifier}` : "",
     shipReady ? "No blocking issues detected \u2014 safe to ship." : verdict.topIssue ? `Top issue: ${verdict.topIssue.category ?? "Security issue"}${verdict.topIssue.remediation ? ` \u2014 ${verdict.topIssue.remediation}` : ""}` : status === "unknown" ? "No published verdict for this target yet. Scan it in Assurly first." : "Review the issues in the Assurly dashboard before shipping.",
+    formatFixOutcomesText(fixOutcomes),
     verdict.trustPageUrl ? `Trust page: ${verdict.trustPageUrl}` : ""
   ].filter((line) => line.length > 0);
   return {
@@ -131,7 +155,8 @@ async function handleVerdict(input, config) {
       { type: "text", text: lines.join("\n") },
       { type: "text", text: JSON.stringify(verdict, null, 2) }
     ],
-    // A blocked verdict is a real ship-gate failure the agent should act on.
+    // Blocked status is the only ship-gate halt. See docstring for why fix
+    // outcomes never widen isError.
     isError: status === "blocked"
   };
 }
@@ -236,7 +261,7 @@ function createAssurlyMcpServer() {
     "assurly_verdict",
     {
       title: "Get the hosted Assurly ship verdict",
-      description: "Pre-deploy ship gate: read the hosted Assurly verdict (Ready/Review/Blocked + ship score + top issue + one-line fix) for a deployed URL or a repo. Reads the hosted Assurly API \u2014 it does not scan locally and never triggers an active probe. Requires ASSURLY_API_KEY in the environment.",
+      description: "Pre-deploy ship gate: read the hosted Assurly verdict (Ready/Review/Blocked + ship score + top issue + one-line fix + per-rule fix outcomes with observation times) for a deployed URL or a repo. Fix outcomes reflect the last re-probe only \u2014 after claiming a fix, deploy and re-probe before treating it as done. Reads the hosted Assurly API \u2014 it does not scan locally and never triggers an active probe. Requires ASSURLY_API_KEY in the environment.",
       inputSchema: {
         url: import_zod.z.string().url().optional().describe("Deployed app URL to look up (exactly one of url/repo)"),
         repo: import_zod.z.string().optional().describe("Repository in owner/name form to look up (exactly one of url/repo)")
@@ -249,6 +274,17 @@ function createAssurlyMcpServer() {
         apiKey: process.env.ASSURLY_API_KEY?.trim() || void 0
       }
     )
+  );
+  server.registerTool(
+    "assurly_scan_agent",
+    {
+      title: "Scan the agent stack",
+      description: "Advisory audit of the AI agent setup only \u2014 MCP client configs (.cursor/mcp.json, etc.) and instruction files (README, CLAUDE.md, AGENTS.md, .cursorrules). Does not scan application source. Never blocks ship; isError stays false under all outcomes.",
+      inputSchema: {
+        path: import_zod.z.string().describe("Absolute or relative path to the project root to scan")
+      }
+    },
+    async ({ path: projectPath }) => handleScanAgent({ path: projectPath })
   );
   return server;
 }

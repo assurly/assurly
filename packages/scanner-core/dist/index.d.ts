@@ -52,33 +52,8 @@ export { scanAiAppSecurity, scanAiLlmKeyLeak, scanAiPiiToModelContext, scanAiPro
 export { scanAuthBoundary, scanRouteHandlerAuth, scanServerActionAuth, scanServiceRoleBypass, } from './authBoundary';
 export { scanAuthLinkedMigrationNoRls, scanSupabaseDeepPolicies, scanSupabasePolicies, scanSupabaseStorage, } from './supabasePolicies';
 export { scanStripeLifecycle, scanStripeLiveKeyInDev, scanStripeMissingSubscriptionEvents, scanStripeWebhookIdempotency, } from './stripeLifecycle';
-/**
- * High-confidence blocker ruleIds (error + confidence high, or legacy error without confidence).
- *
- * The Phase 0 target was "~12 or fewer". Phase 3 added five genuinely
- * high-precision blockers to the existing nine, landing at 14. Every entry here
- * must be near-certain when it fires; heuristic rules stay review/warning only.
- * Notably, the two auth-boundary "no visible guard" rules
- * (auth-server-action-no-check, auth-route-handler-unprotected) are error+medium
- * → review, NOT blockers, because public forms and public routes legitimately
- * run without auth — so they are deliberately absent from this list.
- *
- *  1. stripe-webhook-signature
- *  2. database-migration-safety
- *  3. supabase-rls
- *  4. supabase-service-role-leak
- *  5. public-secret
- *  6. stripe-secret-leak
- *  7. undocumented-env
- *  8. ai-llm-key-in-client
- *  9. database-connection-pooling (CLI)
- * 10. auth-service-role-bypass
- * 11. supabase-policy-permissive
- * 12. supabase-migration-auth-linked-no-rls
- * 13. stripe-live-key-in-dev
- * 14. vercel-edge-node-mismatch
- */
-export declare const HIGH_CONFIDENCE_BLOCKER_RULE_IDS: readonly ["stripe-webhook-signature", "database-migration-safety", "supabase-rls", "supabase-service-role-leak", "public-secret", "stripe-secret-leak", "undocumented-env", "ai-llm-key-in-client", "database-connection-pooling", "auth-service-role-bypass", "supabase-policy-permissive", "supabase-migration-auth-linked-no-rls", "stripe-live-key-in-dev", "vercel-edge-node-mismatch"];
+export { HIGH_CONFIDENCE_BLOCKER_RULE_IDS, isHighConfidenceBlockerRuleId, type HighConfidenceBlockerRuleId, } from './blockerAllowlist';
+export { isAgentInstructionFile, isAgentMcpConfigFile, isAgentStackFile, redactEnvKey, scanAgentInstructionFile, scanAgentMcpConfig, scanAgentStack, } from './agentStack';
 export interface DeeperStackScanOptions {
     /**
      * Whether to run `scanEdgeRuntime`. The CLI and web already wire the edge

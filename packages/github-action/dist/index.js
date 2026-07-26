@@ -1049,6 +1049,7 @@ var require_exec = __commonJS({
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
+  ASSURLY_CLI_PACKAGE_SPEC: () => ASSURLY_CLI_PACKAGE_SPEC,
   run: () => run
 });
 module.exports = __toCommonJS(index_exports);
@@ -1136,6 +1137,96 @@ var summary = new Summary();
 var exec = __toESM(require_exec());
 var path = __toESM(require("path"));
 var fs2 = __toESM(require("fs"));
+
+// ../cli/package.json
+var package_default = {
+  name: "assurly",
+  version: "1.0.4",
+  description: "Pre-deploy ship gate for AI-built SaaS \u2014 scan a Next.js, Supabase, Stripe and Vercel project locally and get one trusted verdict before you ship. No upload, no sign-up.",
+  keywords: [
+    "cli",
+    "security",
+    "static-analysis",
+    "pre-deploy",
+    "ship-gate",
+    "nextjs",
+    "supabase",
+    "stripe",
+    "vercel",
+    "ai-generated-code",
+    "lovable",
+    "v0",
+    "bolt",
+    "replit",
+    "rls",
+    "security-scanner",
+    "vibe-coding"
+  ],
+  homepage: "https://assurly.dev",
+  main: "dist/index.js",
+  types: "dist/index.d.ts",
+  exports: {
+    ".": {
+      types: "./dist/index.d.ts",
+      default: "./dist/index.js"
+    },
+    "./scanProject": {
+      types: "./dist/scanProject.d.ts",
+      default: "./dist/scanProject.js"
+    },
+    "./ruleExplainer": {
+      types: "./dist/ruleExplainer.d.ts",
+      default: "./dist/ruleExplainer.js"
+    }
+  },
+  bin: {
+    assurly: "./dist/index.js"
+  },
+  files: [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  engines: {
+    node: "^20.19.0 || >=22.12.0"
+  },
+  scripts: {
+    build: `node -e "require('fs').rmSync('dist',{recursive:true,force:true})" && tsc`,
+    dev: "tsc -w",
+    test: "vitest run src"
+  },
+  dependencies: {
+    "@assurly/scanner-core": "1.0.4",
+    chalk: "^4.1.2",
+    commander: "^11.1.0",
+    ora: "^5.4.1",
+    "ts-morph": "^20.0.0",
+    zod: "^3.22.4"
+  },
+  devDependencies: {
+    "@types/node": "^20.11.0",
+    typescript: "^5.3.3",
+    vitest: "^4.1.8"
+  },
+  publishConfig: {
+    access: "public"
+  },
+  repository: {
+    type: "git",
+    url: "https://github.com/assurly/assurly.git",
+    directory: "packages/cli"
+  },
+  license: "MIT",
+  author: "Assurly",
+  bugs: {
+    url: "https://assurly.dev/#contact",
+    email: "support@assurly.dev"
+  }
+};
+
+// src/index.ts
+var ASSURLY_CLI_PACKAGE_SPEC = `assurly@${package_default.version}`;
 var errorMessage = (error2) => error2 instanceof Error ? error2.message : String(error2);
 async function run() {
   try {
@@ -1144,7 +1235,7 @@ async function run() {
     const absoluteScanPath = path.resolve(scanPath);
     info(`Scanning project path: ${absoluteScanPath}`);
     let command2 = "npx";
-    let args = ["--yes", "assurly@1.0.0", "scan", "--json", "--path", absoluteScanPath];
+    let args = ["--yes", ASSURLY_CLI_PACKAGE_SPEC, "scan", "--json", "--path", absoluteScanPath];
     if (cliPathInput) {
       const absoluteCliPath = path.resolve(cliPathInput);
       if (fs2.existsSync(absoluteCliPath)) {
@@ -1276,5 +1367,6 @@ if (process.env.NODE_ENV !== "test") {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  ASSURLY_CLI_PACKAGE_SPEC,
   run
 });
