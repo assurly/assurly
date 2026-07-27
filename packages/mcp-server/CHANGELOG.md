@@ -3,6 +3,15 @@
 All notable changes to `@assurly/mcp-server` are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.2.2
+
+### Added
+
+- `mcpName` and `server.json` for the official MCP registry. The registry matches
+  `server.json`'s `name` against the published package's `mcpName` as proof of
+  ownership, so the field has to reach npm before a listing can be accepted.
+  Namespace `dev.assurly/mcp-server`, verified by DNS against `assurly.dev`.
+
 ## 1.2.0
 
 ### Changed

@@ -1,6 +1,7 @@
 {
   "name": "@assurly/mcp-server",
-  "version": "1.2.1",
+  "version": "1.2.2",
+  "mcpName": "dev.assurly/mcp-server",
   "description": "MCP server that gives Cursor, Claude Code, VS Code and Windsurf a pre-deploy ship gate. Five tools: scan a path or files, explain a rule, read a hosted verdict, and audit the agent stack itself (MCP config and instruction files).",
   "keywords": [
     "mcp",
@@ -51,8 +52,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "assurly": "1.2.1",
-    "@assurly/scanner-core": "1.2.1",
+    "assurly": "1.2.2",
+    "@assurly/scanner-core": "1.2.2",
     "zod": "^3.22.4"
   },
   "devDependencies": {

@@ -1141,7 +1141,7 @@ var fs2 = __toESM(require("fs"));
 // ../cli/package.json
 var package_default = {
   name: "assurly",
-  version: "1.2.1",
+  version: "1.2.2",
   description: "Pre-deploy ship gate for AI-built SaaS. Audits npm 12 install-script trust (allowScripts), MCP agent config, Supabase RLS, Stripe webhooks and leaked keys \u2014 offline, from files you already have. No upload, no sign-up.",
   keywords: [
     "allowscripts",
@@ -1211,7 +1211,7 @@ var package_default = {
     test: "vitest run src"
   },
   dependencies: {
-    "@assurly/scanner-core": "1.2.1",
+    "@assurly/scanner-core": "1.2.2",
     chalk: "^4.1.2",
     commander: "^11.1.0",
     ora: "^5.4.1",

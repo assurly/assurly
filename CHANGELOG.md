@@ -7,6 +7,23 @@ these packages follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 Published packages: `@assurly/scanner-core`, `assurly`,
 `@assurly/mcp-server`. They are released together and share a version.
 
+## [1.2.2] — 2026-07-27
+
+### Added
+
+- **`@assurly/mcp-server`** — `mcpName` in `package.json` and a `server.json`
+  alongside it, so the server can be listed in the [official MCP
+  registry](https://github.com/modelcontextprotocol/registry). The registry
+  verifies that a listing's underlying package really belongs to the publisher by
+  matching `server.json`'s `name` against `mcpName` in the published package,
+  which is why this needs a release of its own rather than a metadata edit.
+
+  The namespace is `dev.assurly/mcp-server`, claimed by proving control of
+  `assurly.dev` over DNS. That route needs no public repository, so it is open to
+  this project today. `server.json` deliberately omits `repository`, which is
+  optional: the monorepo is private and a listing that links to a 404 is worse
+  than one that links nowhere.
+
 ## [1.2.1] — 2026-07-27
 
 ### Fixed

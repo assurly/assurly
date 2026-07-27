@@ -1,6 +1,6 @@
 {
   "name": "@assurly/scanner-core",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Offline static-analysis rules behind Assurly: npm 12 install-script trust (allowScripts), MCP agent config auditing, slopsquat detection, Supabase RLS, Stripe webhooks, leaked service keys. Runs in Node or the browser.",
   "keywords": [
     "allowscripts",

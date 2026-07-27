@@ -1,0 +1,34 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "dev.assurly/mcp-server",
+  "description": "Pre-deploy ship gate AI agents call before shipping. Also audits the agent own MCP config.",
+  "version": "1.2.2",
+  "websiteUrl": "https://assurly.dev/mcp",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@assurly/mcp-server",
+      "version": "1.2.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "ASSURLY_API_KEY",
+          "description": "Optional. Enables assurly_verdict to read a hosted verdict for a deployed URL or repo.",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "ASSURLY_API_URL",
+          "description": "Optional. Overrides the hosted API base URL. Defaults to https://assurly.dev.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
