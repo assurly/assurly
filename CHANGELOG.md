@@ -7,6 +7,97 @@ these packages follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 Published packages: `@assurly/scanner-core`, `assurly`,
 `@assurly/mcp-server`. They are released together and share a version.
 
+## [1.2.0] — 2026-07-27
+
+### Added
+
+- **`@assurly/scanner-core`, `assurly`** — install-time trust audit. npm 12
+  stopped running dependency install scripts by default, so every project now
+  records which dependencies it trusts to execute code at install time. Seven
+  rules audit that decision from files the project already has — no network, no
+  registry calls:
+  - `supply-install-scripts-unreviewed` — the lockfile has packages that declare
+    install scripts, but no allowlist records which ones are trusted.
+  - `supply-allowscripts-unpinned` — an entry is a bare name or `name@*`, which
+    grants script execution to every version of that package, including one
+    published later by whoever takes it over. An exact pin does not.
+  - `supply-allowscripts-stale` — an entry names a package no longer in the
+    lockfile. If that name is re-added later it installs with execution already
+    approved, which is why this cross-references `dep-slopsquat-suspect`.
+  - `supply-allowscripts-invalid` — a range or dist-tag npm silently drops, so
+    the entry grants nothing its author expects.
+  - `supply-allowscripts-in-workspace` — an allowlist outside the workspace
+    root, which npm ignores.
+  - `supply-non-registry-dependency` — git, URL and tarball dependencies, which
+    npm 12 also blocks by default.
+  - `supply-npm-below-v12` — a `packageManager` or `engines.npm` pin that keeps
+    the old defaults, so none of the above protections apply.
+- **`assurly`** — `scan --supply` runs the install-time surface alone. The rules
+  also run in every ordinary scan.
+
+### Changed
+
+- **`@assurly/mcp-server`** — no new tools, but `assurly_scan_path` and
+  `assurly_scan_files` now return install-time trust findings, because the rules
+  run as part of the standard scan.
+
+### Notes
+
+Every `supply-*` rule is warning-only and none can block a ship verdict. npm 12
+shipped days before this release, so most projects will report findings here on
+a first scan; a gate that fails every build in week one would be uninstalled in
+week one.
+
+## [1.1.0] — 2026-07-26
+
+### Added
+
+- **`@assurly/scanner-core`, `assurly`** — agent stack scanning: eight rules over
+  the files that configure an AI coding agent rather than the application it
+  builds. MCP client configs are checked for shell-command servers, `http://`
+  endpoints, inline credentials, unpinned and unscoped packages; instruction
+  files (`README`, `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, PR and issue
+  templates) are checked for directives hidden in HTML comments or zero-width
+  text, prior-instruction overrides, and exfiltration patterns.
+- **`assurly`** — `scan --agent` runs the agent surface alone. The rules also run
+  in every ordinary scan.
+- **`@assurly/mcp-server`** — `assurly_scan_agent`, a fifth tool.
+
+### Notes
+
+Agent-stack findings are advisory and never block a ship verdict: they audit the
+developer's tooling, not the application being deployed.
+
+## [1.0.4] — 2026-07-20
+
+### Fixed
+
+- **`assurly`** — stack detection reads every `package.json` in the project, not
+  only the one at the scanned root. In a workspace monorepo the root manifest is
+  usually a bare workspace pointer, so a root-only read reported every framework,
+  database and payment provider as absent — which silently disabled the Supabase
+  and Stripe rules instead of flagging real issues.
+
+## [1.0.3] — 2026-07-14
+
+### Changed
+
+- **`assurly`** — the terminal report is drawn in a frame with a meter that fills
+  in proportion to the Ship Score, replacing the previous banners. It degrades
+  honestly: box drawing falls back to ASCII on legacy Windows consoles, `TERM=dumb`
+  and non-UTF-8 locales; colour honours `NO_COLOR`; piped output carries no escape
+  bytes; and OSC 8 hyperlinks are emitted only for terminals on a known-good
+  allowlist, never in CI and never when piped.
+
+### Fixed
+
+- **`assurly`** — `assurly --version` reported `1.0.0` on every release because the
+  literal had drifted from the published version, so the CLI misidentified itself
+  in bug reports. It now reads `package.json`.
+- **All three packages** — internal dependency pins were left at `1.0.2`, so a
+  version bump alone would have installed the previous release's code alongside
+  the new one.
+
 ## [1.0.2] — 2026-07-08
 
 ### Fixed

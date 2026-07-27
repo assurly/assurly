@@ -3,6 +3,38 @@
 All notable changes to `assurly` are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.2.0
+
+### Added
+
+- Install-time trust rules (`supply-*`), auditing the npm 12 install-script
+  allowlist, lockfile packages that declare install scripts, non-registry
+  dependencies and npm version pins. Offline: everything is read from
+  `package.json`, `package-lock.json` and the project's own `.npmrc`. Values from
+  `.npmrc` are never echoed, since that file holds auth tokens.
+- `scan --supply` runs the install-time surface alone. The rules also run in
+  every ordinary scan.
+
+### Notes
+
+Every `supply-*` finding is warning-only and cannot block a ship verdict. npm 12
+shipped days before this release, so most projects will report findings on a
+first scan.
+
+## 1.1.0
+
+### Added
+
+- Agent stack rules (`agent-*`) covering MCP client configuration and agent
+  instruction files, with an explanation for each rule id.
+- `scan --agent` runs the agent surface alone. The rules also run in every
+  ordinary scan.
+
+### Notes
+
+Agent-stack findings are advisory: they audit the developer's tooling, not the
+application being deployed, and never block a ship verdict.
+
 ## 1.0.4
 
 ### Fixed

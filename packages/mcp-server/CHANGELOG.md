@@ -3,6 +3,23 @@
 All notable changes to `@assurly/mcp-server` are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.2.0
+
+### Changed
+
+- No new tools. `assurly_scan_path` and `assurly_scan_files` now return
+  install-time trust findings, because those rules run as part of the standard
+  scan in `assurly` 1.2.0.
+- Internal dependency pins moved to `1.2.0`. They are exact, so publishing
+  without this bump would have installed the previous release's rules.
+
+## 1.1.0
+
+### Added
+
+- `assurly_scan_agent`, a fifth tool: audits MCP client configuration and agent
+  instruction files for a project path.
+
 ## 1.0.4
 
 ### Fixed
