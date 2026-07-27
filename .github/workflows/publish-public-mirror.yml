@@ -1,0 +1,97 @@
+name: Publish public source mirror
+
+# Pushing to a public repository cannot be undone, so this never runs on its own:
+# no push trigger, no schedule, and a typed confirmation before anything leaves.
+# The dry run is the default so the assembled tree can be inspected first.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Leave empty to assemble and verify only. Type "publish" to push to the public repository.'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  # The public repository the mirror is pushed to. It holds only what
+  # scripts/build-public-mirror.mjs assembles: the packages and their fixtures.
+  PUBLIC_REPO: assurly/assurly-packages
+
+jobs:
+  mirror:
+    name: Assemble, verify, and optionally publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+
+      # Refuses on a forbidden filename or credential-shaped content, and copies
+      # only what git tracks — so nothing gitignored can reach a public repo.
+      - name: Assemble the mirror
+        run: node scripts/build-public-mirror.mjs --out "$RUNNER_TEMP/mirror"
+
+      # A public repository whose tests fail on checkout reads as an abandoned
+      # project. Prove the tree stands on its own before it becomes visible.
+      - name: Verify the mirror builds and tests standalone
+        working-directory: ${{ runner.temp }}/mirror
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          npm test
+
+      # Assurly scanning its own published source. If the gate blocks here, the
+      # thing we are about to hold up as an example fails its own standard.
+      - name: Self-scan the assembled tree
+        working-directory: ${{ runner.temp }}/mirror
+        run: node packages/cli/dist/index.js scan --path .
+
+      - name: Summarise what would be published
+        working-directory: ${{ runner.temp }}/mirror
+        run: |
+          echo "Files: $(find . -type f -not -path './node_modules/*' | wc -l)"
+          echo "Top level:"
+          ls -1
+
+      - name: Require explicit publish confirmation
+        if: ${{ github.event.inputs.confirm != 'publish' }}
+        run: |
+          echo "Assembled and verified. Nothing was published."
+          echo "Re-run with confirm=publish to push to $PUBLIC_REPO."
+
+      # PUBLIC_MIRROR_TOKEN is a fine-grained PAT with contents:write on the
+      # public repository only. GITHUB_TOKEN cannot be used: its scope stops at
+      # this repository.
+      - name: Push to the public repository
+        if: ${{ github.event.inputs.confirm == 'publish' }}
+        working-directory: ${{ runner.temp }}/mirror
+        env:
+          TOKEN: ${{ secrets.PUBLIC_MIRROR_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "PUBLIC_MIRROR_TOKEN is not set — cannot push."
+            exit 1
+          fi
+          rm -rf node_modules
+          git init -q -b main
+          git config user.name "assurly-mirror[bot]"
+          git config user.email "noreply@assurly.dev"
+          git add -A
+          # The mirror is a snapshot, not a history: it is force-pushed each time
+          # and the source commit is recorded here so any published tree can be
+          # traced back to the private commit that produced it.
+          git commit -q -m "Assurly ${{ github.sha }}
+
+          Generated from the private monorepo by scripts/build-public-mirror.mjs.
+          Source commit: ${{ github.sha }}"
+          git remote add origin "https://x-access-token:$TOKEN@github.com/$PUBLIC_REPO.git"
+          git push --force origin main
+          echo "Published to https://github.com/$PUBLIC_REPO"

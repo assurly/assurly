@@ -44,3 +44,4 @@ lerna-debug.log*
 # Next.js Build Output
 /apps/web/.next/
 /apps/web/out/
+.public-mirror/
