@@ -74,6 +74,18 @@ program
             : supplyOnly
                 ? 'Scanning install-time trust (allowScripts / lockfile scripts)...'
                 : 'Detecting stack and scanning configurations...';
+    // Set only for a focused run. The Ship Gate verdict is a claim about the
+    // whole project, and a focused scan has not earned it — the same project can
+    // report READY TO SHIP under `--supply` and NOT READY under a full scan.
+    // Rather than print a verdict that is scoped differently from its wording,
+    // focused runs print the findings and say what was and was not examined.
+    const surface = agentOnly && supplyOnly
+        ? { label: 'agent stack or install-time trust', flag: '--agent --supply' }
+        : agentOnly
+            ? { label: 'agent stack', flag: '--agent' }
+            : supplyOnly
+                ? { label: 'install-time trust', flag: '--supply' }
+                : undefined;
     const spinner = (0, ora_1.default)(chalk_1.default.cyan(focusedLabel)).start();
     try {
         spinner.text = chalk_1.default.cyan(agentOnly || supplyOnly
@@ -108,7 +120,12 @@ program
             console.log(`  Database:   ${chalk_1.default.green(context.detectedStack.database.toUpperCase())}`);
             console.log(`  Payments:   ${chalk_1.default.green(context.detectedStack.payments.toUpperCase())}`);
             console.log(`  Deployment: ${chalk_1.default.green(context.detectedStack.deployment.toUpperCase())}\n`);
-            (0, reporter_1.reportFindings)(findings);
+            (0, reporter_1.reportFindings)(findings, undefined, surface);
+            if (surface) {
+                console.log(chalk_1.default.dim(`  Focused scan (${surface.flag}) — no Ship Gate verdict. ` +
+                    'Run `assurly scan` to judge the whole project.\n'));
+                process.exit(0);
+            }
             (0, shipGateReporter_1.printShipGateSummary)(shipGate);
             const maxBlockers = process.env.ASSURLY_DOGFOOD_MAX_BLOCKERS
                 ? Number.parseInt(process.env.ASSURLY_DOGFOOD_MAX_BLOCKERS, 10)

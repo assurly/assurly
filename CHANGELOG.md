@@ -7,6 +7,18 @@ these packages follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 Published packages: `@assurly/scanner-core`, `assurly`,
 `@assurly/mcp-server`. They are released together and share a version.
 
+## [1.2.1] — 2026-07-27
+
+### Fixed
+
+- **`assurly`** — a focused scan no longer claims the whole project is ready.
+  `scan --agent` and `scan --supply` printed "Your project is production-ready"
+  and a `READY TO SHIP` verdict when their own narrow surface was clean, even
+  though a full scan of the same project reported blockers. A focused run now
+  names the surface it examined, prints no Ship Gate verdict, and points at
+  `assurly scan` for a judgement about the project. A ship gate overstating its
+  own scope is the failure this tool exists to prevent.
+
 ## [1.2.0] — 2026-07-27
 
 ### Added

@@ -3,6 +3,16 @@
 All notable changes to `assurly` are documented here.
 This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.2.1
+
+### Fixed
+
+- A focused scan no longer speaks for the whole project. `--agent` and
+  `--supply` printed "Your project is production-ready" and a `READY TO SHIP`
+  verdict whenever their own surface was clean — the same project could report
+  ready under `--supply` and blocked under a full scan. Focused runs now name the
+  surface, print no verdict, and point at `assurly scan`.
+
 ## 1.2.0
 
 ### Added

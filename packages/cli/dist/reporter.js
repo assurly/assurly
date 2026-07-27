@@ -8,10 +8,21 @@ const chalk_1 = __importDefault(require("chalk"));
 const terminalUi_1 = require("./terminalUi");
 /**
  * Renders the scan results in a clean, color-coded, professional console layout.
+ *
+ * `surface` is set only for focused scans (`--agent`, `--supply`). A focused run
+ * examines one narrow surface, so it must never claim the project is production
+ * ready: the same project can be clean under `--supply` and blocked under a full
+ * scan. Overstating the scope of a clean result is the exact failure this tool
+ * exists to prevent, so the wording is scoped rather than absolute.
  */
-function reportFindings(findings, caps = (0, terminalUi_1.detectTerminalCapabilities)()) {
+function reportFindings(findings, caps = (0, terminalUi_1.detectTerminalCapabilities)(), surface) {
     console.log('\n' + chalk_1.default.dim((0, terminalUi_1.frameTop)('Scan Results', caps)) + '\n');
     if (findings.length === 0) {
+        if (surface) {
+            console.log(chalk_1.default.bold.green(`  ✔ No ${surface.label} issues found.`));
+            console.log(chalk_1.default.dim(`    This was a focused scan (${surface.flag}). Run \`assurly scan\` for the full ship gate.\n`));
+            return;
+        }
         console.log(chalk_1.default.bold.green('  ✔ Success! No configuration or security issues found.'));
         console.log(chalk_1.default.green('    Your project is production-ready! 🚀\n'));
         return;
