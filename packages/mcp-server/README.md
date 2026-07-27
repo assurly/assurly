@@ -45,6 +45,36 @@ deployed, so they never block a ship verdict.
 
 `assurly_verdict` returns the status, Ship Score, and top issue, and sets `isError: true` when the verdict is **blocked** — so the agent stops instead of shipping. It requires `ASSURLY_API_KEY` (see [Connect the hosted verdict](#connect-the-hosted-verdict)).
 
+## How do I stop my AI agent from deploying broken code?
+
+Give it a gate it must call, and make a failed gate an error rather than a suggestion.
+
+> [The MCP specification](https://modelcontextprotocol.io/specification) lets a tool return
+> `isError: true`, and agents treat that as a failed call rather than a result to interpret.
+> Assurly uses it deliberately: a **blocked** verdict comes back as an error, so the agent
+> stops and reports instead of deciding for itself whether the finding matters. Advisory
+> findings never set it — a gate that errors on everything is a gate the agent learns to
+> work around.
+
+Paste the rules from [assurly.dev/mcp](https://assurly.dev/mcp) into `.cursorrules`,
+`CLAUDE.md` or `AGENTS.md` so the agent calls the gate before every deploy without being
+asked.
+
+## Does my source code leave my machine?
+
+No, for the four local tools. `assurly_scan_path` and `assurly_scan_files` run the rules in
+this process over stdio, and `assurly_explain_rule` is a lookup. The fifth tool,
+`assurly_verdict`, is the only one that reaches the network, and it sends only the URL or
+repository name you ask about — never file contents. It is opt-in: without
+`ASSURLY_API_KEY` it does nothing.
+
+## Which MCP clients does this work with?
+
+Any client that speaks stdio MCP. Configuration examples below cover Cursor, Claude Code,
+VS Code and Windsurf. Note that VS Code uses a `servers` key where Cursor and Windsurf use
+`mcpServers` — copying a config between them without renaming that key is the most common
+reason a server appears not to load.
+
 ## Requirements
 
 Node `^20.19.0 || >=22.12.0`.

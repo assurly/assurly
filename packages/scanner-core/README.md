@@ -34,8 +34,47 @@ Detection is intentionally **precise over exhaustive**: a rule that can't be def
 > **Static rules stay high-trust and few.** Prefer raising precision of the existing gate over growing
 > the rulebook. Net-new static surfaces (e.g. install-time trust / `supply-*`) are exceptions when they
 > audit a durable local trust artefact with zero network and clear false-positive discipline. Depth
-> otherwise comes from the runtime probe and the AI layer — see the
-> [genius-rebuild master plan](../../docs/roadmap/10-genius-rebuild-master-plan.md).
+> otherwise comes from the runtime probe and the AI layer.
+
+## Can these rules run in a browser?
+
+Yes. Every export is a pure function that takes file contents as a string and returns
+findings — no `fs`, no `child_process`, no network client. That is why the same rule set
+backs the web dashboard, the CLI, the GitHub integration and the MCP server, and why a scan
+in one surface matches a scan in another on the same project.
+
+## What does a rule's confidence mean?
+
+Confidence is the rule's own estimate of how certain the finding is, and it is what decides
+whether something can stop a deploy:
+
+> Only an `error` finding with `high` confidence can become a blocker. Everything else lands
+> in review or warnings. A rule that cannot be defended to a senior engineer in thirty
+> seconds does not get to block a deploy, because a gate that cries wolf is switched off,
+> and a gate that is switched off protects nothing.
+
+Two categories never block at all, whatever their severity: `agent-*` and `supply-*`. Those
+audit the developer's own tooling rather than the application being deployed.
+
+## What does it check for Supabase, Stripe and npm?
+
+- **Supabase** — tables created without [row-level
+  security](https://supabase.com/docs/guides/database/postgres/row-level-security), policies
+  that grant unrestricted access via `USING (true)`, and service-role keys reachable from
+  client code.
+- **Stripe** — webhook endpoints that never call
+  [`constructEvent`](https://docs.stripe.com/webhooks#verify-official-libraries) to verify
+  the signature, missing idempotency, and live keys in development env files.
+- **npm** — the [`allowScripts`
+  allowlist](https://github.blog/changelog/2026-06-09-upcoming-breaking-changes-for-npm-v12/)
+  introduced when npm 12 stopped running install scripts by default, lockfile packages that
+  declare install scripts, and non-registry dependencies.
+
+## Does it send anything anywhere?
+
+No. The package makes no network requests and collects no telemetry. It has no filesystem
+access either — callers read files and pass in the contents, which is what keeps it
+browser-safe.
 
 ## Usage
 
