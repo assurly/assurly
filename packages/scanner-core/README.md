@@ -9,6 +9,18 @@ The browser-safe static-analysis engine behind [Assurly](https://assurly.dev) â€
 >
 > This package is the reusable rule engine those tools are built on.
 
+## In short
+
+`@assurly/scanner-core` is the offline rule engine behind Assurly. It exports pure
+functions that take file contents and return findings, with no filesystem access, no
+network calls and no telemetry, so the same rules run in Node and in a browser. Coverage
+spans Supabase row-level security, Stripe webhook signature verification, secrets reaching
+client bundles, React Server Component leaks, SQL migration safety, connection pooling,
+edge-runtime compatibility, cold starts, AI agent configuration (MCP client configs and
+instruction files), and install-time trust under npm 12 â€” the `allowScripts` allowlist,
+lockfile packages that declare install scripts, and non-registry dependencies. Every rule
+carries a confidence level so a gate can separate near-certain blockers from heuristics.
+
 ## What it does
 
 Each rule carries an honest **confidence** so the Ship Gate can separate the three states that matter:

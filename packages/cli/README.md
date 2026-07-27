@@ -16,6 +16,54 @@ npx assurly scan --path .
 
 No sign-up, no upload. **Your source code is analyzed on your machine and is never sent anywhere.**
 
+## In short
+
+Assurly is a command-line ship gate for projects built with AI coding tools. It reads a
+project's own files — source, `package.json`, `package-lock.json`, `.npmrc`, MCP client
+configs and agent instruction files — and returns one verdict: ready to ship, review, or
+blocked. Thirteen rule areas cover Supabase row-level security, Stripe webhook signature
+verification, secrets reaching client bundles, React Server Component leaks, migration
+safety, connection pooling, edge compatibility, cold starts, the agent's own tooling, and
+install-time trust under npm 12. It runs entirely offline, makes no registry calls, and
+sends nothing anywhere. Install with `npx assurly scan`.
+
+## Which of my dependencies can run code when I install them?
+
+Your lockfile already knows. `package-lock.json` v2 and v3 record `hasInstallScript: true`
+on every package that declares a `preinstall`, `install` or `postinstall` script, so the
+list needs no network call to produce:
+
+```sh
+npx assurly scan --supply
+```
+
+This matters because [npm 12 stopped running those scripts by
+default](https://github.blog/changelog/2026-06-09-upcoming-breaking-changes-for-npm-v12/):
+`allowScripts` now defaults to off, and `--allow-git` and `--allow-remote` default to
+`none`. Install time is where credential stealers run, because it happens before any
+application code loads and needs no interaction beyond `npm install`.
+
+## What is `allowScripts` and why did npm 12 add it?
+
+`allowScripts` is an object in `package.json` that records which dependencies you trust to
+execute code during installation. npm writes it when you run `npm approve-scripts`. Before
+npm 12 there was no such list: every dependency could run code on every install.
+
+## Is a bare package name in `allowScripts` safe?
+
+No, and this is the part most people get wrong.
+
+> A bare name such as `"canvas": true` grants install-script execution to **every version of
+> that package, forever** — including a release published tomorrow by whoever takes the
+> package over. An exact pin such as `"canvas@1.2.3": true` grants it to that version only.
+> npm accepts a bare name, `name@*`, or exact versions joined by `||`; it silently drops
+> `^`, `~`, `>=`, `<` ranges and dist-tags like `@latest`, so those entries grant nothing
+> their author expects.
+
+`assurly scan --supply` reports each of these separately, including allowlist entries for
+packages no longer in your lockfile — a dead entry means that if the name is ever re-added,
+it installs with execution already approved.
+
 ## When should I use this?
 
 Run it right before you deploy — especially if the app was built quickly with an AI tool (Lovable, v0, Bolt, Cursor, Replit). Those tools produce working code fast, but they routinely leave the deployment wiring unfinished: a table without row-level security, a webhook that never verifies its signature, a service key that ends up in the client bundle.

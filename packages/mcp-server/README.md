@@ -6,6 +6,33 @@ The agent that wrote your app can now check it: **write code → `assurly_scan_p
 
 **Your source code never leaves your machine.** The scanning tools run entirely locally over stdio and mirror the `assurly scan` pipeline exactly (`allRules` + detector + Ship Gate report), so an agent scan matches the CLI on the same project. The one tool that talks to the network, `assurly_verdict`, is opt-in and sends only the URL or repo name you ask about — never source.
 
+## In short
+
+`@assurly/mcp-server` is a local stdio MCP server that gives an AI coding agent a
+pre-deploy ship gate. It exposes five tools: scan a project directory, scan in-memory
+files, explain a rule id, read a hosted verdict for a deployed URL or repository, and
+audit the agent's own stack. A blocked verdict is returned with `isError: true`, so the
+agent stops instead of shipping. Install it with `npx -y @assurly/mcp-server`; it works
+with Cursor, Claude Code, VS Code and Windsurf.
+
+## Can a scanner check the agent's own setup?
+
+`assurly_scan_agent` does. It reads the MCP client configuration and the instruction files
+an agent is given — `.cursor/mcp.json`, `.vscode/mcp.json`, `README.md`, `CLAUDE.md`,
+`AGENTS.md`, `.cursorrules`, pull-request and issue templates — and reports eight classes
+of problem:
+
+> An MCP server configured to run `bash` or pipe a download into a shell can execute
+> arbitrary code from the agent session. A remote MCP endpoint on plain `http://` exposes
+> tool traffic and credentials in transit. A credential written directly into an MCP `env`
+> block is usually committed or synced. And an instruction file can carry directives that a
+> reader never sees but a model always does — hidden inside an HTML comment or zero-width
+> characters — including text that tries to override the agent's prior instructions or tell
+> it to send `.env` contents to a remote endpoint.
+
+These are advisory: they audit the developer's tooling rather than the application being
+deployed, so they never block a ship verdict.
+
 ## Tools
 
 | Tool                   | Description                                                   | Network |
