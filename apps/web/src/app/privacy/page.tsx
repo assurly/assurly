@@ -46,7 +46,7 @@ export default function PrivacyPage() {
               <strong>Tibor Kútik</strong>
             </li>
             <li>
-              <strong>Address:</strong> Kolta 454, 941 33 Kolta, Slovak Republic
+              <strong>Address:</strong> Hlavná 454, 941 33 Kolta, Slovak Republic
             </li>
             <li>
               <strong>VAT identification number:</strong> not registered for VAT

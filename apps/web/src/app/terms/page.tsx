@@ -44,7 +44,7 @@ export default function TermsPage() {
               <strong>Tibor Kútik</strong>
             </li>
             <li>
-              <strong>Address:</strong> Kolta 454, 941 33 Kolta, Slovak Republic
+              <strong>Address:</strong> Hlavná 454, 941 33 Kolta, Slovak Republic
             </li>
             <li>
               <strong>VAT identification number:</strong> not registered for VAT
@@ -322,7 +322,7 @@ export default function TermsPage() {
 
           <h3>8.1 Model withdrawal declaration</h3>
           <div className="legal-model-form">
-            <p>To Tibor Kútik, Kolta 454, 941 33 Kolta, Slovak Republic:</p>
+            <p>To Tibor Kútik, Hlavná 454, 941 33 Kolta, Slovak Republic:</p>
             <p>
               I hereby give notice that I withdraw from my contract for the supply of the following
               digital service: Assurly Pro subscription.
