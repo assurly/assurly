@@ -17,7 +17,10 @@ export function formatScanTime(isoTimestamp: string): string {
   if (Number.isNaN(date.getTime())) {
     return isoTimestamp;
   }
-  return date.toLocaleTimeString(undefined, {
+  // Pin en-US so Node SSR and the browser agree. Leaving the locale ambient
+  // makes the string follow the runtime default (en-US on the server, the
+  // visitor's locale in Chromium) and React reports a hydration mismatch.
+  return date.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,

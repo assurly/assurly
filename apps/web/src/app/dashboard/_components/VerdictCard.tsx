@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactElement } from 'react';
+import { useSyncExternalStore, type ReactElement } from 'react';
 import type { TargetCard } from '../../../utils/clientApi';
 import { consequenceForGroupKey } from '../../../utils/consequenceMap';
 
@@ -39,6 +39,38 @@ export function formatCheckedAt(iso: string | null, now: number = Date.now()): s
   if (hours < 24) return `Checked ${hours}h ago`;
   const days = Math.round(hours / 24);
   return `Checked ${days}d ago`;
+}
+
+/** Absolute en-US stamp used during SSR/hydration before the relative phrase mounts. */
+function formatCheckedAtAbsolute(iso: string): string {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+const subscribeNoop = (): (() => void) => () => {};
+const getClientMounted = (): boolean => true;
+const getServerMounted = (): boolean => false;
+
+/**
+ * Relative "Checked 5m ago" depends on Date.now(), so server and client can
+ * disagree near a minute boundary. Render an absolute stamp until the client
+ * snapshot is live, then swap to the relative phrase (option a — avoids
+ * suppressHydrationWarning). useSyncExternalStore keeps SSR/hydration aligned
+ * without a mount-time setState.
+ */
+function CheckedAtFreshness({ iso }: { iso: string | null }): ReactElement {
+  const mounted = useSyncExternalStore(subscribeNoop, getClientMounted, getServerMounted);
+
+  if (!iso || Number.isNaN(new Date(iso).getTime())) {
+    return <span className="verdict-card__freshness">Never scanned</span>;
+  }
+
+  const label = mounted ? formatCheckedAt(iso) : formatCheckedAtAbsolute(iso);
+  return <span className="verdict-card__freshness">{label}</span>;
 }
 
 export function VerdictCard({ card, onOpen }: VerdictCardProps): ReactElement {
@@ -101,7 +133,7 @@ export function VerdictCard({ card, onOpen }: VerdictCardProps): ReactElement {
           {card.shipScore === null ? '—' : `${card.shipScore}`}
           <span className="verdict-card__score-max">/100</span>
         </span>
-        <span className="verdict-card__freshness">{formatCheckedAt(card.lastCheckedAt)}</span>
+        <CheckedAtFreshness iso={card.lastCheckedAt} />
       </span>
     </button>
   );

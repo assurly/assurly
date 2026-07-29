@@ -44,6 +44,8 @@ export interface ScanWorkspaceProps {
   fetchTrend: (
     repositoryId: string,
   ) => Promise<{ points: Array<{ date: string; shipScore: number }> }>;
+  /** Optional SSR seed for the trend chart (E2E hydration coverage). */
+  initialTrendPoints?: Array<{ date: string; shipScore: number }>;
   selectedShareUrl: string | null;
   selectedBadgeMarkdown: string | null;
   onShare?: () => void;
@@ -92,6 +94,7 @@ export function ScanWorkspace({
   displayedFindings,
   findingsLimit,
   fetchTrend,
+  initialTrendPoints,
   selectedShareUrl,
   selectedBadgeMarkdown,
   onShare,
@@ -127,7 +130,11 @@ export function ScanWorkspace({
         onJumpToResults={onJumpToResults}
       />
 
-      <ShipScoreTrendChart repositoryId={selectedRepo.id} fetchTrend={fetchTrend} />
+      <ShipScoreTrendChart
+        repositoryId={selectedRepo.id}
+        fetchTrend={fetchTrend}
+        initialPoints={initialTrendPoints}
+      />
 
       <div className="repo-scan-card">
         <div className="repo-scan-header">

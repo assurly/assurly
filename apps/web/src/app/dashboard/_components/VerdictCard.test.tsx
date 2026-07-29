@@ -43,11 +43,32 @@ describe('formatCheckedAt', () => {
     expect(formatCheckedAt('not-a-date', now)).toBe('Never scanned');
   });
 
-  it('formats recent, minute, hour, and day granularities', () => {
+  it('returns "Checked just now" under a minute', () => {
     expect(formatCheckedAt('2026-07-13T11:59:30.000Z', now)).toBe('Checked just now');
+    expect(formatCheckedAt('2026-07-13T11:59:01.000Z', now)).toBe('Checked just now');
+  });
+
+  it('formats minute granularity below the hour boundary', () => {
     expect(formatCheckedAt('2026-07-13T11:30:00.000Z', now)).toBe('Checked 30m ago');
+    expect(formatCheckedAt('2026-07-13T11:01:00.000Z', now)).toBe('Checked 59m ago');
+  });
+
+  it('switches to hours exactly at the 60-minute boundary', () => {
+    expect(formatCheckedAt('2026-07-13T11:00:00.000Z', now)).toBe('Checked 1h ago');
+  });
+
+  it('formats hour granularity below the day boundary', () => {
     expect(formatCheckedAt('2026-07-13T09:00:00.000Z', now)).toBe('Checked 3h ago');
+    expect(formatCheckedAt('2026-07-12T13:00:00.000Z', now)).toBe('Checked 23h ago');
+  });
+
+  it('switches to days exactly at the 24-hour boundary', () => {
+    expect(formatCheckedAt('2026-07-12T12:00:00.000Z', now)).toBe('Checked 1d ago');
+  });
+
+  it('formats several days', () => {
     expect(formatCheckedAt('2026-07-10T12:00:00.000Z', now)).toBe('Checked 3d ago');
+    expect(formatCheckedAt('2026-07-06T12:00:00.000Z', now)).toBe('Checked 7d ago');
   });
 });
 

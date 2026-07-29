@@ -3,7 +3,7 @@ import DashboardClient from './_components/DashboardClient';
 import type { SessionResult } from '../../utils/clientApi';
 import { AuthenticationError, requireUser } from '../../utils/auth';
 import { resolveApplicationUrlFromHost } from '../../utils/env';
-import { getE2eDashboardSession } from '../../testing/e2eDashboardFixture';
+import { getE2eDashboardSession, resolveE2eTrendPoints } from '../../testing/e2eDashboardFixture';
 
 async function loadDashboardSession(): Promise<SessionResult> {
   const fixtureSession = getE2eDashboardSession();
@@ -36,10 +36,17 @@ export default async function DashboardPage(): Promise<React.ReactElement> {
     requestHeaders.get('x-forwarded-proto'),
   );
 
+  const initialSession = await loadDashboardSession();
+  const fixtureSession = getE2eDashboardSession();
+  const firstRepoId = initialSession.repositories[0]?.id;
+  const initialTrendPoints =
+    fixtureSession && firstRepoId ? resolveE2eTrendPoints(firstRepoId) : undefined;
+
   return (
     <DashboardClient
-      initialSession={await loadDashboardSession()}
+      initialSession={initialSession}
       loginUrl={new URL('/api/auth/login', appUrl).toString()}
+      initialTrendPoints={initialTrendPoints}
     />
   );
 }

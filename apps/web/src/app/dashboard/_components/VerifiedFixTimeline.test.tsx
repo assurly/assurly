@@ -1,11 +1,38 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
-import { VerifiedFixTimeline } from './VerifiedFixTimeline';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { formatVerifiedFixTime, VerifiedFixTimeline } from './VerifiedFixTimeline';
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+});
+
+describe('formatVerifiedFixTime', () => {
+  it('returns the pinned en-US timestamp for a fixed ISO input', () => {
+    const iso = '2026-07-16T14:03:00.000Z';
+    const expected = new Date(iso).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    expect(formatVerifiedFixTime(iso)).toBe(expected);
+    expect(formatVerifiedFixTime(null)).toBeNull();
+    expect(formatVerifiedFixTime('not-a-date')).toBeNull();
+  });
+
+  it('passes en-US explicitly so ambient locale cannot change the output', () => {
+    const spy = vi.spyOn(Date.prototype, 'toLocaleString');
+    formatVerifiedFixTime('2026-07-16T14:03:00.000Z');
+    expect(spy).toHaveBeenCalledWith('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  });
 });
 
 describe('VerifiedFixTimeline', () => {

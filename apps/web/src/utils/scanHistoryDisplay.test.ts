@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Scan } from './dbAdapter';
 import {
   buildDuplicateShaBadges,
@@ -22,14 +22,33 @@ function buildScan(overrides: Partial<Scan> & Pick<Scan, 'id'>): Scan {
 }
 
 describe('scanHistoryDisplay', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('shortens hex commit SHAs to seven characters', () => {
     expect(formatCommitShaShort('669c0392ea81119689959fdbe63b05c3c95ce544')).toBe('669c039');
     expect(formatCommitShaShort('deadbee')).toBe('deadbee');
     expect(formatCommitShaShort('not-a-sha')).toBe('not-a-sha');
   });
 
-  it('formats scan timestamps as 24-hour local time', () => {
-    expect(formatScanTime('2026-06-26T08:55:00.000Z')).toMatch(/08:55|10:55/);
+  it('formats scan timestamps as pinned en-US 24-hour local time', () => {
+    const iso = '2026-06-26T08:55:00.000Z';
+    const expected = new Date(iso).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    expect(formatScanTime(iso)).toBe(expected);
+
+    const spy = vi.spyOn(Date.prototype, 'toLocaleTimeString');
+    formatScanTime(iso);
+    expect(spy).toHaveBeenCalledWith('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+
     expect(formatScanTime('invalid')).toBe('invalid');
   });
 

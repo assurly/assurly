@@ -183,11 +183,14 @@ interface GitHubTreeNode {
 interface DashboardContentProps {
   initialSession: SessionResult;
   loginUrl?: string;
+  /** Optional SSR seed for the Ship Score trend chart (E2E hydration coverage). */
+  initialTrendPoints?: Array<{ date: string; shipScore: number }>;
 }
 
 function DashboardContent({
   initialSession,
   loginUrl = '/api/auth/login',
+  initialTrendPoints,
 }: DashboardContentProps): React.ReactElement {
   const searchParams = useSearchParams();
 
@@ -1758,6 +1761,7 @@ function DashboardContent({
                   selectedShareUrl={selectedShareUrl}
                   selectedBadgeMarkdown={selectedBadgeMarkdown}
                   fetchTrend={clientApi.trend}
+                  initialTrendPoints={initialTrendPoints}
                   onShare={
                     org?.billing_plan === 'pro' && !selectedShareUrl
                       ? () => void handleShareScan()
@@ -1786,10 +1790,15 @@ function DashboardContent({
 export default function DashboardClient({
   initialSession,
   loginUrl,
+  initialTrendPoints,
 }: DashboardContentProps): React.ReactElement {
   return (
     <Suspense fallback={<div className="dashboard-page__loading">Loading Dashboard...</div>}>
-      <DashboardContent initialSession={initialSession} loginUrl={loginUrl} />
+      <DashboardContent
+        initialSession={initialSession}
+        loginUrl={loginUrl}
+        initialTrendPoints={initialTrendPoints}
+      />
     </Suspense>
   );
 }

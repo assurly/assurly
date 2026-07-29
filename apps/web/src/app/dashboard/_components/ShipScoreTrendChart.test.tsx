@@ -1,7 +1,26 @@
 // @vitest-environment jsdom
 import { render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { ShipScoreTrendChart } from './ShipScoreTrendChart';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { formatTrendDate, ShipScoreTrendChart } from './ShipScoreTrendChart';
+
+describe('formatTrendDate', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns the pinned en-US short month/day for a fixed ISO input', () => {
+    // Midday UTC so the calendar day is stable across common local offsets.
+    expect(formatTrendDate('2026-06-26T12:00:00.000Z')).toBe('Jun 26');
+    expect(formatTrendDate('2026-07-28T12:00:00.000Z')).toBe('Jul 28');
+    expect(formatTrendDate('not-a-date')).toBe('not-a-date');
+  });
+
+  it('passes en-US explicitly so ambient locale cannot change the output', () => {
+    const spy = vi.spyOn(Date.prototype, 'toLocaleDateString');
+    formatTrendDate('2026-06-26T12:00:00.000Z');
+    expect(spy).toHaveBeenCalledWith('en-US', { month: 'short', day: 'numeric' });
+  });
+});
 
 describe('ShipScoreTrendChart', () => {
   it('renders the trend when data is available', async () => {

@@ -10,6 +10,11 @@ export interface ShipScoreTrendPoint {
 interface ShipScoreTrendChartProps {
   repositoryId: string;
   fetchTrend: (repositoryId: string) => Promise<{ points: ShipScoreTrendPoint[] }>;
+  /**
+   * Optional first-paint seed (e.g. E2E fixture). When provided, the chart is
+   * ready during SSR/hydration so locale-sensitive labels are actually compared.
+   */
+  initialPoints?: ShipScoreTrendPoint[];
 }
 
 interface TrendState {
@@ -18,10 +23,12 @@ interface TrendState {
   points: ShipScoreTrendPoint[];
 }
 
-function formatTrendDate(value: string): string {
+/** Locale-pinned short date for trend labels — must stay deterministic across SSR. */
+export function formatTrendDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  // Pin en-US so Node SSR and the browser agree (see ProofEvidence.tsx).
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function buildTrendPath(points: ShipScoreTrendPoint[], width: number, height: number): string {
@@ -39,11 +46,13 @@ function buildTrendPath(points: ShipScoreTrendPoint[], width: number, height: nu
 export function ShipScoreTrendChart({
   repositoryId,
   fetchTrend,
+  initialPoints,
 }: ShipScoreTrendChartProps): ReactElement | null {
+  const seeded = initialPoints !== undefined && initialPoints.length > 0;
   const [trendState, setTrendState] = useState<TrendState>({
     repositoryId,
-    status: 'loading',
-    points: [],
+    status: seeded ? 'ready' : 'loading',
+    points: seeded ? initialPoints : [],
   });
 
   useEffect(() => {

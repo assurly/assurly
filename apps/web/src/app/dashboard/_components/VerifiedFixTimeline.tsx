@@ -20,11 +20,13 @@ const STATUS_COPY: Record<FixOutcomeStatus, { label: string; modifier: string }>
   regressed: { label: 'Regressed', modifier: 'regressed' },
 };
 
-function formatTime(value: string | null | undefined): string | null {
+/** Locale-pinned timestamp for the verified-fix trail — deterministic across SSR. */
+export function formatVerifiedFixTime(value: string | null | undefined): string | null {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString(undefined, {
+  // Pin en-US so Node SSR and the browser agree (see ProofEvidence.tsx).
+  return date.toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -45,8 +47,8 @@ export function VerifiedFixTimeline({
   verifiedAt,
 }: VerifiedFixTimelineProps): ReactElement {
   const status = STATUS_COPY[outcome];
-  const foundLabel = formatTime(foundAt);
-  const verifiedLabel = formatTime(verifiedAt);
+  const foundLabel = formatVerifiedFixTime(foundAt);
+  const verifiedLabel = formatVerifiedFixTime(verifiedAt);
   const verifiedVerb = outcome === 'verified_fixed' ? 'verified closed' : 'last checked';
 
   return (

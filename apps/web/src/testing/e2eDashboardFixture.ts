@@ -186,3 +186,22 @@ export function resolveE2eFindingsForScan(scanId: string): ScanFinding[] {
   }
   return [];
 }
+
+/**
+ * First-paint Ship Score trend for the E2E Attesta repo. Seeded into the chart
+ * during SSR so locale-sensitive date labels participate in hydration (the
+ * client-fetched chart would only paint after mount and skip the mismatch).
+ */
+export const e2eAttestaTrendPoints: Array<{ date: string; shipScore: number }> = [
+  { date: '2026-06-21T12:00:00.000Z', shipScore: 70 },
+  { date: '2026-06-26T12:00:00.000Z', shipScore: 42 },
+];
+
+export function resolveE2eTrendPoints(
+  repositoryId: string,
+): Array<{ date: string; shipScore: number }> {
+  if (repositoryId === e2eAttestaRepo.id) {
+    return e2eAttestaTrendPoints;
+  }
+  return [];
+}
