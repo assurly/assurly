@@ -24,7 +24,7 @@
     "mirror:build": "node scripts/build-public-mirror.mjs",
     "test:action": "npm test -w packages/github-action",
     "test": "npm test --workspaces --if-present",
-    "scan:self": "npm run build:cli && ASSURLY_DOGFOOD_MAX_BLOCKERS=2 node packages/cli/dist/index.js scan -p .",
+    "scan:self": "npm run build:cli && node packages/cli/dist/index.js scan -p .",
     "stats": "bash scripts/npm-stats.sh",
     "prepare": "husky"
   },

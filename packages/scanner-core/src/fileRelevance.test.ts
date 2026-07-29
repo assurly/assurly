@@ -20,6 +20,23 @@ describe('isScannableFile', () => {
     expect(isScannableFile('data/fixtures/seed.sql')).toBe(false);
   });
 
+  // A fixture directory holds code written to fail every rule. Scanning it
+  // reports those planted failures as real ones, which is how this repository
+  // came to fail its own ship gate on `test-project/schema.sql`.
+  it('excludes a fixture directory whether it is named singular or plural', () => {
+    expect(isScannableFile('test-project/schema.sql')).toBe(false);
+    expect(isScannableFile('test-projects/broken/schema.sql')).toBe(false);
+    expect(isScannableFile('packages/cli/test-project/api.ts')).toBe(false);
+    expect(isScannableFile('packages/cli/test-projects/x/api.ts')).toBe(false);
+  });
+
+  // The pattern must match a whole path segment. A real directory whose name
+  // merely starts with those characters is production code.
+  it('does not exclude paths that only begin with the fixture prefix', () => {
+    expect(isScannableFile('test-projection/src/app.ts')).toBe(true);
+    expect(isScannableFile('src/test-projectile.ts')).toBe(true);
+  });
+
   it('includes production application paths', () => {
     expect(isScannableFile('apps/web/src/app/api/foo/route.ts')).toBe(true);
     expect(isScannableFile('apps/web/src/middleware.ts')).toBe(true);

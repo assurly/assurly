@@ -116,17 +116,6 @@ program
           process.exit(0);
         }
         printShipGateSummary(shipGate);
-        const maxBlockers = process.env.ASSURLY_DOGFOOD_MAX_BLOCKERS
-          ? Number.parseInt(process.env.ASSURLY_DOGFOOD_MAX_BLOCKERS, 10)
-          : undefined;
-        if (maxBlockers !== undefined && shipGate.blockers.length > maxBlockers) {
-          console.error(
-            chalk.red(
-              `\nDogfood gate failed: ${shipGate.blockers.length} blockers (max ${maxBlockers}).\n`,
-            ),
-          );
-          process.exit(1);
-        }
         process.exit(shipGate.status === 'blocked' ? 1 : 0);
       }
 

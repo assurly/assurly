@@ -22,10 +22,14 @@ function isScannableFile(filePath) {
         normalized.startsWith('.next/')) {
         return false;
     }
+    // `test-project/` and `test-projects/` are both common names for a directory
+    // of deliberately broken sample apps. Matching only the plural let the
+    // singular through, and a fixture written to fail every rule then reads as
+    // production code: Assurly's own repository reported two missing-RLS blockers
+    // from a fixture and failed its own ship gate for it.
     if (normalized.includes('/__tests__/') ||
         normalized.startsWith('__tests__/') ||
-        normalized.includes('/test-projects/') ||
-        normalized.startsWith('test-projects/') ||
+        /(^|\/)test-projects?\//.test(normalized) ||
         normalized.includes('/fixtures/') ||
         normalized.startsWith('fixtures/') ||
         normalized.includes('/vendor/') ||
