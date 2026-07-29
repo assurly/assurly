@@ -5,18 +5,22 @@ import { describe, expect, it } from 'vitest';
 import PrivacyPage from './page';
 import TermsPage from '../terms/page';
 
+/**
+ * These assertions used to index `children[1]` for the `<main>` element, so
+ * adding anything ahead of it in the tree — a JSON-LD block, in the event —
+ * failed them for a reason that had nothing to do with what they check.
+ * Querying the rendered output keeps the same guarantee without pinning the
+ * order of siblings.
+ */
 describe('Legal Pages Component Structure', () => {
   it('PrivacyPage returns a valid React structure with processing disclosures', () => {
-    const component = PrivacyPage();
-    expect(component).toBeDefined();
-    expect(component.type).toBe('div');
-    expect(component.props.className).toBe('legal-container');
+    // Scoped to this render's own container: the suite renders both legal pages
+    // into one jsdom document, so a global query finds two of everything.
+    const { container } = render(<PrivacyPage />);
 
-    const main = component.props.children[1];
-    expect(main.type).toBe('main');
-
-    const h1 = main.props.children[0];
-    expect(h1.props.children).toBe('Privacy Policy');
+    expect(container.querySelector('div.legal-container')).toBeTruthy();
+    const main = within(container).getByRole('main');
+    expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('Privacy Policy');
   });
 
   it('PrivacyPage renders cookie inventory section', () => {
@@ -34,17 +38,10 @@ describe('Legal Pages Component Structure', () => {
   });
 
   it('TermsPage returns a valid React structure with warranty disclaimer headings', () => {
-    const component = TermsPage();
-    expect(component).toBeDefined();
-    expect(component.type).toBe('div');
-    expect(component.props.className).toBe('legal-container');
+    const { container } = render(<TermsPage />);
 
-    // Check main tag structure
-    const main = component.props.children[1];
-    expect(main.type).toBe('main');
-
-    // Verify presence of title
-    const h1 = main.props.children[0];
-    expect(h1.props.children).toBe('Terms of Service');
+    expect(container.querySelector('div.legal-container')).toBeTruthy();
+    const main = within(container).getByRole('main');
+    expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('Terms of Service');
   });
 });

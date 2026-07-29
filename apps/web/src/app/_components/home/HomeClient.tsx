@@ -51,6 +51,8 @@ import {
   HomeXIcon,
 } from './HomeIcons';
 import { ProofPoints } from './ProofPoints';
+import { Faq } from './Faq';
+import { PRICES } from '../../../utils/pricing';
 
 interface HomeClientProps {
   initialAuthenticated: boolean;
@@ -182,23 +184,9 @@ export default function HomeClient({
 
   const currencySymbol = currency === 'USD' ? '$' : '€';
 
-  // `guard*` keys are the Pro (per-app) subscription price — the ROI calculator
-  // below reads them. The OEM/platform tier is usage/seat based and quoted via
-  // sales, so it has no fixed number here.
-  const prices = {
-    USD: {
-      free: 0,
-      guardMonthly: 19,
-      guardYearly: 149,
-      guardMonthlyEquiv: 12.4,
-    },
-    EUR: {
-      free: 0,
-      guardMonthly: 17,
-      guardYearly: 130,
-      guardMonthlyEquiv: 10.8,
-    },
-  }[currency];
+  // Shared with the SoftwareApplication structured data — see utils/pricing.ts
+  // for why these no longer live inline.
+  const prices = PRICES[currency];
 
   const renderCurrencyToggle = (): React.ReactElement => (
     <CurrencyToggle currency={currency} onChange={setCurrency} />
@@ -1735,6 +1723,8 @@ export default function HomeClient({
 
         {/* Social Proof */}
         <ProofPoints />
+
+        <Faq />
 
         {/* Support & Contact Section */}
         <section id="contact" className="contact-section">

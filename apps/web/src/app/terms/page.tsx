@@ -1,3 +1,7 @@
+import type { Metadata } from 'next';
+import { StructuredData } from '../_components/StructuredData';
+import { subPageGraph } from '../../utils/structuredData';
+import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
 import React from 'react';
 import Link from 'next/link';
 import { AssurlyMark } from '../_components/AssurlyMark';
@@ -12,9 +16,36 @@ import { CONTACT_SUBJECT_PARAM } from '../../utils/contactSubjects';
  */
 const TERMS_CONTACT_HREF = `/?${CONTACT_SUBJECT_PARAM}=terms#contact`;
 
+const PAGE_TITLE = 'Terms of Service · Assurly';
+const PAGE_DESCRIPTION =
+  'Terms governing use of Assurly: accounts, plans and billing, acceptable use, AI features, warranties, liability, and consumer withdrawal rights.';
+
+export const metadata: Metadata = {
+  title: PAGE_TITLE,
+  description: PAGE_DESCRIPTION,
+  openGraph: {
+    title: PAGE_TITLE,
+    description: PAGE_DESCRIPTION,
+    type: 'website',
+    url: '/terms',
+    images: [SITE_OG_IMAGE],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: PAGE_TITLE,
+    description: PAGE_DESCRIPTION,
+  },
+  // See privacy/page.tsx: the root layout's `canonical: '/'` is inherited
+  // otherwise, which contradicts this page's entry in sitemap.ts.
+  alternates: {
+    canonical: '/terms',
+  },
+};
+
 export default function TermsPage() {
   return (
     <div className="legal-container">
+      <StructuredData graph={subPageGraph('/terms', 'Terms of Service', PAGE_DESCRIPTION)} />
       <header className="legal-header">
         <Link href="/" className="back-link">
           ← Back to Home
@@ -182,7 +213,12 @@ export default function TermsPage() {
 
         <section className="legal-section">
           <h2>5. Plans</h2>
-          <div className="legal-table-wrap">
+          <div
+            className="legal-table-wrap"
+            role="region"
+            aria-label="Assurly plans, prices, and inclusions"
+            tabIndex={0}
+          >
             <table className="legal-table">
               <thead>
                 <tr>

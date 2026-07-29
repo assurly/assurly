@@ -6,22 +6,72 @@ Assurly exists for people who build fast with AI tools (Lovable, v0, Bolt, Curso
 
 It answers one question — "can I ship this right now?" — with a Ship Score out of 100 and one of three verdicts: READY TO SHIP, REVIEW RECOMMENDED, or NOT READY TO SHIP. Findings come with the exact fix (the SQL statement, the config change), not just a warning.
 
-Source code is analysed locally by the CLI and never uploaded. The hosted product additionally probes a live URL and can open fix pull requests.
+Source code is analysed locally by the CLI and the MCP server and is never uploaded. The hosted product additionally probes a live URL and can open fix pull requests.
+
+Operated by Tibor Kútik, Kolta, Slovakia. The published packages are MIT licensed.
 
 ## Packages
 
-- [assurly](https://www.npmjs.com/package/assurly): the CLI. `npx assurly scan --path .` runs the gate locally, exits non-zero when blocked, so it drops into CI.
+- [assurly](https://www.npmjs.com/package/assurly): the CLI. `npx assurly scan` runs the gate locally, exits non-zero when blocked, so it drops into CI.
 - [@assurly/mcp-server](https://www.npmjs.com/package/@assurly/mcp-server): the same gate over the Model Context Protocol, so an AI agent in Cursor or Claude Code can check its own work before shipping.
 - [@assurly/scanner-core](https://www.npmjs.com/package/@assurly/scanner-core): the rules on their own, for building other tooling. Runs in Node or the browser.
 
 ## What it checks
 
-Supabase row-level security gaps and exposed service-role keys; Stripe webhook signature verification; secrets and undocumented environment variables reaching the client bundle; React Server Component data leaks; SQL and migration safety; serverless connection pooling; Vercel edge compatibility; cold-start cost; TypeScript strictness; and missing CI checks.
+Thirteen rule areas, all evaluated locally:
+
+- Supabase row-level security gaps and exposed service-role keys
+- Stripe webhook signature verification and replay/idempotency protection
+- Secrets and undocumented environment variables reaching the client bundle
+- React Server Component data leaks
+- SQL and migration safety
+- Serverless connection pooling
+- Vercel edge-runtime compatibility
+- Cold-start cost
+- TypeScript strictness
+- Missing CI checks
+- Install-time trust under npm 12 (see below)
+- The AI agent's own tooling and MCP configuration (see below)
+- Dependency provenance and typo/slop-squatting risk
+
+## Which of my dependencies can run code when I install them?
+
+`npx assurly scan --supply`
+
+npm 12 stopped running install scripts by default, so every project now records which dependencies it trusts to execute code during installation in an `allowScripts` allowlist. A bare package name in that allowlist grants execution to every version of the package, forever — including a version published later by whoever takes the package over. An exact version pin does not.
+
+Assurly reads that allowlist, the lockfile's install-script flags, and non-registry dependencies, entirely offline. npm only reads `allowScripts` from the workspace root, so a declaration in a sub-workspace is silently ignored — Assurly reports that too.
+
+## Can it audit the AI agent's own setup?
+
+`npx assurly scan --agent`
+
+It reads MCP client configuration and agent instruction files and reports MCP servers that run shell commands, remote endpoints on plain `http://`, credentials written into config files, and instructions hidden from human readers but visible to models.
+
+## How do I let an AI agent run the gate itself?
+
+`npx -y @assurly/mcp-server` exposes five tools over MCP: `assurly_scan_path`, `assurly_scan_files`, `assurly_scan_agent`, `assurly_explain_rule` and `assurly_verdict`.
+
+It works with Cursor, Claude Code, VS Code and Windsurf. When the verdict is blocked the tool returns an error rather than a passing result, so the agent stops instead of shipping. `assurly_verdict` reads the hosted API only and never scans locally. Per-client setup: https://assurly.dev/mcp
+
+## How do I run it in CI?
+
+`npx assurly scan` exits non-zero when the verdict is blocked, so it works as an ordinary CI step with no plugin. `assurly init` writes a GitHub Actions workflow. Local scans need no API key and no account.
+
+## Pricing
+
+- Free — unlimited local CLI scans, the live URL proof-probe, one guarded app, MCP server access.
+- Pro, $19 per month (€17) — unlimited guarded apps, continuous monitoring on every deploy, AI deep review, auto-fix pull requests, private repository scanning.
+- OEM / Platform — usage- and seat-based, quoted directly. Keyed verdict API for your own users and higher rate limits.
+
+## What Assurly does not claim
+
+It is not SOC 2 audited and does not hold ISO/IEC 27001 certification, and says so on its own trust page. It carries no customer testimonials, because it has no customers yet.
 
 ## Pages
 
-- [Home](https://assurly.dev): what it is, how it works, pricing.
-- [MCP server](https://assurly.dev/mcp): setup for Cursor and Claude Code.
-- [Trust](https://assurly.dev/trust): security posture and data handling.
+- [Home](https://assurly.dev): what it is, how it works, pricing, FAQ.
+- [MCP server](https://assurly.dev/mcp): setup for Cursor, Claude Code, VS Code and Windsurf.
+- [Trust](https://assurly.dev/trust): security posture, data handling, subprocessors, vulnerability disclosure.
 - [Privacy](https://assurly.dev/privacy)
 - [Terms](https://assurly.dev/terms)

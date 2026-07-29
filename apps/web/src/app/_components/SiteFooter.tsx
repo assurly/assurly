@@ -20,6 +20,7 @@ const PRODUCT_LINKS = [
   { href: '/#features', label: 'Features' },
   { href: '/#pricing', label: 'Pricing' },
   { href: '/mcp', label: 'MCP Server' },
+  { href: '/#faq', label: 'FAQ' },
 ] as const satisfies readonly FooterNavLink[];
 
 const RESOURCE_LINKS = [

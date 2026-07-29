@@ -29,6 +29,9 @@ describe('SiteFooter', () => {
     expect(within(productNav).getByRole('link', { name: 'MCP Server' }).getAttribute('href')).toBe(
       '/mcp',
     );
+    expect(within(productNav).getByRole('link', { name: 'FAQ' }).getAttribute('href')).toBe(
+      '/#faq',
+    );
     expect(within(productNav).queryByRole('link', { name: 'Trust' })).toBeNull();
 
     const legalNav = screen.getByRole('navigation', { name: 'Legal' });

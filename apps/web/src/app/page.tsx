@@ -2,6 +2,8 @@ import { type ReactElement } from 'react';
 import { headers } from 'next/headers';
 import HomeClient from './_components/home/HomeClient';
 import { OAuthCodeRecovery } from './_components/home/OAuthCodeRecovery';
+import { StructuredData } from './_components/StructuredData';
+import { homePageGraph } from '../utils/structuredData';
 import { getSessionUser } from '../utils/auth';
 import { resolveApplicationUrlFromHost } from '../utils/env';
 import {
@@ -12,6 +14,10 @@ import {
 } from '../utils/contactSubjects';
 
 const OAUTH_CODE = /^[A-Za-z0-9._~-]{1,2048}$/;
+
+/** Mirrors the description in layout.tsx, which is this page's own metadata. */
+const HOME_DESCRIPTION =
+  'Scan your deployed URL in 60 seconds, get a Ship Score, fix blockers with one click, and monitor every deploy — before you ship to Vercel, Supabase, and Stripe.';
 
 interface HomePageProps {
   searchParams: Promise<{ code?: string | string[]; subject?: string | string[] }>;
@@ -48,10 +54,13 @@ export default async function HomePage({ searchParams }: HomePageProps): Promise
   );
 
   return (
-    <HomeClient
-      initialAuthenticated={user !== null}
-      loginUrl={new URL('/api/auth/login', appUrl).toString()}
-      initialContactSubject={resolveContactSubject(resolvedSearchParams[CONTACT_SUBJECT_PARAM])}
-    />
+    <>
+      <StructuredData graph={homePageGraph(HOME_DESCRIPTION)} />
+      <HomeClient
+        initialAuthenticated={user !== null}
+        loginUrl={new URL('/api/auth/login', appUrl).toString()}
+        initialContactSubject={resolveContactSubject(resolvedSearchParams[CONTACT_SUBJECT_PARAM])}
+      />
+    </>
   );
 }

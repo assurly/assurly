@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+import { StructuredData } from '../_components/StructuredData';
+import { subPageGraph } from '../../utils/structuredData';
+import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
 import Link from 'next/link';
 import React from 'react';
 import mcpServerPackage from '../../../../../packages/mcp-server/package.json';
@@ -22,6 +25,7 @@ export const metadata: Metadata = {
     description: PAGE_DESCRIPTION,
     type: 'website',
     url: '/mcp',
+    images: [SITE_OG_IMAGE],
   },
   twitter: {
     card: 'summary_large_image',
@@ -78,6 +82,7 @@ const MCP_NAV_LINKS = [
   { href: '/#features', label: 'Features' },
   { href: '/#pricing', label: 'Pricing' },
   { href: '/mcp', label: 'MCP Server', current: true },
+  { href: '/#faq', label: 'FAQ' },
   { href: '/#contact', label: 'Contact' },
 ] as const;
 
@@ -87,6 +92,7 @@ const MCP_SERVER_VERSION: string = mcpServerPackage.version;
 export default function McpPage(): React.ReactElement {
   return (
     <div className="mcp-container">
+      <StructuredData graph={subPageGraph('/mcp', 'MCP Server', PAGE_DESCRIPTION)} />
       <header className="mcp-header">
         <div className="mcp-header-inner">
           <Link href="/" className="logo mcp-header-logo">

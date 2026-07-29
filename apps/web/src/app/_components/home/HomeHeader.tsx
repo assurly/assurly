@@ -16,6 +16,7 @@ const NAV_LINKS = [
   { href: '#features', label: 'Features' },
   { href: '#pricing', label: 'Pricing' },
   { href: '/mcp', label: 'MCP Server' },
+  { href: '#faq', label: 'FAQ' },
   { href: '#contact', label: 'Contact' },
 ] as const;
 

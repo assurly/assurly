@@ -20,11 +20,7 @@ import React from 'react';
  * package sources rather than trusting the literals below.
  */
 
-/** Rule areas in packages/cli/src/rules/index.ts (`allRules`). */
-const RULE_AREA_COUNT = 13;
-
-/** Tools in packages/mcp-server/src/tools.ts (`ASSURLY_MCP_TOOL_NAMES`). */
-const MCP_TOOL_COUNT = 5;
+import { MCP_TOOL_COUNT, RULE_AREA_COUNT } from '../../../utils/productFacts';
 
 interface ProofPoint {
   id: string;

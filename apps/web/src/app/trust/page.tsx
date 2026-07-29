@@ -1,13 +1,24 @@
 import React from 'react';
+import { StructuredData } from '../_components/StructuredData';
+import { subPageGraph } from '../../utils/structuredData';
 import Link from 'next/link';
 import { AssurlyMark } from '../_components/AssurlyMark';
 import { SiteFooter } from '../_components/SiteFooter';
 import { DISCLOSURE_CONTACT_PATH } from '../../utils/disclosureContact';
 
+const TRUST_DESCRIPTION =
+  'How Assurly keeps customer apps and data safe: security posture, data handling, subprocessors, and our coordinated vulnerability disclosure policy.';
+
 export const metadata = {
   title: 'Trust & Security · Assurly',
   description:
     'How Assurly keeps customer apps and data safe: security posture, data handling, subprocessors, and our coordinated vulnerability disclosure policy.',
+  // This is the page buyers read before connecting a private repository, and
+  // sitemap.ts gives it the highest priority after / and /mcp. Inheriting the
+  // root layout's `canonical: '/'` would fold it into the homepage instead.
+  alternates: {
+    canonical: '/trust',
+  },
 };
 
 /**
@@ -28,6 +39,7 @@ const TRUST_CONTACT_HREF = DISCLOSURE_CONTACT_PATH;
 export default function TrustPage() {
   return (
     <div className="legal-container">
+      <StructuredData graph={subPageGraph('/trust', 'Trust & Security', TRUST_DESCRIPTION)} />
       <header className="legal-header">
         <Link href="/" className="back-link">
           ← Back to Home
@@ -272,7 +284,12 @@ export default function TrustPage() {
             We rely on a small, deliberately short list of infrastructure providers. Each processes
             data on our documented instructions under a data processing agreement.
           </p>
-          <div className="legal-table-wrap">
+          <div
+            className="legal-table-wrap"
+            role="region"
+            aria-label="Infrastructure subprocessors"
+            tabIndex={0}
+          >
             <table className="legal-table">
               <thead>
                 <tr>

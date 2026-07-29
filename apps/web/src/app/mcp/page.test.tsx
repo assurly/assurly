@@ -125,6 +125,14 @@ describe('McpPage', () => {
     expect(html.match(/Add to Cursor/g)?.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('mirrors the landing nav order, with FAQ between MCP Server and Contact', () => {
+    const html = renderToStaticMarkup(<McpPage />);
+    const nav = html.match(/aria-label="Product navigation"[\s\S]*?<\/nav>/)?.[0];
+    expect(nav).toBeTruthy();
+    expect(nav).toContain('href="/#faq"');
+    expect(nav).toMatch(/MCP Server[\s\S]*FAQ[\s\S]*Contact/);
+  });
+
   it('renders the typical agent loop as a visual flow, not a bare numbered list', () => {
     const html = renderToStaticMarkup(<McpPage />);
     expect(html).toContain('mcp-agent-loop');

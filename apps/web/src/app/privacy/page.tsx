@@ -1,3 +1,7 @@
+import type { Metadata } from 'next';
+import { StructuredData } from '../_components/StructuredData';
+import { subPageGraph } from '../../utils/structuredData';
+import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
 import React from 'react';
 import Link from 'next/link';
 import { AssurlyMark } from '../_components/AssurlyMark';
@@ -13,9 +17,37 @@ import { CONTACT_SUBJECT_PARAM } from '../../utils/contactSubjects';
  */
 const PRIVACY_CONTACT_HREF = `/?${CONTACT_SUBJECT_PARAM}=privacy#contact`;
 
+const PAGE_TITLE = 'Privacy Policy · Assurly';
+const PAGE_DESCRIPTION =
+  'How Assurly processes personal data as controller: what we collect, how source code is handled across scanners, cookies, subprocessors, retention, and your GDPR rights.';
+
+export const metadata: Metadata = {
+  title: PAGE_TITLE,
+  description: PAGE_DESCRIPTION,
+  openGraph: {
+    title: PAGE_TITLE,
+    description: PAGE_DESCRIPTION,
+    type: 'website',
+    url: '/privacy',
+    images: [SITE_OG_IMAGE],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: PAGE_TITLE,
+    description: PAGE_DESCRIPTION,
+  },
+  // Without this the page inherits `canonical: '/'` from the root layout and
+  // tells search engines it is a duplicate of the homepage — while sitemap.ts
+  // lists it as indexable. The canonical wins, so the sitemap entry is ignored.
+  alternates: {
+    canonical: '/privacy',
+  },
+};
+
 export default function PrivacyPage() {
   return (
     <div className="legal-container">
+      <StructuredData graph={subPageGraph('/privacy', 'Privacy Policy', PAGE_DESCRIPTION)} />
       <header className="legal-header">
         <Link href="/" className="back-link">
           ← Back to Home
@@ -220,7 +252,12 @@ export default function PrivacyPage() {
 
         <section className="legal-section">
           <h2>5. Purposes and legal bases (Article 6 GDPR)</h2>
-          <div className="legal-table-wrap">
+          <div
+            className="legal-table-wrap"
+            role="region"
+            aria-label="Purposes and legal bases for processing"
+            tabIndex={0}
+          >
             <table className="legal-table">
               <thead>
                 <tr>
@@ -339,7 +376,12 @@ export default function PrivacyPage() {
             We use the following processors. Each acts on our documented instructions under a data
             processing agreement.
           </p>
-          <div className="legal-table-wrap">
+          <div
+            className="legal-table-wrap"
+            role="region"
+            aria-label="Sub-processors and data recipients"
+            tabIndex={0}
+          >
             <table className="legal-table">
               <thead>
                 <tr>
@@ -414,7 +456,12 @@ export default function PrivacyPage() {
 
         <section className="legal-section">
           <h2>9. How long we keep data</h2>
-          <div className="legal-table-wrap">
+          <div
+            className="legal-table-wrap"
+            role="region"
+            aria-label="Data retention by category"
+            tabIndex={0}
+          >
             <table className="legal-table">
               <thead>
                 <tr>
