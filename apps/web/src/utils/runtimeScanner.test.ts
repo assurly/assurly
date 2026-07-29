@@ -14,10 +14,12 @@ import {
   RUNTIME_FETCH_TIMEOUT_MS,
   RUNTIME_MAX_REDIRECTS,
   RUNTIME_MAX_RESPONSE_BYTES,
+  VISIBILITY_AUDIT_BUDGET_MS,
   scanBundleForSecrets,
   scanBundleForSecretsWithEvidence,
   type LookupImpl,
 } from './runtimeScanner';
+import { buildShipGateFromWebFindings } from './shipGate';
 
 function makeJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
@@ -480,6 +482,189 @@ describe('runtimeScanner', () => {
       const masked = evidence[0]?.redactedSample?.maskedSecret ?? '';
       expect(masked).not.toBe(key);
       expect(masked).toContain('…');
+    });
+  });
+
+  describe('visibilityAudit wiring', () => {
+    const SECURE_HEADERS = {
+      'content-type': 'text/html',
+      'strict-transport-security': 'max-age=63072000',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'self'",
+    };
+
+    /** Empty SPA shell — every SEO/GEO HTML check fails. */
+    const INVISIBLE_HTML = '<html><head></head><body><div id="root"></div></body></html>';
+
+    function pageFetchMock(overrides?: {
+      robotsStatus?: number;
+      delayMs?: number;
+      throwOn?: string;
+    }): typeof fetch {
+      return vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (overrides?.throwOn && url.includes(overrides.throwOn)) {
+          throw new Error('simulated network failure');
+        }
+        if (overrides?.delayMs && overrides.delayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, overrides.delayMs));
+        }
+        if (url === 'https://myapp.example/' || url === 'https://myapp.example') {
+          return new Response(INVISIBLE_HTML, { status: 200, headers: SECURE_HEADERS });
+        }
+        if (url.endsWith('/robots.txt')) {
+          return new Response('User-agent: *\nDisallow:', {
+            status: overrides?.robotsStatus ?? 200,
+            headers: { 'content-type': 'text/plain' },
+          });
+        }
+        if (url.endsWith('/llms.txt') || url.endsWith('/sitemap.xml')) {
+          return new Response('not found', { status: 404 });
+        }
+        // HEAD / GET fallback
+        return new Response('', { status: 404 });
+      }) as typeof fetch;
+    }
+
+    it('CRITICAL: visibility failures never change Ship Gate score or status', async () => {
+      const fetchMock = pageFetchMock();
+
+      const without = await scanLiveUrlWithEvidence(
+        'https://myapp.example/',
+        fetchMock,
+        fakeLookup(),
+        { visibilityAudit: false },
+      );
+      const withAudit = await scanLiveUrlWithEvidence(
+        'https://myapp.example/',
+        fetchMock,
+        fakeLookup(),
+        { visibilityAudit: true },
+      );
+
+      expect(withAudit.visibility).toBeDefined();
+      expect(withAudit.visibility!.checks.some((c) => c.status === 'fail')).toBe(true);
+
+      const reportOff = buildShipGateFromWebFindings(without.findings, {
+        scannedFileCount: 1,
+        cleanFileCount: without.findings.length === 0 ? 1 : 0,
+      });
+      const reportOn = buildShipGateFromWebFindings(withAudit.findings, {
+        scannedFileCount: 1,
+        cleanFileCount: withAudit.findings.length === 0 ? 1 : 0,
+      });
+
+      expect(reportOn.shipScore).toBe(reportOff.shipScore);
+      expect(reportOn.status).toBe(reportOff.status);
+      expect(withAudit.findings).toEqual(without.findings);
+      // Visibility must never leak into findings.
+      expect(
+        withAudit.findings.some((f) => f.ruleId.includes('seo') || f.ruleId.includes('visibility')),
+      ).toBe(false);
+    });
+
+    it('option off → no supplementary requests and visibility undefined', async () => {
+      const requested: string[] = [];
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        requested.push(url);
+        if (url.startsWith('https://myapp.example')) {
+          return new Response(INVISIBLE_HTML, { status: 200, headers: SECURE_HEADERS });
+        }
+        return new Response('', { status: 404 });
+      }) as typeof fetch;
+
+      const result = await scanLiveUrlWithEvidence(
+        'https://myapp.example/',
+        fetchMock,
+        fakeLookup(),
+        { visibilityAudit: false },
+      );
+
+      expect(result.visibility).toBeUndefined();
+      expect(requested.some((u) => u.includes('/robots.txt'))).toBe(false);
+      expect(requested.some((u) => u.includes('/llms.txt'))).toBe(false);
+      expect(requested.some((u) => u.includes('/sitemap.xml'))).toBe(false);
+    });
+
+    it('404 on robots.txt → input is null (check is not skipped)', async () => {
+      const fetchMock = pageFetchMock({ robotsStatus: 404 });
+      const result = await scanLiveUrlWithEvidence(
+        'https://myapp.example/',
+        fetchMock,
+        fakeLookup(),
+        { visibilityAudit: true },
+      );
+
+      expect(result.visibility).toBeDefined();
+      const crawler = result.visibility!.checks.find((c) => c.id === 'ai-crawler-access');
+      expect(crawler?.status).not.toBe('skipped');
+      // Absent robots.txt → Phase 1 treats crawlers as allowed (pass).
+      expect(crawler?.status).toBe('pass');
+    });
+
+    it('fetch exceeding the budget → remaining inputs undefined / checks skipped', async () => {
+      expect(VISIBILITY_AUDIT_BUDGET_MS).toBe(4_000);
+
+      let robotsCalls = 0;
+      const requested: string[] = [];
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        requested.push(url);
+        if (url === 'https://myapp.example/' || url === 'https://myapp.example') {
+          return new Response(INVISIBLE_HTML, { status: 200, headers: SECURE_HEADERS });
+        }
+        if (url.endsWith('/robots.txt')) {
+          robotsCalls += 1;
+          // Burn the whole visibility budget on the first supplementary fetch.
+          await new Promise((resolve) => setTimeout(resolve, VISIBILITY_AUDIT_BUDGET_MS + 50));
+          return new Response('User-agent: *\nDisallow:', {
+            status: 200,
+            headers: { 'content-type': 'text/plain' },
+          });
+        }
+        // Must not be reached once the budget is exhausted.
+        return new Response('should-not-fetch', { status: 200 });
+      }) as typeof fetch;
+
+      const result = await scanLiveUrlWithEvidence(
+        'https://myapp.example/',
+        fetchMock,
+        fakeLookup(),
+        { visibilityAudit: true },
+      );
+
+      expect(robotsCalls).toBe(1);
+      expect(result.visibility).toBeDefined();
+      const llms = result.visibility!.checks.find((c) => c.id === 'ai-llms-txt');
+      expect(llms?.status).toBe('skipped');
+      // sitemap is fetched after llms — also skipped when budget is spent.
+      expect(requested.some((u) => u.includes('/llms.txt'))).toBe(false);
+      expect(requested.some((u) => u.includes('/sitemap.xml'))).toBe(false);
+    }, 15_000);
+
+    it('throwing fetch → no exception escapes; scan still returns', async () => {
+      const fetchMock = pageFetchMock({ throwOn: '/robots.txt' });
+
+      await expect(
+        scanLiveUrlWithEvidence('https://myapp.example/', fetchMock, fakeLookup(), {
+          visibilityAudit: true,
+        }),
+      ).resolves.toMatchObject({
+        findings: expect.any(Array),
+        pageText: expect.any(String),
+      });
+
+      const result = await scanLiveUrlWithEvidence(
+        'https://myapp.example/',
+        pageFetchMock({ throwOn: '/llms.txt' }),
+        fakeLookup(),
+        { visibilityAudit: true },
+      );
+      expect(result.visibility).toBeDefined();
+      // Thrown fetch on llms → null → fail (not skipped).
+      const llms = result.visibility!.checks.find((c) => c.id === 'ai-llms-txt');
+      expect(llms?.status).toBe('fail');
     });
   });
 });

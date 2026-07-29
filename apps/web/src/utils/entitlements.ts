@@ -42,6 +42,13 @@ export interface Entitlements {
   apiKeyTier: ApiKeyTier;
   /** Whether Layer 2 AI deep review may run for this org (paid feature). */
   deepReviewEnabled: boolean;
+  /**
+   * Whether the full SEO & GEO (visibility) check list may be returned. Distinct
+   * from `deepReviewEnabled` — that flag gates the AI Layer-2 budget; this one
+   * gates the per-check detail of the deterministic visibility audit. Free plans
+   * still receive the headline scores/verdict; only the check array is withheld.
+   */
+  visibilityReportEnabled: boolean;
   /** Whether the org is an OEM/platform tenant (white-label keyed API surface). */
   oem: boolean;
 }
@@ -54,11 +61,29 @@ export interface Entitlements {
 export function entitlementsForPlan(plan: BillingPlan): Entitlements {
   switch (plan) {
     case 'free':
-      return { guardedAppLimit: 1, apiKeyTier: 'free', deepReviewEnabled: false, oem: false };
+      return {
+        guardedAppLimit: 1,
+        apiKeyTier: 'free',
+        deepReviewEnabled: false,
+        visibilityReportEnabled: false,
+        oem: false,
+      };
     case 'pro':
-      return { guardedAppLimit: null, apiKeyTier: 'pro', deepReviewEnabled: true, oem: false };
+      return {
+        guardedAppLimit: null,
+        apiKeyTier: 'pro',
+        deepReviewEnabled: true,
+        visibilityReportEnabled: true,
+        oem: false,
+      };
     case 'oem':
-      return { guardedAppLimit: null, apiKeyTier: 'oem', deepReviewEnabled: true, oem: true };
+      return {
+        guardedAppLimit: null,
+        apiKeyTier: 'oem',
+        deepReviewEnabled: true,
+        visibilityReportEnabled: true,
+        oem: true,
+      };
     default: {
       const exhaustive: never = plan;
       throw new Error(`Unknown billing plan: ${String(exhaustive)}`);

@@ -76,7 +76,7 @@ describe('POST /api/scan-url', () => {
       'https://myapp.lovable.app/',
       expect.anything(),
       undefined,
-      { activeProbe: false, organizationId: undefined },
+      { activeProbe: false, organizationId: undefined, visibilityAudit: true },
     );
   });
 
@@ -219,7 +219,7 @@ describe('POST /api/scan-url', () => {
       'https://myapp.lovable.app/',
       expect.anything(),
       undefined,
-      { activeProbe: true, organizationId: 'org-1' },
+      { activeProbe: true, organizationId: 'org-1', visibilityAudit: true },
     );
     expect(insertProbeEvidence).toHaveBeenCalledWith([
       expect.objectContaining({
@@ -370,7 +370,7 @@ describe('POST /api/scan-url', () => {
       'https://not-mine.lovable.app/',
       expect.anything(),
       undefined,
-      { activeProbe: false, organizationId: 'org-1' },
+      { activeProbe: false, organizationId: 'org-1', visibilityAudit: true },
     );
     expect(json.target).toEqual({ id: 'target-1', ownershipVerified: false });
   });
@@ -463,7 +463,7 @@ describe('POST /api/scan-url', () => {
       'https://myapp.lovable.app/',
       expect.anything(),
       undefined,
-      { activeProbe: false, organizationId: undefined },
+      { activeProbe: false, organizationId: undefined, visibilityAudit: true },
     );
     expect(upsertTarget).not.toHaveBeenCalled();
   });
@@ -508,5 +508,139 @@ describe('POST /api/scan-url', () => {
       'Mutating HTTP method',
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  const fullVisibilityReport = {
+    score: 42,
+    aiReadinessScore: 30,
+    searchReadinessScore: 55,
+    verdict: 'invisible' as const,
+    checks: [
+      {
+        id: 'ai-llms-txt',
+        title: 'llms.txt is published',
+        group: 'ai' as const,
+        status: 'fail' as const,
+        detail: 'llms.txt is absent or empty.',
+        fix: 'Serve /llms.txt with a clear site summary.',
+      },
+    ],
+  };
+
+  it('entitled (pro) response carries the full visibility check array', async () => {
+    const getOrganizationByUserId = vi.fn().mockResolvedValue({ id: 'org-1', billing_plan: 'pro' });
+    const upsertTarget = vi.fn().mockResolvedValue({ id: 'target-1', ownership_verified: false });
+    const getTargetByIdentifier = vi.fn().mockResolvedValue(null);
+    const getTargets = vi.fn().mockResolvedValue([]);
+    requireUserMock.mockResolvedValue({
+      user: { id: 'user-1' },
+      accessToken: 'token',
+      db: {
+        getOrganizationByUserId,
+        upsertTarget,
+        getTargetByIdentifier,
+        getTargets,
+        insertProbeEvidence: vi.fn(),
+      },
+    });
+    scanLiveUrlMock.mockResolvedValue({
+      findings: [],
+      evidence: [],
+      pageText: '',
+      visibility: fullVisibilityReport,
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://pro-app.example.com' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as Record<string, unknown>;
+    const serialized = JSON.stringify(json);
+    expect(json.visibility).toEqual(fullVisibilityReport);
+    expect(serialized).toContain('"checks"');
+    expect(json.visibilityLocked).toBeUndefined();
+  });
+
+  it('unentitled (free) response carries scores and verdict but NO check array', async () => {
+    const getOrganizationByUserId = vi
+      .fn()
+      .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
+    const upsertTarget = vi.fn().mockResolvedValue({ id: 'target-1', ownership_verified: false });
+    const getTargetByIdentifier = vi.fn().mockResolvedValue(null);
+    const getTargets = vi.fn().mockResolvedValue([]);
+    requireUserMock.mockResolvedValue({
+      user: { id: 'user-1' },
+      accessToken: 'token',
+      db: {
+        getOrganizationByUserId,
+        upsertTarget,
+        getTargetByIdentifier,
+        getTargets,
+        insertProbeEvidence: vi.fn(),
+      },
+    });
+    scanLiveUrlMock.mockResolvedValue({
+      findings: [],
+      evidence: [],
+      pageText: '',
+      visibility: fullVisibilityReport,
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://free-app.example.com' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as {
+      visibility: Record<string, unknown>;
+      visibilityLocked?: boolean;
+    };
+    // Assert on the actual serialized JSON — not a component prop.
+    const visibilityJson = JSON.stringify(json.visibility);
+    expect(json.visibility).toEqual({
+      score: 42,
+      aiReadinessScore: 30,
+      searchReadinessScore: 55,
+      verdict: 'invisible',
+    });
+    expect(visibilityJson).not.toContain('"checks"');
+    expect(json.visibility).not.toHaveProperty('checks');
+    expect(json.visibilityLocked).toBe(true);
+  });
+
+  it('anonymous response also withholds checks and sets visibilityLocked', async () => {
+    scanLiveUrlMock.mockResolvedValue({
+      findings: [],
+      evidence: [],
+      pageText: '',
+      visibility: fullVisibilityReport,
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://anon-app.example.com' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as {
+      visibility: Record<string, unknown>;
+      visibilityLocked?: boolean;
+    };
+    expect(json.visibility).not.toHaveProperty('checks');
+    expect(json.visibilityLocked).toBe(true);
+    expect(json.visibility.verdict).toBe('invisible');
+    expect(json.visibility.score).toBe(42);
   });
 });

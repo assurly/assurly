@@ -7,10 +7,18 @@ import { extractHeuristicTableNames, planRedTeamProbes } from './ai/redTeamPlann
 import { readLimitedResponseText } from './githubApp';
 import { DEFAULT_SENSITIVE_SUPABASE_TABLES, executeProbePlan, type ProbePlanStep } from './probes';
 import { assertPublicIpAddress, assertScannableUrl } from './urlSafety';
+import { scanVisibility, type VisibilityInput, type VisibilityReport } from './visibilityScan';
 
 export const RUNTIME_FETCH_TIMEOUT_MS = 8_000;
 export const RUNTIME_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 export const RUNTIME_MAX_REDIRECTS = 5;
+/**
+ * Shared wall-clock budget for the entire SEO & GEO supplementary fetch step
+ * (robots.txt, llms.txt, sitemap.xml, og:image HEAD). When exhausted, remaining
+ * inputs stay `undefined` so Phase 1 marks those checks `'skipped'` — a slow
+ * site must never meaningfully extend the main security scan.
+ */
+export const VISIBILITY_AUDIT_BUDGET_MS = 4_000;
 
 const MUTATING_HTTP_METHODS = new Set(['POST', 'PATCH', 'DELETE', 'PUT']);
 const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
@@ -523,6 +531,127 @@ async function readRuntimeResponseText(response: Response): Promise<string> {
   return readLimitedResponseText(response, RUNTIME_MAX_RESPONSE_BYTES);
 }
 
+function getHtmlTagAttr(tag: string, name: string): string | null {
+  const quoted = new RegExp(`\\b${name}\\s*=\\s*(["'])([\\s\\S]*?)\\1`, 'i');
+  const quotedMatch = tag.match(quoted);
+  if (quotedMatch?.[2] !== undefined) return quotedMatch[2];
+  const unquoted = new RegExp(`\\b${name}\\s*=\\s*([^\\s>/"']+)`, 'i');
+  return tag.match(unquoted)?.[1] ?? null;
+}
+
+/** Extracts `og:image` content from raw HTML (no DOM — same style as Phase 1). */
+function extractOgImageHref(html: string): string | null {
+  const metaPattern = /<meta\b[^>]*>/gi;
+  for (const match of html.matchAll(metaPattern)) {
+    const tag = match[0];
+    const property = getHtmlTagAttr(tag, 'property');
+    if (property && property.toLowerCase() === 'og:image') {
+      const content = getHtmlTagAttr(tag, 'content');
+      if (content && content.trim()) return content.trim();
+    }
+  }
+  return null;
+}
+
+type VisibilitySupplementary = Pick<
+  VisibilityInput,
+  'robotsTxt' | 'sitemapXml' | 'llmsTxt' | 'ogImage'
+>;
+
+/**
+ * Fetches the SEO/GEO supplementary inputs under a shared wall-clock budget.
+ * Never throws: non-2xx / thrown fetch → `null`; not attempted (budget) → `undefined`.
+ * Every request goes through `safeFetch` (SSRF pin + redirect re-validation).
+ */
+async function fetchVisibilitySupplementary(
+  html: string,
+  pageUrl: URL,
+  fetchImpl: typeof fetch,
+  lookupImpl?: LookupImpl,
+): Promise<VisibilitySupplementary> {
+  const deadline = Date.now() + VISIBILITY_AUDIT_BUDGET_MS;
+  const remainingMs = (): number => Math.max(0, deadline - Date.now());
+
+  async function fetchTextPath(path: string): Promise<string | null | undefined> {
+    const budgetLeft = remainingMs();
+    if (budgetLeft <= 0) return undefined;
+    try {
+      const target = new URL(path, pageUrl).toString();
+      const { response } = await safeFetch(
+        target,
+        { method: 'GET', signal: AbortSignal.timeout(budgetLeft) },
+        fetchImpl,
+        lookupImpl,
+      );
+      if (!response.ok) return null;
+      return await readRuntimeResponseText(response);
+    } catch {
+      // Attempted but failed (network, timeout, SSRF, non-scannable) → absent.
+      return null;
+    }
+  }
+
+  async function fetchOgImageHead(): Promise<VisibilityInput['ogImage']> {
+    const declared = extractOgImageHref(html);
+    if (!declared) return undefined;
+
+    const budgetLeft = remainingMs();
+    if (budgetLeft <= 0) return undefined;
+
+    let absolute: string;
+    try {
+      absolute = new URL(declared, pageUrl).toString();
+    } catch {
+      return null;
+    }
+
+    try {
+      const { response } = await safeFetch(
+        absolute,
+        { method: 'HEAD', signal: AbortSignal.timeout(budgetLeft) },
+        fetchImpl,
+        lookupImpl,
+      );
+      if (!response.ok) return null;
+      return {
+        status: response.status,
+        contentType: response.headers.get('content-type'),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  const robotsTxt = await fetchTextPath('/robots.txt');
+  const llmsTxt = await fetchTextPath('/llms.txt');
+  const sitemapXml = await fetchTextPath('/sitemap.xml');
+  const ogImage = await fetchOgImageHead();
+
+  return { robotsTxt, llmsTxt, sitemapXml, ogImage };
+}
+
+/**
+ * Runs the Phase 1 visibility scorer. Failures degrade to `undefined` so the
+ * security scan always completes. The report must NEVER enter `findings`.
+ */
+async function runVisibilityAudit(
+  html: string,
+  pageUrl: URL,
+  fetchImpl: typeof fetch,
+  lookupImpl?: LookupImpl,
+): Promise<VisibilityReport | undefined> {
+  try {
+    const supplementary = await fetchVisibilitySupplementary(html, pageUrl, fetchImpl, lookupImpl);
+    return scanVisibility({
+      html,
+      finalUrl: pageUrl.toString(),
+      ...supplementary,
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 export interface ScanLiveUrlOptions {
   /**
    * When false (the default), only PASSIVE checks run — missing security headers
@@ -536,6 +665,14 @@ export interface ScanLiveUrlOptions {
    * The AI red-team planner runs ONLY inside this branch — never around the gate.
    */
   activeProbe?: boolean;
+  /**
+   * When true, runs the SEO & GEO (visibility) audit as a parallel report —
+   * robots.txt / llms.txt / sitemap.xml / og:image HEAD under
+   * `VISIBILITY_AUDIT_BUDGET_MS`. Defaults to false. The result travels on
+   * `ScanLiveUrlResult.visibility` only; it must NEVER enter `findings` or
+   * Ship Gate scoring.
+   */
+  visibilityAudit?: boolean;
   /** Org id for AI budget accounting (planner). Optional. */
   organizationId?: string;
   /**
@@ -557,6 +694,11 @@ export interface ScanLiveUrlResult {
    * generator fingerprinting only — never include this in a client JSON response.
    */
   pageText: string;
+  /**
+   * SEO & GEO audit — present only when `visibilityAudit` was enabled.
+   * Parallel to Ship Gate; never merged into `findings`.
+   */
+  visibility?: VisibilityReport;
 }
 
 export async function scanLiveUrlWithEvidence(
@@ -647,11 +789,18 @@ export async function scanLiveUrlWithEvidence(
     evidence.push(...exposure.evidence);
   }
 
+  // SEO & GEO audit — own field, never merged into findings / Ship Gate.
+  let visibility: VisibilityReport | undefined;
+  if (options.visibilityAudit) {
+    visibility = await runVisibilityAudit(html, pageUrl, fetchImpl, lookupImpl);
+  }
+
   return {
     findings,
     evidence,
     pageText: bundleTextAccum,
     ...(planSource ? { planSource } : {}),
+    ...(visibility ? { visibility } : {}),
   };
 }
 

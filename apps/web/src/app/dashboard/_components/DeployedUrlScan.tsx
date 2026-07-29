@@ -10,6 +10,8 @@ import { AlertPreferences } from './AlertPreferences';
 import { CanaryTokens } from './CanaryTokens';
 import { OwnershipVerify } from './OwnershipVerify';
 import { ProofEvidence, type ProofEvidenceItem } from './ProofEvidence';
+import { VisibilityAuditPanel, type VisibilityView } from './VisibilityAuditPanel';
+import type { VisibilityCheck, VisibilityVerdict } from '../../../utils/visibilityScan';
 
 export interface DeployedUrlScanProps {
   loginUrl?: string;
@@ -30,6 +32,64 @@ interface UrlScanResults {
   deepReview: DeepReviewView | null;
   /** Pro user, ownership not verified yet — deep review unlocks on verification. */
   deepReviewLocked: boolean;
+  /** SEO & GEO audit — parallel to Ship Gate; absent when the scanner skipped it. */
+  visibility: VisibilityView | null;
+  /** Free / anonymous — headline only; check detail is a paid unlock. */
+  visibilityLocked: boolean;
+}
+
+const VISIBILITY_VERDICTS = new Set<VisibilityVerdict>(['visible', 'partial', 'invisible']);
+
+function parseVisibility(raw: unknown): VisibilityView | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.score !== 'number' || typeof record.aiReadinessScore !== 'number') {
+    return null;
+  }
+  if (typeof record.searchReadinessScore !== 'number') return null;
+  if (
+    typeof record.verdict !== 'string' ||
+    !VISIBILITY_VERDICTS.has(record.verdict as VisibilityVerdict)
+  ) {
+    return null;
+  }
+
+  const view: VisibilityView = {
+    score: record.score,
+    aiReadinessScore: record.aiReadinessScore,
+    searchReadinessScore: record.searchReadinessScore,
+    verdict: record.verdict as VisibilityVerdict,
+  };
+
+  if (Array.isArray(record.checks)) {
+    const checks: VisibilityCheck[] = [];
+    for (const item of record.checks) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as Record<string, unknown>;
+      if (typeof row.id !== 'string' || typeof row.title !== 'string') continue;
+      if (typeof row.status !== 'string' || typeof row.detail !== 'string') continue;
+      if (row.group !== 'ai' && row.group !== 'search') continue;
+      if (
+        row.status !== 'pass' &&
+        row.status !== 'warn' &&
+        row.status !== 'fail' &&
+        row.status !== 'skipped'
+      ) {
+        continue;
+      }
+      checks.push({
+        id: row.id,
+        title: row.title,
+        group: row.group,
+        status: row.status,
+        detail: row.detail,
+        ...(typeof row.fix === 'string' ? { fix: row.fix } : {}),
+      });
+    }
+    if (checks.length > 0) view.checks = checks;
+  }
+
+  return view;
 }
 
 function parseDeepReview(raw: unknown): DeepReviewView | null {
@@ -133,6 +193,8 @@ export function useDeployedUrlScan(onActivate?: () => void): DeployedUrlScanStat
         target?: ScanTarget | null;
         deepReview?: unknown;
         deepReviewLocked?: unknown;
+        visibility?: unknown;
+        visibilityLocked?: unknown;
       };
       setScanResults({
         targetUrl,
@@ -142,6 +204,8 @@ export function useDeployedUrlScan(onActivate?: () => void): DeployedUrlScanStat
         target: data.target ?? null,
         deepReview: parseDeepReview(data.deepReview),
         deepReviewLocked: data.deepReviewLocked === true,
+        visibility: parseVisibility(data.visibility),
+        visibilityLocked: data.visibilityLocked === true,
       });
     } catch (error: unknown) {
       setScanError(error instanceof Error ? error.message : 'URL scan failed.');
@@ -297,6 +361,12 @@ export function DeployedUrlScanResults({
           </div>
           <ShipGatePanel report={scanResults.shipGate} />
         </div>
+        {scanResults.visibility ? (
+          <VisibilityAuditPanel
+            report={scanResults.visibility}
+            locked={scanResults.visibilityLocked}
+          />
+        ) : null}
         {scanResults.deepReview ? (
           <DeepReviewPanel review={scanResults.deepReview} />
         ) : scanResults.deepReviewLocked ? (

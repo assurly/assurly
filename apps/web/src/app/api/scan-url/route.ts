@@ -11,6 +11,13 @@ import { recordReprobeOutcomes } from '../../../utils/reprobe';
 import { entitlementsForPlan } from '../../../utils/entitlements';
 import type { AuthContext } from '../../../utils/auth';
 import type { DbAdapter, Organization, ProbeEvidenceInput, Target } from '../../../utils/dbAdapter';
+import type { VisibilityReport } from '../../../utils/visibilityScan';
+
+/** Headline-only visibility payload — scores + verdict, no per-check detail. */
+type VisibilityHeadline = Pick<
+  VisibilityReport,
+  'score' | 'aiReadinessScore' | 'searchReadinessScore' | 'verdict'
+>;
 
 const scanUrlBody = z
   .object({
@@ -36,6 +43,8 @@ interface UrlTargetGate {
   targetRow: Target | null;
   organizationId: string | null;
   paidTierAllowed: boolean;
+  /** Full SEO & GEO check list (paid). Free/anonymous get headline only. */
+  visibilityReportEnabled: boolean;
 }
 
 const PASSIVE_GATE: UrlTargetGate = {
@@ -44,7 +53,33 @@ const PASSIVE_GATE: UrlTargetGate = {
   targetRow: null,
   organizationId: null,
   paidTierAllowed: false,
+  visibilityReportEnabled: false,
 };
+
+/**
+ * Gates the visibility report for the response. Entitled plans get the full
+ * report; unentitled plans get scores + verdict with `checks` omitted
+ * server-side (never CSS-hidden). Returns `null` when the scanner produced no
+ * report.
+ */
+function gateVisibilityReport(
+  visibility: VisibilityReport | undefined,
+  entitled: boolean,
+): { visibility: VisibilityReport | VisibilityHeadline; locked: boolean } | null {
+  if (!visibility) return null;
+  if (entitled) {
+    return { visibility, locked: false };
+  }
+  return {
+    visibility: {
+      score: visibility.score,
+      aiReadinessScore: visibility.aiReadinessScore,
+      searchReadinessScore: visibility.searchReadinessScore,
+      verdict: visibility.verdict,
+    },
+    locked: true,
+  };
+}
 
 /**
  * Enforces the plan's guarded-app entitlement (Phase 8) before a NEW `url` target
@@ -113,12 +148,14 @@ async function resolveUrlTargetGate(auth: AuthContext, scanUrl: string): Promise
       identifier,
       displayName: identifier,
     });
+    const entitlements = entitlementsForPlan(organization.billing_plan);
     return {
       activeProbe: isActiveProbeAllowed({ kind: 'url', ownershipVerified: row.ownership_verified }),
       target: { id: row.id, ownershipVerified: row.ownership_verified },
       targetRow: row,
       organizationId: organization.id,
-      paidTierAllowed: entitlementsForPlan(organization.billing_plan).deepReviewEnabled,
+      paidTierAllowed: entitlements.deepReviewEnabled,
+      visibilityReportEnabled: entitlements.visibilityReportEnabled,
     };
   } catch (error) {
     console.warn('[Assurly] failed to resolve url target gate:', (error as Error).message);
@@ -201,19 +238,22 @@ export const POST = secureRoute(
     // point — the UI cannot bypass it. The planner never runs around this gate.
     const gate = auth ? await resolveUrlTargetGate(auth, parsedUrl.toString()) : PASSIVE_GATE;
 
-    const { findings, evidence, planSource, pageText } = await scanLiveUrlWithEvidence(
+    const { findings, evidence, planSource, pageText, visibility } = await scanLiveUrlWithEvidence(
       parsedUrl.toString(),
       fetch,
       undefined,
       {
         activeProbe: gate.activeProbe,
         organizationId: gate.organizationId ?? undefined,
+        // Always run — free users get the headline (conversion); paid get checks.
+        visibilityAudit: true,
       },
     );
     const report = buildShipGateFromWebFindings(findings, {
       scannedFileCount: 1,
       cleanFileCount: findings.length === 0 ? 1 : 0,
     });
+    const gatedVisibility = gateVisibilityReport(visibility, gate.visibilityReportEnabled);
 
     if (auth) await persistEvidence(auth, evidence);
 
@@ -266,6 +306,8 @@ export const POST = secureRoute(
       ...(planSource ? { planSource } : {}),
       ...(deepReview ? { deepReview } : {}),
       ...(deepReviewLocked ? { deepReviewLocked: true } : {}),
+      ...(gatedVisibility ? { visibility: gatedVisibility.visibility } : {}),
+      ...(gatedVisibility?.locked ? { visibilityLocked: true } : {}),
     });
   },
 );
