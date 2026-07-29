@@ -48,7 +48,7 @@ describe('ScanHistoryRail', () => {
     expect(screen.getByRole('heading', { name: 'Scan history (4)' })).toBeTruthy();
     expect(screen.getByTestId('scan-history-rail')).toBeTruthy();
 
-    const rail = screen.getByRole('tablist', { name: 'Select scan by commit' });
+    const rail = screen.getByRole('list', { name: 'Select scan by commit' });
     expect(rail.className).toContain('scan-history-rail');
     expect(screen.getByTestId('scan-history-rail').className).toContain('scan-history');
   });
@@ -56,7 +56,7 @@ describe('ScanHistoryRail', () => {
   it('labels chips with commit SHA, time, and duplicate badges', () => {
     render(<ScanHistoryRail scans={scans} selectedScanId="scan-2" onSelectScan={vi.fn()} />);
 
-    expect(screen.getAllByRole('tab', { name: /commit 669c039 ·/i }).length).toBe(3);
+    expect(screen.getAllByRole('button', { name: /commit 669c039 ·/i }).length).toBe(3);
     expect(screen.getAllByText('#1 of 3').length).toBeGreaterThan(0);
     expect(screen.getAllByText('#2 of 3').length).toBeGreaterThan(0);
     expect(screen.getAllByText('#3 of 3').length).toBeGreaterThan(0);
@@ -68,11 +68,11 @@ describe('ScanHistoryRail', () => {
 
     render(<ScanHistoryRail scans={scans} selectedScanId="scan-1" onSelectScan={onSelectScan} />);
 
-    const selectedTab = screen.getByTestId('scan-history-chip-scan-1');
-    expect(selectedTab.getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByTestId('scan-history-chip-scan-2').getAttribute('aria-selected')).toBe(
-      'false',
-    );
+    // The rail is a list, not a tablist, so the selected scan is marked with
+    // `aria-current` — the unselected chips carry no attribute at all.
+    const selectedChip = screen.getByTestId('scan-history-chip-scan-1');
+    expect(selectedChip.getAttribute('aria-current')).toBe('true');
+    expect(screen.getByTestId('scan-history-chip-scan-2').getAttribute('aria-current')).toBeNull();
 
     fireEvent.click(screen.getByTestId('scan-history-chip-scan-4'));
     expect(onSelectScan).toHaveBeenCalledWith(scans[3]);
@@ -87,7 +87,7 @@ describe('ScanHistoryRail', () => {
       <ScanHistoryRail scans={scans} selectedScanId="scan-1" onSelectScan={vi.fn()} />,
     );
 
-    const rail = screen.getByRole('tablist', { name: 'Select scan by commit' });
+    const rail = screen.getByRole('list', { name: 'Select scan by commit' });
     // Rail viewport spans x=0..200; the newly-selected chip sits off to the right.
     vi.spyOn(rail, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 200 } as DOMRect);
     const chip4 = screen.getByTestId('scan-history-chip-scan-4');
@@ -107,7 +107,7 @@ describe('ScanHistoryRail', () => {
     render(<ScanHistoryRail scans={scans} selectedScanId="scan-1" onSelectScan={vi.fn()} />);
 
     const wrapper = screen.getByTestId('scan-history-rail');
-    const rail = screen.getByRole('tablist', { name: 'Select scan by commit' });
+    const rail = screen.getByRole('list', { name: 'Select scan by commit' });
 
     expect(wrapper.className).toContain('scan-history');
     expect(rail.className).toContain('scan-history-rail');

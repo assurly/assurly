@@ -70,7 +70,10 @@ for (const viewport of QA_VIEWPORTS) {
         element.scrollLeft = element.scrollWidth;
       });
 
-      await page.getByRole('tab', { name: /commit deadbee/i }).click();
+      // Anchored: the chip's name starts with the commit, while the adjacent
+      // delete button's name ("Delete the scan of commit deadbee…") also
+      // contains it.
+      await page.getByRole('button', { name: /^commit deadbee/i }).click();
       await expect(page.getByText(/deadbee/i).first()).toBeVisible();
 
       if (viewport.width <= COMPACT_DASHBOARD_MAX_WIDTH) {

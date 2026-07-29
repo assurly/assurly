@@ -86,7 +86,13 @@ export function ScanHistoryRail({
       <div
         ref={railRef}
         className="scan-history-rail"
-        role="tablist"
+        // Not a tablist. `role="tablist"` may only own `tab` children, and each
+        // item here also carries a delete button — axe reports that as a
+        // critical violation. The rail never implemented the tab contract
+        // either: no arrow-key roving focus, no `aria-controls` to a tabpanel.
+        // A list of scans is what this actually is, and `aria-current` marks the
+        // selected one without promising keyboard behaviour that does not exist.
+        role="list"
         aria-label="Select scan by commit"
       >
         {scans.map((scan) => {
@@ -94,7 +100,7 @@ export function ScanHistoryRail({
           const duplicateBadge = duplicateBadges.get(scan.id);
 
           return (
-            <div key={scan.id} className="scan-history-rail__item" role="presentation">
+            <div key={scan.id} className="scan-history-rail__item" role="listitem">
               <button
                 ref={(element) => {
                   if (element) {
@@ -104,8 +110,7 @@ export function ScanHistoryRail({
                   chipRefs.current.delete(scan.id);
                 }}
                 type="button"
-                role="tab"
-                aria-selected={isSelected}
+                aria-current={isSelected ? 'true' : undefined}
                 data-testid={`scan-history-chip-${scan.id}`}
                 className={[
                   'scan-history-rail__chip',
@@ -121,9 +126,7 @@ export function ScanHistoryRail({
                 />
                 <span className="scan-history-rail__label">
                   commit {formatCommitShaShort(scan.commit_sha)} ·{' '}
-                  <time dateTime={scan.created_at} suppressHydrationWarning>
-                    {formatScanTime(scan.created_at)}
-                  </time>
+                  <time dateTime={scan.created_at}>{formatScanTime(scan.created_at)}</time>
                 </span>
                 {duplicateBadge ? (
                   <span className="scan-history-rail__duplicate">
