@@ -10,12 +10,21 @@ test.describe('MCP public page', () => {
     await expect(page.getByRole('cell', { name: 'assurly_scan_files' })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'assurly_explain_rule' })).toBeVisible();
 
-    const cursorConfig = page.locator('pre code').first();
+    // Address each block by its accessible name. Indexing `pre code` positionally
+    // broke silently the moment a new snippet was added above the install tabs,
+    // and the failure pointed at the wrong block.
+    await expect(page.getByRole('region', { name: 'Install command' })).toHaveText(
+      'npx -y @assurly/mcp-server',
+    );
+
+    const cursorConfig = page.getByRole('region', { name: 'Cursor MCP configuration' });
     await expect(cursorConfig).toContainText('"command": "npx"');
     await expect(cursorConfig).toContainText('"@assurly/mcp-server"');
 
-    const claudeCommand = page.locator('pre code').nth(1);
-    await expect(claudeCommand).toHaveText('claude mcp add assurly -- npx -y @assurly/mcp-server');
+    await page.getByRole('tab', { name: 'Claude Code' }).click();
+    await expect(page.getByRole('region', { name: 'Claude Code install command' })).toHaveText(
+      'claude mcp add assurly -- npx -y @assurly/mcp-server',
+    );
   });
 
   test('homepage nav link navigates to the MCP page in one click', async ({ page }) => {

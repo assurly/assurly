@@ -162,8 +162,19 @@ test.describe('Dashboard full suite @1280px', () => {
 
     const card = page.getByTestId('scan-finding-card-finding-rls');
     await expect(card).toBeVisible();
-    await expect(card.getByText(/Row-Level Security/i)).toBeVisible();
     await expect(card.getByText('error')).toBeVisible();
+
+    // The card leads with the plain-language consequence, because the person
+    // deciding whether to ship is not always the person who wrote the SQL. The
+    // raw rule message sits behind the "For your developer" disclosure, so
+    // asserting it is visible up front would be asserting the old design.
+    await expect(
+      card.getByText(/Anyone on the internet can read this table's rows/i),
+    ).toBeVisible();
+    await expect(card.getByText(/Row-Level Security/i)).toBeHidden();
+
+    await card.locator('summary').click();
+    await expect(card.getByText(/Row-Level Security/i)).toBeVisible();
   });
 
   test('creates a shareable Ship Gate report link (Pro)', async ({ page }) => {
@@ -189,7 +200,7 @@ test.describe('Dashboard full suite @1280px', () => {
     await expect(fixBtn).toBeVisible();
     await fixBtn.click();
 
-    await expect(page.getByText('Pull request created successfully.')).toBeVisible();
+    await expect(page.getByText('Pull request created on GitHub.')).toBeVisible();
   });
 
   test('opens the Stripe billing portal from the account menu (Pro)', async ({ page }) => {

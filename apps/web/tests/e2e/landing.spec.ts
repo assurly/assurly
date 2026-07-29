@@ -22,18 +22,22 @@ test.describe('Landing page', () => {
     await expect(section.locator('.feature-step-numeral')).toHaveCount(4);
   });
 
-  test('pricing cards show Free, Guard, and Agency value bullets', async ({ page }) => {
+  test('pricing cards show Free, Pro, and OEM value bullets', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     const pricing = page.locator('#pricing');
     await expect(pricing.locator('.pricing-card h3').nth(0)).toHaveText('Free');
-    await expect(pricing.locator('.pricing-card h3').nth(1)).toHaveText('Guard');
-    await expect(pricing.locator('.pricing-card h3').nth(2)).toHaveText('Agency');
+    await expect(pricing.locator('.pricing-card h3').nth(1)).toHaveText('Pro');
+    await expect(pricing.locator('.pricing-card h3').nth(2)).toHaveText('OEM / Platform');
     await expect(pricing.locator('.pricing-badge')).toHaveText('Most Popular');
 
+    // One bullet unique to each tier, so a card silently losing its headline
+    // benefit fails here rather than in a customer's expectations.
     await expect(pricing.getByText('MCP server access for AI agents')).toBeVisible();
-    await expect(pricing.getByText('Monitoring on every deploy')).toBeVisible();
-    await expect(pricing.getByText('White-label PDF audit reports')).toBeVisible();
+    await expect(
+      pricing.getByText('Continuous Guardian on every deploy', { exact: true }),
+    ).toBeVisible();
+    await expect(pricing.getByText('Keyed verdict API for your users')).toBeVisible();
     await expect(pricing.getByText(/scan rules/i)).toHaveCount(0);
   });
 
