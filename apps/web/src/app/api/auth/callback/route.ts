@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { emptyBodySchema, emptyObjectSchema, secureRoute } from '../../../../utils/apiSecurity';
-import { clearLegacySupabaseAuthCookies, setSupabaseSessionCookie } from '../../../../utils/auth';
+import {
+  clearLegacySupabaseAuthCookies,
+  resolveAuthDisplayName,
+  setSupabaseSessionCookie,
+} from '../../../../utils/auth';
 import { getUserDbAdapter } from '../../../../utils/dbAdapter';
 import { resolveApplicationUrlFromRequest } from '../../../../utils/env';
 import { getServerSupabaseClient } from '../../../../utils/supabase';
+import { buildDefaultWorkspaceName } from '../../../../utils/workspaceName';
 
 const callbackQuery = z
   .object({
@@ -14,6 +19,11 @@ const callbackQuery = z
       .max(2048)
       .regex(/^[A-Za-z0-9._~-]+$/)
       .optional(),
+    // GitHub/Supabase send these when the user cancels or the provider rejects.
+    error: z.string().min(1).max(200).optional(),
+    error_code: z.string().min(1).max(100).optional(),
+    error_description: z.string().min(1).max(500).optional(),
+    state: z.string().min(1).max(2048).optional(),
   })
   .strict();
 
@@ -30,6 +40,14 @@ export const GET = secureRoute(
   },
   async ({ query, request }) => {
     const appUrl = resolveApplicationUrlFromRequest(request);
+    // Cancel / provider denial must never surface as a raw validation JSON page.
+    // Access denied (user hit Cancel) returns a clean homepage — no error query.
+    if (query.error) {
+      if (query.error === 'access_denied') {
+        return NextResponse.redirect(`${appUrl}/`);
+      }
+      return NextResponse.redirect(`${appUrl}/?error=auth_failed`);
+    }
     if (!query.code) return NextResponse.redirect(`${appUrl}/?error=missing_code`);
 
     const supabase = await getServerSupabaseClient();
@@ -41,11 +59,8 @@ export const GET = secureRoute(
     const userDb = getUserDbAdapter(data.session.access_token);
     const userId = data.session.user.id;
     if (!(await userDb.getOrganizationByUserId(userId))) {
-      const name =
-        data.session.user.user_metadata?.full_name ||
-        data.session.user.user_metadata?.name ||
-        'Developer';
-      await userDb.createOrganization(`${String(name).slice(0, 80)}'s Workspace`);
+      const name = resolveAuthDisplayName(data.session.user.user_metadata);
+      await userDb.createOrganization(buildDefaultWorkspaceName(name));
     }
 
     // `welcome=1` triggers the one-time post-login splash on the dashboard; the

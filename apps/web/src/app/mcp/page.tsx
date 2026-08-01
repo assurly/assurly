@@ -6,6 +6,7 @@ import Link from 'next/link';
 import React from 'react';
 import mcpServerPackage from '../../../../../packages/mcp-server/package.json';
 import { AssurlyMark } from '../_components/AssurlyMark';
+import { AssurlyWordmark } from '../_components/AssurlyWordmark';
 import { SiteFooter } from '../_components/SiteFooter';
 import { AgentLoop } from './_components/AgentLoop';
 import { CodeBlock } from './_components/CodeBlock';
@@ -95,9 +96,9 @@ export default function McpPage(): React.ReactElement {
       <StructuredData graph={subPageGraph('/mcp', 'MCP Server', PAGE_DESCRIPTION)} />
       <header className="mcp-header">
         <div className="mcp-header-inner">
-          <Link href="/" className="logo mcp-header-logo">
+          <Link href="/" className="logo mcp-header-logo" aria-label="Assurly">
             <AssurlyMark className="site-logo-mark" />
-            Ass<span>url</span>y
+            <AssurlyWordmark />
           </Link>
           <nav className="mcp-header-nav" aria-label="Product navigation">
             {MCP_NAV_LINKS.map((link) => (

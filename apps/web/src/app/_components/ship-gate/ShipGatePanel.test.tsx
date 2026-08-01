@@ -67,13 +67,14 @@ describe('ShipGatePanel warning actions', () => {
   });
 });
 
-describe('ShipGatePanel blocker label layout', () => {
-  it('renders full env blocker labels alongside file meta without truncating the variable name', () => {
+describe('ShipGatePanel warning label layout', () => {
+  it('renders full undocumented-env warning labels without truncating the variable name', () => {
     const report = buildShipGateReport(
       [
         {
           ruleId: 'undocumented-env',
-          severity: 'error',
+          severity: 'warning',
+          confidence: 'high',
           file: 'src/config.ts',
           line: 4,
           message:
@@ -89,6 +90,9 @@ describe('ShipGatePanel blocker label layout', () => {
       </div>,
     );
 
+    expect(screen.getByText('REVIEW RECOMMENDED')).toBeTruthy();
+    expect(screen.queryByText('NOT READY TO SHIP')).toBeNull();
+    expect(screen.getByText('Warnings (review)')).toBeTruthy();
     expect(screen.getByText('Undocumented env: NEXT_PUBLIC_SENTRY_DSN')).toBeTruthy();
     expect(screen.getByText('→ 1 file')).toBeTruthy();
 
@@ -98,6 +102,18 @@ describe('ShipGatePanel blocker label layout', () => {
     expect(label?.textContent).toContain('NEXT_PUBLIC_SENTRY_DSN');
     expect(meta?.textContent).toBe('→ 1 file');
     expect(label!.compareDocumentPosition(meta!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe('ShipGatePanel empty scan', () => {
+  it('does not claim all files passed when scannedFileCount is zero', () => {
+    const emptyReport = buildShipGateReport([], { scannedFileCount: 0, cleanFileCount: 0 });
+    render(<ShipGatePanel report={emptyReport} />);
+
+    expect(screen.getByText('NO FILES SCANNED')).toBeTruthy();
+    expect(screen.queryByText('READY TO SHIP')).toBeNull();
+    expect(screen.queryByText(/All scanned files passed/i)).toBeNull();
+    expect(screen.getByText('Select a folder or ZIP to start')).toBeTruthy();
   });
 });
 

@@ -111,6 +111,47 @@ export function generateBadgeToken(): string {
   return randomBytes(16).toString('hex');
 }
 
+/**
+ * Persists the Ship Gate projection on a `url` target after a dashboard URL scan
+ * (passive or active). Best-effort — never throws. Visibility/SEO scores stay
+ * out of these columns on purpose.
+ */
+export async function persistUrlTargetShipGateVerdict(options: {
+  db: DbAdapter;
+  organizationId: string;
+  identifier: string;
+  findings: readonly ScannerFinding[];
+  previous?: Pick<Target, 'current_ship_score' | 'badge_token'> | null;
+  now?: () => Date;
+}): Promise<void> {
+  const { db, organizationId, identifier, findings } = options;
+  const now = options.now ?? (() => new Date());
+  try {
+    const currentFindings = scannerFindingsToScanFindings(findings);
+    const verdict = resolveVerdictFromScanFindings(currentFindings, {
+      scannedFileCount: 1,
+      cleanFileCount: currentFindings.length === 0 ? 1 : 0,
+    });
+    const previousShipScore = options.previous?.current_ship_score ?? null;
+    const badgeToken = options.previous?.badge_token ?? generateBadgeToken();
+    await db.upsertTarget({
+      organizationId,
+      kind: 'url',
+      identifier,
+      currentVerdict: verdict.status,
+      currentShipScore: verdict.shipScore,
+      verdictEvidence: buildGuardianVerdictEvidence(verdict, currentFindings, previousShipScore),
+      lastCheckedAt: now().toISOString(),
+      badgeToken,
+    });
+  } catch (error) {
+    console.warn(
+      '[Assurly] failed to persist url target ship gate verdict:',
+      (error as Error).message,
+    );
+  }
+}
+
 export interface RunGuardianCheckOptions {
   db: DbAdapter;
   target: Target;

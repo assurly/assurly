@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DiagnosticTerminal } from './DiagnosticTerminal';
 import {
   buildIssueGroupSummaries,
@@ -10,6 +10,10 @@ import {
 } from './projectWorkspace';
 import type { ProjectFile } from './useManualScan';
 import type { WebFinding } from '../../../../utils/browserScanner';
+
+afterEach(() => {
+  cleanup();
+});
 
 /** Shared, correctly-typed finding fixtures used across the terminal specs. */
 const rlsFinding = (file = 'demo/schema.sql'): WebFinding => ({
@@ -22,7 +26,7 @@ const rlsFinding = (file = 'demo/schema.sql'): WebFinding => ({
 
 const undocumentedEnvFinding = (): WebFinding => ({
   ruleId: 'undocumented-env',
-  severity: 'error',
+  severity: 'warning',
   message:
     "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
   file: 'demo/route.test.ts',
@@ -50,6 +54,27 @@ const projectScan = {
 };
 
 describe('DiagnosticTerminal project mode', () => {
+  it('shows idle copy when no project is loaded — never READY TO SHIP', () => {
+    render(
+      <DiagnosticTerminal
+        activeTab="project"
+        scannedFileLabels={[]}
+        results={{ errorCount: 0, warningCount: 0, findings: [] }}
+        selectedProjectPath={null}
+        isFindingFixable={() => false}
+        fixingFindingId={null}
+        onApplyFix={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('manual-checker-project-idle')).toBeTruthy();
+    expect(screen.getByText('Select a folder or ZIP to start')).toBeTruthy();
+    expect(screen.getByText(/Waiting for a project folder or ZIP archive/i)).toBeTruthy();
+    expect(screen.queryByText('READY TO SHIP')).toBeNull();
+    expect(screen.queryByText(/All scanned files passed/i)).toBeNull();
+    expect(screen.queryByLabelText(/Ship Gate readiness summary/i)).toBeNull();
+  });
+
   it('shows grouped root causes and only the active file log', () => {
     render(
       <DiagnosticTerminal
@@ -57,8 +82,8 @@ describe('DiagnosticTerminal project mode', () => {
         scannedFileLabels={[]}
         projectScan={projectScan}
         results={{
-          errorCount: 2,
-          warningCount: 0,
+          errorCount: 1,
+          warningCount: 1,
           findings: [rlsFinding(), undocumentedEnvFinding()],
         }}
         selectedProjectPath="demo/schema.sql"
@@ -79,10 +104,121 @@ describe('DiagnosticTerminal project mode', () => {
     expect(screen.queryByRole('button', { name: 'View file' })).toBeNull();
     expect(document.querySelector('.scan-file-block')).toBeNull();
     expect(document.querySelector('.scan-file-jump-btn')).toBeNull();
-    expect(screen.getByText(/unique errors/i)).toBeTruthy();
+    expect(screen.getByText(/^1 Blocker$/i)).toBeTruthy();
     expect(screen.getByText(/files affected/i)).toBeTruthy();
     expect(screen.getByText('NOT READY TO SHIP')).toBeTruthy();
     expect(screen.getByText(/Fix blocking errors in the workspace above/i)).toBeTruthy();
+  });
+
+  it('aligns the metric badge with Ship Gate blockers when findings are grouped', () => {
+    const sameTableA = rlsFinding('demo/a.sql');
+    const sameTableB = rlsFinding('demo/b.sql');
+    const groupedFiles: ProjectFile[] = [
+      { path: 'demo/a.sql', content: 'create table users (id uuid primary key);' },
+      { path: 'demo/b.sql', content: 'create table users (id uuid primary key);' },
+    ];
+    const groupedOverview = buildProjectScanOverview(groupedFiles, [sameTableA, sameTableB]);
+    const groupedScan = {
+      fileStats: groupedOverview.fileStats,
+      metrics: buildScanMetricSummary([sameTableA, sameTableB], groupedOverview.fileStats),
+      issueGroups: buildIssueGroupSummaries([sameTableA, sameTableB]),
+    };
+
+    render(
+      <DiagnosticTerminal
+        activeTab="project"
+        scannedFileLabels={[]}
+        projectScan={groupedScan}
+        results={{
+          errorCount: 2,
+          warningCount: 0,
+          findings: [sameTableA, sameTableB],
+        }}
+        selectedProjectPath="demo/a.sql"
+        isFindingFixable={() => false}
+        fixingFindingId={null}
+        onApplyFix={vi.fn()}
+      />,
+    );
+
+    // Two raw errors in the file log, one Ship Gate blocker group.
+    expect(screen.getByText(/^1 Blocker$/i)).toBeTruthy();
+    expect(screen.getByText(/2 in file log/i)).toBeTruthy();
+    expect(screen.queryByText(/^2 Errors$/i)).toBeNull();
+    expect(screen.getByText('Blockers (must fix)')).toBeTruthy();
+    const blockerList = screen.getByText('Blockers (must fix)').closest('.ship-gate-group');
+    expect(blockerList?.querySelectorAll('.ship-gate-list > li').length).toBe(1);
+  });
+
+  it('snippet-mode badge uses Ship Gate blocker count, not raw error findings', () => {
+    const sameTableA = rlsFinding('schema.sql');
+    const sameTableB: WebFinding = {
+      ...rlsFinding('schema.sql'),
+      line: 12,
+    };
+
+    render(
+      <DiagnosticTerminal
+        activeTab="sql"
+        scannedFileLabels={['schema.sql']}
+        results={{
+          errorCount: 2,
+          warningCount: 0,
+          findings: [sameTableA, sameTableB],
+        }}
+        selectedProjectPath={null}
+        isFindingFixable={() => false}
+        fixingFindingId={null}
+        onApplyFix={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/^1 Blocker$/i)).toBeTruthy();
+    expect(screen.getByText(/2 in file log/i)).toBeTruthy();
+    expect(screen.queryByText(/^2 Errors$/i)).toBeNull();
+  });
+
+  it('default SQL mock: 2 file-log errors collapse to 1 Ship Gate blocker badge', () => {
+    // Mirrors ManualChecker DEFAULT_SQL_MOCK: two rules hit `profiles`, one group key.
+    const findings: WebFinding[] = [
+      {
+        ruleId: 'supabase-rls',
+        severity: 'error',
+        message:
+          "Supabase table 'profiles' is created but Row-Level Security (RLS) is not enabled.",
+        file: 'schema.sql',
+        line: 2,
+      },
+      {
+        ruleId: 'supabase-migration-auth-linked-no-rls',
+        severity: 'error',
+        confidence: 'high',
+        message:
+          "Table 'profiles' references auth.users but Row-Level Security (RLS) is not enabled.",
+        file: 'schema.sql',
+        line: 3,
+      },
+    ];
+
+    render(
+      <DiagnosticTerminal
+        activeTab="sql"
+        scannedFileLabels={['schema.sql']}
+        results={{ errorCount: 2, warningCount: 0, findings }}
+        selectedProjectPath={null}
+        isFindingFixable={() => false}
+        fixingFindingId={null}
+        onApplyFix={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/^1 Blocker$/i)).toBeTruthy();
+    expect(screen.getByText(/2 in file log/i)).toBeTruthy();
+    expect(screen.queryByText(/^2 Errors$/i)).toBeNull();
+    expect(screen.getByText('Blockers (must fix)')).toBeTruthy();
+    const blockerList = screen.getByText('Blockers (must fix)').closest('.ship-gate-group');
+    expect(blockerList?.querySelectorAll('.ship-gate-list > li').length).toBe(1);
+    expect(screen.getAllByText(/Row-Level Security/i).length).toBeGreaterThanOrEqual(2);
   });
 
   it('updates the active file log when the selected file changes', () => {
@@ -92,8 +228,8 @@ describe('DiagnosticTerminal project mode', () => {
         scannedFileLabels={[]}
         projectScan={projectScan}
         results={{
-          errorCount: 2,
-          warningCount: 0,
+          errorCount: 1,
+          warningCount: 1,
           findings: [rlsFinding(), undocumentedEnvFinding()],
         }}
         selectedProjectPath="demo/schema.sql"
@@ -109,8 +245,8 @@ describe('DiagnosticTerminal project mode', () => {
         scannedFileLabels={[]}
         projectScan={projectScan}
         results={{
-          errorCount: 2,
-          warningCount: 0,
+          errorCount: 1,
+          warningCount: 1,
           findings: [rlsFinding(), undocumentedEnvFinding()],
         }}
         selectedProjectPath="demo/route.test.ts"

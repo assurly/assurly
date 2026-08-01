@@ -208,23 +208,27 @@ describe('scanEnvVariables', () => {
   });
 
   describe('undocumented environment variables', () => {
-    it('reports an error when process.env.VAR is used but not in .env.example', () => {
+    it('reports a warning when process.env.VAR is used but not in .env.example', () => {
       const envExample = 'DATABASE_URL=postgres://localhost';
       const code = 'const key = process.env.STRIPE_API_KEY;';
       const result = scanEnvVariables(envExample, code, '.env.example', 'config.ts');
 
-      expect(result.errorCount).toBe(1);
+      expect(result.errorCount).toBe(0);
+      expect(result.warningCount).toBe(1);
+      expect(result.findings[0].severity).toBe('warning');
+      expect(result.findings[0].ruleId).toBe('undocumented-env');
       expect(result.findings[0].message).toContain('STRIPE_API_KEY');
       expect(result.findings[0].message).toContain("not documented in '.env.example'");
       expect(result.findings[0].file).toBe('config.ts');
     });
 
-    it('reports no error when process.env.VAR is documented in .env.example', () => {
+    it('reports no finding when process.env.VAR is documented in .env.example', () => {
       const envExample = 'DATABASE_URL=postgres://localhost';
       const code = 'const url = process.env.DATABASE_URL;';
       const result = scanEnvVariables(envExample, code, '.env.example', 'config.ts');
 
       expect(result.errorCount).toBe(0);
+      expect(result.warningCount).toBe(0);
       expect(result.findings).toHaveLength(0);
     });
 

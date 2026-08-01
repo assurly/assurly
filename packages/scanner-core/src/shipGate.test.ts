@@ -19,28 +19,35 @@ const blockers: ShipGateFindingInput[] = [
     message: "Supabase table 'users' is created but Row-Level Security (RLS) is not enabled.",
   },
   {
-    ruleId: 'undocumented-env',
-    severity: 'error',
-    file: 'api.ts',
-    line: 2,
-    message:
-      "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
-  },
-  ...Array.from({ length: 7 }, (_, index) => ({
-    ruleId: 'undocumented-env',
-    severity: 'error' as const,
-    file: `routes/route-${index}.ts`,
-    line: 1,
-    message:
-      "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
-  })),
-  {
     ruleId: 'stripe-webhook-signature',
     severity: 'error',
     file: 'app/api/webhook/route.ts',
     line: 1,
     message: 'Stripe webhook endpoint appears to lack signature verification.',
   },
+];
+
+const envWarnings: ShipGateFindingInput[] = [
+  {
+    ruleId: 'undocumented-env',
+    severity: 'warning',
+    confidence: 'high',
+    file: 'api.ts',
+    line: 2,
+    message:
+      "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
+    suggestion: 'Add STRIPE_SECRET_KEY= to .env.example.',
+  },
+  ...Array.from({ length: 7 }, (_, index) => ({
+    ruleId: 'undocumented-env',
+    severity: 'warning' as const,
+    confidence: 'high' as const,
+    file: `routes/route-${index}.ts`,
+    line: 1,
+    message:
+      "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
+    suggestion: 'Add STRIPE_SECRET_KEY= to .env.example.',
+  })),
 ];
 
 const warnings: ShipGateFindingInput[] = [
@@ -61,6 +68,7 @@ const warnings: ShipGateFindingInput[] = [
     suggestion:
       'Run "npx assurly init" in your repository to automatically configure the CI/CD pipeline.',
   },
+  ...envWarnings,
 ];
 
 describe('shipGate', () => {
@@ -68,7 +76,7 @@ describe('shipGate', () => {
     expect(
       getFindingGroupKey({
         ruleId: 'undocumented-env',
-        severity: 'error',
+        severity: 'warning',
         file: 'src/a.ts',
         message:
           "Environment variable 'process.env.NEXT_PUBLIC_SENTRY_DSN' is used but not documented in '.env.example'.",
@@ -87,11 +95,37 @@ describe('shipGate', () => {
     ).toBe('rule:github-actions-integration');
   });
 
-  it('groups repeated env findings into one blocker', () => {
-    const groups = buildIssueGroups(blockers);
+  it('groups repeated env findings into one warning group', () => {
+    const groups = buildIssueGroups(envWarnings);
     const envGroup = groups.find((group) => group.id.startsWith('env:'));
     expect(envGroup?.affectedFileCount).toBe(8);
     expect(envGroup?.label).toBe('Undocumented env: STRIPE_SECRET_KEY');
+    expect(envGroup?.severity).toBe('warning');
+  });
+
+  it('does not treat undocumented-env as a ship blocker', () => {
+    const report = buildShipGateReport(
+      [
+        {
+          ruleId: 'undocumented-env',
+          severity: 'warning',
+          confidence: 'high',
+          file: 'lib/config.ts',
+          line: 1,
+          message:
+            "Environment variable 'process.env.NEXT_PUBLIC_BASE_PATH' is used but not documented in '.env.example'.",
+        },
+      ],
+      { scannedFileCount: 40, cleanFileCount: 39 },
+    );
+
+    expect(report.status).toBe('review');
+    expect(report.headline).toBe('REVIEW RECOMMENDED');
+    expect(report.blockers).toHaveLength(0);
+    expect(report.warnings).toHaveLength(1);
+    expect(report.warnings[0]?.label).toBe('Undocumented env: NEXT_PUBLIC_BASE_PATH');
+    expect(report.shipScore).toBe(96);
+    expect(isShipGateBlocked(report)).toBe(false);
   });
 
   it('builds a blocked report with score derived from unique groups', () => {
@@ -100,12 +134,13 @@ describe('shipGate', () => {
       cleanFileCount: 168,
     });
 
+    // 2 real blockers × 12 + 3 warning groups × 4 = 24 + 12 = 36 → score 64
     expect(report.status).toBe('blocked');
     expect(report.headline).toBe('NOT READY TO SHIP');
-    expect(report.blockers).toHaveLength(3);
+    expect(report.blockers).toHaveLength(2);
     expect(report.reviews).toHaveLength(0);
-    expect(report.warnings).toHaveLength(2);
-    expect(report.shipScore).toBe(56);
+    expect(report.warnings).toHaveLength(3);
+    expect(report.shipScore).toBe(64);
     expect(report.cleanFileCount).toBe(168);
     expect(isShipGateBlocked(report)).toBe(true);
   });
@@ -142,6 +177,22 @@ describe('shipGate', () => {
     expect(report.status).toBe('blocked');
   });
 
+  it('treats empty findings without an explicit file count as a clean completed scan', () => {
+    const report = buildShipGateReport([]);
+    expect(report.status).toBe('ready');
+    expect(report.headline).toBe('READY TO SHIP');
+  });
+
+  it('never claims READY TO SHIP when scannedFileCount is explicitly zero', () => {
+    const report = buildShipGateReport([], { scannedFileCount: 0, cleanFileCount: 0 });
+
+    expect(report.scannedFileCount).toBe(0);
+    expect(report.status).toBe('review');
+    expect(report.headline).toBe('NO FILES SCANNED');
+    expect(report.shipScore).toBe(0);
+    expect(isShipGateBlocked(report)).toBe(false);
+  });
+
   it('populates scanScope on the report when provided in options', () => {
     const report = buildShipGateReport([], {
       scannedFileCount: 42,
@@ -175,10 +226,11 @@ describe('shipGate', () => {
     });
   });
 
-  it('attaches hint actions to env and RLS blockers', () => {
-    const groups = buildIssueGroups(blockers);
-    const envGroup = groups.find((group) => group.id.startsWith('env:'));
-    const rlsGroup = groups.find((group) => group.id.startsWith('rls:'));
+  it('attaches hint actions to env warnings and RLS blockers', () => {
+    const envGroups = buildIssueGroups(envWarnings);
+    const blockerGroups = buildIssueGroups(blockers);
+    const envGroup = envGroups.find((group) => group.id.startsWith('env:'));
+    const rlsGroup = blockerGroups.find((group) => group.id.startsWith('rls:'));
 
     expect(envGroup?.action?.kind).toBe('hint');
     expect(envGroup?.action?.hint).toContain('.env.example');
@@ -213,7 +265,7 @@ describe('shipGate', () => {
     });
 
     expect(plain).toContain('NOT READY TO SHIP');
-    expect(plain).toContain('Ship Score: 56/100');
+    expect(plain).toContain('Ship Score: 64/100');
     expect(plain).toContain('Missing RLS on table: users');
     expect(plain).toContain('✓ 168 files clean');
     expect(plain).toContain('Run: npx assurly init');

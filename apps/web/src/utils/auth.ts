@@ -26,12 +26,40 @@ export class AuthenticationError extends Error {
   }
 }
 
+/**
+ * Display name for GitHub OAuth users.
+ * Prefer profile name; when empty (common on brand-new accounts), fall back to
+ * the GitHub login handle (`user_name` / `preferred_username`).
+ */
+export function resolveAuthDisplayName(
+  metadata: SupabaseUser['user_metadata'] | null | undefined,
+): string {
+  const meta = (metadata ?? {}) as Record<string, unknown>;
+  const pick = (...keys: string[]): string | undefined => {
+    for (const key of keys) {
+      const value = meta[key];
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed.length > 0) return trimmed;
+      }
+    }
+    return undefined;
+  };
+
+  return (
+    pick('full_name', 'name') || pick('user_name', 'preferred_username', 'login') || 'GitHub User'
+  );
+}
+
 function toUser(user: SupabaseUser): User {
+  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const avatar =
+    typeof meta.avatar_url === 'string' && meta.avatar_url.trim() ? meta.avatar_url.trim() : '';
   return {
     id: user.id,
-    name: user.user_metadata?.full_name || user.user_metadata?.name || 'GitHub User',
+    name: resolveAuthDisplayName(user.user_metadata),
     email: user.email || '',
-    avatar_url: user.user_metadata?.avatar_url || '',
+    avatar_url: avatar,
   };
 }
 

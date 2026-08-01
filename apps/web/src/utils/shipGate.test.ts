@@ -40,7 +40,7 @@ describe('shipGate web adapter', () => {
           id: '2',
           scan_id: 'scan-1',
           rule_id: 'undocumented-env',
-          severity: 'error',
+          severity: 'warning',
           file_path: 'api.ts',
           line_number: 2,
           message:
@@ -52,8 +52,10 @@ describe('shipGate web adapter', () => {
     );
 
     expect(report.status).toBe('blocked');
-    expect(report.blockers).toHaveLength(2);
+    expect(report.blockers).toHaveLength(1);
     expect(report.blockers[0]?.action?.kind).toBe('hint');
+    expect(report.warnings).toHaveLength(1);
+    expect(report.warnings[0]?.label).toBe('Undocumented env: STRIPE_SECRET_KEY');
     expect(report.cleanFileCount).toBe(8);
     expect(getShipGateActionHint(report)).toContain('blockers');
   });
@@ -105,6 +107,13 @@ describe('shipGate web adapter', () => {
     expect(report.warnings[0]?.action?.label).toBe('Initialize CI workflow');
     expect(report.warnings[0]?.action?.kind).toBe('command');
     expect(report.warnings[0]?.action?.command).toBe('npx assurly init');
+  });
+});
+
+describe('getShipGateActionHint', () => {
+  it('asks the user to select a folder or ZIP when nothing was scanned', () => {
+    const report = buildShipGateReport([], { scannedFileCount: 0, cleanFileCount: 0 });
+    expect(getShipGateActionHint(report)).toBe('Select a folder or ZIP to start');
   });
 });
 

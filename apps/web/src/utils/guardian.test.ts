@@ -3,6 +3,7 @@ import type { ScannerFinding } from '@assurly/scanner-core';
 import type { DbAdapter, Target } from './dbAdapter';
 import {
   buildBlockerSnapshot,
+  persistUrlTargetShipGateVerdict,
   readBlockerSnapshot,
   runGuardianCheckForTarget,
   scannerFindingsToScanFindings,
@@ -62,6 +63,69 @@ describe('blocker snapshot helpers', () => {
     const restored = readBlockerSnapshot({ blockerSnapshot: snapshot });
     expect(restored).toHaveLength(1);
     expect(restored[0].rule_id).toBe('runtime-supabase-rls-open');
+  });
+});
+
+describe('persistUrlTargetShipGateVerdict', () => {
+  it('writes ready verdict and lastCheckedAt for a clean passive scan', async () => {
+    const upsertTarget = vi.fn().mockResolvedValue({});
+    const db = { upsertTarget } as unknown as DbAdapter;
+    const fixedNow = new Date('2026-07-29T12:00:00.000Z');
+
+    await persistUrlTargetShipGateVerdict({
+      db,
+      organizationId: 'org-1',
+      identifier: 'https://github.com',
+      findings: [],
+      previous: { current_ship_score: null, badge_token: null },
+      now: () => fixedNow,
+    });
+
+    expect(upsertTarget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'org-1',
+        kind: 'url',
+        identifier: 'https://github.com',
+        currentVerdict: 'ready',
+        currentShipScore: 100,
+        lastCheckedAt: '2026-07-29T12:00:00.000Z',
+        badgeToken: expect.any(String),
+      }),
+    );
+  });
+
+  it('writes blocked verdict when high-confidence errors are present', async () => {
+    const upsertTarget = vi.fn().mockResolvedValue({});
+    const db = { upsertTarget } as unknown as DbAdapter;
+
+    await persistUrlTargetShipGateVerdict({
+      db,
+      organizationId: 'org-1',
+      identifier: 'https://app.example',
+      findings: [rlsFinding()],
+      previous: { current_ship_score: 100, badge_token: 'b'.repeat(32) },
+    });
+
+    expect(upsertTarget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentVerdict: 'blocked',
+        badgeToken: 'b'.repeat(32),
+      }),
+    );
+  });
+
+  it('swallows persistence failures so the scan response is never failed', async () => {
+    const upsertTarget = vi.fn().mockRejectedValue(new Error('db down'));
+    const db = { upsertTarget } as unknown as DbAdapter;
+
+    await expect(
+      persistUrlTargetShipGateVerdict({
+        db,
+        organizationId: 'org-1',
+        identifier: 'https://app.example',
+        findings: [],
+      }),
+    ).resolves.toBeUndefined();
   });
 });
 

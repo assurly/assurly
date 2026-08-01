@@ -59,8 +59,32 @@ describe('projectWorkspace', () => {
     );
 
     expect(groups.some((group) => group.label.includes('STRIPE_SECRET_KEY'))).toBe(true);
-    expect(metrics.totalErrorFindings).toBeGreaterThan(metrics.uniqueErrorCount);
+    expect(groups.every((group) => group.gateKind === 'warning')).toBe(true);
+    expect(metrics.totalErrorFindings).toBe(0);
+    expect(metrics.totalWarningFindings).toBeGreaterThan(metrics.uniqueWarningCount);
     expect(metrics.testAffectedFileCount).toBeGreaterThan(0);
     expect(metrics.productionAffectedFileCount).toBeGreaterThan(0);
+  });
+
+  it('counts Ship Gate blockers, not raw error occurrences, for overview badges', () => {
+    const files: ProjectFile[] = [
+      {
+        path: 'a.sql',
+        content: 'create table users (id uuid primary key);',
+      },
+      {
+        path: 'b.sql',
+        content: 'create table users (id uuid primary key);',
+      },
+    ];
+    const scan = scanProject(files);
+    const overview = buildProjectScanOverview(files, scan.findings);
+    const metrics = buildScanMetricSummary(scan.findings, overview.fileStats);
+
+    expect(scan.findings.filter((f) => f.severity === 'error').length).toBe(2);
+    expect(overview.totalErrorFindings).toBe(2);
+    expect(overview.errorCount).toBe(1);
+    expect(metrics.uniqueErrorCount).toBe(1);
+    expect(metrics.uniqueErrorCount).toBe(overview.errorCount);
   });
 });

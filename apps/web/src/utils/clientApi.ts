@@ -270,6 +270,31 @@ export const clientApi = {
   scans: (repositoryId: string): Promise<{ scans: Scan[] }> =>
     requestJson(`/api/scans?repoId=${encodeURIComponent(repositoryId)}`, scansSchema),
   targets: (): Promise<{ targets: TargetCard[] }> => requestJson('/api/targets', targetsSchema),
+  /** Explicitly guard a live URL (create target; ownership verify follows in UI). */
+  createUrlTarget: (
+    url: string,
+  ): Promise<{
+    target: { id: string; kind: 'url'; identifier: string; ownershipVerified: boolean };
+  }> =>
+    requestJson(
+      '/api/targets',
+      z.object({
+        target: z.object({
+          id: z.string().uuid(),
+          kind: z.literal('url'),
+          identifier: z.string(),
+          ownershipVerified: z.boolean(),
+        }),
+      }),
+      jsonRequest('POST', { url }),
+    ),
+  deleteTarget: async (targetId: string): Promise<void> => {
+    await requestJson(
+      `/api/targets/${encodeURIComponent(targetId)}`,
+      z.object({ deleted: z.boolean() }),
+      jsonRequest('DELETE'),
+    );
+  },
   findings: (scanId: string): Promise<{ findings: ScanFinding[] }> =>
     requestJson(`/api/scans?scanId=${encodeURIComponent(scanId)}`, findingsSchema),
   saveScan: (body: z.input<typeof saveScanBodySchema>): Promise<Scan> =>

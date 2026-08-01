@@ -38,6 +38,7 @@ import {
   githubApi,
   type GitHubRepository,
   type SessionResult,
+  type TargetCard,
 } from '../../../utils/clientApi';
 import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
 import { dedupeRepositoriesByGithubId } from '../../../utils/repositories';
@@ -46,6 +47,7 @@ import { summarizeScanFixes } from '../../../utils/fixSummary';
 import { preferPublicScanForRepository, sanitizeGitHubOwner } from '../../../utils/scanProxy';
 import { buildShipGateFromScanFindings } from '../../../utils/shipGate';
 import { RepoListPanel } from './RepoListPanel';
+import { buildRepoTargetLookup } from './buildRepoTargetLookup';
 import { VerdictCardsSection } from './VerdictCardsSection';
 import { ApiKeys } from './ApiKeys';
 import { CanaryTokens, CanaryTokensNotice } from './CanaryTokens';
@@ -75,6 +77,7 @@ import {
 } from './publicRepoInputReset';
 import { scrollToScanDetails } from '../../../utils/scrollToScanDetails';
 import { consumeDashboardSplashRequest } from '../../../utils/splashSignal';
+import { invalidateRepoScansCache, loadRepoScans } from '../../../utils/scansQueryCache';
 
 type DashboardTab = DashboardMainTab;
 
@@ -103,8 +106,8 @@ const SAVE_FINDINGS_LIMIT = 100;
 
 /**
  * Client-generated (not yet persisted) scans use a `scan-...` id, whereas scans
- * returned by the API use a database UUID. Telling them apart lets the background
- * polling reconcile server state without erasing a freshly computed local scan.
+ * returned by the API use a database UUID. Telling them apart lets a visibility
+ * refresh reconcile server state without erasing a freshly computed local scan.
  */
 function isLocalScanId(id: string): boolean {
   return id.startsWith('scan-');
@@ -242,13 +245,21 @@ function DashboardContent({
   // deployed-URL scan. "Last action wins" — flipped to 'url' when a URL scan
   // starts (onActivate) and back to 'repo' on repo select / repo scan.
   const [resultsView, setResultsView] = useState<'repo' | 'url'>('repo');
+  // Verdict cards re-fetch whenever a scan finishes (repo or URL), so "Your apps"
+  // reflects the new Ship Gate projection without a full page reload.
+  const [verdictRefreshKey, setVerdictRefreshKey] = useState(0);
   // The arrow's identity may change per render; the hook stores it in a ref and
   // always calls the latest, so no memoisation is needed here.
-  const urlScan = useDeployedUrlScan(() => setResultsView('url'));
+  const urlScan = useDeployedUrlScan(
+    () => setResultsView('url'),
+    () => setVerdictRefreshKey((key) => key + 1),
+  );
   const [repoDetailStatus, setRepoDetailStatus] = useState<RepoDetailStatus>('loading');
   // A scan that finished locally but could not be persisted (e.g. backend
-  // misconfiguration). Kept in dedicated state so the 5s polling never wipes it.
+  // misconfiguration). Kept in dedicated state so a visibility refresh never wipes it.
   const [localScan, setLocalScan] = useState<Scan | null>(null);
+  const localScanRef = useRef<Scan | null>(null);
+  localScanRef.current = localScan;
   const [localFindings, setLocalFindings] = useState<ScanFinding[]>([]);
   const [currency] = useState<'USD' | 'EUR'>('USD');
   const currencySymbol = currency === 'USD' ? '$' : '€';
@@ -343,9 +354,6 @@ function DashboardContent({
     scrollToScanDetails();
   };
 
-  // Verdict cards re-fetch whenever a scan finishes (the target was refreshed
-  // server-side during save), so the dashboard verdict reflects the new result.
-  const [verdictRefreshKey, setVerdictRefreshKey] = useState(0);
   /**
    * Real UUID target ids keyed by repository id — synthetic `repo:…` cards are
    * omitted.
@@ -360,6 +368,84 @@ function DashboardContent({
     status: 'loading' | 'ready' | 'error';
     byRepoId: Record<string, string>;
   }>({ status: 'loading', byRepoId: {} });
+  /** Shared with VerdictCardsSection — one `/api/targets` fetch for cards + lookup. */
+  const [verdictCards, setVerdictCards] = useState<TargetCard[] | null>(null);
+  const [verdictCardsError, setVerdictCardsError] = useState<string | null>(null);
+  const [removingTargetId, setRemovingTargetId] = useState<string | null>(null);
+  const [rescanningTargetId, setRescanningTargetId] = useState<string | null>(null);
+  /** Bumps when a card Rescan targets an already-selected repo (selection alone would not re-fire). */
+  const [scanKickToken, setScanKickToken] = useState(0);
+
+  const handleRescanVerdict = async (card: TargetCard): Promise<void> => {
+    if (isScanning || rescanningTargetId) return;
+
+    if (card.kind === 'repo' && card.repositoryId) {
+      const repo = repos.find((candidate) => candidate.id === card.repositoryId);
+      if (!repo) {
+        setToast({
+          message: 'That repository is no longer connected. Reconnect it to scan again.',
+          type: 'error',
+        });
+        return;
+      }
+      setRescanningTargetId(card.repositoryId);
+      setToast({ message: `Scanning ${card.displayName}…`, type: 'info' });
+      autoStartScanRef.current = true;
+      handleSelectRepo(repo);
+      setScanKickToken((token) => token + 1);
+      // Show progress immediately — do not wait until the scan finishes.
+      requestAnimationFrame(() => {
+        document
+          .getElementById('repo-scan-workspace')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      return;
+    }
+
+    if (card.kind === 'url') {
+      setRescanningTargetId(card.id);
+      setVerdictCardsError(null);
+      setToast({ message: `Re-probing ${card.displayName}…`, type: 'info' });
+      try {
+        await clientApi.reprobe(card.id);
+        setVerdictRefreshKey((key) => key + 1);
+        setToast({
+          message: `Re-probed ${card.displayName}. Guardian verdict refreshed.`,
+          type: 'success',
+        });
+      } catch (err: unknown) {
+        setToast({
+          message:
+            err instanceof ClientApiError
+              ? err.message
+              : 'Could not re-probe that URL. Verify ownership and try again.',
+          type: 'error',
+        });
+      } finally {
+        setRescanningTargetId(null);
+      }
+    }
+  };
+
+  const handleRemoveUrlTarget = async (targetId: string): Promise<void> => {
+    setRemovingTargetId(targetId);
+    setVerdictCardsError(null);
+    const previous = verdictCards;
+    // Optimistic remove so the card disappears immediately.
+    setVerdictCards((cards) => (cards ? cards.filter((card) => card.id !== targetId) : cards));
+    try {
+      await clientApi.deleteTarget(targetId);
+      setVerdictRefreshKey((key) => key + 1);
+    } catch (err: unknown) {
+      setVerdictCards(previous);
+      setVerdictCardsError(
+        err instanceof ClientApiError ? err.message : 'Could not remove that URL app.',
+      );
+    } finally {
+      setRemovingTargetId(null);
+    }
+  };
+
   const wasScanningRef = useRef(false);
   // Set when a scan is kicked off from the tools column (Scan Public Repository),
   // where the user is scrolled away from the results canvas. On completion we
@@ -368,6 +454,8 @@ function DashboardContent({
   useEffect(() => {
     if (wasScanningRef.current && !isScanning) {
       setVerdictRefreshKey((key) => key + 1);
+      // Keep the card CTA in "Scanning…" until the pipeline fully finishes.
+      setRescanningTargetId(null);
       if (pendingWorkspaceScrollRef.current) {
         pendingWorkspaceScrollRef.current = false;
         document
@@ -380,23 +468,22 @@ function DashboardContent({
 
   useEffect(() => {
     let cancelled = false;
+    setVerdictCardsError(null);
     void clientApi
       .targets()
       .then(({ targets }) => {
         if (cancelled) return;
-        const next: Record<string, string> = {};
-        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-        for (const target of targets) {
-          if (target.kind === 'repo' && target.repositoryId && uuid.test(target.id)) {
-            next[target.repositoryId] = target.id;
-          }
-        }
-        setTargetLookup({ status: 'ready', byRepoId: next });
+        setVerdictCards(targets);
+        setTargetLookup({ status: 'ready', byRepoId: buildRepoTargetLookup(targets) });
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (cancelled) return;
         // Non-fatal, but not silent: without this the panel would sit on
         // "loading" forever and look broken rather than retryable.
+        setVerdictCards([]);
+        setVerdictCardsError(
+          err instanceof ClientApiError ? err.message : 'Could not load your apps right now.',
+        );
         setTargetLookup({ status: 'error', byRepoId: {} });
       });
     return () => {
@@ -457,64 +544,66 @@ function DashboardContent({
     };
   }, [isProfileOpen]);
 
-  // Fetch scans when selected repo changes and poll periodically
+  const selectedRepoId = selectedRepo?.id ?? null;
+
+  // Load scans when the selected repo changes. No interval polling — that was a
+  // launch P0 cost bug (~100+/session for one repoId). Refresh only on select,
+  // tab focus, and after mutations (save/delete invalidate the query cache).
   useEffect(() => {
-    if (!selectedRepo) {
+    if (!selectedRepoId) {
       return;
     }
-    const repoId = selectedRepo.id;
-    let interval: ReturnType<typeof setInterval> | undefined;
+    const repoId = selectedRepoId;
+    let cancelled = false;
     let sessionExpired = false;
 
-    const stopPolling = (): void => {
-      if (interval !== undefined) clearInterval(interval);
-      interval = undefined;
+    const applyScans = (repoScans: Scan[]): void => {
+      if (cancelled) return;
+      setScans((prev) => {
+        if (JSON.stringify(prev) === JSON.stringify(repoScans)) {
+          return prev;
+        }
+        return repoScans;
+      });
+      setScanCountsByRepoId((prev) =>
+        prev[repoId] === repoScans.length ? prev : { ...prev, [repoId]: repoScans.length },
+      );
+
+      setSelectedScan((prev) => {
+        // Keep an unsaved local selection alive, but only while it belongs to the
+        // repo currently in view; otherwise fall back to the newest server scan.
+        if (prev && isLocalScanId(prev.id)) {
+          return prev.repository_id === repoId ? prev : (repoScans[0] ?? null);
+        }
+        if (repoScans.length === 0) {
+          return prev?.repository_id === repoId ? prev : null;
+        }
+        if (!prev) return repoScans[0];
+        const stillExists = repoScans.some((s) => s.id === prev.id);
+        return stillExists ? prev : repoScans[0];
+      });
+
+      setRepoDetailStatus((current) => {
+        if (current !== 'loading') {
+          return current;
+        }
+        const local = localScanRef.current;
+        return resolveRepoDetailStatusAfterScans(
+          repoScans.length,
+          Boolean(local && local.repository_id === repoId),
+        );
+      });
     };
 
-    const fetchScans = async (): Promise<void> => {
-      if (sessionExpired) return;
+    const fetchScans = async (force: boolean): Promise<void> => {
+      if (sessionExpired || cancelled) return;
       try {
-        const { scans: repoScans } = await clientApi.scans(repoId);
-
-        setScans((prev) => {
-          if (JSON.stringify(prev) === JSON.stringify(repoScans)) {
-            return prev;
-          }
-          return repoScans;
-        });
-        setScanCountsByRepoId((prev) =>
-          prev[repoId] === repoScans.length ? prev : { ...prev, [repoId]: repoScans.length },
-        );
-
-        setSelectedScan((prev) => {
-          // Keep an unsaved local selection alive, but only while it belongs to the
-          // repo currently in view; otherwise fall back to the newest server scan.
-          if (prev && isLocalScanId(prev.id)) {
-            return prev.repository_id === repoId ? prev : (repoScans[0] ?? null);
-          }
-          if (repoScans.length === 0) {
-            return prev?.repository_id === repoId ? prev : null;
-          }
-          if (!prev) return repoScans[0];
-          const stillExists = repoScans.some((s) => s.id === prev.id);
-          return stillExists ? prev : repoScans[0];
-        });
-
-        setRepoDetailStatus((current) => {
-          if (current !== 'loading') {
-            return current;
-          }
-          return resolveRepoDetailStatusAfterScans(
-            repoScans.length,
-            Boolean(localScan && localScan.repository_id === repoId),
-          );
-        });
+        const { scans: repoScans } = await loadRepoScans(repoId, { force });
+        applyScans(repoScans);
       } catch (e) {
-        // Polling cannot recover a dead session — it would just retry every 5s
-        // forever. Stop, and tell the user the one thing that fixes it.
+        if (cancelled) return;
         if (e instanceof ClientApiError && e.status === 401) {
           sessionExpired = true;
-          stopPolling();
           setScanError('Your session expired. Sign in again to continue.');
           setRepoDetailStatus((current) => (current === 'loading' ? 'empty' : current));
           return;
@@ -524,51 +613,53 @@ function DashboardContent({
       }
     };
 
-    fetchScans();
-
-    interval = setInterval(() => {
-      // Don't poll /api/scans while the tab is in the background — a hidden or
-      // forgotten dashboard tab should not keep hitting the database every 5s.
-      // Returning to the tab triggers an immediate refresh via the listener below.
-      if (document.visibilityState === 'hidden') return;
-      fetchScans();
-    }, 5000);
+    void fetchScans(false);
 
     const refreshWhenVisible = (): void => {
-      if (document.visibilityState === 'visible') void fetchScans();
+      if (document.visibilityState !== 'visible') return;
+      invalidateRepoScansCache(repoId);
+      void fetchScans(true);
     };
     document.addEventListener('visibilitychange', refreshWhenVisible);
 
     return () => {
-      stopPolling();
+      cancelled = true;
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [selectedRepo, localScan]);
+  }, [selectedRepoId]);
+
+  // Stable key so a new array identity for the same repos does not re-prefetch.
+  const repoIdsKey = useMemo(() => repos.map((repo) => repo.id).join(','), [repos]);
 
   // Prefetch scan counts for every connected repository so the sidebar can surface
-  // history without requiring the user to open each repo first.
+  // history without requiring the user to open each repo first. Deduped via
+  // loadRepoScans so Strict Mode + selected-repo load share one network trip.
   useEffect(() => {
-    if (repos.length === 0) return;
-
+    if (!repoIdsKey) return;
+    const ids = repoIdsKey.split(',').filter(Boolean);
     let cancelled = false;
+
     void Promise.all(
-      repos.map(async (repo) => {
+      ids.map(async (repoId) => {
         try {
-          const { scans: repoScans } = await clientApi.scans(repo.id);
-          return [repo.id, repoScans.length] as const;
+          const { scans: repoScans } = await loadRepoScans(repoId);
+          return [repoId, repoScans.length] as const;
         } catch {
-          return [repo.id, 0] as const;
+          return [repoId, 0] as const;
         }
       }),
     ).then((entries) => {
       if (cancelled) return;
-      setScanCountsByRepoId(Object.fromEntries(entries));
+      setScanCountsByRepoId((prev) => {
+        const next = { ...prev, ...Object.fromEntries(entries) };
+        return next;
+      });
     });
 
     return () => {
       cancelled = true;
     };
-  }, [repos]);
+  }, [repoIdsKey]);
 
   // Fetch findings when selected scan changes
   useEffect(() => {
@@ -783,7 +874,8 @@ function DashboardContent({
         // Target was re-synced server-side — refresh verdict cards + scan list.
         setVerdictRefreshKey((key) => key + 1);
         try {
-          const { scans: repoScans } = await clientApi.scans(repoId);
+          invalidateRepoScansCache(repoId);
+          const { scans: repoScans } = await loadRepoScans(repoId, { force: true });
           setScans(repoScans);
           setScanCountsByRepoId((current) => ({ ...current, [repoId]: repoScans.length }));
           setSelectedScan((prev) => {
@@ -1585,7 +1677,7 @@ function DashboardContent({
             console.error('Failed to load persisted findings after save:', fetchError);
           }
 
-          // Adopt the server identity (so polling dedup and auto-fix target the
+          // Adopt the server identity (so list dedup and auto-fix target the
           // database scan) while overriding the counts with the true totals.
           const sessionScan: Scan = {
             ...savedScan,
@@ -1594,6 +1686,7 @@ function DashboardContent({
           };
 
           setIsScanning(false);
+          invalidateRepoScansCache(selectedRepo.id);
           setScans((prev) => [savedScan, ...prev.filter((s) => s.id !== savedScan.id)]);
           setScanCountsByRepoId((prev) => ({
             ...prev,
@@ -1610,7 +1703,7 @@ function DashboardContent({
         } catch (e) {
           // Persistence failed (commonly a missing APP_URL / Supabase env var or an
           // origin mismatch on the CSRF check). Keep the result visible via the local
-          // scan state — immune to the polling refresh — and tell the user honestly
+          // scan state — immune to a visibility refresh — and tell the user honestly
           // that it will not survive a reload, instead of showing "No scans found".
           console.error('Failed to save scan to DB:', e);
           setIsScanning(false);
@@ -1647,7 +1740,7 @@ function DashboardContent({
     if (!autoStartScanRef.current || !selectedRepo || isScanning) return;
     autoStartScanRef.current = false;
     queueMicrotask(startScan);
-  }, [isScanning, selectedRepo]);
+  }, [isScanning, selectedRepo, scanKickToken]);
 
   /** Handles toast messages from the ManualChecker component */
   const handleCheckerToast = (message: string, type: 'success' | 'info'): void => {
@@ -1685,12 +1778,21 @@ function DashboardContent({
       />
 
       <main className="dashboard-main">
-        <WorkspaceHeader orgName={org?.name} billingPlan={org?.billing_plan} />
+        <WorkspaceHeader orgName={org?.name} ownerLabel={user?.name} />
         <DashboardTabs activeTab={activeTab} onTabChange={handleDashboardTabChange} />
 
         {activeTab === 'repositories' ? (
           <>
-            <VerdictCardsSection onOpenRepo={handleOpenVerdict} refreshKey={verdictRefreshKey} />
+            <VerdictCardsSection
+              onOpenRepo={handleOpenVerdict}
+              onRemoveUrl={handleRemoveUrlTarget}
+              onRescan={(card) => void handleRescanVerdict(card)}
+              removingTargetId={removingTargetId}
+              rescanningTargetId={rescanningTargetId}
+              rescanBlocked={isScanning || Boolean(rescanningTargetId)}
+              cards={verdictCards}
+              error={verdictCardsError}
+            />
             <div className="dashboard-grid">
               <div className="dashboard-repo-column">
                 <RepoListPanel
@@ -1724,7 +1826,11 @@ function DashboardContent({
               </div>
 
               {resultsView === 'url' && urlScan.hasActivity ? (
-                <DeployedUrlScanResults scan={urlScan} loginUrl={loginUrl} />
+                <DeployedUrlScanResults
+                  scan={urlScan}
+                  loginUrl={loginUrl}
+                  onGuarded={() => setVerdictRefreshKey((key) => key + 1)}
+                />
               ) : (
                 <ScanWorkspace
                   selectedRepo={selectedRepo}

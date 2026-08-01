@@ -297,11 +297,14 @@ describe('POST /api/scan-url', () => {
       .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
     const upsertTarget = vi.fn().mockResolvedValue({
       id: 'target-1',
-      ownership_verified: false,
+      ownership_verified: true,
       identifier: 'https://custom.example.com',
     });
-    const getTargetByIdentifier = vi.fn().mockResolvedValue(null);
-    const getTargets = vi.fn().mockResolvedValue([]);
+    const getTargetByIdentifier = vi.fn().mockResolvedValue({
+      id: 'target-1',
+      ownership_verified: true,
+      identifier: 'https://custom.example.com',
+    });
     requireUserMock.mockResolvedValue({
       user: { id: 'user-1' },
       accessToken: 'token',
@@ -310,7 +313,6 @@ describe('POST /api/scan-url', () => {
         insertProbeEvidence: vi.fn(),
         upsertTarget,
         getTargetByIdentifier,
-        getTargets,
       },
     });
     scanLiveUrlMock.mockResolvedValue({
@@ -328,20 +330,27 @@ describe('POST /api/scan-url', () => {
     );
 
     expect(response.status).toBe(200);
-    // Target creation upsert only — never write generatorFingerprint: 'unknown'.
-    expect(upsertTarget).toHaveBeenCalledTimes(1);
-    expect(upsertTarget.mock.calls[0][0]).not.toHaveProperty('generatorFingerprint');
+    // Verdict projection only — never write generatorFingerprint: 'unknown'.
+    expect(upsertTarget).toHaveBeenCalled();
+    for (const [payload] of upsertTarget.mock.calls) {
+      expect(payload).not.toHaveProperty('generatorFingerprint');
+    }
+    expect(upsertTarget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentVerdict: 'ready',
+        currentShipScore: 100,
+        lastCheckedAt: expect.any(String),
+      }),
+    );
   });
 
-  it('does NOT run the active probe for an authenticated scan on an UNVERIFIED URL target', async () => {
+  it('does NOT create a target for a one-off authenticated scan (no existing URL target)', async () => {
     const insertProbeEvidence = vi.fn().mockResolvedValue(undefined);
     const getOrganizationByUserId = vi
       .fn()
       .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
-    const upsertTarget = vi.fn().mockResolvedValue({ id: 'target-1', ownership_verified: false });
-    // First guarded app for a free org (no existing target, zero currently) — allowed.
+    const upsertTarget = vi.fn();
     const getTargetByIdentifier = vi.fn().mockResolvedValue(null);
-    const getTargets = vi.fn().mockResolvedValue([]);
     requireUserMock.mockResolvedValue({
       user: { id: 'user-1' },
       accessToken: 'token',
@@ -350,7 +359,6 @@ describe('POST /api/scan-url', () => {
         insertProbeEvidence,
         upsertTarget,
         getTargetByIdentifier,
-        getTargets,
       },
     });
 
@@ -364,34 +372,40 @@ describe('POST /api/scan-url', () => {
 
     expect(response.status).toBe(200);
     const json = await response.json();
-    // The gate must force passive-only for an unverified url target, even though
-    // the caller is authenticated.
+    // One-off probes stay passive and never pollute Your apps.
     expect(scanLiveUrlMock).toHaveBeenCalledWith(
       'https://not-mine.lovable.app/',
       expect.anything(),
       undefined,
       { activeProbe: false, organizationId: 'org-1', visibilityAudit: true },
     );
-    expect(json.target).toEqual({ id: 'target-1', ownershipVerified: false });
+    expect(json.target).toBeNull();
+    expect(upsertTarget).not.toHaveBeenCalled();
   });
 
-  it('rejects guarding a NEW app past the free plan limit (server-side entitlement)', async () => {
+  it('attaches an existing UNVERIFIED guarded URL without running the active probe', async () => {
+    const insertProbeEvidence = vi.fn().mockResolvedValue(undefined);
     const getOrganizationByUserId = vi
       .fn()
       .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
-    // No existing target for this URL, but the org already guards its one free app.
-    const getTargetByIdentifier = vi.fn().mockResolvedValue(null);
-    const getTargets = vi.fn().mockResolvedValue([{ id: 'existing-target' }]);
-    const upsertTarget = vi.fn();
+    const upsertTarget = vi.fn().mockResolvedValue({
+      id: 'target-1',
+      ownership_verified: false,
+      identifier: 'https://pending.lovable.app',
+    });
+    const getTargetByIdentifier = vi.fn().mockResolvedValue({
+      id: 'target-1',
+      ownership_verified: false,
+      identifier: 'https://pending.lovable.app',
+    });
     requireUserMock.mockResolvedValue({
       user: { id: 'user-1' },
       accessToken: 'token',
       db: {
         getOrganizationByUserId,
-        getTargetByIdentifier,
-        getTargets,
+        insertProbeEvidence,
         upsertTarget,
-        insertProbeEvidence: vi.fn(),
+        getTargetByIdentifier,
       },
     });
 
@@ -399,29 +413,41 @@ describe('POST /api/scan-url', () => {
       new Request('http://localhost/api/scan-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: 'https://second-app.lovable.app' }),
+        body: JSON.stringify({ url: 'https://pending.lovable.app' }),
       }),
     );
 
-    expect(response.status).toBe(402);
-    expect((await response.json()).error.code).toBe('plan_required');
-    // The over-limit action is blocked before any target is created or scanned.
-    expect(upsertTarget).not.toHaveBeenCalled();
-    expect(scanLiveUrlMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(scanLiveUrlMock).toHaveBeenCalledWith(
+      'https://pending.lovable.app/',
+      expect.anything(),
+      undefined,
+      { activeProbe: false, organizationId: 'org-1', visibilityAudit: true },
+    );
+    expect(json.target).toEqual({ id: 'target-1', ownershipVerified: false });
+    expect(upsertTarget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'org-1',
+        kind: 'url',
+        identifier: 'https://pending.lovable.app',
+        currentVerdict: expect.any(String),
+        currentShipScore: expect.any(Number),
+        lastCheckedAt: expect.any(String),
+      }),
+    );
   });
 
-  it('lets a Pro org guard a new app beyond one (unlimited guarded apps)', async () => {
+  it('lets Pro scan a brand-new URL without creating a target (guard is a separate action)', async () => {
     const getOrganizationByUserId = vi.fn().mockResolvedValue({ id: 'org-1', billing_plan: 'pro' });
     const getTargetByIdentifier = vi.fn().mockResolvedValue(null);
-    const getTargets = vi.fn().mockResolvedValue([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
-    const upsertTarget = vi.fn().mockResolvedValue({ id: 'target-9', ownership_verified: false });
+    const upsertTarget = vi.fn();
     requireUserMock.mockResolvedValue({
       user: { id: 'user-1' },
       accessToken: 'token',
       db: {
         getOrganizationByUserId,
         getTargetByIdentifier,
-        getTargets,
         upsertTarget,
         insertProbeEvidence: vi.fn(),
       },
@@ -436,9 +462,8 @@ describe('POST /api/scan-url', () => {
     );
 
     expect(response.status).toBe(200);
-    // Pro never consults getTargets for a limit — unlimited apps.
-    expect(getTargets).not.toHaveBeenCalled();
-    expect(upsertTarget).toHaveBeenCalled();
+    expect((await response.json()).target).toBeNull();
+    expect(upsertTarget).not.toHaveBeenCalled();
   });
 
   it('stays passive-only when the target lookup fails (fail-closed)', async () => {

@@ -86,6 +86,11 @@ function authWithTarget(ownershipVerified: boolean) {
     accessToken: 'token',
     db: {
       getOrganizationByUserId: vi.fn().mockResolvedValue({ id: 'org-1', billing_plan: 'free' }),
+      getTargetByIdentifier: vi.fn().mockResolvedValue({
+        id: 'target-1',
+        ownership_verified: ownershipVerified,
+        identifier: PAGE_URL.replace(/\/$/, ''),
+      }),
       upsertTarget: vi
         .fn()
         .mockResolvedValue({ id: 'target-1', ownership_verified: ownershipVerified }),

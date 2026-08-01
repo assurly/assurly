@@ -15,6 +15,8 @@ import { POST as githubWebhook } from './github/webhook/route';
 import { POST as repositories } from './repositories/route';
 import { DELETE as apiKeysDelete } from './api-keys/[id]/route';
 import { DELETE as scansDelete, GET as scansRead, POST as scansCreate } from './scans/route';
+import { GET as targetsRead, POST as targetsCreate } from './targets/route';
+import { DELETE as targetsDelete } from './targets/[id]/route';
 import { POST as stripeCheckout } from './stripe/checkout/route';
 import { POST as stripePortal } from './stripe/portal/route';
 import { POST as stripeWebhook } from './stripe/webhook/route';
@@ -116,6 +118,15 @@ const routes: RouteContract[] = [
     auth: 'required',
     csrf: true,
     handler: dependencyProvenance,
+  },
+  { name: 'targets read', method: 'GET', auth: 'required', csrf: false, handler: targetsRead },
+  { name: 'targets create', method: 'POST', auth: 'required', csrf: true, handler: targetsCreate },
+  {
+    name: 'targets delete',
+    method: 'DELETE',
+    auth: 'required',
+    csrf: true,
+    handler: targetsDelete,
   },
 ];
 

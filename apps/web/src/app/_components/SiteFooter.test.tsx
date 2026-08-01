@@ -63,9 +63,11 @@ describe('SiteFooter', () => {
     expect(npm.getAttribute('href')).toBe('https://www.npmjs.com/package/assurly');
     expect(npm.getAttribute('rel')).toContain('noreferrer');
 
-    const brand = document.querySelector('.site-footer__brand-link');
-    expect(brand?.textContent).toBe('Assurly');
-    expect(brand?.querySelector('.site-footer__wordmark span')?.textContent).toBe('url');
+    const brand = screen.getByRole('link', { name: 'Assurly' });
+    expect(brand.classList.contains('site-footer__brand-link')).toBe(true);
+    expect(brand.getAttribute('aria-label')).toBe('Assurly');
+    expect(brand.textContent).toBe('Assurly');
+    expect(brand.querySelector('.site-footer__wordmark span')?.textContent).toBe('url');
   });
 
   it('renders the compact dashboard footer with legal links and contact', () => {

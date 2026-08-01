@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import type { WebFinding } from '../../../utils/browserScanner';
+import { ClientApiError, clientApi } from '../../../utils/clientApi';
 import type { ShipGateReport } from '../../../utils/shipGate';
 import { isLikelyScannableUrl } from '../../../utils/urlValidation';
 import { ShipGatePanel } from '../../_components/ship-gate/ShipGatePanel';
@@ -142,6 +143,8 @@ export interface DeployedUrlScanState {
   scanResults: UrlScanResults | null;
   handleSubmit: (event?: FormEvent) => Promise<void>;
   runScan: (targetUrl: string) => Promise<void>;
+  /** Attach a newly created guarded target to the current results (no re-scan). */
+  attachTarget: (target: ScanTarget) => void;
   /** True once a scan has started — the results canvas has something to show. */
   hasActivity: boolean;
 }
@@ -154,21 +157,34 @@ export interface DeployedUrlScanState {
  *
  * `onActivate` fires when a scan starts, so the dashboard can switch the shared
  * results canvas to the URL view ("last action wins").
+ * `onScanComplete` fires after a successful scan so the dashboard can refresh
+ * the "Your apps" verdict cards.
  */
-export function useDeployedUrlScan(onActivate?: () => void): DeployedUrlScanState {
+export function useDeployedUrlScan(
+  onActivate?: () => void,
+  onScanComplete?: () => void,
+): DeployedUrlScanState {
   const [urlInput, setUrlInput] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanResults, setScanResults] = useState<UrlScanResults | null>(null);
 
-  // Keep the latest callback without making runScan change identity every render.
+  // Keep the latest callbacks without making runScan change identity every render.
   const onActivateRef = useRef(onActivate);
+  const onScanCompleteRef = useRef(onScanComplete);
   useEffect(() => {
     onActivateRef.current = onActivate;
   }, [onActivate]);
+  useEffect(() => {
+    onScanCompleteRef.current = onScanComplete;
+  }, [onScanComplete]);
 
   const isValidUrl = isLikelyScannableUrl(urlInput);
   const showInvalidHint = urlInput.trim().length > 0 && !isValidUrl;
+
+  const attachTarget = useCallback((target: ScanTarget): void => {
+    setScanResults((current) => (current ? { ...current, target } : current));
+  }, []);
 
   const runScan = useCallback(async (targetUrl: string): Promise<void> => {
     onActivateRef.current?.();
@@ -207,6 +223,7 @@ export function useDeployedUrlScan(onActivate?: () => void): DeployedUrlScanStat
         visibility: parseVisibility(data.visibility),
         visibilityLocked: data.visibilityLocked === true,
       });
+      onScanCompleteRef.current?.();
     } catch (error: unknown) {
       setScanError(error instanceof Error ? error.message : 'URL scan failed.');
     } finally {
@@ -235,6 +252,7 @@ export function useDeployedUrlScan(onActivate?: () => void): DeployedUrlScanStat
     scanResults,
     handleSubmit,
     runScan,
+    attachTarget,
     hasActivity: isScanning || scanResults !== null || scanError !== null,
   };
 }
@@ -293,12 +311,17 @@ export function DeployedUrlScanCard({ scan }: { scan: DeployedUrlScanState }): R
 export function DeployedUrlScanResults({
   scan,
   loginUrl = '/api/auth/login',
+  onGuarded,
 }: {
   scan: DeployedUrlScanState;
   loginUrl?: string;
+  /** Fires after the user explicitly adds this URL to Your apps. */
+  onGuarded?: () => void;
 }): ReactElement {
-  const { scanResults, isScanning, scanError } = scan;
+  const { scanResults, isScanning, scanError, attachTarget } = scan;
   const resultsRef = useRef<HTMLElement>(null);
+  const [isGuarding, setIsGuarding] = useState(false);
+  const [guardError, setGuardError] = useState<string | null>(null);
 
   // When a scan finishes and the results appear, bring the user straight to the
   // top of the results canvas — otherwise they're left scrolled down by the input
@@ -310,6 +333,25 @@ export function DeployedUrlScanResults({
       resultsRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
     }
   }, [scanResults]);
+
+  const handleGuardUrl = useCallback(async (): Promise<void> => {
+    if (!scanResults) return;
+    setIsGuarding(true);
+    setGuardError(null);
+    try {
+      const { target } = await clientApi.createUrlTarget(scanResults.targetUrl);
+      attachTarget({ id: target.id, ownershipVerified: target.ownershipVerified });
+      onGuarded?.();
+      // Re-scan so the new target receives a Ship Gate projection on the card.
+      void scan.runScan(scanResults.targetUrl);
+    } catch (error) {
+      setGuardError(
+        error instanceof ClientApiError ? error.message : 'Could not add this URL to Your apps.',
+      );
+    } finally {
+      setIsGuarding(false);
+    }
+  }, [attachTarget, onGuarded, scan, scanResults]);
 
   if (!scanResults) {
     return (
@@ -357,10 +399,48 @@ export function DeployedUrlScanResults({
             <p>
               Runtime probe results — {scanResults.findings.length} finding
               {scanResults.findings.length === 1 ? '' : 's'} detected.
+              {!scanResults.target
+                ? ' This one-off probe is not added to Your apps until you guard it.'
+                : ''}
             </p>
           </div>
           <ShipGatePanel report={scanResults.shipGate} />
         </div>
+        {/* Guard CTA sits directly under Ship Gate so one-off probes always show
+            a clear path to Your apps — not buried under SEO / deep-review copy. */}
+        {!scanResults.target ? (
+          <div className="dashboard-guard-url" data-testid="guard-url-cta">
+            <p className="dashboard-guard-url__eyebrow">Save to Your apps</p>
+            <p className="dashboard-guard-url__copy">
+              This was a one-off probe — it is not in Your apps yet. Guard this URL, then prove
+              ownership to keep Continuous Guardian watching it.
+            </p>
+            {guardError ? (
+              <p className="dashboard-guard-url__error" role="alert">
+                {guardError}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              className="dashboard-public-connect__submit"
+              onClick={() => void handleGuardUrl()}
+              disabled={isGuarding}
+              data-testid="guard-url-button"
+            >
+              {isGuarding ? 'Adding…' : 'Guard this URL'}
+            </button>
+          </div>
+        ) : null}
+        {scanResults.target && !scanResults.target.ownershipVerified ? (
+          <OwnershipVerify
+            targetId={scanResults.target.id}
+            identifier={scanResults.targetUrl}
+            onVerified={() => {
+              onGuarded?.();
+              void scan.runScan(scanResults.targetUrl);
+            }}
+          />
+        ) : null}
         {scanResults.visibility ? (
           <VisibilityAuditPanel
             report={scanResults.visibility}
@@ -375,16 +455,10 @@ export function DeployedUrlScanResults({
             <span className="deep-review-locked__lock" aria-hidden="true">
               🔒
             </span>{' '}
-            Verify ownership below to unlock a Pro-level, app-specific threat analysis — it reasons
-            about your live app’s real attack surface, not a generic checklist.
+            Guard this URL and verify ownership above to unlock a Pro-level, app-specific threat
+            analysis — it reasons about your live app’s real attack surface, not a generic
+            checklist.
           </p>
-        ) : null}
-        {scanResults.target && !scanResults.target.ownershipVerified ? (
-          <OwnershipVerify
-            targetId={scanResults.target.id}
-            identifier={scanResults.targetUrl}
-            onVerified={() => void scan.runScan(scanResults.targetUrl)}
-          />
         ) : null}
         {scanResults.target?.ownershipVerified ? (
           <>

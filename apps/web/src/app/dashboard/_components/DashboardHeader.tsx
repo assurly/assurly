@@ -35,6 +35,7 @@ export function DashboardHeader({
   return (
     <header className={`dashboard-header${isProfileOpen ? ' dashboard-header-menu-open' : ''}`}>
       <div className="dashboard-header-brand">
+        {/* Accessible name comes from AssurlyLogo (role=img aria-label="Assurly"). */}
         <Link href="/" className="dashboard-header-brand-link">
           <AssurlyLogo />
         </Link>
@@ -45,20 +46,23 @@ export function DashboardHeader({
           type="button"
           className={`profile-trigger-btn ${isProfileOpen ? 'active' : ''}`}
           onClick={(event) => onToggleProfile(event.currentTarget)}
-          aria-label={`${isProfileOpen ? 'Close' : 'Open'} account menu for ${user.name || 'user'}`}
+          aria-label={`${isProfileOpen ? 'Close' : 'Open'} account menu for ${user.name?.trim() || 'user'}`}
           aria-expanded={isProfileOpen}
           aria-controls="account-menu"
           aria-haspopup="dialog"
         >
           <Image
             src={user.avatar_url || 'https://avatars.githubusercontent.com/u/9919?v=4'}
-            alt=""
+            alt={`${user.name?.trim() || 'User'} avatar`}
+            aria-hidden="true"
             className="profile-avatar-img"
             width={36}
             height={36}
             unoptimized
           />
-          <span className="dashboard-username">{user.name}</span>
+          <span className="dashboard-username" aria-hidden="true">
+            {user.name}
+          </span>
           <span className="profile-arrow" aria-hidden="true">
             ▼
           </span>
@@ -89,6 +93,7 @@ export function DashboardHeader({
             <div className="profile-dropdown-header">
               <span className="profile-dropdown-name">{user.name}</span>
               <span className="profile-dropdown-email">{user.email}</span>
+              {/* Single plan signal for the whole dashboard — not repeated on Workspace. */}
               <div className="profile-dropdown-plan-badge">
                 {org?.billing_plan === 'pro' ? (
                   <span className="plan-badge pro">Pro Plan</span>

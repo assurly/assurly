@@ -6,6 +6,7 @@ import DashboardClient from './_components/DashboardClient';
 import { installDashboardLocalStorageMock } from './testUtils/installDashboardLocalStorageMock';
 import * as clientApiModule from '../../utils/clientApi';
 import type { Scan, ScanFinding } from '../../utils/dbAdapter';
+import { __resetScansQueryCacheForTests } from '../../utils/scansQueryCache';
 
 type SessionResult = clientApiModule.SessionResult;
 
@@ -115,6 +116,7 @@ const session: SessionResult = {
 };
 
 beforeEach(() => {
+  __resetScansQueryCacheForTests();
   installDashboardLocalStorageMock();
   scansMock.mockReset();
   findingsMock.mockReset();

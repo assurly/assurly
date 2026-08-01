@@ -5,6 +5,7 @@ import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
 import React from 'react';
 import Link from 'next/link';
 import { AssurlyMark } from '../_components/AssurlyMark';
+import { AssurlyWordmark } from '../_components/AssurlyWordmark';
 import { SiteFooter } from '../_components/SiteFooter';
 import { CONTACT_SUBJECT_PARAM } from '../../utils/contactSubjects';
 
@@ -50,9 +51,9 @@ export default function TermsPage() {
         <Link href="/" className="back-link">
           ← Back to Home
         </Link>
-        <div className="logo">
+        <div className="logo" role="img" aria-label="Assurly">
           <AssurlyMark className="site-logo-mark" />
-          Ass<span>url</span>y
+          <AssurlyWordmark />
         </div>
       </header>
 

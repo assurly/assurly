@@ -11,10 +11,10 @@ import {
 } from './githubAutoFix';
 
 describe('isAutoFixableFinding', () => {
-  it('allows undocumented-env findings from source files', () => {
+  it('allows undocumented-env findings from source files even as warnings', () => {
     expect(
       isAutoFixableFinding({
-        severity: 'error',
+        severity: 'warning',
         file_path: 'apps/web/src/lib/stripe.ts',
         message:
           "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",

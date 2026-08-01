@@ -57,7 +57,7 @@ describe('Assurly Verification Rules', () => {
       expect(findings[0].message).toContain('No .env.example file found');
     });
 
-    it('should error on undocumented env variables used in code', async () => {
+    it('should warn on undocumented env variables used in code', async () => {
       // Create env.example and a source file referencing an undocumented variable
       fs.writeFileSync(path.join(FIXTURE_DIR, '.env.example'), 'PORT=3000\nDATABASE_URL=\n');
       fs.writeFileSync(
@@ -77,9 +77,9 @@ describe('Assurly Verification Rules', () => {
       };
 
       const findings = await envRules.run(context);
-      // Should flag process.env.STRIPE_SECRET_KEY as missing from example
+      // Hygiene warning — missing from .env.example must not hard-block ship.
       expect(findings.length).toBe(1);
-      expect(findings[0].severity).toBe('error');
+      expect(findings[0].severity).toBe('warning');
       expect(findings[0].message).toContain('STRIPE_SECRET_KEY');
     });
   });

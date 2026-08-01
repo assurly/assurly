@@ -56,6 +56,8 @@ describe('ShipGateGroupAction', () => {
     render(<ShipGateGroupAction action={action} />);
 
     const button = screen.getByRole('button', { name: /copy fix/i });
+    expect(button.className).toContain('ship-gate-action-copy--secondary');
+    expect(button.getAttribute('data-cta')).toBe('secondary');
     fireEvent.click(button);
 
     expect(writeText).toHaveBeenCalledWith('Add X-Content-Type-Options: nosniff to vercel.json.');

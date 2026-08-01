@@ -6,6 +6,7 @@ import DashboardClient from './_components/DashboardClient';
 import * as clientApiModule from '../../utils/clientApi';
 import { SCAN_DETAILS_CONTAINER_ID } from '../../utils/scrollToScanDetails';
 import type { Scan, ScanFinding } from '../../utils/dbAdapter';
+import { __resetScansQueryCacheForTests } from '../../utils/scansQueryCache';
 
 type SessionResult = clientApiModule.SessionResult;
 
@@ -83,6 +84,7 @@ const session: SessionResult = {
 };
 
 beforeEach(() => {
+  __resetScansQueryCacheForTests();
   scansMock.mockReset();
   findingsMock.mockReset();
 

@@ -58,6 +58,14 @@ It works with Cursor, Claude Code, VS Code and Windsurf. When the verdict is blo
 
 `npx assurly scan` exits non-zero when the verdict is blocked, so it works as an ordinary CI step with no plugin. `assurly init` writes a GitHub Actions workflow. Local scans need no API key and no account.
 
+## What is the SEO & GEO Audit?
+
+Paste a live URL into the hosted scanner. Alongside the Ship Gate security verdict, Assurly returns an SEO & GEO Audit: an AI Readiness Score out of 100 and a machine-readability verdict (FULLY VISIBLE, PARTIALLY VISIBLE, or INVISIBLE TO AI).
+
+It checks the page the way a crawler would — canonical URLs, structured data (JSON-LD), llms.txt, server-rendered content, AI crawler access in robots.txt, and share images (og:image), plus related readiness signals. It does not query ChatGPT, Perplexity, or Google for rankings.
+
+Anonymous visitors see the headline scores. Pro unlocks every check and the exact fix for each gap.
+
 ## Pricing
 
 - Free — unlimited local CLI scans, the live URL proof-probe, one guarded app, MCP server access.

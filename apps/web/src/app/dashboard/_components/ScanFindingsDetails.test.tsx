@@ -98,7 +98,7 @@ describe('ScanFindingsDetails', () => {
         id: 'finding-a',
         scan_id: 'scan-1',
         rule_id: 'undocumented-env',
-        severity: 'error',
+        severity: 'warning',
         file_path: 'src/a.ts',
         line_number: 1,
         message:
@@ -109,7 +109,7 @@ describe('ScanFindingsDetails', () => {
         id: 'finding-b',
         scan_id: 'scan-1',
         rule_id: 'undocumented-env',
-        severity: 'error',
+        severity: 'warning',
         file_path: 'src/b.ts',
         line_number: 2,
         message:
@@ -120,7 +120,7 @@ describe('ScanFindingsDetails', () => {
         id: 'finding-c',
         scan_id: 'scan-1',
         rule_id: 'undocumented-env',
-        severity: 'error',
+        severity: 'warning',
         file_path: 'src/c.ts',
         line_number: 3,
         message:

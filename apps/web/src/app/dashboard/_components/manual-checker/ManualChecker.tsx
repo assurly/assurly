@@ -9,6 +9,7 @@ import {
   readZipFile,
   type FileSystemEntry,
 } from './projectFiles';
+import { DashboardArchiveIcon, DashboardFolderIcon } from '../icons/DashboardIcons';
 import { DiagnosticTerminal } from './DiagnosticTerminal';
 import { ManualCheckerNavigation } from './ManualCheckerNavigation';
 import { ProjectWorkspaceView } from './ProjectWorkspaceView';
@@ -16,6 +17,7 @@ import {
   buildIssueGroupSummaries,
   buildProjectScanOverview,
   buildScanMetricSummary,
+  countShipGateBlockers,
   scanProject,
 } from './projectWorkspace';
 import {
@@ -252,7 +254,7 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
     setIsApplyingAllFixes(true);
     setTimeout(() => {
       const result = applyAllFixableFindingsToProject(projectFiles, results.findings);
-      const remainingErrors = scanProject(result.files).errorCount;
+      const remainingErrors = countShipGateBlockers(scanProject(result.files).findings);
 
       setProjectFiles(result.files);
       setProjectHasLocalChanges(true);
@@ -337,9 +339,11 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
 
     const summary =
       overview.errorCount > 0
-        ? `${overview.errorCount} blocking error${overview.errorCount === 1 ? '' : 's'}`
-        : overview.warningCount > 0
-          ? `${overview.warningCount} warning${overview.warningCount === 1 ? '' : 's'}`
+        ? `${overview.errorCount} blocker${overview.errorCount === 1 ? '' : 's'}`
+        : overview.reviewCount > 0 || overview.warningCount > 0
+          ? `${overview.reviewCount + overview.warningCount} review item${
+              overview.reviewCount + overview.warningCount === 1 ? '' : 's'
+            }`
           : 'no issues detected';
 
     onToast?.(`Project "${name}" loaded (${files.length} files, ${summary})`, 'success');
@@ -645,7 +649,9 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               {projectFiles.length === 0 ? (
                 <div className="empty-project-placeholder">
-                  <div className="placeholder-icon">📂</div>
+                  <div className="placeholder-icon" aria-hidden="true">
+                    <DashboardFolderIcon className="dashboard-icon--xl" />
+                  </div>
                   <h4>Scan Local Project Workspace</h4>
                   <p>
                     Analyze a whole directory or a ZIP archive locally. All operations run 100%
@@ -657,14 +663,16 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
                       className="project-action-btn primary"
                       onClick={handleSelectFolder}
                     >
-                      📁 Select Project Folder
+                      <DashboardFolderIcon />
+                      Select Project Folder
                     </button>
                     <button
                       type="button"
                       className="project-action-btn secondary"
                       onClick={() => zipInputRef.current?.click()}
                     >
-                      📦 Upload ZIP Archive
+                      <DashboardArchiveIcon />
+                      Upload ZIP Archive
                     </button>
                   </div>
                   <input

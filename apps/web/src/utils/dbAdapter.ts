@@ -385,6 +385,8 @@ export interface DbAdapter {
     identifier: string,
   ): Promise<Target | null>;
   upsertTarget(input: UpsertTargetInput): Promise<Target>;
+  /** Permanently deletes one target. Canaries / alert prefs / fix outcomes cascade. */
+  deleteTarget(id: string): Promise<void>;
   setTargetOwnership(id: string, input: SetTargetOwnershipInput): Promise<Target>;
   insertProbeEvidence(rows: ProbeEvidenceInput[]): Promise<void>;
   getProbeEvidenceForScan(scanId: string): Promise<ProbeEvidenceRow[]>;
@@ -853,6 +855,19 @@ export class SupabaseDbAdapter implements DbAdapter {
       },
     );
     return rows[0];
+  }
+
+  async deleteTarget(id: string): Promise<void> {
+    // RLS scopes this DELETE to the caller's org (user token). Child canary /
+    // alert-pref / fix-outcome rows cascade via FK. `return=representation`
+    // catches a zero-row delete (missing grant or wrong id) instead of silent OK.
+    const rows = await this.fetchDb<Target[]>(`targets?id=eq.${eq(id)}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=representation' },
+    });
+    if (!rows?.length) {
+      throw new Error(`Supabase delete matched no targets row (${id}).`);
+    }
   }
 
   async setTargetOwnership(id: string, input: SetTargetOwnershipInput): Promise<Target> {

@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import Link from 'next/link';
 import { AssurlyMark } from './AssurlyMark';
+import { AssurlyWordmark } from './AssurlyWordmark';
 
 type SiteFooterProps = { variant: 'full' | 'compact' };
 
@@ -64,11 +65,9 @@ function FullFooter(): ReactElement {
       <div className="container site-footer__inner">
         <div className="site-footer__grid">
           <div className="site-footer__brand">
-            <Link href="/" className="site-footer__brand-link">
+            <Link href="/" className="site-footer__brand-link" aria-label="Assurly">
               <AssurlyMark className="site-logo-mark" />
-              <span className="site-footer__wordmark">
-                Ass<span>url</span>y
-              </span>
+              <AssurlyWordmark className="site-footer__wordmark" />
             </Link>
             <p className="site-footer__descriptor">{PRODUCT_DESCRIPTOR}</p>
             <p className="site-footer__copyright">{COPYRIGHT}</p>

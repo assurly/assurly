@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactElement } from 'react';
+import React, { type ReactElement } from 'react';
 import type {
   VisibilityCheck,
   VisibilityReport,
@@ -26,6 +26,11 @@ interface VisibilityAuditPanelProps {
    * on ShipGatePanel.
    */
   locked?: boolean;
+  /**
+   * Optional replacement for the default locked-state hint. Marketing surfaces
+   * pass a sign-in CTA; the dashboard keeps the Pro upgrade copy.
+   */
+  lockedHint?: React.ReactNode;
 }
 
 const VERDICT_LABEL: Record<VisibilityVerdict, string> = {
@@ -76,9 +81,12 @@ function statusText(status: VisibilityStatus): string {
 export function VisibilityAuditPanel({
   report,
   locked = false,
+  lockedHint,
 }: VisibilityAuditPanelProps): ReactElement {
   const checks = locked ? undefined : report.checks;
   const showChecks = Array.isArray(checks) && checks.length > 0;
+  const resolvedLockedHint =
+    lockedHint ?? 'Upgrade to Pro to see every SEO & GEO check and the exact fix for each gap.';
 
   return (
     <section
@@ -147,9 +155,9 @@ export function VisibilityAuditPanel({
       ) : null}
 
       {locked ? (
-        <p className="visibility-audit__locked-hint" data-testid="visibility-audit-locked-hint">
-          Upgrade to Pro to see every SEO &amp; GEO check and the exact fix for each gap.
-        </p>
+        <div className="visibility-audit__locked-hint" data-testid="visibility-audit-locked-hint">
+          {resolvedLockedHint}
+        </div>
       ) : null}
     </section>
   );

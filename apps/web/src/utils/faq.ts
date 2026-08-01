@@ -78,4 +78,10 @@ export const FAQ_ENTRIES: FaqEntry[] = [
     answer:
       'The CLI is free and unlimited: `npx assurly scan` runs the full gate locally with no account. The free hosted plan adds the live URL proof-probe, one guarded app and MCP server access. The Pro plan, at $19 per month, adds unlimited guarded apps, continuous monitoring on every deploy, AI deep review, auto-fix pull requests and private repository scanning.',
   },
+  {
+    id: 'seo-geo-audit',
+    question: 'What is the SEO & GEO Audit?',
+    answer:
+      'The SEO & GEO Audit scores a live URL for machine readability — separately from the Ship Gate security verdict. It returns an AI Readiness Score out of 100 and one of three verdicts: FULLY VISIBLE, PARTIALLY VISIBLE, or INVISIBLE TO AI. The audit checks canonical URLs, structured data (JSON-LD), llms.txt, server-rendered content, AI crawler access in robots.txt, and share images (og:image), among related readiness signals. It does not query ChatGPT, Perplexity, or Google for rankings. Anonymous visitors see the headline scores; Pro unlocks every check and the exact fix for each gap.',
+  },
 ];

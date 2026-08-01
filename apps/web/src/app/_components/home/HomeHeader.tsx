@@ -3,6 +3,7 @@
 import { useCallback, type ReactElement } from 'react';
 import { AuthButton } from './AuthButton';
 import { AssurlyMark } from '../AssurlyMark';
+import { AssurlyWordmark } from '../AssurlyWordmark';
 import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
 
 interface HomeHeaderProps {
@@ -61,9 +62,9 @@ export function HomeHeader({
   return (
     <header className={joinClasses(menuOpen && 'site-header-menu-open')}>
       <div className="container nav-container">
-        <div className="logo" id="header-logo">
+        <div className="logo" id="header-logo" role="img" aria-label="Assurly">
           <AssurlyMark className="site-logo-mark" />
-          Ass<span>url</span>y
+          <AssurlyWordmark accentClassName="site-logo-accent" />
         </div>
         <button
           type="button"

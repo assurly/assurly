@@ -52,6 +52,12 @@ import {
 } from './HomeIcons';
 import { ProofPoints } from './ProofPoints';
 import { Faq } from './Faq';
+import { SeoGeoAuditSection } from './SeoGeoAuditSection';
+import {
+  VisibilityScanResult,
+  isVisibilityHeadline,
+  type VisibilityHeadline,
+} from './VisibilityScanResult';
 import { PRICES } from '../../../utils/pricing';
 
 interface HomeClientProps {
@@ -172,6 +178,8 @@ export default function HomeClient({
     warningCount: number;
     shipGate: ShipGateReport;
     evidence: ProofEvidenceItem[];
+    visibility: VisibilityHeadline | null;
+    visibilityLocked: boolean;
   } | null>(null);
 
   const [isFetchingRepos, setIsFetchingRepos] = useState(false);
@@ -259,10 +267,13 @@ export default function HomeClient({
         report: ShipGateReport;
         findings: Array<{ severity: 'error' | 'warning' }>;
         evidence?: ProofEvidenceItem[];
+        visibility?: VisibilityHeadline;
+        visibilityLocked?: boolean;
       };
 
       const errorCount = data.findings.filter((finding) => finding.severity === 'error').length;
       const warningCount = data.findings.filter((finding) => finding.severity === 'warning').length;
+      const visibility = isVisibilityHeadline(data.visibility) ? data.visibility : null;
 
       setUrlScanResults({
         targetUrl: trimmed,
@@ -270,6 +281,8 @@ export default function HomeClient({
         warningCount,
         shipGate: data.report,
         evidence: data.evidence ?? [],
+        visibility,
+        visibilityLocked: Boolean(data.visibilityLocked),
       });
       setUrlScanFinished(true);
     } catch (error: unknown) {
@@ -878,7 +891,12 @@ export default function HomeClient({
               <h3>URL Scan</h3>
               <p>
                 Paste your live app URL. Assurly probes Supabase RLS exposure, secrets in the
-                production bundle, and security headers — no repository required.
+                production bundle, and security headers — no repository required. The same scan
+                returns an{' '}
+                <a href="#seo-geo-audit" className="inline-section-link">
+                  SEO &amp; GEO Audit
+                </a>{' '}
+                for machine readability.
               </p>
             </div>
             <div className="feature-card">
@@ -995,21 +1013,63 @@ export default function HomeClient({
             {urlScanFinished && urlScanResults && (
               <div>
                 <ProofEvidence evidence={urlScanResults.evidence} />
-                <div className="scanner-results-card scanner-results-card--ship-gate">
-                  <div className="scanner-results-info">
-                    <h4>Ship Gate for {urlScanResults.targetUrl}</h4>
-                    <p>
-                      Runtime verdict — {urlScanResults.errorCount} blocker
-                      {urlScanResults.errorCount === 1 ? '' : 's'}, {urlScanResults.warningCount}{' '}
-                      warning
-                      {urlScanResults.warningCount === 1 ? '' : 's'}.
+                <div className="scanner-dual-verdicts" data-testid="scanner-dual-verdicts">
+                  <div className="scanner-verdict-column">
+                    <p className="scanner-verdict-axis">
+                      <span className="scanner-verdict-axis__label">Deploy safety</span>
+                      <span className="scanner-verdict-axis__hint">Is this safe to deploy?</span>
                     </p>
+                    <div className="scanner-results-card scanner-results-card--ship-gate">
+                      <div className="scanner-results-info">
+                        <h4>Ship Gate for {urlScanResults.targetUrl}</h4>
+                        <p>
+                          Runtime verdict — {urlScanResults.errorCount} blocker
+                          {urlScanResults.errorCount === 1 ? '' : 's'},{' '}
+                          {urlScanResults.warningCount} warning
+                          {urlScanResults.warningCount === 1 ? '' : 's'}.
+                        </p>
+                      </div>
+                      <ShipGatePanel
+                        report={urlScanResults.shipGate}
+                        compact
+                        redactFindings={!isAuthenticated}
+                      />
+                    </div>
                   </div>
-                  <ShipGatePanel
-                    report={urlScanResults.shipGate}
-                    compact
-                    redactFindings={!isAuthenticated}
-                  />
+
+                  {urlScanResults.visibility ? (
+                    <div className="scanner-verdict-column">
+                      <p className="scanner-verdict-axis">
+                        <span className="scanner-verdict-axis__label">Machine readability</span>
+                        <span className="scanner-verdict-axis__hint">
+                          Can machines read this page?
+                        </span>
+                      </p>
+                      <VisibilityScanResult
+                        report={urlScanResults.visibility}
+                        locked={urlScanResults.visibilityLocked}
+                        lockedHint={
+                          urlScanResults.visibilityLocked ? (
+                            <>
+                              <p className="visibility-audit__locked-copy">
+                                Your AI Readiness Score is visible. Sign in on Pro to unlock every
+                                check — canonical, structured data, llms.txt, server-rendered
+                                content, AI crawler access, share images — and the exact fix for
+                                each gap.
+                              </p>
+                              <button
+                                type="button"
+                                className="btn btn-primary visibility-audit__locked-cta"
+                                onClick={handleUnlockUrlReport}
+                              >
+                                Sign In to Unlock Every Check &amp; Fix
+                              </button>
+                            </>
+                          ) : undefined
+                        }
+                      />
+                    </div>
+                  ) : null}
                 </div>
 
                 {!isAuthenticated ? (
@@ -1720,6 +1780,9 @@ export default function HomeClient({
             </div>
           </div>
         </section>
+
+        {/* SEO & GEO Audit — after pricing so the URL scanner and pricing stay above the fold */}
+        <SeoGeoAuditSection />
 
         {/* Social Proof */}
         <ProofPoints />

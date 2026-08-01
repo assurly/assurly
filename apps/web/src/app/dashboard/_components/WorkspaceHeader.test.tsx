@@ -1,53 +1,52 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { WorkspaceHeader } from './WorkspaceHeader';
 
-afterEach(() => {
-  cleanup();
-});
+afterEach(() => cleanup());
 
 describe('WorkspaceHeader', () => {
-  it('renders desktop workspace card without inline layout styles', () => {
-    const { container } = render(<WorkspaceHeader orgName="acme" billingPlan="pro" />);
+  it('renders the workspace name without a plan badge', () => {
+    const { container } = render(<WorkspaceHeader orgName="acme" />);
+    const desktop = container.querySelector('.dashboard-workspace--desktop');
+    expect(desktop).toBeInstanceOf(HTMLElement);
+    if (!(desktop instanceof HTMLElement)) throw new Error('expected desktop workspace');
 
-    const desktop = container.querySelector('.dashboard-workspace--desktop') as HTMLElement;
-    expect(desktop).toBeTruthy();
     expect(within(desktop).getByText('Active Workspace')).toBeTruthy();
-    expect(within(desktop).getByText('acme')).toBeTruthy();
-    expect(within(desktop).getByText('Pro Plan')).toBeTruthy();
-    expect(container.querySelector('[style]')).toBeNull();
+    expect(within(desktop).getByRole('heading', { name: 'acme' })).toBeTruthy();
+    expect(within(desktop).queryByText('Pro Plan')).toBeNull();
+    expect(within(desktop).queryByText('Free Plan')).toBeNull();
+    expect(within(desktop).getByText(/Plan and billing are in your account menu/i)).toBeTruthy();
   });
 
-  it('renders a collapsed mobile workspace strip with name and plan badge', () => {
-    const { container } = render(<WorkspaceHeader orgName="acme" billingPlan="pro" />);
+  it('keeps the heading accessible name equal to the workspace name', () => {
+    render(<WorkspaceHeader orgName="acme" />);
+    const heading = screen.getByRole('heading', { name: 'acme' });
+    expect(heading.textContent).toBe('acme');
+  });
 
-    const mobile = container.querySelector('.dashboard-workspace--mobile') as HTMLDetailsElement;
-    expect(mobile).toBeTruthy();
-    expect(mobile.open).toBe(false);
+  it('replaces legacy placeholder org titles with the owner-derived name', () => {
+    render(<WorkspaceHeader orgName="Developer's Workspace" ownerLabel="tiborkutiksson" />);
+    expect(screen.getByRole('heading', { name: "tiborkutiksson's Workspace" })).toBeTruthy();
+    expect(screen.queryByText("Developer's Workspace")).toBeNull();
+  });
 
-    const strip = screen.getByTestId('workspace-mobile-strip');
+  it('renders a collapsed mobile workspace strip without a plan badge', () => {
+    const { container } = render(<WorkspaceHeader orgName="acme" />);
+    const strip = container.querySelector(
+      '.dashboard-workspace--mobile [data-testid="workspace-mobile-strip"]',
+    );
+    expect(strip).toBeTruthy();
+    if (!strip) throw new Error('expected mobile strip');
+
     expect(strip.textContent).toContain('acme');
-    expect(strip.textContent).toContain('Pro Plan');
+    expect(strip.textContent).not.toMatch(/Pro Plan|Free Plan/);
+    expect(strip.getAttribute('aria-label')).toBe('Workspace: acme');
   });
 
-  it('expands the mobile strip to reveal workspace context', () => {
-    const { container } = render(<WorkspaceHeader orgName="acme" billingPlan="free" />);
-
-    const mobile = container.querySelector('.dashboard-workspace--mobile') as HTMLDetailsElement;
-    fireEvent.click(screen.getByTestId('workspace-mobile-strip'));
-
-    expect(mobile.open).toBe(true);
-    expect(
-      screen.getByText('Plan and billing options are available in your account menu.'),
-    ).toBeTruthy();
-  });
-
-  it('falls back to a default workspace name when org name is missing', () => {
-    render(<WorkspaceHeader billingPlan="free" />);
-
+  it('falls back to My Workspace when no org name is provided', () => {
+    render(<WorkspaceHeader />);
     expect(screen.getAllByText('My Workspace').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Free Plan').length).toBeGreaterThan(0);
   });
 });

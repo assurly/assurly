@@ -36,7 +36,7 @@ const SCANNER_RULE_EXPLANATIONS = {
     },
     'undocumented-env': {
         title: 'Undocumented environment variable',
-        explanation: 'Code references `process.env.*` variables that are missing from `.env.example`, making deploys fail silently.',
+        explanation: 'Code references `process.env.*` variables that are missing from `.env.example`. This is deploy hygiene (a warning), not a security blocker.',
         howToFix: 'Add each required variable to `.env.example` with an empty placeholder and document its purpose.',
     },
     'public-secret': {

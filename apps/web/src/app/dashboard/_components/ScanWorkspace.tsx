@@ -114,7 +114,8 @@ export function ScanWorkspace({
           </span>
           <h3 className="dashboard-empty-state__title">No repository selected</h3>
           <p className="dashboard-empty-state__copy">
-            Choose a repository from the left panel to run code analysis.
+            Select a repository to run code analysis. Connect one from the list, or scan a public
+            repo or deployed URL.
           </p>
         </div>
       </section>
@@ -152,7 +153,8 @@ export function ScanWorkspace({
             type="button"
             onClick={onRunScan}
             disabled={isScanning}
-            className="dashboard-scan-action-btn"
+            className="dashboard-scan-action-btn dashboard-scan-action-btn--primary"
+            data-cta="primary"
             aria-label={isScanning ? 'Scanning repository' : 'Run secure scan'}
             aria-busy={isScanning}
           >

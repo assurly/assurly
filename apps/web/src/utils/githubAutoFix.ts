@@ -332,10 +332,12 @@ export function isAutoFixableFinding(finding: {
   if (finding.rule_id === 'github-actions-integration') return true;
   if (isGithubActionsIntegrationFinding(finding.message, finding.rule_id)) return true;
 
+  // undocumented-env is warning-only hygiene, but still auto-fixable.
+  if (finding.rule_id === 'undocumented-env' || isUndocumentedEnvMessage(finding.message)) {
+    return true;
+  }
+
   if (finding.severity !== 'error') return false;
 
-  const isSqlRls = filePath.endsWith('.sql') && message.includes('row-level security');
-  const isUndocumentedEnv = isUndocumentedEnvMessage(finding.message);
-
-  return isSqlRls || isUndocumentedEnv;
+  return filePath.endsWith('.sql') && message.includes('row-level security');
 }

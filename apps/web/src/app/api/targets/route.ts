@@ -1,8 +1,18 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { RATE_LIMITS, requireRouteUser, secureRoute } from '../../../utils/apiSecurity';
+import { ApiError, RATE_LIMITS, requireRouteUser, secureRoute } from '../../../utils/apiSecurity';
+import { countGuardedApps, isListedUrlTarget } from '../../../utils/guardedApps';
+import { entitlementsForPlan } from '../../../utils/entitlements';
+import { normalizeUrlIdentifier } from '../../../utils/ownership';
+import { assertScannableUrl, UrlSafetyError } from '../../../utils/urlSafety';
 import { resolveVerdictFromScanFindings, type Verdict } from '../../../utils/shipGate';
-import type { DbAdapter, Repository, Target, TargetVerdict } from '../../../utils/dbAdapter';
+import type {
+  DbAdapter,
+  Organization,
+  Repository,
+  Target,
+  TargetVerdict,
+} from '../../../utils/dbAdapter';
 import type { VerdictEvidenceShape } from '../../../utils/publicTrust';
 
 /**
@@ -135,6 +145,51 @@ async function deriveCardFromLatestScan(
   };
 }
 
+/**
+ * Enforces the plan's guarded-app entitlement before creating a NEW url target.
+ * Re-guarding an existing origin is always allowed. Fails open on a DB count
+ * error; throws 402 on a confirmed over-limit.
+ */
+async function assertWithinGuardedAppLimit(
+  db: DbAdapter,
+  organization: Organization,
+  identifier: string,
+): Promise<void> {
+  const { guardedAppLimit } = entitlementsForPlan(organization.billing_plan);
+  if (guardedAppLimit === null) return;
+
+  let existing: Target | null;
+  let repositoryCount: number;
+  let urlTargetCount: number;
+  try {
+    existing = await db.getTargetByIdentifier(organization.id, 'url', identifier);
+    if (existing) return;
+    const [repos, targets] = await Promise.all([
+      db.getRepositories(organization.id),
+      db.getTargets(organization.id),
+    ]);
+    repositoryCount = repos.length;
+    urlTargetCount = targets.filter((t) => t.kind === 'url').length;
+  } catch {
+    return;
+  }
+
+  const currentCount = countGuardedApps({ repositoryCount, urlTargetCount });
+  if (currentCount >= guardedAppLimit) {
+    throw new ApiError(
+      402,
+      'plan_required',
+      `Your plan guards up to ${guardedAppLimit} app${guardedAppLimit === 1 ? '' : 's'}. Upgrade to guard more.`,
+    );
+  }
+}
+
+const createTargetBody = z
+  .object({
+    url: z.string().trim().min(1).max(2048),
+  })
+  .strict();
+
 export const GET = secureRoute(
   {
     routeId: 'targets:read',
@@ -158,7 +213,8 @@ export const GET = secureRoute(
     const targetByRepoId = new Map(
       targets.filter((t) => t.repository_id).map((t) => [t.repository_id as string, t]),
     );
-    const urlTargets = targets.filter((t) => t.kind === 'url');
+    // One-off probes never create rows; every url target here was explicitly Guarded.
+    const urlTargets = targets.filter(isListedUrlTarget);
 
     // A synced target row is authoritative and cheap; only repos without one
     // pay for a latest-scan derivation. All cards are built in parallel.
@@ -180,5 +236,58 @@ export const GET = secureRoute(
     cards.sort((a, b) => order[a.verdict] - order[b.verdict]);
 
     return NextResponse.json({ targets: cards });
+  },
+);
+
+/**
+ * Explicitly guard a live URL (add to Your apps after ownership verification).
+ * Does NOT run a scan — the client scans first, then calls this when the user
+ * chooses to monitor the origin. Plan limit is enforced here, not on scan-url.
+ */
+export const POST = secureRoute(
+  {
+    routeId: 'targets:create',
+    auth: 'required',
+    query: z.object({}).strict(),
+    params: z.object({}).strict(),
+    body: createTargetBody,
+    bodyMode: 'json',
+    maxBodyBytes: 4 * 1024,
+    rateLimit: RATE_LIMITS.sensitive,
+    csrf: true,
+  },
+  async ({ auth, body }) => {
+    const context = requireRouteUser(auth);
+    const organization = await context.db.getOrganizationByUserId(context.user.id);
+    if (!organization) throw new ApiError(404, 'not_found', 'Workspace not found.');
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = assertScannableUrl(body.url);
+    } catch (error) {
+      if (error instanceof UrlSafetyError) {
+        throw new ApiError(400, 'invalid_url', error.message);
+      }
+      throw error;
+    }
+
+    const identifier = normalizeUrlIdentifier(parsedUrl.toString());
+    await assertWithinGuardedAppLimit(context.db, organization, identifier);
+
+    const row = await context.db.upsertTarget({
+      organizationId: organization.id,
+      kind: 'url',
+      identifier,
+      displayName: identifier,
+    });
+
+    return NextResponse.json({
+      target: {
+        id: row.id,
+        kind: row.kind,
+        identifier: row.identifier,
+        ownershipVerified: row.ownership_verified,
+      },
+    });
   },
 );

@@ -116,4 +116,32 @@ describe('Supabase authentication routes', () => {
     expect(response.headers.get('set-cookie')).toContain('verified-access');
     expect(response.headers.get('set-cookie')).toContain('gho_github-write-token');
   });
+
+  it('redirects home when the user cancels GitHub authorization', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon';
+
+    const response = await callbackGet(
+      new Request(
+        'http://localhost/api/auth/callback?error=access_denied&error_description=The+user+has+denied+your+application+access.',
+      ),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('http://localhost/');
+    expect(mocks.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+
+  it('maps non-cancel provider errors to auth_failed', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon';
+
+    const response = await callbackGet(
+      new Request('http://localhost/api/auth/callback?error=server_error&error_code=unexpected'),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('http://localhost/?error=auth_failed');
+    expect(mocks.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
 });

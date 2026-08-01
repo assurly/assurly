@@ -40,4 +40,17 @@ describe('dashboard icon system', () => {
     expect(container.querySelector('.assurly-logo__mark')).toBeTruthy();
     expect(container.textContent).not.toMatch(/📦/);
   });
+
+  it('exposes a clean accessible name instead of "Ass url y"', () => {
+    render(<AssurlyLogo />);
+    expect(screen.getByRole('img', { name: 'Assurly' })).toBeTruthy();
+    expect(screen.queryByRole('img', { name: /Ass url y/i })).toBeNull();
+  });
+
+  it('stays presentational when decorative so a parent link can own the name', () => {
+    const { container } = render(<AssurlyLogo decorative />);
+    const root = container.querySelector('.assurly-logo');
+    expect(root?.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.queryByRole('img')).toBeNull();
+  });
 });

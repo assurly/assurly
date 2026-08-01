@@ -13,15 +13,21 @@ export interface ProjectAutoFixBatchResult {
 }
 
 export function isManualFindingFixable(finding: WebFinding): boolean {
-  if (finding.severity !== 'error') return false;
   const filePath = (finding.file || '').toLowerCase();
   const msg = (finding.message || '').toLowerCase();
+  const isEnvEx =
+    finding.ruleId === 'undocumented-env' ||
+    (msg.includes('environment variable') && msg.includes('not documented in'));
+  // undocumented-env is warning-only hygiene, but still auto-fixable locally.
+  if (isEnvEx) return true;
+
+  if (finding.severity !== 'error') return false;
+
   const isSqlRls = filePath.endsWith('.sql') && msg.includes('row-level security');
-  const isEnvEx = msg.includes('environment variable') && msg.includes('not documented in');
   const isStripe =
     msg.includes('stripe webhook endpoint') && msg.includes('signature verification');
   const isRsc = msg.includes("client component ('use client') imports server-side module");
-  return isSqlRls || isEnvEx || isStripe || isRsc;
+  return isSqlRls || isStripe || isRsc;
 }
 
 export function getManualFindingKey(finding: WebFinding): string {
@@ -241,10 +247,10 @@ export function buildBatchFixToastMessage(
 
   if (remainingErrorCount > 0) {
     parts.push(
-      `${remainingErrorCount} blocking error${remainingErrorCount === 1 ? '' : 's'} still require manual review.`,
+      `${remainingErrorCount} blocker${remainingErrorCount === 1 ? '' : 's'} still require manual review.`,
     );
   } else {
-    parts.push('All blocking errors that Assurly can auto-fix locally are resolved.');
+    parts.push('All blockers that Assurly can auto-fix locally are resolved.');
   }
 
   return parts.join(' ');

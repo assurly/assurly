@@ -6,6 +6,7 @@ import {
   getSessionUser,
   parseSessionCookie,
   requireUser,
+  resolveAuthDisplayName,
   setSupabaseSessionCookie,
 } from './auth';
 
@@ -21,6 +22,28 @@ vi.mock('./supabase', () => ({
 vi.mock('./dbAdapter', () => ({
   getUserDbAdapter: mocks.getUserDbAdapter,
 }));
+
+describe('resolveAuthDisplayName', () => {
+  it('prefers the GitHub profile name when present', () => {
+    expect(resolveAuthDisplayName({ full_name: 'Tibor Kútik', user_name: 'tibco87' })).toBe(
+      'Tibor Kútik',
+    );
+    expect(resolveAuthDisplayName({ name: 'Tibor', user_name: 'tibco87' })).toBe('Tibor');
+  });
+
+  it('falls back to the GitHub login when profile name is empty', () => {
+    expect(resolveAuthDisplayName({ user_name: 'tiborkutiksson' })).toBe('tiborkutiksson');
+    expect(resolveAuthDisplayName({ preferred_username: 'tiborkutiksson' })).toBe('tiborkutiksson');
+    expect(resolveAuthDisplayName({ full_name: '  ', user_name: 'tiborkutiksson' })).toBe(
+      'tiborkutiksson',
+    );
+  });
+
+  it('uses GitHub User only when no name or login is available', () => {
+    expect(resolveAuthDisplayName({})).toBe('GitHub User');
+    expect(resolveAuthDisplayName(undefined)).toBe('GitHub User');
+  });
+});
 
 describe('authentication boundary', () => {
   beforeEach(() => vi.clearAllMocks());

@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import DashboardClient from './_components/DashboardClient';
 import * as clientApiModule from '../../utils/clientApi';
 import type { Scan, ScanFinding } from '../../utils/dbAdapter';
+import { __resetScansQueryCacheForTests } from '../../utils/scansQueryCache';
 
 type SessionResult = clientApiModule.SessionResult;
 
@@ -109,6 +110,7 @@ async function renderWithFixableFinding(): Promise<void> {
 }
 
 beforeEach(() => {
+  __resetScansQueryCacheForTests();
   scansMock.mockReset();
   findingsMock.mockReset();
   createFixMock.mockReset();

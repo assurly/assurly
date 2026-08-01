@@ -92,10 +92,24 @@ export function ProjectWorkspaceView({
 
         <div className="project-scan-stats" aria-label="Project scan summary">
           {overview.errorCount > 0 ? (
-            <span className={getStatusPillClass('error')}>{overview.errorCount} errors</span>
+            <span className={getStatusPillClass('error')}>
+              {overview.errorCount} blocker{overview.errorCount === 1 ? '' : 's'}
+            </span>
+          ) : null}
+          {overview.reviewCount > 0 ? (
+            <span className={getStatusPillClass('warning')}>
+              {overview.reviewCount} review{overview.reviewCount === 1 ? '' : 's'}
+            </span>
           ) : null}
           {overview.warningCount > 0 ? (
-            <span className={getStatusPillClass('warning')}>{overview.warningCount} warnings</span>
+            <span className={getStatusPillClass('warning')}>
+              {overview.warningCount} warning{overview.warningCount === 1 ? '' : 's'}
+            </span>
+          ) : null}
+          {overview.totalErrorFindings > overview.errorCount ? (
+            <span className="project-stat-pill" title="Raw error findings listed per file below">
+              {overview.totalErrorFindings} in file log
+            </span>
           ) : null}
           {overview.cleanFileCount > 0 ? (
             <span className={getStatusPillClass('clean')}>{overview.cleanFileCount} clean</span>

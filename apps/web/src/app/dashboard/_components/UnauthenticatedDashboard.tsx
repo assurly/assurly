@@ -13,7 +13,7 @@ export function UnauthenticatedDashboard({
     <main className="unauth-grid">
       <section className="unauth-left">
         <div>
-          <Link href="/" className="unauth-brand" aria-label="Assurly home">
+          <Link href="/" className="unauth-brand">
             <AssurlyLogo />
           </Link>
           <h1>

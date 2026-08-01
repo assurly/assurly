@@ -129,7 +129,9 @@ describe('scanEnvVariables monorepo matching', () => {
         allExamples,
       },
     );
-    expect(missing.errorCount).toBe(1);
+    expect(missing.errorCount).toBe(0);
+    expect(missing.warningCount).toBe(1);
+    expect(missing.findings[0]?.severity).toBe('warning');
     expect(missing.findings[0]?.message).toContain('apps/web/.env.example');
   });
 
@@ -170,5 +172,22 @@ describe('scanEnvVariables monorepo matching', () => {
       'apps/web/src/utils/env.ts',
     );
     expect(result.errorCount).toBe(0);
+  });
+
+  it('emits undocumented-env as a high-confidence warning, never an error', () => {
+    const result = scanEnvVariables(
+      '',
+      'const path = process.env.NEXT_PUBLIC_BASE_PATH;',
+      '.env.example',
+      'apps/web/src/lib/config.ts',
+    );
+
+    expect(result.errorCount).toBe(0);
+    expect(result.warningCount).toBe(1);
+    expect(result.findings[0]).toMatchObject({
+      ruleId: 'undocumented-env',
+      severity: 'warning',
+      confidence: 'high',
+    });
   });
 });

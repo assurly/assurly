@@ -4,6 +4,7 @@ import { runDeepReview } from '../../../utils/ai/deepReview';
 import { buildShipGateFromWebFindings } from '../../../utils/shipGate';
 import { ApiError, emptyObjectSchema, RATE_LIMITS, secureRoute } from '../../../utils/apiSecurity';
 import { detectGeneratorFingerprint } from '../../../utils/generatorFingerprint';
+import { persistUrlTargetShipGateVerdict } from '../../../utils/guardian';
 import { scanLiveUrlWithEvidence, type ProbeEvidence } from '../../../utils/runtimeScanner';
 import { assertScannableUrl, UrlSafetyError } from '../../../utils/urlSafety';
 import { isActiveProbeAllowed, normalizeUrlIdentifier } from '../../../utils/ownership';
@@ -82,47 +83,13 @@ function gateVisibilityReport(
 }
 
 /**
- * Enforces the plan's guarded-app entitlement (Phase 8) before a NEW `url` target
- * is created. A re-scan of an already-guarded app is always allowed; only guarding
- * a brand-new app past the plan's `guardedAppLimit` is rejected — server-side, so
- * the UI cannot bypass it. Fails OPEN on a DB error (a transient count failure must
- * never 500 a scan or wrongly block a paying customer) but throws a real 402 on a
- * confirmed over-limit, which propagates out of the route.
- */
-async function assertWithinGuardedAppLimit(
-  db: DbAdapter,
-  organization: Organization,
-  identifier: string,
-): Promise<void> {
-  const { guardedAppLimit } = entitlementsForPlan(organization.billing_plan);
-  if (guardedAppLimit === null) return;
-
-  let existing: Target | null;
-  let currentCount: number;
-  try {
-    existing = await db.getTargetByIdentifier(organization.id, 'url', identifier);
-    if (existing) return; // updating an existing guarded app, not creating a new one
-    currentCount = (await db.getTargets(organization.id)).length;
-  } catch {
-    return; // fail open on a lookup error — never block a scan over a count failure
-  }
-
-  if (currentCount >= guardedAppLimit) {
-    throw new ApiError(
-      402,
-      'plan_required',
-      `Your plan guards up to ${guardedAppLimit} app${guardedAppLimit === 1 ? '' : 's'}. Upgrade to guard more.`,
-    );
-  }
-}
-
-/**
- * Resolves (or creates) the caller's `url` target for this origin and decides
- * whether the ACTIVE proof-probe may run. The ownership gate is enforced here,
- * server-side: an active data-pull is impossible for a `url` target unless it is
- * `ownership_verified = true`. Fail-closed — any lookup failure leaves the scan
- * passive-only. The guarded-app entitlement (Phase 8) is enforced BEFORE the
- * upsert; an over-limit `ApiError` deliberately propagates (it is not swallowed).
+ * Looks up an EXISTING `url` target for this origin and decides whether the
+ * ACTIVE proof-probe may run. One-off authenticated scans must NOT create a
+ * target row — that polluted "Your apps" with every random probe. Guarding a
+ * URL is an explicit POST /api/targets action (plan limit enforced there).
+ *
+ * Ownership gate: an active data-pull is impossible unless
+ * `ownership_verified = true`. Fail-closed on lookup errors → passive-only.
  */
 async function resolveUrlTargetGate(auth: AuthContext, scanUrl: string): Promise<UrlTargetGate> {
   let organization: Organization | null;
@@ -134,28 +101,33 @@ async function resolveUrlTargetGate(auth: AuthContext, scanUrl: string): Promise
   }
   if (!organization) return PASSIVE_GATE;
 
-  const identifier = normalizeUrlIdentifier(scanUrl);
-  // Server-side entitlement gate (Phase 8). Throws 402 on a confirmed over-limit,
-  // which must escape this function — hence it runs OUTSIDE the passive try/catch.
-  await assertWithinGuardedAppLimit(auth.db, organization, identifier);
+  const entitlements = entitlementsForPlan(organization.billing_plan);
+  const paidFields = {
+    organizationId: organization.id,
+    paidTierAllowed: entitlements.deepReviewEnabled,
+    visibilityReportEnabled: entitlements.visibilityReportEnabled,
+  };
 
+  const identifier = normalizeUrlIdentifier(scanUrl);
   try {
-    // Upsert preserves ownership_verified on conflict (it is not in the payload),
-    // so re-scanning never silently re-grants or revokes an active probe.
-    const row = await auth.db.upsertTarget({
-      organizationId: organization.id,
-      kind: 'url',
-      identifier,
-      displayName: identifier,
-    });
-    const entitlements = entitlementsForPlan(organization.billing_plan);
+    const row = await auth.db.getTargetByIdentifier(organization.id, 'url', identifier);
+    if (!row) {
+      // One-off probe: entitlements for visibility / deep-review gating, but no
+      // target row — nothing is written to "Your apps" until Guard.
+      return {
+        activeProbe: false,
+        target: null,
+        targetRow: null,
+        ...paidFields,
+      };
+    }
+    // Existing row (explicit Guard, verified or pending): attach for Ownership
+    // Verify UI + verdict projection. Active probe stays ownership-gated.
     return {
       activeProbe: isActiveProbeAllowed({ kind: 'url', ownershipVerified: row.ownership_verified }),
       target: { id: row.id, ownershipVerified: row.ownership_verified },
       targetRow: row,
-      organizationId: organization.id,
-      paidTierAllowed: entitlements.deepReviewEnabled,
-      visibilityReportEnabled: entitlements.visibilityReportEnabled,
+      ...paidFields,
     };
   } catch (error) {
     console.warn('[Assurly] failed to resolve url target gate:', (error as Error).message);
@@ -257,15 +229,20 @@ export const POST = secureRoute(
 
     if (auth) await persistEvidence(auth, evidence);
 
-    // Seed the moat corpus grouping: persist a detected fingerprint on the url
-    // target created above. pageText stays server-side — never returned to the client.
+    // Project the Ship Gate verdict onto an EXISTING url target only. One-off
+    // probes leave gate.targetRow null and never touch "Your apps".
     if (auth && gate.organizationId && gate.targetRow) {
-      await persistGeneratorFingerprint(
-        auth.db,
-        gate.organizationId,
-        normalizeUrlIdentifier(parsedUrl.toString()),
-        pageText ?? '',
-      );
+      const identifier = normalizeUrlIdentifier(parsedUrl.toString());
+      await persistUrlTargetShipGateVerdict({
+        db: auth.db,
+        organizationId: gate.organizationId,
+        identifier,
+        findings,
+        previous: gate.targetRow,
+      });
+      // Seed the moat corpus grouping: persist a detected fingerprint on the url
+      // target created above. pageText stays server-side — never returned to the client.
+      await persistGeneratorFingerprint(auth.db, gate.organizationId, identifier, pageText ?? '');
     }
 
     // Verified-fix baseline (Phase 5): when the ownership-gated active probe runs,

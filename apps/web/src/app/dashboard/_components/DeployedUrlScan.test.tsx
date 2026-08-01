@@ -2,7 +2,8 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DeployedUrlScan } from './DeployedUrlScan';
+import { DeployedUrlScan, DeployedUrlScanCard, useDeployedUrlScan } from './DeployedUrlScan';
+import type { ReactElement } from 'react';
 
 afterEach(() => {
   cleanup();
@@ -152,7 +153,43 @@ describe('DeployedUrlScan deep review surface', () => {
     });
     // The heavyweight panel is NOT rendered — only the teaser.
     expect(screen.queryByTestId('deep-review')).toBeNull();
-    expect(screen.getByText(/Verify ownership below to unlock/)).toBeTruthy();
+    expect(screen.getByText(/Guard this URL and verify ownership above to unlock/)).toBeTruthy();
+  });
+
+  it('shows Guard this URL CTA for one-off probes (target null)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          report: {
+            status: 'review',
+            shipScore: 84,
+            headline: 'NOT READY TO SHIP',
+            statusEmoji: '🚫',
+            blockers: [],
+            reviews: [],
+            warnings: [],
+            cleanFileCount: 0,
+            scannedFileCount: 1,
+            totalErrorFindings: 1,
+            totalWarningFindings: 1,
+          },
+          findings: [],
+          evidence: [],
+          target: null,
+        }),
+      ),
+    );
+
+    render(<DeployedUrlScan />);
+    typeUrl('https://fastshare.example');
+    fireEvent.click(scanButton());
+
+    await waitFor(() => {
+      expect(screen.getByTestId('guard-url-cta')).toBeTruthy();
+    });
+    expect(screen.getByRole('button', { name: 'Guard this URL' })).toBeTruthy();
+    expect(screen.getByText('Save to Your apps')).toBeTruthy();
   });
 
   it('omits the deep review panel when the API returns none', async () => {
@@ -188,5 +225,47 @@ describe('DeployedUrlScan deep review surface', () => {
       expect(screen.getByText(/Ship Gate for/)).toBeTruthy();
     });
     expect(screen.queryByTestId('deep-review')).toBeNull();
+  });
+});
+
+describe('useDeployedUrlScan onScanComplete', () => {
+  function Harness({ onComplete }: { onComplete: () => void }): ReactElement {
+    const scan = useDeployedUrlScan(undefined, onComplete);
+    return <DeployedUrlScanCard scan={scan} />;
+  }
+
+  it('notifies the dashboard after a successful scan so verdict cards can refresh', async () => {
+    const onComplete = vi.fn();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          report: {
+            status: 'ready',
+            shipScore: 100,
+            headline: 'READY TO SHIP',
+            statusEmoji: '✅',
+            blockers: [],
+            reviews: [],
+            warnings: [],
+            cleanFileCount: 1,
+            scannedFileCount: 1,
+            totalErrorFindings: 0,
+            totalWarningFindings: 0,
+          },
+          findings: [],
+          evidence: [],
+          target: { id: 'target-1', ownershipVerified: false },
+        }),
+      ),
+    );
+
+    render(<Harness onComplete={onComplete} />);
+    typeUrl('https://myapp.example');
+    fireEvent.click(scanButton());
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
   });
 });

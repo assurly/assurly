@@ -137,7 +137,7 @@ export function ShipGatePanel({
       ) : null}
 
       <div className="ship-gate-footer">
-        {report.cleanFileCount > 0 ? (
+        {report.scannedFileCount === 0 ? null : report.cleanFileCount > 0 ? (
           <p className="ship-gate-clean" role="status">
             <span aria-hidden="true">✓</span>
             {report.cleanFileCount} file{report.cleanFileCount === 1 ? '' : 's'} clean

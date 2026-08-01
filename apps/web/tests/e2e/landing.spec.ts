@@ -72,6 +72,63 @@ test.describe('Landing page', () => {
     await expect(page.getByText(/12,000\+/)).toHaveCount(0);
   });
 
+  test('SEO & GEO Audit section is present with a real outline heading', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    const section = page.locator('#seo-geo-audit');
+    await expect(section).toBeVisible();
+    await expect(section.locator('#seo-geo-heading')).toHaveText(
+      'Your app can look fine and still be invisible to AI',
+    );
+
+    const outline = await page.evaluate(() =>
+      [...document.querySelectorAll('h1, h2, h3')].map((el) => ({
+        tag: el.tagName,
+        id: el.id,
+        text: el.textContent?.trim() ?? '',
+      })),
+    );
+    expect(
+      outline.some(
+        (heading) =>
+          heading.tag === 'H2' &&
+          heading.id === 'seo-geo-heading' &&
+          /invisible to AI/i.test(heading.text),
+      ),
+    ).toBe(true);
+
+    const copy = (await section.innerText()).toLowerCase();
+    expect(copy).toContain('canonical');
+    expect(copy).toContain('llms.txt');
+    expect(copy).toContain('structured data');
+    expect(copy).not.toMatch(/trusted by/);
+    expect(copy).not.toMatch(/\d+%/);
+    expect(copy).not.toMatch(/chatgpt ranking/);
+  });
+
+  test('SEO & GEO FAQ entry appears in the accordion and FAQPage JSON-LD', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    const faqItem = page.getByTestId('faq-seo-geo-audit');
+    await expect(faqItem).toBeVisible();
+    await expect(faqItem.locator('summary')).toContainText('What is the SEO & GEO Audit?');
+
+    const html = await (await page.request.get('/')).text();
+    const payload =
+      html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1] ?? '';
+    const graph = JSON.parse(payload.replace(/\\u003c/g, '<'))['@graph'] as Array<{
+      '@type': string;
+      mainEntity?: Array<{ name?: string; acceptedAnswer?: { text?: string } }>;
+    }>;
+    const faqPage = graph.find((node) => node['@type'] === 'FAQPage');
+    expect(faqPage).toBeTruthy();
+    const questions = faqPage?.mainEntity ?? [];
+    const seoGeo = questions.find((entry) => /SEO & GEO Audit/i.test(entry.name ?? ''));
+    expect(seoGeo, 'FAQPage JSON-LD missing SEO & GEO question').toBeTruthy();
+    expect(seoGeo?.acceptedAnswer?.text ?? '').toMatch(/AI Readiness Score/i);
+    expect(seoGeo?.acceptedAnswer?.text ?? '').not.toMatch(/ChatGPT ranking/i);
+  });
+
   test('head carries title, description, OG, Twitter, canonical, and OG image', async ({
     page,
   }) => {

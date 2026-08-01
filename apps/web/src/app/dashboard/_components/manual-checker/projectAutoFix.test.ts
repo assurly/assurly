@@ -33,7 +33,7 @@ const PLAYWRIGHT_CONFIG: ProjectFile = {
 function envFinding(varName: string, file: string, line: number): WebFinding {
   return {
     ruleId: 'undocumented-env',
-    severity: 'error',
+    severity: 'warning',
     file,
     line,
     message: `Environment variable 'process.env.${varName}' is used but not documented in '.env.example'.`,

@@ -1,35 +1,21 @@
 'use client';
 
 import type { ReactElement } from 'react';
-import type { Organization } from '../../../utils/dbAdapter';
+import { resolveWorkspaceDisplayName } from '../../../utils/workspaceName';
 import { DashboardBuildingIcon } from './icons/DashboardIcons';
 
 export interface WorkspaceHeaderProps {
   orgName?: string | null;
-  billingPlan?: Organization['billing_plan'];
+  /** GitHub login / profile name — used to replace legacy placeholder org titles. */
+  ownerLabel?: string | null;
 }
 
-function getWorkspaceDisplayName(orgName?: string | null): string {
-  return orgName?.trim() || 'My Workspace';
-}
-
-function getPlanBadgeLabel(billingPlan: Organization['billing_plan']): string {
-  return billingPlan === 'pro' ? 'Pro Plan' : 'Free Plan';
-}
-
-function getPlanBadgeClassName(billingPlan: Organization['billing_plan']): string {
-  return billingPlan === 'pro'
-    ? 'dashboard-workspace__plan-badge dashboard-workspace__plan-badge--pro'
-    : 'dashboard-workspace__plan-badge dashboard-workspace__plan-badge--free';
-}
-
-export function WorkspaceHeader({
-  orgName,
-  billingPlan = 'free',
-}: WorkspaceHeaderProps): ReactElement {
-  const displayName = getWorkspaceDisplayName(orgName);
-  const planLabel = getPlanBadgeLabel(billingPlan);
-  const planBadgeClassName = getPlanBadgeClassName(billingPlan);
+/**
+ * Workspace identity only. Billing plan lives in the account menu so Pro/Free
+ * is not repeated three times on first paint (desktop badge + mobile strip + menu).
+ */
+export function WorkspaceHeader({ orgName, ownerLabel }: WorkspaceHeaderProps): ReactElement {
+  const displayName = resolveWorkspaceDisplayName(orgName, ownerLabel);
 
   return (
     <>
@@ -39,11 +25,15 @@ export function WorkspaceHeader({
       >
         <div className="dashboard-workspace__content">
           <p className="dashboard-workspace__eyebrow">Active Workspace</p>
-          <h2 className="dashboard-workspace__title">
-            <DashboardBuildingIcon />
-            <span>{displayName}</span>
-            <span className={planBadgeClassName}>{planLabel}</span>
-          </h2>
+          <div className="dashboard-workspace__title">
+            <h2 className="dashboard-workspace__heading">
+              <DashboardBuildingIcon />
+              <span>{displayName}</span>
+            </h2>
+          </div>
+          <p className="dashboard-workspace__billing-hint">
+            Plan and billing are in your account menu.
+          </p>
         </div>
       </section>
 
@@ -51,11 +41,10 @@ export function WorkspaceHeader({
         <summary
           className="dashboard-workspace__strip"
           data-testid="workspace-mobile-strip"
-          aria-label={`Workspace: ${displayName}, ${planLabel}`}
+          aria-label={`Workspace: ${displayName}`}
         >
           <DashboardBuildingIcon />
           <span className="dashboard-workspace__name">{displayName}</span>
-          <span className={planBadgeClassName}>{planLabel}</span>
         </summary>
         <div className="dashboard-workspace__panel">
           <p className="dashboard-workspace__eyebrow">Active Workspace</p>

@@ -3,12 +3,14 @@
  * without confidence).
  *
  * The Phase 0 target was "~12 or fewer". Deeper-stack work landed at 14; the
- * dependency-provenance guard adds three near-certain blockers (17 total).
- * Every entry here must be near-certain when it fires; heuristic rules stay
- * review/warning only. Notably, the two auth-boundary "no visible guard" rules
- * (auth-server-action-no-check, auth-route-handler-unprotected) are error+medium
- * → review, NOT blockers, because public forms and public routes legitimately
- * run without auth — so they are deliberately absent from this list.
+ * dependency-provenance guard adds three near-certain blockers (16 total after
+ * demoting undocumented-env to warning). Every entry here must be near-certain
+ * when it fires; heuristic rules stay review/warning only. Notably, the two
+ * auth-boundary "no visible guard" rules (auth-server-action-no-check,
+ * auth-route-handler-unprotected) are error+medium → review, NOT blockers,
+ * because public forms and public routes legitimately run without auth — so
+ * they are deliberately absent from this list. Missing `.env.example` docs
+ * (`undocumented-env`) are warning-only hygiene — not ship blockers.
  *
  * Agent-stack rule ids (`agent-*`) must NEVER appear here. Those findings may
  * be error+high for triage priority, but they audit the developer's tooling
@@ -32,17 +34,16 @@
  *  4. supabase-service-role-leak
  *  5. public-secret
  *  6. stripe-secret-leak
- *  7. undocumented-env
- *  8. ai-llm-key-in-client
- *  9. database-connection-pooling (CLI)
- * 10. auth-service-role-bypass
- * 11. supabase-policy-permissive
- * 12. supabase-migration-auth-linked-no-rls
- * 13. stripe-live-key-in-dev
- * 14. vercel-edge-node-mismatch
- * 15. dep-nonexistent-package
- * 16. dep-typosquat-suspect
- * 17. dep-slopsquat-suspect
+ *  7. ai-llm-key-in-client
+ *  8. database-connection-pooling (CLI)
+ *  9. auth-service-role-bypass
+ * 10. supabase-policy-permissive
+ * 11. supabase-migration-auth-linked-no-rls
+ * 12. stripe-live-key-in-dev
+ * 13. vercel-edge-node-mismatch
+ * 14. dep-nonexistent-package
+ * 15. dep-typosquat-suspect
+ * 16. dep-slopsquat-suspect
  */
 export const HIGH_CONFIDENCE_BLOCKER_RULE_IDS = [
   'stripe-webhook-signature',
@@ -51,7 +52,6 @@ export const HIGH_CONFIDENCE_BLOCKER_RULE_IDS = [
   'supabase-service-role-leak',
   'public-secret',
   'stripe-secret-leak',
-  'undocumented-env',
   'ai-llm-key-in-client',
   'database-connection-pooling',
   'auth-service-role-bypass',

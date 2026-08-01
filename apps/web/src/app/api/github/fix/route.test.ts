@@ -193,7 +193,7 @@ describe('GitHub fix auto-fix flow (POST /api/github/fix)', () => {
       {
         id: findingTwo,
         scan_id: scanId,
-        severity: 'error',
+        severity: 'warning',
         file_path: 'apps/web/src/lib/stripe.ts',
         rule_id: 'undocumented-env',
         message:

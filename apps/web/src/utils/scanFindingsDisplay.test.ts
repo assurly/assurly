@@ -5,7 +5,7 @@ import type { ScanFinding } from './dbAdapter';
 const baseFinding: Omit<ScanFinding, 'id' | 'file_path' | 'line_number'> = {
   scan_id: 'scan-1',
   rule_id: 'undocumented-env',
-  severity: 'error',
+  severity: 'warning',
   message:
     "Environment variable 'process.env.NEXT_PUBLIC_SENTRY_DSN' is used but not documented in '.env.example'.",
   suggestion: 'Add NEXT_PUBLIC_SENTRY_DSN= to .env.example.',

@@ -88,6 +88,7 @@ export function DashboardSplash({ onDone, durationMs = 4000 }: DashboardSplashPr
     >
       <div className="dashboard-splash__stage">
         <div className="dashboard-splash__brand">
+          {/* Named logo — splash shell is a status; brand still needs its own name. */}
           <AssurlyLogo className="dashboard-splash__logo" />
         </div>
 

@@ -3,6 +3,7 @@ import { StructuredData } from '../_components/StructuredData';
 import { subPageGraph } from '../../utils/structuredData';
 import Link from 'next/link';
 import { AssurlyMark } from '../_components/AssurlyMark';
+import { AssurlyWordmark } from '../_components/AssurlyWordmark';
 import { SiteFooter } from '../_components/SiteFooter';
 import { DISCLOSURE_CONTACT_PATH } from '../../utils/disclosureContact';
 
@@ -44,9 +45,9 @@ export default function TrustPage() {
         <Link href="/" className="back-link">
           ← Back to Home
         </Link>
-        <div className="logo">
+        <div className="logo" role="img" aria-label="Assurly">
           <AssurlyMark className="site-logo-mark" />
-          Ass<span>url</span>y
+          <AssurlyWordmark />
         </div>
       </header>
 

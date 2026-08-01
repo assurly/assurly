@@ -80,6 +80,22 @@ describe('VisibilityAuditPanel', () => {
     );
   });
 
+  it('accepts a custom lockedHint without showing the default Pro copy', () => {
+    render(
+      <VisibilityAuditPanel
+        report={lockedReport}
+        locked
+        lockedHint="Sign in on Pro to unlock every check and the exact fix for each gap."
+      />,
+    );
+    expect(screen.getByTestId('visibility-audit-locked-hint').textContent).toMatch(
+      /Sign in on Pro/,
+    );
+    expect(screen.getByTestId('visibility-audit-locked-hint').textContent).not.toMatch(
+      /Upgrade to Pro to see every/,
+    );
+  });
+
   it('renders skipped checks as "Not checked", distinct from failures', () => {
     render(<VisibilityAuditPanel report={entitledReport} />);
 

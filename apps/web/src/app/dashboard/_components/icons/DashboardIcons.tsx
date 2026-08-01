@@ -1,4 +1,5 @@
 import {
+  Archive,
   Building2,
   Folder,
   Lock,
@@ -18,6 +19,10 @@ function mergeIconClass(className?: string): string {
 
 export function DashboardFolderIcon({ className, ...props }: LucideProps): ReactElement {
   return <Folder aria-hidden="true" className={mergeIconClass(className)} {...props} />;
+}
+
+export function DashboardArchiveIcon({ className, ...props }: LucideProps): ReactElement {
+  return <Archive aria-hidden="true" className={mergeIconClass(className)} {...props} />;
 }
 
 export function DashboardZapIcon({ className, ...props }: LucideProps): ReactElement {

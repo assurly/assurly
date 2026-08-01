@@ -5,6 +5,7 @@ import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
 import React from 'react';
 import Link from 'next/link';
 import { AssurlyMark } from '../_components/AssurlyMark';
+import { AssurlyWordmark } from '../_components/AssurlyWordmark';
 import { CookieInventoryTable } from '../_components/CookieInventoryTable';
 import { SiteFooter } from '../_components/SiteFooter';
 import { COOKIE_NAME } from '../../utils/auth';
@@ -52,9 +53,9 @@ export default function PrivacyPage() {
         <Link href="/" className="back-link">
           ← Back to Home
         </Link>
-        <div className="logo">
+        <div className="logo" role="img" aria-label="Assurly">
           <AssurlyMark className="site-logo-mark" />
-          Ass<span>url</span>y
+          <AssurlyWordmark />
         </div>
       </header>
 

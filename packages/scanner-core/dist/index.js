@@ -621,7 +621,10 @@ function scanEnvVariables(exampleContent, codeContent, exampleFile = '.env.examp
                 const docPath = activeExample.file;
                 findings.push({
                     ruleId: 'undocumented-env',
-                    severity: 'error',
+                    // Hygiene / DX — not a deploy-safety blocker. Missing `.env.example`
+                    // docs fail the Phase 0 "30-second defend" test for hard blockers.
+                    severity: 'warning',
+                    confidence: 'high',
                     file: codeFile,
                     line: index + 1,
                     message: `Environment variable 'process.env.${key}' is used but not documented in '${docPath}'.`,

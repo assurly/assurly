@@ -244,7 +244,7 @@ export const CONSEQUENCE_MAP: Record<string, ConsequenceEntry> = {
   // --- Config / operations -----------------------------------------------------
   'undocumented-env': {
     consequence:
-      'A required setting is undocumented, so a teammate or future deploy can miss it and ship a broken or insecure app without noticing.',
+      'A setting used in code is missing from `.env.example`, so a teammate or deploy can omit it and break the app. Document it — this is hygiene, not a security leak.',
   },
   'vercel-edge-node-mismatch': {
     consequence:

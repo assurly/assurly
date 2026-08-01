@@ -75,10 +75,36 @@ describe('formatCheckedAt', () => {
 describe('VerdictCard', () => {
   it('renders the blocked verdict, score, and the dominant issue', () => {
     render(<VerdictCard card={card()} onOpen={vi.fn()} />);
-    expect(screen.getByText('acme/api')).toBeTruthy();
+    expect(screen.getByText('api')).toBeTruthy();
+    expect(screen.getByText('acme')).toBeTruthy();
     expect(screen.getByText('Not ready to ship')).toBeTruthy();
     expect(screen.getByText('76')).toBeTruthy();
     expect(screen.getByText(/Row-Level Security enabled/)).toBeTruthy();
+  });
+
+  it('keeps long repo and URL names distinguishable instead of a single clipped string', () => {
+    const { rerender } = render(
+      <VerdictCard card={card({ displayName: 'tibco87/shipready-web' })} onOpen={vi.fn()} />,
+    );
+    expect(screen.getByText('shipready-web')).toBeTruthy();
+    expect(screen.getByText('tibco87')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /tibco87\/shipready-web/i }).getAttribute('title'),
+    ).toBe('tibco87/shipready-web');
+
+    rerender(
+      <VerdictCard
+        card={card({
+          kind: 'url',
+          repositoryId: null,
+          displayName: 'https://gemini.google.com/app/demo',
+          identifier: 'https://gemini.google.com/app/demo',
+        })}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('gemini.google.com')).toBeTruthy();
+    expect(screen.getByText('/app/demo')).toBeTruthy();
   });
 
   it('shows a reassuring line and a dash score for a ready app with no issue', () => {
@@ -117,11 +143,110 @@ describe('VerdictCard', () => {
     expect(onOpen).toHaveBeenCalledWith(target);
   });
 
-  it('shows Guardian monitoring and a regression indicator when score dropped', () => {
+  it('shows a regression indicator when score dropped without repeating Guardian on repos', () => {
     render(
       <VerdictCard card={card({ guardianEnabled: true, scoreDropped: true })} onOpen={vi.fn()} />,
     );
-    expect(screen.getByText('Guardian')).toBeTruthy();
+    expect(screen.queryByText('Guardian')).toBeNull();
     expect(screen.getByText(/Score dropped since last check/i)).toBeTruthy();
+  });
+
+  it('shows Guardian only for guarded URL apps', () => {
+    render(
+      <VerdictCard
+        card={card({
+          kind: 'url',
+          repositoryId: null,
+          displayName: 'https://ok.app',
+          guardianEnabled: true,
+          ownershipVerified: true,
+          verdict: 'ready',
+          topIssue: null,
+        })}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Guardian')).toBeTruthy();
+  });
+
+  it('hides repeated ready copy in compact density', () => {
+    render(
+      <VerdictCard
+        card={card({ verdict: 'ready', shipScore: 96, topIssue: null })}
+        onOpen={vi.fn()}
+        density="compact"
+      />,
+    );
+    expect(screen.queryByText(/safe to deploy/i)).toBeNull();
+    expect(screen.queryByText('Ready to ship')).toBeNull();
+    expect(screen.getByText('96')).toBeTruthy();
+  });
+
+  it('shows a Rescan CTA for stale checks and invokes onRescan without opening the card', () => {
+    const onOpen = vi.fn();
+    const onRescan = vi.fn();
+    const target = card({
+      lastCheckedAt: '2026-06-01T10:00:00.000Z',
+    });
+
+    render(<VerdictCard card={target} onOpen={onOpen} onRescan={onRescan} />);
+
+    const rescan = screen.getByRole('button', { name: /Rescan acme\/api/i });
+    expect(rescan).toBeTruthy();
+    fireEvent.click(rescan);
+    expect(onRescan).toHaveBeenCalledWith(target);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it('shows Scan now when the app was never checked', () => {
+    render(
+      <VerdictCard
+        card={card({ lastCheckedAt: null, verdict: 'unknown', shipScore: null, topIssue: null })}
+        onOpen={vi.fn()}
+        onRescan={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /Scan now acme\/api/i })).toBeTruthy();
+  });
+
+  it('hides Rescan for fresh checks', () => {
+    render(
+      <VerdictCard
+        card={card({ lastCheckedAt: new Date().toISOString() })}
+        onOpen={vi.fn()}
+        onRescan={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /Rescan/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Scan now/i })).toBeNull();
+  });
+
+  it('keeps Scanning… disabled while rescanning and blocks sibling CTAs', () => {
+    render(
+      <VerdictCard
+        card={card({ lastCheckedAt: '2026-06-01T10:00:00.000Z' })}
+        onOpen={vi.fn()}
+        onRescan={vi.fn()}
+        rescanning
+      />,
+    );
+    const busy = screen.getByRole('button', { name: /Scanning acme\/api/i });
+    expect(busy.textContent).toContain('Scanning…');
+    expect(busy).toHaveProperty('disabled', true);
+  });
+
+  it('disables Rescan when another scan is already running', () => {
+    render(
+      <VerdictCard
+        card={card({ lastCheckedAt: '2026-06-01T10:00:00.000Z' })}
+        onOpen={vi.fn()}
+        onRescan={vi.fn()}
+        rescanBlocked
+      />,
+    );
+    expect(screen.getByRole('button', { name: /Rescan acme\/api/i })).toHaveProperty(
+      'disabled',
+      true,
+    );
   });
 });

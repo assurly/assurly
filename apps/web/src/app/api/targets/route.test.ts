@@ -6,7 +6,7 @@ vi.mock('../../../utils/auth', async (importOriginal) => ({
   requireUser: mocks.requireUser,
 }));
 
-import { GET } from './route';
+import { GET, POST } from './route';
 import type { TargetCard } from './route';
 
 const db = {
@@ -15,6 +15,8 @@ const db = {
   getTargets: vi.fn(),
   getRecentScans: vi.fn(),
   getScanFindings: vi.fn(),
+  getTargetByIdentifier: vi.fn(),
+  upsertTarget: vi.fn(),
 };
 
 function rlsFinding(scanId: string) {
@@ -44,7 +46,11 @@ describe('GET /api/targets', () => {
       accessToken: 'verified',
       db,
     });
-    db.getOrganizationByUserId.mockResolvedValue({ id: 'org-1', name: 'acme' });
+    db.getOrganizationByUserId.mockResolvedValue({
+      id: 'org-1',
+      name: 'acme',
+      billing_plan: 'pro',
+    });
   });
 
   it('returns an empty list when the user has no organization', async () => {
@@ -87,8 +93,62 @@ describe('GET /api/targets', () => {
       guardianEnabled: true,
       scoreDropped: false,
     });
-    // A synced target must not pay for a findings re-derivation.
     expect(db.getScanFindings).not.toHaveBeenCalled();
+  });
+
+  it('lists guarded URL targets including pending ownership verification', async () => {
+    db.getRepositories.mockResolvedValue([]);
+    db.getTargets.mockResolvedValue([
+      {
+        id: 'pending-1',
+        organization_id: 'org-1',
+        repository_id: null,
+        kind: 'url',
+        identifier: 'https://fastshare.cz',
+        display_name: 'https://fastshare.cz',
+        generator_fingerprint: null,
+        ownership_verified: false,
+        current_verdict: 'blocked',
+        current_ship_score: 84,
+        verdict_evidence: null,
+        last_checked_at: '2026-07-30T20:00:00.000Z',
+        badge_token: null,
+      },
+      {
+        id: 'guarded-1',
+        organization_id: 'org-1',
+        repository_id: null,
+        kind: 'url',
+        identifier: 'https://myapp.lovable.app',
+        display_name: 'https://myapp.lovable.app',
+        generator_fingerprint: 'lovable',
+        ownership_verified: true,
+        current_verdict: 'ready',
+        current_ship_score: 100,
+        verdict_evidence: {},
+        last_checked_at: '2026-07-30T10:00:00.000Z',
+        badge_token: null,
+      },
+    ]);
+
+    const { targets } = await callGet();
+    expect(targets).toHaveLength(2);
+    expect(targets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'pending-1',
+          kind: 'url',
+          ownershipVerified: false,
+          guardianEnabled: false,
+        }),
+        expect.objectContaining({
+          id: 'guarded-1',
+          kind: 'url',
+          ownershipVerified: true,
+          guardianEnabled: true,
+        }),
+      ]),
+    );
   });
 
   it('derives the verdict from the latest scan when no target row exists yet', async () => {
@@ -143,5 +203,71 @@ describe('GET /api/targets', () => {
 
     const { targets } = await callGet();
     expect(targets.map((t) => t.verdict)).toEqual(['blocked', 'ready', 'unknown']);
+  });
+});
+
+describe('POST /api/targets', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireUser.mockResolvedValue({
+      user: { id: 'user-1', name: 'User', email: 'user@example.com', avatar_url: '' },
+      accessToken: 'verified',
+      db,
+    });
+    db.getOrganizationByUserId.mockResolvedValue({
+      id: 'org-1',
+      name: 'acme',
+      billing_plan: 'free',
+    });
+    db.getRepositories.mockResolvedValue([]);
+    db.getTargets.mockResolvedValue([]);
+    db.getTargetByIdentifier.mockResolvedValue(null);
+    db.upsertTarget.mockResolvedValue({
+      id: 'new-target',
+      kind: 'url',
+      identifier: 'https://myapp.lovable.app',
+      ownership_verified: false,
+    });
+  });
+
+  it('creates a URL target for an explicit Guard action', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/targets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://myapp.lovable.app' }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.target).toEqual({
+      id: 'new-target',
+      kind: 'url',
+      identifier: 'https://myapp.lovable.app',
+      ownershipVerified: false,
+    });
+    expect(db.upsertTarget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'org-1',
+        kind: 'url',
+        identifier: 'https://myapp.lovable.app',
+      }),
+    );
+  });
+
+  it('rejects a new guarded app past the free plan limit', async () => {
+    db.getRepositories.mockResolvedValue([{ id: 'repo-1', name: 'acme/one' }]);
+    db.getTargets.mockResolvedValue([]);
+
+    const res = await POST(
+      new Request('http://localhost/api/targets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://second.lovable.app' }),
+      }),
+    );
+    expect(res.status).toBe(402);
+    expect((await res.json()).error.code).toBe('plan_required');
+    expect(db.upsertTarget).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,7 @@ import DashboardClient from './_components/DashboardClient';
 import { getScanDetailsSectionOrder } from './_components/ScanDetailsPanel';
 import * as clientApiModule from '../../utils/clientApi';
 import type { Organization, Scan, ScanFinding } from '../../utils/dbAdapter';
+import { __resetScansQueryCacheForTests } from '../../utils/scansQueryCache';
 
 type SessionResult = clientApiModule.SessionResult;
 
@@ -124,6 +125,7 @@ function runScan(): void {
 }
 
 beforeEach(() => {
+  __resetScansQueryCacheForTests();
   scansMock.mockReset();
   saveScanMock.mockReset();
   findingsMock.mockReset();
@@ -187,32 +189,52 @@ describe('Run Secure Scan results rendering', () => {
     );
   });
 
-  it('does not let background polling erase a freshly computed local result', async () => {
+  it('does not poll /api/scans on an interval while the dashboard sits idle', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      stubGitHubFetch([{ path: 'db/schema.sql', type: 'blob' }], {
-        'db/schema.sql': TABLE_WITHOUT_RLS,
-      });
-      saveScanMock.mockRejectedValue(
-        new ClientApiError('Service is unavailable.', 503, 'service_unavailable'),
-      );
-
       render(<DashboardClient initialSession={session} />);
-      runScan();
+      await waitFor(() => {
+        expect(scansMock).toHaveBeenCalled();
+      });
+      const callsAfterMount = scansMock.mock.calls.length;
 
-      await revealDetailedFindings();
-      await expectRlsFindingInDetails();
-      const pollsBefore = scansMock.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(30_000);
 
-      // Advance beyond the 5s polling interval so a server reconciliation runs.
-      await vi.advanceTimersByTimeAsync(6000);
-      expect(scansMock.mock.calls.length).toBeGreaterThan(pollsBefore);
-
-      // The polling returns an empty list, but the local result must survive.
-      assertRlsFindingInDetails();
+      // Launch P0: no 5s reconcile loop. Idle time must not keep hitting Supabase.
+      expect(scansMock.mock.calls.length).toBe(callsAfterMount);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('does not let a visibility refresh erase a freshly computed local result', async () => {
+    stubGitHubFetch([{ path: 'db/schema.sql', type: 'blob' }], {
+      'db/schema.sql': TABLE_WITHOUT_RLS,
+    });
+    saveScanMock.mockRejectedValue(
+      new ClientApiError('Service is unavailable.', 503, 'service_unavailable'),
+    );
+
+    render(<DashboardClient initialSession={session} />);
+    runScan();
+
+    await revealDetailedFindings();
+    await expectRlsFindingInDetails();
+    const fetchesBefore = scansMock.mock.calls.length;
+
+    // Simulate returning to the tab — forces a server reconcile (empty list).
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    await waitFor(() => {
+      expect(scansMock.mock.calls.length).toBeGreaterThan(fetchesBefore);
+    });
+
+    // Server returned empty, but the unsaved local result must survive.
+    assertRlsFindingInDetails();
   });
 
   it('persists and displays the scan when saving succeeds', async () => {

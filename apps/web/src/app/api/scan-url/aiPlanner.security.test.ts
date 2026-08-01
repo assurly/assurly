@@ -98,6 +98,11 @@ function authWithTarget(ownershipVerified: boolean, billingPlan: 'free' | 'pro' 
         id: 'org-1',
         billing_plan: billingPlan,
       }),
+      getTargetByIdentifier: vi.fn().mockResolvedValue({
+        id: 'target-1',
+        ownership_verified: ownershipVerified,
+        identifier: PAGE_URL.replace(/\/$/, ''),
+      }),
       upsertTarget: vi
         .fn()
         .mockResolvedValue({ id: 'target-1', ownership_verified: ownershipVerified }),

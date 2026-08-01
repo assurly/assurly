@@ -14,9 +14,11 @@ interface CopyButtonProps {
 const COPIED_RESET_MS = 2000;
 
 /**
- * Copy-to-clipboard button that matches the ship-gate action styling and
- * confirms with a "Copied!" state. Clipboard access can be denied (insecure
- * context or blocked permission); on failure the label is left unchanged.
+ * Secondary copy-to-clipboard control for Ship Gate actions ("Copy fix",
+ * "Copy command"). Intentionally outline-styled so it never competes with the
+ * primary "Run secure scan" CTA. Confirms with a soft "Copied!" state.
+ * Clipboard access can be denied (insecure context or blocked permission); on
+ * failure the label is left unchanged.
  */
 export function CopyButton({
   value,
@@ -47,7 +49,10 @@ export function CopyButton({
   return (
     <button
       type="button"
-      className={`ship-gate-action-copy${copied ? ' ship-gate-action-copy--copied' : ''}`}
+      className={`ship-gate-action-copy ship-gate-action-copy--secondary${
+        copied ? ' ship-gate-action-copy--copied' : ''
+      }`}
+      data-cta="secondary"
       onClick={() => void handleCopy()}
       aria-label={copied ? copiedLabel : label}
     >

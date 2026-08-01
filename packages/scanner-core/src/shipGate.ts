@@ -374,15 +374,23 @@ export function buildShipGateReport(
     status = 'review';
     headline = 'REVIEW RECOMMENDED';
     statusEmoji = '⚠️';
+  } else if (options.scannedFileCount === 0) {
+    // Explicit empty input (idle folder/ZIP) — never claim READY TO SHIP.
+    // Omitted scannedFileCount with zero findings still means a clean completed scan.
+    status = 'review';
+    headline = 'NO FILES SCANNED';
+    statusEmoji = '○';
   } else {
     status = 'ready';
     headline = 'READY TO SHIP';
     statusEmoji = '✅';
   }
 
+  const resolvedShipScore = options.scannedFileCount === 0 && status !== 'blocked' ? 0 : shipScore;
+
   return {
     status,
-    shipScore,
+    shipScore: resolvedShipScore,
     headline,
     statusEmoji,
     blockers,

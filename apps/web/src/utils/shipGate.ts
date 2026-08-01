@@ -135,6 +135,10 @@ export function resolveVerdictFromScanFindings(
 }
 
 export function getShipGateActionHint(report: ShipGateReport): string {
+  if (report.scannedFileCount === 0 && report.status !== 'ready') {
+    return 'Select a folder or ZIP to start';
+  }
+
   switch (report.status) {
     case 'blocked':
       return 'Fix all blockers above before deploying to production.';

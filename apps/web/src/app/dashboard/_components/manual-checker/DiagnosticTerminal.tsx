@@ -44,18 +44,46 @@ function findingKey(finding: WebFinding): string {
   return `${finding.file || ''}-${finding.line || 0}-${finding.message || ''}`;
 }
 
+function gateKindLabel(kind: IssueGroupSummary['gateKind']): string {
+  switch (kind) {
+    case 'blocker':
+      return 'Blocker';
+    case 'review':
+      return 'Review';
+    case 'warning':
+      return 'Warn';
+    default: {
+      const neverKind: never = kind;
+      return neverKind;
+    }
+  }
+}
+
 function ProjectMetrics({ metrics }: { metrics: ScanMetricSummary }): ReactElement {
   return (
     <div className="diagnostic-summary-metrics" aria-live="polite">
-      <span className="scan-metric error" title="Distinct blocking issue types">
-        {formatCount(metrics.uniqueErrorCount, 'unique error', 'unique errors')}
+      <span
+        className="scan-metric error"
+        title="Ship Gate blockers (must fix) — matches the list below"
+      >
+        {formatCount(metrics.uniqueErrorCount, 'Blocker')}
       </span>
-      <span className="scan-metric metric-secondary" title="Total error findings across files">
-        {metrics.totalErrorFindings} total
-      </span>
+      {metrics.totalErrorFindings > metrics.uniqueErrorCount ? (
+        <span
+          className="scan-metric metric-secondary"
+          title="Raw error findings across files (grouped into the blockers above)"
+        >
+          {metrics.totalErrorFindings} in file log
+        </span>
+      ) : null}
+      {metrics.uniqueReviewCount > 0 ? (
+        <span className="scan-metric warning" title="Ship Gate review items (heuristic)">
+          {formatCount(metrics.uniqueReviewCount, 'Review')}
+        </span>
+      ) : null}
       {metrics.uniqueWarningCount > 0 ? (
-        <span className="scan-metric warning" title="Distinct warning types">
-          {formatCount(metrics.uniqueWarningCount, 'warning')}
+        <span className="scan-metric warning" title="Ship Gate warnings">
+          {formatCount(metrics.uniqueWarningCount, 'Warning')}
         </span>
       ) : null}
       <span className="scan-metric metric-neutral" title="Files with at least one finding">
@@ -80,8 +108,10 @@ function IssueGroupList({ groups }: { groups: IssueGroupSummary[] }): ReactEleme
       <ul className="issue-group-list">
         {groups.map((group) => (
           <li key={group.id} className={`issue-group-item ${group.severity}`}>
-            <span className={`issue-group-severity ${group.severity}`}>
-              {group.severity === 'error' ? 'Error' : 'Warn'}
+            <span
+              className={`issue-group-severity ${group.gateKind === 'warning' ? 'warning' : 'error'}`}
+            >
+              {gateKindLabel(group.gateKind)}
             </span>
             <div className="issue-group-copy">
               <span className="issue-group-label">{group.label}</span>
@@ -172,8 +202,8 @@ export function DiagnosticTerminal({
   onApplyFix,
   onFixAll,
 }: DiagnosticTerminalProps): ReactElement {
+  const isProjectIdle = activeTab === 'project' && !projectScan;
   const isProjectMode = activeTab === 'project' && !!projectScan;
-  const verdict = getOverallVerdict(results.errorCount, results.warningCount);
   const activeFindingsRef = useRef<HTMLElement | null>(null);
 
   const activeFileFindings =
@@ -182,6 +212,9 @@ export function DiagnosticTerminal({
       : [];
 
   const shipGateReport = useMemo(() => {
+    if (isProjectIdle) {
+      return buildShipGateFromWebFindings([], { scannedFileCount: 0, cleanFileCount: 0 });
+    }
     if (isProjectMode && projectScan) {
       return buildShipGateFromWebFindings(results.findings, {
         scannedFileCount: projectScan.metrics.scannedFileCount,
@@ -200,7 +233,12 @@ export function DiagnosticTerminal({
       scannedFileCount,
       cleanFileCount: Math.max(0, scannedFileCount - affectedCount),
     });
-  }, [isProjectMode, projectScan, results.findings, scannedFileLabels.length]);
+  }, [isProjectIdle, isProjectMode, projectScan, results.findings, scannedFileLabels.length]);
+
+  const verdict = getOverallVerdict(
+    shipGateReport.blockers.length,
+    shipGateReport.warnings.length + shipGateReport.reviews.length,
+  );
 
   useEffect(() => {
     if (!isProjectMode || !selectedProjectPath) return;
@@ -211,26 +249,62 @@ export function DiagnosticTerminal({
     <div className="editor-box diagnostic-terminal">
       <div className="editor-label diagnostic-terminal-header">
         <span>Assurly Diagnostic Logs</span>
-        {isProjectMode ? (
+        {isProjectIdle ? (
+          <div className="diagnostic-summary-metrics" aria-live="polite">
+            <span className="scan-metric">0 files</span>
+          </div>
+        ) : isProjectMode ? (
           <ProjectMetrics metrics={projectScan.metrics} />
         ) : (
           <div className="diagnostic-summary-metrics" aria-live="polite">
-            <span className="scan-metric error">{formatCount(results.errorCount, 'Error')}</span>
+            <span
+              className="scan-metric error"
+              title="Ship Gate blockers (must fix) — matches the list below"
+            >
+              {formatCount(shipGateReport.blockers.length, 'Blocker')}
+            </span>
+            {shipGateReport.totalErrorFindings > shipGateReport.blockers.length ? (
+              <span
+                className="scan-metric metric-secondary"
+                title="Raw error findings in the file log (grouped into the blockers above)"
+              >
+                {shipGateReport.totalErrorFindings} in file log
+              </span>
+            ) : null}
+            {shipGateReport.reviews.length > 0 ? (
+              <span className="scan-metric warning" title="Ship Gate review items (heuristic)">
+                {formatCount(shipGateReport.reviews.length, 'Review')}
+              </span>
+            ) : null}
             <span className="scan-metric warning">
-              {formatCount(results.warningCount, 'Warning')}
+              {formatCount(shipGateReport.warnings.length, 'Warning')}
             </span>
           </div>
         )}
       </div>
 
-      <ShipGatePanel
-        report={shipGateReport}
-        actionHint={
-          isProjectMode
-            ? `${projectScan?.metrics.scannedFileCount ?? 0} files scanned locally · ${getScanActionLabel(verdict)}`
-            : `${scannedFileLabels.length} file${scannedFileLabels.length === 1 ? '' : 's'} analyzed · ${getScanActionLabel(verdict)}`
-        }
-      />
+      {isProjectIdle ? (
+        <div
+          className="diagnostic-terminal-idle"
+          data-testid="manual-checker-project-idle"
+          role="status"
+        >
+          <p className="diagnostic-terminal-idle__title">Select a folder or ZIP to start</p>
+          <p className="diagnostic-terminal-idle__copy">
+            Load a local project workspace to run Assurly&apos;s Ship Gate. Nothing has been scanned
+            yet.
+          </p>
+        </div>
+      ) : (
+        <ShipGatePanel
+          report={shipGateReport}
+          actionHint={
+            isProjectMode
+              ? `${projectScan?.metrics.scannedFileCount ?? 0} files scanned locally · ${getScanActionLabel(verdict)}`
+              : `${scannedFileLabels.length} file${scannedFileLabels.length === 1 ? '' : 's'} analyzed · ${getScanActionLabel(verdict)}`
+          }
+        />
+      )}
 
       <div className="terminal-output diagnostic-terminal-body">
         <div className="terminal-header">
@@ -243,12 +317,19 @@ export function DiagnosticTerminal({
           <span>$ assurly scan --browser-mode</span>
         </div>
 
-        <div className="log-line">
-          <span className="log-badge ok">OK</span>
-          <span className="log-message log-message-success">
-            Static Analysis Engine initialized.
-          </span>
-        </div>
+        {isProjectIdle ? (
+          <div className="log-line">
+            <span className="log-badge">IDLE</span>
+            <span className="log-message">Waiting for a project folder or ZIP archive…</span>
+          </div>
+        ) : (
+          <div className="log-line">
+            <span className="log-badge ok">OK</span>
+            <span className="log-message log-message-success">
+              Static Analysis Engine initialized.
+            </span>
+          </div>
+        )}
 
         {isProjectMode ? (
           <>
