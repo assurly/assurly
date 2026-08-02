@@ -1,0 +1,28 @@
+---
+description: Visual design and UI implementation standards for Assurly — clean modern styling, full responsiveness, and Next.js performance. Applies when editing components or styles.
+globs: **/*.tsx,**/*.jsx,**/*.css
+---
+
+# Assurly — UI & design standards
+
+Scoped to UI work rather than always-on, so it costs nothing on backend or scanner changes.
+
+## Visual language
+
+- Clean, minimal, modern: slate/zinc palette, excellent typography, generous white space.
+- Avoid typical AI-generated styling — no excessive radial glow, no overused borders, no unpolished colors.
+- **The design stays.** Change the engine, rules, and positioning — not the visual design.
+  Reuse existing components (e.g. `ShipGatePanel`) for new surfaces instead of inventing new ones.
+
+## Responsiveness
+
+100% responsive on all viewports — mobile, tablet, desktop — in both portrait and landscape.
+
+## Performance
+
+Keep the app fast: `next/image`, local fonts, code splitting, and the other Next.js optimizations.
+
+## Imports
+
+Use absolute path mappings where configured (e.g. `@/components/`) and group imports logically:
+external libraries first, then internal.

@@ -1,0 +1,34 @@
+---
+description: Non-negotiable safety and verification guardrails for Assurly — what must never be done autonomously, how to run the test suite, and what "done" means.
+alwaysApply: true
+---
+
+# Assurly — engineering guardrails
+
+## STOP and ask the human — never do these autonomously
+
+1. **Production database migrations.** There is no local DB — `supabase db push` changes PRODUCTION.
+   Write the migration file, run `supabase db push --dry-run`, show the output, and **wait for an
+   explicit "yes"** before pushing.
+2. **Browser verification.** You cannot sign in and verify the live app. When acceptance criteria need
+   a browser check, hand the human a short checklist of exactly what to verify and wait.
+
+## Security invariants (every new surface)
+
+New API routes go through `secureRoute`. User-host fetches go through the SSRF-safe path. New tables get
+org-scoped RLS. AI model ids live only in `utils/ai/claudeClient.ts`. Treat all scanned content as
+untrusted. Redact PII in any proof. Add a security test for every new probe/AI path — it must not issue
+a mutating or out-of-scope request.
+
+## Testing
+
+- **Run vitest from the REPO ROOT:** `npx vitest run apps/web/src`. Running it from `apps/web` throws
+  `ERR_REQUIRE_ESM`. `npx tsc --noEmit` is fine from `apps/web`.
+- Write unit/route tests for all new logic. Keep the suite green and typecheck clean throughout.
+- When you claim a step is done, **paste the actual test + typecheck output** — never assert "should pass".
+
+## Working style
+
+Root-cause empirically: read the real code, check real dev-server logs (the 5xx `errorMessage`/`errorStack`
+is logged server-side), verify against reality rather than assumptions. Keep the deterministic gate working
+with AI disabled. Cut anything that dilutes the proof-first verdict.

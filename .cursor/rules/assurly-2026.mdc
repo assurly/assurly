@@ -1,5 +1,5 @@
 ---
-description: 
+description: Assurly product direction, language policy, rule/blocker discipline, engineering constraints, and Definition of Done. The always-on project north star.
 alwaysApply: true
 ---
 
@@ -34,10 +34,11 @@ Three principles behind every change:
 - The product must pass its own scan: Assurly self-scan = 0–2 blockers.
 
 ## How roadmap work is structured
-- One phase = one branch = one PR = one focused session. Never implement multiple phases at once.
+- **The genius rebuild (Phases 0–8) is complete and live-verified.** Do not restart or "resume" a phase.
+  `docs/roadmap/10-genius-rebuild-master-plan.md` is the record of what shipped.
 - Specs live in `docs/roadmap/NN-*.md`. Follow their "Scope / Non-goals" and "Acceptance Criteria" exactly.
 - Reuse the code each spec lists under "Existing code to reuse". Do not invent new APIs.
-- Build order: 0 (trust) → 1 (URL scan) → 2 (autofix + AI security) → 6 (messaging, ongoing) → 3 (depth) → 4 (MCP) → 5 (monitoring).
+- One focused change = one branch = one PR.
 
 ## Non-negotiable engineering constraints
 - **Next.js 16 has breaking changes.** Obey `apps/web/AGENTS.md`: read `node_modules/next/dist/docs/` before writing
