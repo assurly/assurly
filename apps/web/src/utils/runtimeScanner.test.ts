@@ -458,6 +458,29 @@ describe('runtimeScanner', () => {
       // The real probe ran (and found nothing), so the preview hook is redundant.
       expect(findings.some((f) => f.ruleId === 'runtime-supabase-key-exposed')).toBe(false);
     });
+
+    it('emits a high-confidence blocker when the live target returns 404', async () => {
+      const fetchMock = vi.fn(async () => {
+        return new Response('DEPLOYMENT_NOT_FOUND', {
+          status: 404,
+          headers: { 'content-type': 'text/html' },
+        });
+      }) as typeof fetch;
+
+      const { findings } = await scanLiveUrlWithEvidence(
+        'https://dead.example/',
+        fetchMock,
+        fakeLookup(),
+      );
+      expect(findings.some((f) => f.ruleId === 'runtime-target-unreachable')).toBe(true);
+      const report = buildShipGateFromWebFindings(findings, {
+        scannedFileCount: 1,
+        cleanFileCount: 0,
+      });
+      expect(report.status).toBe('blocked');
+      expect(report.headline).toBe('NOT READY TO SHIP');
+      expect(report.shipScore).toBeLessThan(100);
+    });
   });
 
   describe('buildSupabaseExposureEvidence', () => {

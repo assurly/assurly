@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import type { ScanResult } from '../../../../utils/browserScanner';
 import type { ProjectFile } from './useManualScan';
+import { ProjectLoadStatus, type ProjectLoadState } from './ProjectLoadStatus';
 import { buildProjectScanOverview, type ProjectFileStats } from './projectWorkspace';
 
 interface ProjectWorkspaceViewProps {
@@ -13,6 +14,7 @@ interface ProjectWorkspaceViewProps {
   fixableCount: number;
   isApplyingAllFixes: boolean;
   canExportPatch: boolean;
+  projectLoad?: ProjectLoadState | null;
   onFixAll: () => void;
   onDownloadZip: () => void;
   onDownloadPatch: () => void;
@@ -50,6 +52,7 @@ export function ProjectWorkspaceView({
   fixableCount,
   isApplyingAllFixes,
   canExportPatch,
+  projectLoad = null,
   onFixAll,
   onDownloadZip,
   onDownloadPatch,
@@ -83,7 +86,12 @@ export function ProjectWorkspaceView({
   const activeStats = selectedProjectPath ? statsByPath.get(selectedProjectPath) : undefined;
 
   return (
-    <div className="project-workspace">
+    <div className="project-workspace" aria-busy={projectLoad ? true : undefined}>
+      {projectLoad ? (
+        <div className="project-workspace-load-overlay">
+          <ProjectLoadStatus kind={projectLoad.kind} label={projectLoad.label} variant="overlay" />
+        </div>
+      ) : null}
       <div className="project-workspace-header">
         <div className="project-meta-info">
           <span className="project-title-name">{projectName}</span>

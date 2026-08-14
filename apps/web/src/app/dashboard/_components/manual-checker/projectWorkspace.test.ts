@@ -28,6 +28,22 @@ const TEST_WITH_ENV: ProjectFile = {
   content: 'const key = process.env.STRIPE_SECRET_KEY;\nexport const test = key;',
 };
 
+const FIXTURE_SQL: ProjectFile = {
+  path: 'test-projects/broken-project/supabase/migrations/init.sql',
+  content:
+    'create table users (id uuid primary key);\nALTER TABLE users ADD COLUMN api_key TEXT NOT NULL;',
+};
+
+const FIXTURE_WEBHOOK: ProjectFile = {
+  path: 'test-projects/broken-project/app/api/webhooks/route.ts',
+  content: `import stripe from 'stripe';
+export async function POST(req: Request) {
+  const body = await req.json();
+  console.log(body);
+}
+`,
+};
+
 describe('projectWorkspace', () => {
   it('opens the first file with an error instead of a clean env template', () => {
     const files = [CLEAN_ENV, SQL_WITHOUT_RLS];
@@ -49,7 +65,7 @@ describe('projectWorkspace', () => {
     expect(overview.fileStats[0]?.status).toBe('error');
   });
 
-  it('groups repeated env findings into unique root causes', () => {
+  it('ignores unit-test files for Ship Gate findings while still flagging production env gaps', () => {
     const files = [CLEAN_ENV, CODE_WITH_ENV, TEST_WITH_ENV];
     const scan = scanProject(files);
     const groups = buildIssueGroupSummaries(scan.findings);
@@ -60,10 +76,93 @@ describe('projectWorkspace', () => {
 
     expect(groups.some((group) => group.label.includes('STRIPE_SECRET_KEY'))).toBe(true);
     expect(groups.every((group) => group.gateKind === 'warning')).toBe(true);
+    expect(scan.findings.every((finding) => finding.file !== TEST_WITH_ENV.path)).toBe(true);
     expect(metrics.totalErrorFindings).toBe(0);
-    expect(metrics.totalWarningFindings).toBeGreaterThan(metrics.uniqueWarningCount);
-    expect(metrics.testAffectedFileCount).toBeGreaterThan(0);
+    expect(metrics.testAffectedFileCount).toBe(0);
     expect(metrics.productionAffectedFileCount).toBeGreaterThan(0);
+  });
+
+  it('does not treat intentional test-project fixtures as production blockers', () => {
+    const files = [FIXTURE_SQL, FIXTURE_WEBHOOK, SQL_WITHOUT_RLS];
+    const scan = scanProject(files);
+
+    expect(scan.findings.some((finding) => finding.file === FIXTURE_SQL.path)).toBe(false);
+    expect(scan.findings.some((finding) => finding.file === FIXTURE_WEBHOOK.path)).toBe(false);
+    expect(scan.findings.some((finding) => finding.file === SQL_WITHOUT_RLS.path)).toBe(true);
+    expect(scan.findings.some((finding) => finding.severity === 'error')).toBe(true);
+  });
+
+  it('resolves the nearest nested .env.example for monorepo packages', () => {
+    const files: ProjectFile[] = [
+      { path: '.env.example', content: 'ROOT_ONLY=1\n' },
+      {
+        path: 'apps/web/.env.example',
+        content: 'NEXT_PUBLIC_SUPABASE_URL=\n',
+      },
+      {
+        path: 'apps/web/src/lib/client.ts',
+        content: 'export const url = process.env.NEXT_PUBLIC_SUPABASE_URL;',
+      },
+      {
+        path: 'apps/web/src/lib/missing.ts',
+        content: 'export const key = process.env.STRIPE_SECRET_KEY;',
+      },
+    ];
+    const scan = scanProject(files);
+
+    expect(
+      scan.findings.some(
+        (finding) =>
+          finding.ruleId === 'undocumented-env' &&
+          finding.message.includes('NEXT_PUBLIC_SUPABASE_URL'),
+      ),
+    ).toBe(false);
+    expect(
+      scan.findings.some(
+        (finding) =>
+          finding.ruleId === 'undocumented-env' &&
+          finding.file === 'apps/web/src/lib/missing.ts' &&
+          finding.message.includes('STRIPE_SECRET_KEY'),
+      ),
+    ).toBe(true);
+  });
+
+  it('points package env gaps at package-local .env.example and ignores Actions runtime keys', () => {
+    const files: ProjectFile[] = [
+      {
+        path: 'shipready/apps/web/.env.example',
+        content: 'NEXT_PUBLIC_SUPABASE_URL=\n',
+      },
+      {
+        path: 'shipready/packages/cli/src/index.ts',
+        content: [
+          'export const url = process.env.ASSURLY_API_URL;',
+          'export const key = process.env.ASSURLY_API_KEY;',
+        ].join('\n'),
+      },
+      {
+        path: 'shipready/packages/github-action/src/runtime.ts',
+        content: [
+          'const out = process.env.GITHUB_OUTPUT;',
+          'const summary = process.env.GITHUB_STEP_SUMMARY;',
+        ].join('\n'),
+      },
+    ];
+    const scan = scanProject(files);
+
+    expect(scan.findings.some((finding) => finding.message.includes('GITHUB_OUTPUT'))).toBe(false);
+    expect(scan.findings.some((finding) => finding.message.includes('GITHUB_STEP_SUMMARY'))).toBe(
+      false,
+    );
+    expect(
+      scan.findings.some(
+        (finding) =>
+          finding.ruleId === 'undocumented-env' &&
+          finding.message.includes('ASSURLY_API_KEY') &&
+          finding.message.includes('shipready/packages/cli/.env.example') &&
+          !finding.message.includes('apps/web/.env.example'),
+      ),
+    ).toBe(true);
   });
 
   it('counts Ship Gate blockers, not raw error occurrences, for overview badges', () => {

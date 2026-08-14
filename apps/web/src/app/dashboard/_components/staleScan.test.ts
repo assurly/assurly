@@ -27,9 +27,18 @@ function card(overrides: Partial<TargetCard> = {}): TargetCard {
     guardianEnabled: true,
     scoreDropped: false,
     badgeToken: null,
+    scanCapability: 'browser',
     ...overrides,
   };
 }
+
+describe('canRescanVerdictCard capability gates', () => {
+  it('blocks Scan now for cli_only and invalid repos', () => {
+    expect(canRescanVerdictCard(card({ scanCapability: 'cli_only' }))).toBe(false);
+    expect(canRescanVerdictCard(card({ scanCapability: 'invalid' }))).toBe(false);
+    expect(canRescanVerdictCard(card({ scanCapability: 'browser' }))).toBe(true);
+  });
+});
 
 describe('isScanStale', () => {
   it('treats never-scanned and invalid timestamps as stale', () => {

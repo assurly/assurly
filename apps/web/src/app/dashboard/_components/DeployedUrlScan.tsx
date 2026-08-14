@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import type { WebFinding } from '../../../utils/browserScanner';
 import { ClientApiError, clientApi } from '../../../utils/clientApi';
+import { formatCount } from '../../../utils/pluralize';
 import type { ShipGateReport } from '../../../utils/shipGate';
 import { isLikelyScannableUrl } from '../../../utils/urlValidation';
 import { ShipGatePanel } from '../../_components/ship-gate/ShipGatePanel';
@@ -397,8 +398,8 @@ export function DeployedUrlScanResults({
           <div className="scanner-results-info">
             <h4>Ship Gate for {scanResults.targetUrl}</h4>
             <p>
-              Runtime probe results — {scanResults.findings.length} finding
-              {scanResults.findings.length === 1 ? '' : 's'} detected.
+              Runtime probe results — {formatCount(scanResults.findings.length, 'finding')}{' '}
+              detected.
               {!scanResults.target
                 ? ' This one-off probe is not added to Your apps until you guard it.'
                 : ''}

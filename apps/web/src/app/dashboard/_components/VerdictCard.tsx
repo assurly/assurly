@@ -1,11 +1,16 @@
 'use client';
 
-import { useSyncExternalStore, type ReactElement } from 'react';
+import { useState, useSyncExternalStore, type ReactElement } from 'react';
 import type { TargetCard } from '../../../utils/clientApi';
 import { consequenceForGroupKey } from '../../../utils/consequenceMap';
 import { canRescanVerdictCard, isScanStale, rescanActionLabel } from './staleScan';
 import { formatVerdictCardLabel } from './verdictCardLabel';
-import { shouldShowGuardianChip, type AppsDensity } from './verdictCardsView';
+import {
+  coverageLabelForCard,
+  fullGateCliCommand,
+  shouldShowGuardianChip,
+  type AppsDensity,
+} from './verdictCardsView';
 
 interface VerdictCardProps {
   card: TargetCard;
@@ -30,6 +35,30 @@ const VERDICT_META: Record<VerdictKey, { label: string; emoji: string; className
   ready: { label: 'Ready to ship', emoji: '✅', className: 'verdict-card--ready' },
   unknown: { label: 'Not scanned yet', emoji: '○', className: 'verdict-card--unknown' },
 };
+
+function capabilityPresentation(card: TargetCard): {
+  label: string;
+  emoji: string;
+  issueText: string;
+} | null {
+  if (card.kind !== 'repo') return null;
+  if (card.scanCapability === 'cli_only') {
+    return {
+      label: 'Use CLI',
+      emoji: '⌘',
+      issueText:
+        'Too large for in-browser Instant Gate. Run Full Gate locally, then submit the verdict (no source upload).',
+    };
+  }
+  if (card.scanCapability === 'invalid') {
+    return {
+      label: 'Needs attention',
+      emoji: '!',
+      issueText: 'Repository name must be owner/repo. Remove this entry and reconnect.',
+    };
+  }
+  return null;
+}
 
 const FINGERPRINT_LABEL: Record<string, string> = {
   lovable: 'Lovable',
@@ -99,11 +128,20 @@ export function VerdictCard({
   rescanBlocked = false,
   density = 'comfortable',
 }: VerdictCardProps): ReactElement {
+  const [copiedCli, setCopiedCli] = useState(false);
+  const capability = capabilityPresentation(card);
   const meta = VERDICT_META[card.verdict];
+  const verdictLabel = capability?.label ?? meta.label;
+  const verdictEmoji = capability?.emoji ?? meta.emoji;
   const label = formatVerdictCardLabel(card.displayName, card.kind);
   const fingerprintLabel = card.generatorFingerprint
     ? FINGERPRINT_LABEL[card.generatorFingerprint]
     : undefined;
+  const coverageLabel = coverageLabelForCard(card);
+  const showCliCopy = card.kind === 'repo' && card.scanCapability === 'cli_only';
+  const cliCommand = fullGateCliCommand(card.displayName);
+  // cli_only repos must stay openable — users need the detail workspace (Full Gate
+  // copy + history). Only block open when there is no linked repository row.
   const openable = card.kind === 'repo' && Boolean(card.repositoryId);
   const stale = isScanStale(card.lastCheckedAt);
   const showRescan = Boolean(onRescan) && stale && canRescanVerdictCard(card);
@@ -112,6 +150,11 @@ export function VerdictCard({
   const showGuardian = shouldShowGuardianChip(card);
   const chips = (
     <>
+      {coverageLabel ? (
+        <span className="verdict-card__chip" title="Scan coverage">
+          {coverageLabel}
+        </span>
+      ) : null}
       {fingerprintLabel ? (
         <span className="verdict-card__chip" title="Detected AI builder">
           {fingerprintLabel}
@@ -136,28 +179,32 @@ export function VerdictCard({
     </>
   );
 
-  const issueText = card.topIssue
-    ? (consequenceForGroupKey(card.topIssue.key)?.consequence ?? card.topIssue.sampleMessage)
-    : card.verdict === 'ready'
-      ? 'No blockers — safe to deploy.'
-      : 'Run a scan to get a verdict.';
-  const issueLine = card.topIssue ? (
-    <span className="verdict-card__issue" title={issueText}>
-      {issueText}
-    </span>
-  ) : card.verdict === 'ready' ? (
-    <span className="verdict-card__issue verdict-card__issue--clean" title={issueText}>
-      {issueText}
-    </span>
-  ) : (
-    <span className="verdict-card__issue verdict-card__issue--muted" title={issueText}>
-      {issueText}
-    </span>
-  );
+  const issueText = capability
+    ? capability.issueText
+    : card.topIssue
+      ? (consequenceForGroupKey(card.topIssue.key)?.consequence ?? card.topIssue.sampleMessage)
+      : card.verdict === 'ready'
+        ? 'No blockers — safe to deploy.'
+        : 'Run a scan to get a verdict.';
+  const issueLine =
+    card.topIssue && !capability ? (
+      <span className="verdict-card__issue" title={issueText}>
+        {issueText}
+      </span>
+    ) : card.verdict === 'ready' && !capability ? (
+      <span className="verdict-card__issue verdict-card__issue--clean" title={issueText}>
+        {issueText}
+      </span>
+    ) : (
+      <span className="verdict-card__issue verdict-card__issue--muted" title={issueText}>
+        {issueText}
+      </span>
+    );
 
   // Compact rows keep blockers actionable; repeated "safe to deploy" on ready
   // apps is the main source of warning fatigue in a long list.
-  const showIssue = !compact || card.verdict === 'blocked' || card.verdict === 'review';
+  const showIssue =
+    !compact || card.verdict === 'blocked' || card.verdict === 'review' || capability !== null;
 
   return (
     <div
@@ -169,12 +216,12 @@ export function VerdictCard({
         type="button"
         className="verdict-card__open"
         onClick={() => onOpen(card)}
-        aria-label={`${label.full}: ${meta.label}`}
+        aria-label={`${label.full}: ${verdictLabel}`}
         title={label.full}
         disabled={!openable && card.kind === 'repo'}
       >
         <span className="verdict-card__status" aria-hidden="true">
-          {meta.emoji}
+          {verdictEmoji}
         </span>
 
         <span className="verdict-card__body">
@@ -187,7 +234,7 @@ export function VerdictCard({
             </span>
             <span className="verdict-card__chips">{chips}</span>
           </span>
-          {!compact ? <span className="verdict-card__verdict">{meta.label}</span> : null}
+          {!compact ? <span className="verdict-card__verdict">{verdictLabel}</span> : null}
           {showIssue ? issueLine : null}
           {card.scoreDropped ? (
             <span className="verdict-card__regression" role="status">
@@ -205,8 +252,25 @@ export function VerdictCard({
         </span>
       </button>
 
-      {showRescan || onRemove ? (
+      {showRescan || onRemove || showCliCopy ? (
         <div className="verdict-card__actions">
+          {showCliCopy ? (
+            <button
+              type="button"
+              className="verdict-card__rescan"
+              onClick={(event) => {
+                event.stopPropagation();
+                void navigator.clipboard.writeText(cliCommand).then(() => {
+                  setCopiedCli(true);
+                  window.setTimeout(() => setCopiedCli(false), 2000);
+                });
+              }}
+              aria-label={`Copy Full Gate command for ${label.full}`}
+              title={cliCommand}
+            >
+              {copiedCli ? 'Copied' : 'Copy CLI command'}
+            </button>
+          ) : null}
           {showRescan && onRescan ? (
             <button
               type="button"

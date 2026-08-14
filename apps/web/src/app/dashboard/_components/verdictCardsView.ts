@@ -79,8 +79,43 @@ export function filterCardsByKind(cards: TargetCard[], filter: AppsKindFilter): 
   }
 }
 
+/** Unscanned means never scanned AND still browser-scannable (not CLI-only / invalid). */
+export function isBrowserUnscannedCard(card: TargetCard): boolean {
+  return card.verdict === 'unknown' && (card.scanCapability ?? 'browser') === 'browser';
+}
+
+/**
+ * Honest coverage label for cards — Instant (browser) vs Full (CLI) vs incomplete.
+ * Capability describes browser eligibility; a cli_only repo can still show a Full Gate score.
+ */
+export function coverageLabelForCard(card: TargetCard): string | null {
+  if (card.kind !== 'repo') return null;
+  if (card.scanCapability === 'cli_only') {
+    return card.shipScore === null ? 'Full Gate · CLI' : 'Full Gate';
+  }
+  if (card.scanCapability === 'invalid') return null;
+  const topKey = card.topIssue?.key ?? '';
+  if (
+    topKey.includes('scan-completeness') ||
+    card.topIssue?.label?.toLowerCase().includes('incomplete')
+  ) {
+    return 'Instant · incomplete';
+  }
+  if (card.verdict === 'unknown') return null;
+  return 'Instant Gate';
+}
+
+/** Canonical Full Gate command shown on cli_only cards (copyable). */
+export function fullGateCliCommand(repoName?: string | null): string {
+  const repo = typeof repoName === 'string' && repoName.includes('/') ? repoName : 'owner/repo';
+  return `ASSURLY_API_KEY=ask_… npx assurly scan --submit --repo ${repo}`;
+}
+
 export function filterCardsByVerdict(cards: TargetCard[], filter: AppsVerdictFilter): TargetCard[] {
   if (filter === 'all') return cards;
+  if (filter === 'unknown') {
+    return cards.filter(isBrowserUnscannedCard);
+  }
   return cards.filter((card) => card.verdict === filter);
 }
 
@@ -153,6 +188,6 @@ export function countByVerdict(
     blocked: cards.filter((card) => card.verdict === 'blocked').length,
     review: cards.filter((card) => card.verdict === 'review').length,
     ready: cards.filter((card) => card.verdict === 'ready').length,
-    unknown: cards.filter((card) => card.verdict === 'unknown').length,
+    unknown: cards.filter(isBrowserUnscannedCard).length,
   };
 }

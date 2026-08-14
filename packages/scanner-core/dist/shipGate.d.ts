@@ -40,6 +40,11 @@ export interface ShipGateOptions {
     scanScope?: ScanScope;
 }
 export declare function getFindingGroupKey(finding: ShipGateFindingInput): string;
+/**
+ * Build the group-level remediation hint. Env groups may span multiple packages
+ * in a monorepo — include every unique suggestion so Copy fix is complete.
+ */
+export declare function aggregateGroupSuggestion(key: string, suggestions: readonly string[]): string | undefined;
 export declare function resolveGroupAction(key: string, suggestion: string | undefined, ruleId: string | undefined): ShipGateAction | undefined;
 export declare function buildIssueGroups(findings: ShipGateFindingInput[]): ShipGateGroup[];
 export declare function buildShipGateReport(findings: ShipGateFindingInput[], options?: ShipGateOptions): ShipGateReport;

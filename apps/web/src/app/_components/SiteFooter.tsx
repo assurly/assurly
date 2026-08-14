@@ -67,7 +67,10 @@ function FullFooter(): ReactElement {
           <div className="site-footer__brand">
             <Link href="/" className="site-footer__brand-link" aria-label="Assurly">
               <AssurlyMark className="site-logo-mark" />
-              <AssurlyWordmark className="site-footer__wordmark" />
+              <AssurlyWordmark
+                className="site-footer__wordmark"
+                accentClassName="site-logo-accent"
+              />
             </Link>
             <p className="site-footer__descriptor">{PRODUCT_DESCRIPTOR}</p>
             <p className="site-footer__copyright">{COPYRIGHT}</p>

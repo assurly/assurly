@@ -45,6 +45,14 @@ deployed, so they never block a ship verdict.
 
 `assurly_verdict` returns the status, Ship Score, and top issue, and sets `isError: true` when the verdict is **blocked** — so the agent stops instead of shipping. It requires `ASSURLY_API_KEY` (see [Connect the hosted verdict](#connect-the-hosted-verdict)).
 
+For large repos that Instant Gate cannot cover in the browser, run a local Full Gate and submit the verdict only (no source upload):
+
+```sh
+ASSURLY_API_KEY=ask_… npx assurly scan --submit --repo owner/repo
+```
+
+Agents should scan with `assurly_scan_path` locally, remediate until ready, then use the CLI submit (or `POST /api/v1/scans`) so the dashboard SoT updates — never send source to Assurly.
+
 ## How do I stop my AI agent from deploying broken code?
 
 Give it a gate it must call, and make a failed gate an error rather than a suggestion.

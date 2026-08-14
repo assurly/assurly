@@ -8,6 +8,9 @@ export interface RepoSelectionReset {
   scans: [];
   shareError: null;
   repoDetailStatus: 'loading';
+  /** Clear Instant Gate session overrides so scope cannot leak across repos. */
+  lastScanScope: null;
+  lastScanFileCount: null;
 }
 
 export function createRepoSelectionReset(): RepoSelectionReset {
@@ -17,6 +20,8 @@ export function createRepoSelectionReset(): RepoSelectionReset {
     scans: [],
     shareError: null,
     repoDetailStatus: 'loading',
+    lastScanScope: null,
+    lastScanFileCount: null,
   };
 }
 

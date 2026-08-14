@@ -5,6 +5,13 @@ const GITHUB_API_URL = 'https://api.github.com';
 const GITHUB_API_VERSION = '2026-03-10';
 const GITHUB_USER_AGENT = 'Assurly-App';
 
+/**
+ * Wall-clock ceiling for a single GitHub API call. Without it a stalled upstream
+ * connection holds a scan open indefinitely — there is no other bound on these
+ * requests. Mirrors `RUNTIME_FETCH_TIMEOUT_MS` in `runtimeScanner.ts`.
+ */
+export const GITHUB_FETCH_TIMEOUT_MS = 8_000;
+
 export interface GitHubAppConfig {
   appId: string;
   privateKey: string;
@@ -406,6 +413,7 @@ export async function fetchGitHubFile(
 ): Promise<string> {
   const response = await fetch(githubContentsApiUrl(fullName, path, ref), {
     headers: githubHeaders(token, 'application/vnd.github.raw+json'),
+    signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`GitHub file fetch failed (${response.status}).`);
   return readLimitedResponseText(response, maxBytes);
@@ -473,7 +481,11 @@ export async function readLimitedResponseText(
     if (done) break;
     total += value.byteLength;
     if (total > maxBytes) {
-      await reader.cancel();
+      // Deliberately not awaited. Next.js patches `fetch` and `tee()`s the response
+      // body, and cancelling a single branch of a tee never settles — awaiting it hung
+      // oversized scans (vercel/ai: 83s to 2.5min with no response) until the socket
+      // timed out. Releasing the reader is still worth attempting, just not blocking on.
+      void reader.cancel().catch(() => {});
       throw new Error('GitHub response exceeds the configured size limit.');
     }
     chunks.push(value);

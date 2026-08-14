@@ -111,9 +111,16 @@ describe('shipGate web adapter', () => {
 });
 
 describe('getShipGateActionHint', () => {
-  it('asks the user to select a folder or ZIP when nothing was scanned', () => {
+  it('uses repo copy by default when nothing was scanned', () => {
     const report = buildShipGateReport([], { scannedFileCount: 0, cleanFileCount: 0 });
-    expect(getShipGateActionHint(report)).toBe('Select a folder or ZIP to start');
+    expect(getShipGateActionHint(report)).toContain('No scannable application files');
+  });
+
+  it('keeps Manual Checker copy when surface is manual', () => {
+    const report = buildShipGateReport([], { scannedFileCount: 0, cleanFileCount: 0 });
+    expect(getShipGateActionHint(report, { surface: 'manual' })).toBe(
+      'Select a folder or ZIP to start',
+    );
   });
 });
 

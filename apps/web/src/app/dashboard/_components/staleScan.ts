@@ -23,6 +23,8 @@ export function isScanStale(lastCheckedAt: string | null, now: number = Date.now
  */
 export function canRescanVerdictCard(card: TargetCard): boolean {
   if (card.kind === 'repo') {
+    // Invalid names and CLI-only repos must not offer a doomed "Scan now".
+    if ((card.scanCapability ?? 'browser') !== 'browser') return false;
     return Boolean(card.repositoryId);
   }
   if (card.kind === 'url') {

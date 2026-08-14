@@ -97,6 +97,33 @@ describe('user database adapter', () => {
       );
       expect(findingsCalls).toHaveLength(0);
     });
+
+    it('persists Ship Gate source-of-truth columns on the scans insert', async () => {
+      const fetchMock = stubSupabase();
+      await getUserDbAdapter('jwt').saveScan('repo-1', 'sha', 'main', 'success', 0, 0, [], {
+        shipScore: 92,
+        verdict: 'review',
+        scannedFileCount: 12,
+        cleanFileCount: 10,
+        scanScope: { scanned: 12, skipped: 3, roots: ['apps/web'] },
+        failureReason: null,
+      });
+
+      const scanCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/rest/v1/scans'));
+      expect(scanCall).toBeDefined();
+      const body = JSON.parse((scanCall![1] as RequestInit).body as string) as Record<
+        string,
+        unknown
+      >;
+      expect(body).toMatchObject({
+        ship_score: 92,
+        verdict: 'review',
+        scanned_file_count: 12,
+        clean_file_count: 10,
+        scan_scope: { scanned: 12, skipped: 3, roots: ['apps/web'] },
+        failure_reason: null,
+      });
+    });
   });
 
   describe('empty-body inserts (Prefer: return=minimal)', () => {
@@ -161,6 +188,23 @@ describe('user database adapter', () => {
       const init = fetchMock.mock.calls[0][1] as RequestInit;
       expect(init.method).toBe('DELETE');
       // `return=minimal` here would reintroduce the silent no-op.
+      expect(JSON.stringify(init.headers)).toContain('return=representation');
+    });
+
+    it('deleteCanaryToken throws when the delete matched no row', async () => {
+      stubDeleteResponse([]);
+      await expect(getUserDbAdapter('jwt').deleteCanaryToken('canary-1')).rejects.toThrow(
+        /matched no canary_tokens row/i,
+      );
+    });
+
+    it('deleteCanaryToken resolves and asks for the deleted row back', async () => {
+      const fetchMock = stubDeleteResponse([{ id: 'canary-1' }]);
+
+      await expect(getUserDbAdapter('jwt').deleteCanaryToken('canary-1')).resolves.toBeUndefined();
+
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      expect(init.method).toBe('DELETE');
       expect(JSON.stringify(init.headers)).toContain('return=representation');
     });
 

@@ -132,8 +132,11 @@ They answer different questions, and you want all of them:
 # scan the current project
 npx assurly scan --path .
 
-# JSON output for CI / tooling
+# JSON output for CI / tooling (versioned Ship Gate report: shipScore + findings)
 npx assurly scan --path . --json
+
+# Full Gate for large repos: scan locally, submit verdict only (never uploads source)
+ASSURLY_API_KEY=ask_… npx assurly scan --path . --submit --repo owner/repo
 
 # attempt safe automatic fixes for configuration issues
 npx assurly scan --path . --fix

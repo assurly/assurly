@@ -14,7 +14,7 @@ describe('ManualChecker', () => {
   it('derives findings during render without an effect-driven state update', () => {
     const html = renderToStaticMarkup(<ManualChecker />);
     expect(html).toContain('Interactive Config Checker');
-    expect(html).toContain('Errors');
-    expect(html).toContain('Row-Level Security');
+    expect(html).toContain('NOT READY TO SHIP');
+    expect(html).toContain('Missing RLS on table: profiles');
   });
 });

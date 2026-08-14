@@ -10,10 +10,17 @@ import type {
   DbAdapter,
   Organization,
   Repository,
+  RepositoryScanCapability,
   Target,
   TargetVerdict,
 } from '../../../utils/dbAdapter';
+import { isGitHubRepositoryName } from '../../../utils/githubApp';
 import type { VerdictEvidenceShape } from '../../../utils/publicTrust';
+import {
+  clampShipScoreForCoverage,
+  indicatesIncompleteCoverage,
+  resolveDisplayedShipScore,
+} from '../../../utils/shipScoreDisplay';
 
 /**
  * One app's current safety verdict for the dashboard. This is the object the
@@ -42,6 +49,16 @@ export interface TargetCard {
   scoreDropped: boolean;
   /** Public badge token when available (for embed copy). */
   badgeToken: string | null;
+  /** Repo-only capability for Unscanned hygiene / CLI-only cards. */
+  scanCapability: RepositoryScanCapability;
+}
+
+function resolveRepoScanCapability(repo: Repository): RepositoryScanCapability {
+  if (!isGitHubRepositoryName(repo.name)) return 'invalid';
+  if (repo.scan_capability === 'cli_only' || repo.scan_capability === 'invalid') {
+    return repo.scan_capability;
+  }
+  return 'browser';
 }
 
 function scoreDroppedFromEvidence(
@@ -57,8 +74,17 @@ function cardFromTargetRow(
   target: Target,
   repo: Repository,
   latestScanId: string | null,
+  latestShipScore?: number | null,
 ): TargetCard {
   const evidence = (target.verdict_evidence ?? {}) as VerdictEvidenceShape;
+  const topIssue = evidence.topIssue ?? null;
+  const incomplete = indicatesIncompleteCoverage({
+    topIssueKey: topIssue?.key,
+    topIssueLabel: topIssue?.label,
+  });
+  const rawScore =
+    typeof latestShipScore === 'number' ? latestShipScore : target.current_ship_score;
+  const shipScore = clampShipScoreForCoverage(rawScore, incomplete);
   return {
     id: target.id,
     kind: 'repo',
@@ -67,14 +93,15 @@ function cardFromTargetRow(
     repositoryId: repo.id,
     generatorFingerprint: target.generator_fingerprint,
     verdict: target.current_verdict ?? 'unknown',
-    shipScore: target.current_ship_score,
-    topIssue: evidence.topIssue ?? null,
+    shipScore,
+    topIssue,
     lastCheckedAt: target.last_checked_at,
     latestScanId,
     ownershipVerified: target.ownership_verified,
     guardianEnabled: true,
-    scoreDropped: scoreDroppedFromEvidence(evidence, target.current_ship_score),
+    scoreDropped: scoreDroppedFromEvidence(evidence, shipScore),
     badgeToken: target.badge_token,
+    scanCapability: resolveRepoScanCapability(repo),
   };
 }
 
@@ -96,6 +123,7 @@ function cardFromUrlTarget(target: Target): TargetCard {
     guardianEnabled: target.ownership_verified,
     scoreDropped: scoreDroppedFromEvidence(evidence, target.current_ship_score),
     badgeToken: target.badge_token,
+    scanCapability: 'browser',
   };
 }
 
@@ -129,19 +157,50 @@ async function deriveCardFromLatestScan(
     guardianEnabled: true,
     scoreDropped: false,
     badgeToken: target?.badge_token ?? null,
+    scanCapability: resolveRepoScanCapability(repo),
   };
   if (!latest) return base;
 
+  // Prefer persisted Ship Gate SoT; failed empty scans stay Unscanned (unknown).
+  if (latest.verdict === 'failed' || latest.failure_reason) {
+    return {
+      ...base,
+      lastCheckedAt: latest.created_at,
+      latestScanId: latest.id,
+    };
+  }
+  if (typeof latest.ship_score === 'number' && latest.verdict) {
+    const findings = latest.verdict === 'ready' ? [] : await db.getScanFindings(latest.id);
+    const fallback = resolveVerdictFromScanFindings(findings, {
+      scannedFileCount: latest.scanned_file_count ?? undefined,
+      cleanFileCount: latest.clean_file_count ?? undefined,
+    });
+    const shipScore = resolveDisplayedShipScore(latest, findings);
+    return {
+      ...base,
+      verdict: latest.verdict,
+      shipScore,
+      topIssue: fallback.topIssue,
+      lastCheckedAt: latest.created_at,
+      latestScanId: latest.id,
+      scoreDropped: scoreDroppedFromEvidence(evidence, shipScore),
+    };
+  }
+
   const findings = await db.getScanFindings(latest.id);
-  const verdict = resolveVerdictFromScanFindings(findings);
+  const verdict = resolveVerdictFromScanFindings(findings, {
+    scannedFileCount: latest.scanned_file_count ?? undefined,
+    cleanFileCount: latest.clean_file_count ?? undefined,
+  });
+  const shipScore = resolveDisplayedShipScore(latest, findings);
   return {
     ...base,
     verdict: verdict.status,
-    shipScore: verdict.shipScore,
+    shipScore,
     topIssue: verdict.topIssue,
     lastCheckedAt: latest.created_at,
     latestScanId: latest.id,
-    scoreDropped: scoreDroppedFromEvidence(evidence, verdict.shipScore),
+    scoreDropped: scoreDroppedFromEvidence(evidence, shipScore),
   };
 }
 
@@ -223,7 +282,13 @@ export const GET = secureRoute(
         const target = targetByRepoId.get(repo.id);
         if (target && target.current_verdict) {
           const scans = await context.db.getRecentScans(repo.id);
-          return cardFromTargetRow(target, repo, scans[0]?.id ?? null);
+          const latest = scans[0];
+          return cardFromTargetRow(
+            target,
+            repo,
+            latest?.id ?? null,
+            typeof latest?.ship_score === 'number' ? latest.ship_score : null,
+          );
         }
         return deriveCardFromLatestScan(context.db, repo, target);
       }),

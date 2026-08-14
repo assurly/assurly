@@ -1,8 +1,11 @@
 import type { ReactElement } from 'react';
 
+/** Default accent class — green "url" in Ass·url·y across every surface. */
+export const ASSURLY_WORDMARK_ACCENT_CLASS = 'assurly-wordmark__accent';
+
 interface AssurlyWordmarkProps {
   className?: string;
-  /** Class on the accented middle letters (`url`). */
+  /** Class on the accented middle letters (`url`). Defaults to the brand accent. */
   accentClassName?: string;
 }
 
@@ -13,7 +16,7 @@ interface AssurlyWordmarkProps {
  */
 export function AssurlyWordmark({
   className,
-  accentClassName,
+  accentClassName = ASSURLY_WORDMARK_ACCENT_CLASS,
 }: AssurlyWordmarkProps): ReactElement {
   return (
     <span className={className} aria-hidden="true">

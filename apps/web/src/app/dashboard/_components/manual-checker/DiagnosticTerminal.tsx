@@ -11,6 +11,8 @@ import {
   type ProjectScanVerdict,
   type ScanMetricSummary,
 } from './projectWorkspace';
+import { ShipLoopPanel } from './ShipLoopPanel';
+import type { AppliedManualFix } from './shipLoopTypes';
 
 interface DiagnosticTerminalProps {
   activeTab: ManualCheckerTab;
@@ -32,6 +34,11 @@ interface DiagnosticTerminalProps {
   isApplyingAllFixes?: boolean;
   onApplyFix: (finding: WebFinding) => void;
   onFixAll?: () => void;
+  /** Ship Loop journal — applied local autofixes. */
+  appliedFixes?: readonly AppliedManualFix[];
+  /** Human label for Ship Receipt (project folder name or snippet). */
+  shipLoopProjectName?: string;
+  onUndoLastFix?: () => void;
 }
 
 function getOverallVerdict(errorCount: number, warningCount: number): ProjectScanVerdict {
@@ -116,8 +123,8 @@ function IssueGroupList({ groups }: { groups: IssueGroupSummary[] }): ReactEleme
             <div className="issue-group-copy">
               <span className="issue-group-label">{group.label}</span>
               <span className="issue-group-meta">
-                {group.affectedFileCount} file{group.affectedFileCount === 1 ? '' : 's'} ·{' '}
-                {group.occurrenceCount} finding{group.occurrenceCount === 1 ? '' : 's'}
+                {formatCount(group.affectedFileCount, 'file')} ·{' '}
+                {formatCount(group.occurrenceCount, 'finding')}
               </span>
             </div>
           </li>
@@ -201,6 +208,9 @@ export function DiagnosticTerminal({
   isApplyingAllFixes = false,
   onApplyFix,
   onFixAll,
+  appliedFixes = [],
+  shipLoopProjectName = 'snippet scan',
+  onUndoLastFix,
 }: DiagnosticTerminalProps): ReactElement {
   const isProjectIdle = activeTab === 'project' && !projectScan;
   const isProjectMode = activeTab === 'project' && !!projectScan;
@@ -300,11 +310,28 @@ export function DiagnosticTerminal({
           report={shipGateReport}
           actionHint={
             isProjectMode
-              ? `${projectScan?.metrics.scannedFileCount ?? 0} files scanned locally · ${getScanActionLabel(verdict)}`
-              : `${scannedFileLabels.length} file${scannedFileLabels.length === 1 ? '' : 's'} analyzed · ${getScanActionLabel(verdict)}`
+              ? `${formatCount(projectScan?.metrics.scannedFileCount ?? 0, 'file')} scanned locally · ${getScanActionLabel(verdict)}`
+              : `${formatCount(scannedFileLabels.length, 'file')} analyzed · ${getScanActionLabel(verdict)}`
           }
         />
       )}
+
+      {!isProjectIdle ? (
+        <ShipLoopPanel
+          visible
+          appliedFixes={appliedFixes}
+          remainingFindings={results.findings}
+          shipGateStatus={shipGateReport.status}
+          shipScore={shipGateReport.shipScore}
+          blockerCount={shipGateReport.blockers.length}
+          warningCount={shipGateReport.warnings.length + shipGateReport.reviews.length}
+          scannedFileCount={shipGateReport.scannedFileCount}
+          cleanFileCount={shipGateReport.cleanFileCount}
+          projectName={shipLoopProjectName}
+          mode={isProjectMode ? 'project' : 'snippet'}
+          onUndoLast={onUndoLastFix ?? (() => undefined)}
+        />
+      ) : null}
 
       <div className="terminal-output diagnostic-terminal-body">
         <div className="terminal-header">
@@ -340,9 +367,9 @@ export function DiagnosticTerminal({
                 aria-label="Bulk auto-fix actions"
               >
                 <p className="project-bulk-fix-bar__copy">
-                  Assurly can auto-fix {fixableCount} local issue
-                  {fixableCount === 1 ? '' : 's'} in your workspace (env docs, RLS SQL, webhook/RSC
-                  patterns). Secrets and manual review items still need human action.
+                  Assurly can auto-fix {formatCount(fixableCount, 'local issue')} in your workspace
+                  (env docs, RLS SQL, webhook/RSC patterns). Secrets and manual review items still
+                  need human action.
                 </p>
                 <button
                   type="button"
@@ -398,8 +425,8 @@ export function DiagnosticTerminal({
                   ✓
                 </span>
                 <span>
-                  {projectScan.metrics.cleanFileCount} additional file
-                  {projectScan.metrics.cleanFileCount === 1 ? '' : 's'} passed with no issues.
+                  {formatCount(projectScan.metrics.cleanFileCount, 'additional file')} passed with
+                  no issues.
                 </span>
               </div>
             ) : null}

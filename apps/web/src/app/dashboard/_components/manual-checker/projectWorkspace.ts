@@ -1,4 +1,7 @@
 import {
+  collectTestOnlyEnvKeys,
+  isScannableFile,
+  proposeEnvExamplePath,
   scanColdStart,
   scanEnvVariables,
   scanRscDataLeaks,
@@ -41,12 +44,13 @@ export interface ProjectScanOverview {
 }
 
 export function scanProject(files: ProjectFile[]): ScanResult {
+  const scannable = files.filter((file) => isScannableFile(file.path));
   const findings: WebFinding[] = [];
-  for (const file of files.filter((candidate) => candidate.path.endsWith('.sql'))) {
+  for (const file of scannable.filter((candidate) => candidate.path.endsWith('.sql'))) {
     findings.push(...scanSqlMigration(file.content, file.path).findings);
   }
 
-  const codeFiles = files.filter((file) => /\.(?:[jt]sx?)$/.test(file.path));
+  const codeFiles = scannable.filter((file) => /\.(?:[jt]sx?)$/.test(file.path));
   for (const file of codeFiles) {
     const searchable = `${file.path}\n${file.content}`.toLowerCase();
     if (searchable.includes('stripe') || searchable.includes('webhook')) {
@@ -56,17 +60,21 @@ export function scanProject(files: ProjectFile[]): ScanResult {
     findings.push(...scanColdStart(file.content, file.path).findings);
   }
 
-  const envExample = files.find((file) => /(?:^|\/)\.env\.example$/.test(file.path));
-  for (const file of files.filter((candidate) => candidate.path.includes('.env'))) {
+  const allExamples = scannable
+    .filter((file) => /(?:^|\/)\.env\.example$/.test(file.path))
+    .map((file) => ({ file: file.path, content: file.content }));
+  const codeSources = codeFiles.map((file) => ({ file: file.path, content: file.content }));
+  const testOnlyKeys = collectTestOnlyEnvKeys(codeSources);
+
+  for (const file of scannable.filter((candidate) => candidate.path.includes('.env'))) {
     findings.push(...scanEnvVariables(file.content, '', file.path, 'code.ts').findings);
   }
   for (const file of codeFiles) {
-    const result = scanEnvVariables(
-      envExample?.content ?? '',
-      file.content,
-      envExample?.path ?? '.env.example',
-      file.path,
-    );
+    const proposedExample = proposeEnvExamplePath(file.path);
+    const result = scanEnvVariables('', file.content, proposedExample, file.path, {
+      allExamples,
+      testOnlyKeys,
+    });
     findings.push(...result.findings.filter((finding) => finding.file === file.path));
   }
 

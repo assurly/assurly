@@ -17,6 +17,7 @@ function card(partial: Partial<TargetCard> & Pick<TargetCard, 'id' | 'kind'>): T
     guardianEnabled: partial.guardianEnabled ?? false,
     scoreDropped: partial.scoreDropped ?? false,
     badgeToken: partial.badgeToken ?? null,
+    scanCapability: partial.scanCapability ?? 'browser',
     ...partial,
   };
 }

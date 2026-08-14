@@ -47,7 +47,7 @@ export default function TrustPage() {
         </Link>
         <div className="logo" role="img" aria-label="Assurly">
           <AssurlyMark className="site-logo-mark" />
-          <AssurlyWordmark />
+          <AssurlyWordmark accentClassName="site-logo-accent" />
         </div>
       </header>
 

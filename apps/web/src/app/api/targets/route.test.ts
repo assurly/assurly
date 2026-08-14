@@ -96,6 +96,51 @@ describe('GET /api/targets', () => {
     expect(db.getScanFindings).not.toHaveBeenCalled();
   });
 
+  it('clamps incomplete target projections and prefers latest scan ship_score', async () => {
+    db.getRepositories.mockResolvedValue([
+      { id: 'repo-2', organization_id: 'org-1', name: 'vercel/eve' },
+    ]);
+    db.getTargets.mockResolvedValue([
+      {
+        id: 'target-2',
+        organization_id: 'org-1',
+        repository_id: 'repo-2',
+        kind: 'repo',
+        identifier: 'vercel/eve',
+        display_name: 'vercel/eve',
+        generator_fingerprint: null,
+        ownership_verified: false,
+        current_verdict: 'review',
+        current_ship_score: 92,
+        verdict_evidence: {
+          topIssue: {
+            key: 'rule:scan-completeness',
+            label: 'Scan is incomplete',
+            severity: 'warning',
+          },
+        },
+        last_checked_at: '2026-07-31T10:00:00.000Z',
+        badge_token: null,
+      },
+    ]);
+    db.getRecentScans.mockResolvedValue([
+      {
+        id: 'scan-eve',
+        created_at: '2026-07-31T10:00:00.000Z',
+        ship_score: 79,
+        verdict: 'review',
+      },
+    ]);
+
+    const { targets } = await callGet();
+    expect(targets[0]).toMatchObject({
+      id: 'target-2',
+      verdict: 'review',
+      shipScore: 79,
+      latestScanId: 'scan-eve',
+    });
+  });
+
   it('lists guarded URL targets including pending ownership verification', async () => {
     db.getRepositories.mockResolvedValue([]);
     db.getTargets.mockResolvedValue([

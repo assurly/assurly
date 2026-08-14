@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getFindingGroupKey = getFindingGroupKey;
+exports.aggregateGroupSuggestion = aggregateGroupSuggestion;
 exports.resolveGroupAction = resolveGroupAction;
 exports.buildIssueGroups = buildIssueGroups;
 exports.buildShipGateReport = buildShipGateReport;
@@ -99,6 +100,20 @@ function extractCommandFromSuggestion(suggestion) {
     if (backtick?.[1])
         return backtick[1];
     return undefined;
+}
+/**
+ * Build the group-level remediation hint. Env groups may span multiple packages
+ * in a monorepo — include every unique suggestion so Copy fix is complete.
+ */
+function aggregateGroupSuggestion(key, suggestions) {
+    const unique = [...new Set(suggestions.map((item) => item.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    if (key.startsWith('env:')) {
+        if (unique.length === 0) {
+            return `Add ${key.slice(4)}= to .env.example.`;
+        }
+        return unique.join('\n');
+    }
+    return unique[0];
 }
 function resolveGroupAction(key, suggestion, ruleId) {
     if (key === 'rule:github-actions-integration' ||
@@ -213,8 +228,8 @@ function buildIssueGroups(findings) {
             existing.files.add(fileKey);
             if (finding.severity === 'error')
                 existing.severity = 'error';
-            if (!existing.sampleSuggestion && finding.suggestion) {
-                existing.sampleSuggestion = finding.suggestion;
+            if (finding.suggestion) {
+                existing.suggestions.push(finding.suggestion);
             }
         }
         else {
@@ -223,7 +238,7 @@ function buildIssueGroups(findings) {
                 files: new Set([fileKey]),
                 count: 1,
                 sampleMessage: finding.message || key,
-                sampleSuggestion: finding.suggestion,
+                suggestions: finding.suggestion ? [finding.suggestion] : [],
                 ruleId: finding.ruleId,
             });
         }
@@ -238,7 +253,7 @@ function buildIssueGroups(findings) {
             ? value.files.size - (value.files.size > 0 ? 1 : 0) || 1
             : value.files.size,
         sampleMessage: value.sampleMessage,
-        action: resolveGroupAction(key, value.sampleSuggestion, value.ruleId),
+        action: resolveGroupAction(key, aggregateGroupSuggestion(key, value.suggestions), value.ruleId),
     }))
         .sort((a, b) => {
         if (a.severity !== b.severity)
@@ -260,7 +275,16 @@ function buildShipGateReport(findings, options = {}) {
     const reviews = buildIssueGroups(reviewFindings);
     const warnings = buildIssueGroups(warningFindings);
     const { scannedFileCount, cleanFileCount } = resolveFileCounts(findings, options);
-    const shipScore = Math.max(0, Math.min(100, 100 -
+    const hasIncompleteCoverage = findings.some((finding) => finding.ruleId === 'scan-completeness');
+    /** Incomplete browser scans must never look "production ready". */
+    const INCOMPLETE_SCORE_CAP = 79;
+    /**
+     * Instant Gate partial samples can accumulate many warning groups and hit 0.
+     * With zero blockers that reads as a dumpster-fire failure, which is not
+     * defensible — keep incomplete+unblocked scores in the review band.
+     */
+    const INCOMPLETE_NO_BLOCKER_FLOOR = 40;
+    let shipScore = Math.max(0, Math.min(100, 100 -
         blockers.length * BLOCKER_PENALTY -
         reviews.length * WARNING_PENALTY -
         warnings.length * WARNING_PENALTY));
@@ -272,9 +296,9 @@ function buildShipGateReport(findings, options = {}) {
         headline = 'NOT READY TO SHIP';
         statusEmoji = '🚫';
     }
-    else if (warnings.length > 0 || reviews.length > 0) {
+    else if (warnings.length > 0 || reviews.length > 0 || hasIncompleteCoverage) {
         status = 'review';
-        headline = 'REVIEW RECOMMENDED';
+        headline = hasIncompleteCoverage ? 'INCOMPLETE SCAN — REVIEW' : 'REVIEW RECOMMENDED';
         statusEmoji = '⚠️';
     }
     else if (options.scannedFileCount === 0) {
@@ -288,6 +312,12 @@ function buildShipGateReport(findings, options = {}) {
         status = 'ready';
         headline = 'READY TO SHIP';
         statusEmoji = '✅';
+    }
+    if (hasIncompleteCoverage) {
+        shipScore = Math.min(shipScore, INCOMPLETE_SCORE_CAP);
+        if (blockers.length === 0) {
+            shipScore = Math.max(shipScore, INCOMPLETE_NO_BLOCKER_FLOOR);
+        }
     }
     const resolvedShipScore = options.scannedFileCount === 0 && status !== 'blocked' ? 0 : shipScore;
     return {

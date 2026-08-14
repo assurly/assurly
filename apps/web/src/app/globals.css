@@ -302,7 +302,8 @@ header .logo {
   flex: none;
 }
 
-.site-logo-accent {
+.site-logo-accent,
+.assurly-wordmark__accent {
   color: var(--color-accent, var(--accent-color));
 }
 
@@ -356,8 +357,7 @@ header nav a {
   color: var(--text-secondary);
 }
 
-/* Short labels (e.g. FAQ) still need a 44×44 touch target on the desktop bar.
-   Scoped to the landing primary nav so product-page headers keep their own rules. */
+/* Short labels (e.g. FAQ) still need a 44×44 touch target on the desktop bar. */
 #primary-navigation a {
   min-width: var(--touch-target);
 }
@@ -657,7 +657,9 @@ header.site-header-menu-open {
   transition: var(--transition-smooth);
   outline: none;
   overflow-x: auto;
-  word-break: break-all;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .code-textarea:focus {
@@ -3392,77 +3394,11 @@ footer {
   margin-top: auto;
 }
 
-.mcp-header {
+/* Same sticky chrome as the landing page (`HomeHeader`); stretch past
+   `align-items: center` on `.mcp-container`. */
+.mcp-container > header {
+  align-self: stretch;
   width: 100%;
-  border-bottom: 1px solid var(--color-border);
-  background-color: var(--color-canvas);
-  /* Override the global sticky `header` chrome so this product page owns its
-     surface without borrowing the landing-page translucent bar. */
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  position: sticky;
-  top: 0;
-  z-index: 10002;
-  padding: var(--space-4) 0;
-}
-
-.mcp-header-inner {
-  width: 100%;
-  max-width: var(--content-width);
-  margin: 0 auto;
-  padding: 0 var(--space-6);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-4);
-  min-width: 0;
-}
-
-.mcp-header-logo {
-  flex: none;
-}
-
-.mcp-header-nav {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
-  gap: var(--space-2) var(--space-5);
-  min-width: 0;
-}
-
-.mcp-header-nav a {
-  display: inline-flex;
-  align-items: center;
-  /* Short labels (e.g. FAQ) still need a 44×44 touch target. */
-  min-width: var(--touch-target);
-  min-height: var(--touch-target);
-  padding-inline: var(--space-1);
-  font-size: 0.95rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-/* Text links — accent colour, not a filled chip. Current page stays
-   --text-primary so hover and aria-current never look the same. */
-@media (hover: hover) {
-  .mcp-header-nav a:hover:not([aria-current='page']) {
-    color: var(--color-accent);
-  }
-}
-
-.mcp-header-nav a:focus-visible:not([aria-current='page']) {
-  color: var(--color-accent);
-}
-
-.mcp-header-nav a[aria-current='page'] {
-  color: var(--text-primary);
-}
-
-.mcp-header-nav a:focus-visible {
-  outline: 3px solid var(--color-focus, var(--accent-color));
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
 }
 
 .mcp-content {
@@ -3837,52 +3773,6 @@ footer {
   }
 }
 
-@media (max-width: 768px) {
-  .mcp-header-inner {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-2);
-  }
-
-  /*
-   * The landing-page mobile drawer targets bare `header nav` and hides it until
-   * `.open`. This product page has no hamburger — keep its nav in flow.
-   */
-  .mcp-header nav,
-  .mcp-header-nav {
-    position: static;
-    top: auto;
-    left: auto;
-    width: auto;
-    min-height: 0;
-    height: auto;
-    z-index: auto;
-    background: none;
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    align-items: center;
-    padding: 0;
-    gap: var(--space-1) var(--space-4);
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transform: none;
-    overflow: visible;
-    transition: none;
-  }
-
-  .mcp-header nav a,
-  .mcp-header-nav a {
-    width: auto;
-    font-size: 0.95rem;
-    font-weight: 500;
-    padding-block: var(--space-2);
-    padding-inline: var(--space-1);
-    border-bottom: none;
-  }
-}
-
 @media (max-width: 576px) {
   .mcp-table {
     font-size: 0.86rem;
@@ -3900,8 +3790,7 @@ footer {
 }
 
 @media (max-width: 480px) {
-  .mcp-content,
-  .mcp-header-inner {
+  .mcp-content {
     padding-inline: var(--space-4);
   }
 
@@ -3930,25 +3819,6 @@ footer {
 
   .mcp-hero h1 {
     font-size: 1.75rem;
-  }
-
-  .mcp-header {
-    padding: var(--space-3) 0;
-  }
-
-  .mcp-header nav,
-  .mcp-header-nav {
-    flex-wrap: nowrap;
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-  }
-
-  .mcp-header nav a,
-  .mcp-header-nav a {
-    flex: none;
-    white-space: nowrap;
   }
 
   .mcp-hero-lead {
@@ -5280,11 +5150,26 @@ body:has(.cookie-notice) {
   border-radius: 8px;
 }
 
+/* Too-large Instant Gate: remediation is the Full Gate CLI, not a retry. */
+.dashboard-scan-error--cli {
+  background-color: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+}
+
+.dashboard-scan-error--cli .dashboard-scan-error__title {
+  color: var(--color-text);
+}
+
 .dashboard-scan-error__content {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+}
+
+.dashboard-scan-error__body {
+  min-width: 0;
+  flex: 1;
 }
 
 .dashboard-scan-error__title {
@@ -5299,6 +5184,39 @@ body:has(.cookie-notice) {
   font-size: 0.9rem;
   color: var(--color-text);
   line-height: 1.5;
+}
+
+.dashboard-scan-error__cli {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.dashboard-scan-error__code {
+  margin: 0;
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg-elevated) 88%, #000 12%);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.dashboard-scan-error__code code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-text);
+}
+
+.dashboard-scan-error__cli .dashboard-scan-action-btn {
+  align-self: center;
+  flex-shrink: 0;
 }
 
 .dashboard-scan-error__hint {
@@ -5418,6 +5336,25 @@ body:has(.cookie-notice) {
 .dashboard-empty-state__copy {
   margin: 0;
   font-size: 0.9rem;
+}
+
+.dashboard-empty-state__code {
+  margin: 12px 0 16px;
+  padding: 12px 14px;
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg-elevated) 88%, #000 12%);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.dashboard-empty-state__code code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .dashboard-empty-state--inline .dashboard-empty-state__copy {
@@ -7453,6 +7390,118 @@ button.dashboard-repo-selector-item {
   cursor: not-allowed;
 }
 
+.ship-loop-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0 4px;
+}
+
+.ship-loop-section {
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+.ship-loop-section--actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ship-loop-section__title {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.ship-loop-section__intro {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.ship-loop-action-copy {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.ship-loop-fix-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ship-loop-fix-card {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
+  background: color-mix(in srgb, var(--color-canvas) 65%, var(--color-surface));
+}
+
+.ship-loop-fix-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ship-loop-fix-card__label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.ship-loop-undo-btn {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.ship-loop-undo-btn:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-text-secondary);
+}
+
+.ship-loop-fix-card__before,
+.ship-loop-fix-card__after {
+  margin: 0 0 6px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
+.ship-loop-fix-card__after {
+  margin-bottom: 0;
+  color: var(--color-text-primary);
+}
+
+.ship-loop-fix-card__kicker {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
 .project-workspace-toolbar {
   display: flex;
   align-items: center;
@@ -7484,10 +7533,90 @@ button.dashboard-repo-selector-item {
 }
 
 .project-workspace {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+
+.project-load-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 0 8px;
+  text-align: center;
+}
+
+.project-load-status__spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  color: var(--color-text-muted);
+}
+
+.project-load-status__title {
+  font-size: 1.1rem;
+  color: var(--color-text);
+  margin: 0;
+  font-weight: 700;
+}
+
+.project-load-status__label {
+  margin: 0;
+  font-size: 0.85rem;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  color: var(--color-text-muted);
+  word-break: break-word;
+}
+
+.project-load-status__body {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  max-width: 26rem;
+}
+
+.project-workspace-load-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 16px 24px;
+  background: color-mix(in srgb, var(--color-canvas) 82%, transparent);
+  pointer-events: all;
+}
+
+.project-load-status--overlay {
+  max-width: 26rem;
+}
+
+@media (max-width: 640px) {
+  .project-workspace-load-overlay {
+    padding: 16px;
+  }
+
+  .project-load-status__body {
+    max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-load-status .dashboard-inline-spinner {
+    animation: none;
+  }
 }
 
 .project-file-count {
@@ -8427,6 +8556,8 @@ button.dashboard-repo-selector-item {
   color: var(--color-text-muted);
   font-size: 0.82rem;
   line-height: 1.45;
+  /* Multi-package env remediation lists use newlines in the aggregated hint. */
+  white-space: pre-line;
 }
 
 /* Suggestion text + its copy button: side by side on wide screens, the button
@@ -8505,6 +8636,10 @@ button.dashboard-repo-selector-item {
   font-size: 0.88rem;
   color: var(--color-accent);
   font-weight: 600;
+  /* Keep "files" as one token — global overflow-wrap:anywhere was splitting "file s". */
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: nowrap;
 }
 
 .ship-gate-hint {

@@ -18,6 +18,11 @@ describe('isScannableFile', () => {
     expect(isScannableFile('node_modules/react/index.js')).toBe(false);
     expect(isScannableFile('src/__tests__/helpers.ts')).toBe(false);
     expect(isScannableFile('data/fixtures/seed.sql')).toBe(false);
+    expect(isScannableFile('coverage/lcov-report/index.html')).toBe(false);
+    expect(isScannableFile('apps/web/src/testing/e2eDashboardFixture.ts')).toBe(false);
+    expect(isScannableFile('src/__mocks__/stripe.ts')).toBe(false);
+    expect(isScannableFile('playwright.config.ts')).toBe(false);
+    expect(isScannableFile('apps/web/playwright.config.ts')).toBe(false);
   });
 
   // A fixture directory holds code written to fail every rule. Scanning it

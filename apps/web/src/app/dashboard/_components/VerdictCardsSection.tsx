@@ -24,6 +24,8 @@ export interface VerdictCardsSectionProps {
   onOpenRepo: (repositoryId: string) => void;
   /** Remove a guarded URL app from Your apps. */
   onRemoveUrl?: (targetId: string) => void | Promise<void>;
+  /** Remove an invalid / broken repository row from Your apps. */
+  onRemoveRepo?: (repositoryId: string) => void | Promise<void>;
   /** Refresh a stale / never-scanned app from the card CTA. */
   onRescan?: (card: TargetCard) => void | Promise<void>;
   /** `null` while the first load is in flight; otherwise the current cards. */
@@ -31,6 +33,8 @@ export interface VerdictCardsSectionProps {
   error: string | null;
   /** Target id currently being removed (disables its Remove control). */
   removingTargetId?: string | null;
+  /** Repository id currently being removed. */
+  removingRepositoryId?: string | null;
   /** Target / repo key currently being rescanned (shows Scanning… on that card). */
   rescanningTargetId?: string | null;
   /** Disable every Rescan CTA while a scan/reprobe is already running. */
@@ -66,10 +70,12 @@ const SORT_OPTIONS: { value: AppsSort; label: string }[] = [
 export function VerdictCardsSection({
   onOpenRepo,
   onRemoveUrl,
+  onRemoveRepo,
   onRescan,
   cards = null,
   error = null,
   removingTargetId = null,
+  removingRepositoryId = null,
   rescanningTargetId = null,
   rescanBlocked = false,
 }: VerdictCardsSectionProps): ReactElement {
@@ -116,10 +122,23 @@ export function VerdictCardsSection({
   };
 
   const confirmRemove = (): void => {
-    if (!confirmCard || !onRemoveUrl) return;
-    const targetId = confirmCard.id;
-    setConfirmCard(null);
-    void onRemoveUrl(targetId);
+    if (!confirmCard) return;
+    if (confirmCard.kind === 'url' && onRemoveUrl) {
+      const targetId = confirmCard.id;
+      setConfirmCard(null);
+      void onRemoveUrl(targetId);
+      return;
+    }
+    if (
+      confirmCard.kind === 'repo' &&
+      confirmCard.repositoryId &&
+      onRemoveRepo &&
+      confirmCard.scanCapability === 'invalid'
+    ) {
+      const repositoryId = confirmCard.repositoryId;
+      setConfirmCard(null);
+      void onRemoveRepo(repositoryId);
+    }
   };
 
   const onSortChange = (event: ChangeEvent<HTMLSelectElement>): void => {
@@ -328,11 +347,19 @@ export function VerdictCardsSection({
               rescanning={rescanningTargetId === rescanBusyKey(card)}
               rescanBlocked={rescanBlocked}
               onRemove={
-                card.kind === 'url' && onRemoveUrl
+                (card.kind === 'url' && onRemoveUrl) ||
+                (card.kind === 'repo' &&
+                  card.scanCapability === 'invalid' &&
+                  card.repositoryId &&
+                  onRemoveRepo)
                   ? (trigger) => openRemoveConfirm(card, trigger)
                   : undefined
               }
-              removing={removingTargetId === card.id}
+              removing={
+                card.kind === 'url'
+                  ? removingTargetId === card.id
+                  : removingRepositoryId === card.repositoryId
+              }
             />
           ))}
         </div>
@@ -354,11 +381,21 @@ export function VerdictCardsSection({
             onClick={(event) => event.stopPropagation()}
           >
             <h4 id="remove-url-dialog-title" className="scan-delete-dialog__title">
-              Remove guarded URL?
+              {confirmCard.kind === 'repo' ? 'Remove repository?' : 'Remove guarded URL?'}
             </h4>
             <p id="remove-url-dialog-desc" className="scan-delete-dialog__desc">
-              Remove <strong>{confirmCard.displayName}</strong> from Your apps? Continuous Guardian
-              will stop watching this URL. You can guard it again later from a URL scan.
+              {confirmCard.kind === 'repo' ? (
+                <>
+                  Remove <strong>{confirmCard.displayName}</strong> from Your apps? Reconnect it
+                  later with a valid <code>owner/repo</code> name.
+                </>
+              ) : (
+                <>
+                  Remove <strong>{confirmCard.displayName}</strong> from Your apps? Continuous
+                  Guardian will stop watching this URL. You can guard it again later from a URL
+                  scan.
+                </>
+              )}
             </p>
             <div className="scan-delete-dialog__actions">
               <button
@@ -369,7 +406,7 @@ export function VerdictCardsSection({
                 Cancel
               </button>
               <button type="button" className="scan-delete-dialog__confirm" onClick={confirmRemove}>
-                Remove URL
+                {confirmCard.kind === 'repo' ? 'Remove repository' : 'Remove URL'}
               </button>
             </div>
           </div>

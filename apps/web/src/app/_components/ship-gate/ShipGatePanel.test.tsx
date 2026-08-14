@@ -103,6 +103,40 @@ describe('ShipGatePanel warning label layout', () => {
     expect(meta?.textContent).toBe('→ 1 file');
     expect(label!.compareDocumentPosition(meta!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it('shows every unique monorepo .env.example target in the env group hint', () => {
+    const report = buildShipGateReport(
+      [
+        {
+          ruleId: 'undocumented-env',
+          severity: 'warning',
+          confidence: 'high',
+          file: 'packages/cli/src/index.ts',
+          line: 46,
+          message:
+            "Environment variable 'process.env.ASSURLY_API_KEY' is used but not documented in 'packages/cli/.env.example'.",
+          suggestion: 'Add ASSURLY_API_KEY= to packages/cli/.env.example.',
+        },
+        {
+          ruleId: 'undocumented-env',
+          severity: 'warning',
+          confidence: 'high',
+          file: 'packages/mcp-server/src/index.ts',
+          line: 119,
+          message:
+            "Environment variable 'process.env.ASSURLY_API_KEY' is used but not documented in 'packages/mcp-server/.env.example'.",
+          suggestion: 'Add ASSURLY_API_KEY= to packages/mcp-server/.env.example.',
+        },
+      ],
+      { scannedFileCount: 20, cleanFileCount: 18 },
+    );
+
+    render(<ShipGatePanel report={report} />);
+
+    const hint = screen.getByText(/packages\/cli\/\.env\.example/);
+    expect(hint.textContent).toContain('packages/cli/.env.example');
+    expect(hint.textContent).toContain('packages/mcp-server/.env.example');
+  });
 });
 
 describe('ShipGatePanel empty scan', () => {
@@ -113,7 +147,42 @@ describe('ShipGatePanel empty scan', () => {
     expect(screen.getByText('NO FILES SCANNED')).toBeTruthy();
     expect(screen.queryByText('READY TO SHIP')).toBeNull();
     expect(screen.queryByText(/All scanned files passed/i)).toBeNull();
-    expect(screen.getByText('Select a folder or ZIP to start')).toBeTruthy();
+    expect(screen.getByText(/No scannable application files/i)).toBeTruthy();
+  });
+});
+
+describe('ShipGatePanel clean footer copy', () => {
+  it('uses neutral partial-clean copy when warnings remain', () => {
+    const report = buildShipGateReport(
+      [
+        {
+          ruleId: 'undocumented-env',
+          severity: 'warning',
+          confidence: 'high',
+          file: 'code.ts',
+          line: 5,
+          message:
+            "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
+          suggestion: 'Add STRIPE_SECRET_KEY= to .env.example.',
+        },
+      ],
+      { scannedFileCount: 2, cleanFileCount: 1 },
+    );
+
+    render(<ShipGatePanel report={report} />);
+
+    expect(screen.getByText('REVIEW RECOMMENDED')).toBeTruthy();
+    expect(screen.getByText(/1 file of 2 had no issues/i)).toBeTruthy();
+    expect(screen.queryByText(/^1 file clean$/i)).toBeNull();
+    expect(screen.queryByText(/✓/)).toBeNull();
+  });
+
+  it('keeps the checkmark clean summary only when status is ready', () => {
+    const report = buildShipGateReport([], { scannedFileCount: 2, cleanFileCount: 2 });
+    render(<ShipGatePanel report={report} />);
+
+    expect(screen.getByText('READY TO SHIP')).toBeTruthy();
+    expect(screen.getByText(/2 files clean/i)).toBeTruthy();
   });
 });
 

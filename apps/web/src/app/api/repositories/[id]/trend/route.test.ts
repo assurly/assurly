@@ -26,26 +26,23 @@ describe('GET /api/repositories/[id]/trend', () => {
       db,
     });
     db.getRecentScans.mockResolvedValue([
-      { id: 'scan-2', created_at: '2026-01-02T00:00:00.000Z' },
-      { id: 'scan-1', created_at: '2026-01-01T00:00:00.000Z' },
+      {
+        id: 'scan-2',
+        created_at: '2026-01-02T00:00:00.000Z',
+        ship_score: 72,
+        scanned_file_count: 12,
+      },
+      {
+        id: 'scan-1',
+        created_at: '2026-01-01T00:00:00.000Z',
+        ship_score: 96,
+        scanned_file_count: 10,
+      },
     ]);
-    db.getScanFindings
-      .mockResolvedValueOnce([
-        {
-          id: 'finding-2',
-          scan_id: 'scan-2',
-          rule_id: 'env-leak',
-          severity: 'warning',
-          file_path: 'app.ts',
-          line_number: 3,
-          message: 'Warning',
-          created_at: '2026-01-02T00:00:00.000Z',
-        },
-      ])
-      .mockResolvedValueOnce([]);
+    db.getScanFindings.mockResolvedValue([]);
   });
 
-  it('returns a chronological Ship Score series', async () => {
+  it('returns a chronological Ship Score series from persisted scores', async () => {
     const response = await GET(
       new Request('http://localhost/api/repositories/00000000-0000-4000-8000-000000000001/trend'),
       { params: Promise.resolve({ id: '00000000-0000-4000-8000-000000000001' }) },
@@ -58,7 +55,67 @@ describe('GET /api/repositories/[id]/trend', () => {
     expect(payload.points).toHaveLength(2);
     expect(payload.points[0].date).toBe('2026-01-01T00:00:00.000Z');
     expect(payload.points[1].date).toBe('2026-01-02T00:00:00.000Z');
-    expect(payload.points[0].shipScore).toBe(100);
-    expect(payload.points[1].shipScore).toBeLessThan(100);
+    expect(payload.points[0].shipScore).toBe(96);
+    expect(payload.points[1].shipScore).toBe(72);
+    // Scores ≤ incomplete cap skip findings; 96 needs a completeness check.
+    expect(db.getScanFindings).toHaveBeenCalledTimes(1);
+    expect(db.getScanFindings).toHaveBeenCalledWith('scan-1');
+  });
+
+  it('clamps dishonest incomplete scores above the Instant Gate cap', async () => {
+    db.getRecentScans.mockResolvedValue([
+      {
+        id: 'scan-incomplete',
+        created_at: '2026-01-04T00:00:00.000Z',
+        ship_score: 92,
+        scanned_file_count: 250,
+      },
+    ]);
+    db.getScanFindings.mockResolvedValue([
+      {
+        id: 'f1',
+        scan_id: 'scan-incomplete',
+        rule_id: 'scan-completeness',
+        severity: 'warning',
+        confidence: 'high',
+        file_path: 'unknown',
+        line_number: 1,
+        message: 'incomplete',
+        suggestion: '',
+        created_at: '2026-01-04T00:00:00.000Z',
+      },
+    ]);
+
+    const response = await GET(
+      new Request('http://localhost/api/repositories/00000000-0000-4000-8000-000000000001/trend'),
+      { params: Promise.resolve({ id: '00000000-0000-4000-8000-000000000001' }) },
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      points: Array<{ date: string; shipScore: number }>;
+    };
+    expect(payload.points[0]?.shipScore).toBe(79);
+  });
+
+  it('falls back to recomputation for legacy rows without ship_score', async () => {
+    db.getRecentScans.mockResolvedValue([
+      { id: 'scan-legacy', created_at: '2026-01-03T00:00:00.000Z', scanned_file_count: 0 },
+    ]);
+    db.getScanFindings.mockResolvedValue([]);
+
+    const response = await GET(
+      new Request('http://localhost/api/repositories/00000000-0000-4000-8000-000000000001/trend'),
+      { params: Promise.resolve({ id: '00000000-0000-4000-8000-000000000001' }) },
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      points: Array<{ date: string; shipScore: number }>;
+    };
+    expect(payload.points).toHaveLength(1);
+    // Empty eligible-file scans must not invent a high score via 0→1 coercion.
+    expect(payload.points[0].shipScore).toBe(0);
+    expect(db.getScanFindings).toHaveBeenCalledWith('scan-legacy');
   });
 });

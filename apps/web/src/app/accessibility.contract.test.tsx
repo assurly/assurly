@@ -1,7 +1,22 @@
 import { readFileSync } from 'node:fs';
+import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import HomeClient from './_components/home/HomeClient';
+
+vi.mock('next/headers', () => ({
+  headers: async () => ({
+    get: (name: string): string | null => {
+      if (name === 'host') return 'localhost:3000';
+      if (name === 'cookie') return '';
+      return null;
+    },
+  }),
+}));
+
+vi.mock('./utils/auth', () => ({
+  getSessionUser: vi.fn(async () => null),
+}));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
@@ -12,6 +27,12 @@ import ManualChecker from './dashboard/_components/manual-checker/ManualChecker'
 import McpPage from './mcp/page';
 import PrivacyPage from './privacy/page';
 import TermsPage from './terms/page';
+
+async function renderMcpPageHtml(): Promise<string> {
+  process.env.APP_URL = process.env.APP_URL?.trim() || 'http://localhost:3000';
+  const element = (await McpPage()) as ReactElement;
+  return renderToStaticMarkup(element);
+}
 
 const globalsCss = readFileSync(new URL('./globals.css', import.meta.url), 'utf8');
 const tokensCss = readFileSync(new URL('./design-tokens.css', import.meta.url), 'utf8');
@@ -66,9 +87,12 @@ describe('accessibility and responsive UI contracts', () => {
     expect(html).toContain('role="tabpanel"');
   });
 
-  it('gives MCP page copy controls and install tabs accessible names', () => {
-    const html = renderToStaticMarkup(<McpPage />);
+  it('gives MCP page copy controls and install tabs accessible names', async () => {
+    const html = await renderMcpPageHtml();
     expectNamedButtons(html);
+    expect(html).toContain('hamburger-btn');
+    expect(html).toContain('aria-controls="primary-navigation"');
+    expect(html).toContain('aria-label="Open navigation"');
     expect(html).toContain('role="tablist"');
     expect(html).toContain('aria-controls="mcp-install-panel-cursor"');
     expect(html).toContain('aria-controls="mcp-install-panel-claude"');
@@ -178,18 +202,17 @@ describe('accessibility and responsive UI contracts', () => {
     );
     expect(globalsCss).toMatch(/\.mcp-install-tab:hover:not\(\.mcp-install-tab--active\)/);
 
-    // Header nav links are text, not chips; current page stays distinct from hover.
-    expect(globalsCss).toMatch(/\.mcp-header-nav a:hover:not\(\[aria-current=['"]page['"]\]\)/);
-    expect(globalsCss).toMatch(
-      /\.mcp-header-nav a\[aria-current=['"]page['"]\]\s*\{[^}]*color:\s*var\(--text-primary\)/,
-    );
-    const headerNavHoverFill = declarationBlocks.some(
+    // /mcp reuses the landing primary nav — text links, hamburger ≤768px, no chip fills.
+    expect(globalsCss).toMatch(/\.hamburger-btn\s*\{/);
+    expect(globalsCss).toMatch(/#primary-navigation a\s*\{[^}]*min-width:\s*var\(--touch-target\)/);
+    expect(globalsCss).toMatch(/header nav a\s*\{[^}]*min-height:\s*var\(--touch-target\)/);
+    const primaryNavHoverFill = declarationBlocks.some(
       ({ selectors, body }) =>
-        selectors.includes('.mcp-header-nav a') &&
+        (selectors.includes('#primary-navigation') || selectors.includes('header nav a')) &&
         /:hover/.test(selectors) &&
         /background-color:\s*var\(--color-accent\)/.test(body),
     );
-    expect(headerNavHoverFill).toBe(false);
+    expect(primaryNavHoverFill).toBe(false);
 
     // Filled / accent hovers must not stick on touch devices.
     expect(globalsCss).toMatch(
@@ -198,12 +221,9 @@ describe('accessibility and responsive UI contracts', () => {
     expect(globalsCss).toMatch(
       /@media\s*\(\s*hover:\s*hover\s*\)\s*\{[\s\S]*?\.mcp-install-tab:hover:not\(\.mcp-install-tab--active\)/,
     );
-    expect(globalsCss).toMatch(
-      /@media\s*\(\s*hover:\s*hover\s*\)\s*\{[\s\S]*?\.mcp-header-nav a:hover:not\(\[aria-current=['"]page['"]\]\)/,
-    );
 
-    // Touch targets and focus rings stay intact for the unified controls.
-    for (const control of ['.code-block-copy', '.mcp-install-tab', '.mcp-header-nav a']) {
+    // Touch targets and focus rings stay intact for the unified MCP controls.
+    for (const control of ['.code-block-copy', '.mcp-install-tab']) {
       expect(globalsCss).toMatch(
         new RegExp(
           `${control.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{[^}]*min-height:\\s*var\\(--touch-target\\)`,

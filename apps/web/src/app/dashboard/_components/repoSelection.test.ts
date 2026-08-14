@@ -15,6 +15,8 @@ describe('repoSelection', () => {
       scans: [],
       shareError: null,
       repoDetailStatus: 'loading',
+      lastScanScope: null,
+      lastScanFileCount: null,
     });
   });
 

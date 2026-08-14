@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DEP_LOW_DOWNLOADS = exports.DEP_DEFAULT_EVAL_CAP = exports.scanSupplyChain = exports.readIgnoreScriptsFromNpmrc = exports.parsePackageManagerNpmMajor = exports.packageNameFromLockKey = exports.isSupplyChainRuleId = exports.enginesNpmPermitsBelow12 = exports.classifyAllowScriptsKey = exports.SUPPLY_NPM_BELOW_V12 = exports.SUPPLY_NON_REGISTRY_DEPENDENCY = exports.SUPPLY_INSTALL_SCRIPTS_UNREVIEWED = exports.SUPPLY_CHAIN_RULE_IDS = exports.SUPPLY_ALLOWSCRIPTS_UNPINNED = exports.SUPPLY_ALLOWSCRIPTS_STALE = exports.SUPPLY_ALLOWSCRIPTS_INVALID = exports.SUPPLY_ALLOWSCRIPTS_IN_WORKSPACE = exports.scanAgentStack = exports.scanAgentMcpConfig = exports.scanAgentInstructionFile = exports.redactEnvKey = exports.isAgentStackFile = exports.isAgentMcpConfigFile = exports.isAgentInstructionFile = exports.isHighConfidenceBlockerRuleId = exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = exports.scanStripeWebhookIdempotency = exports.scanStripeMissingSubscriptionEvents = exports.scanStripeLiveKeyInDev = exports.scanStripeLifecycle = exports.scanSupabaseStorage = exports.scanSupabasePolicies = exports.scanSupabaseDeepPolicies = exports.scanAuthLinkedMigrationNoRls = exports.scanServiceRoleBypass = exports.scanServerActionAuth = exports.scanRouteHandlerAuth = exports.scanAuthBoundary = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.rankFilesByRelevance = exports.isScannableFile = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = void 0;
 exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.buildShipGateReport = exports.buildIssueGroups = exports.isAssurlyCanaryToken = exports.isAssurlyCanaryBody = exports.extractAssurlyCanaryToken = exports.containsAssurlyCanaryToken = exports.ASSURLY_CANARY_PREFIX = exports.ASSURLY_CANARY_IN_TEXT = exports.findNearestCorpusMatch = exports.damerauLevenshtein = exports.tokenizePackageName = exports.scopeOwnsBorrowedName = exports.parsePackageJsonDependencies = exports.isAbandonedShape = exports.getTopNpmPackageCorpus = exports.findBorrowedCorpusName = exports.evaluateNewDependencies = exports.evaluateDependencyProvenance = exports.diffAddedDependencies = exports.contiguousTokenRuns = exports.collectDependencyNames = exports.DEP_YOUNG_AGE_DAYS = exports.DEP_TYPOSQUAT_SUSPECT = exports.DEP_SLOPSQUAT_SUSPECT = exports.DEP_SCAN_CAPPED = exports.DEP_REGISTRY_UNAVAILABLE = exports.DEP_PROXIMITY_MAX_DISTANCE = exports.DEP_NONEXISTENT_PACKAGE = exports.DEP_NEW_UNVETTED = void 0;
+exports.subsumeRlsFindings = subsumeRlsFindings;
 exports.selectFiles = selectFiles;
 exports.incompleteScanFinding = incompleteScanFinding;
 exports.scanStripeWebhook = scanStripeWebhook;
@@ -12,6 +13,7 @@ exports.scanMaxDuration = scanMaxDuration;
 exports.scanSqlMigrations = scanSqlMigrations;
 exports.scanSqlMigration = scanSqlMigration;
 exports.scanSupabaseClientLeaks = scanSupabaseClientLeaks;
+exports.proposeEnvExamplePath = proposeEnvExamplePath;
 exports.resolveEnvExampleForPath = resolveEnvExampleForPath;
 exports.collectTestOnlyEnvKeys = collectTestOnlyEnvKeys;
 exports.scanEnvVariables = scanEnvVariables;
@@ -33,6 +35,28 @@ const result = (findings) => ({
     warningCount: findings.filter((finding) => finding.severity === 'warning').length,
     findings,
 });
+function tableNameFromRlsMessage(message) {
+    const match = message.match(/table '([^']+)'/i);
+    return match?.[1] ?? null;
+}
+/**
+ * When both `supabase-rls` and `supabase-migration-auth-linked-no-rls` fire for
+ * the same table, keep the richer auth-linked finding and drop the generic one.
+ */
+function subsumeRlsFindings(findings) {
+    const authLinkedTables = new Set(findings
+        .filter((finding) => finding.ruleId === 'supabase-migration-auth-linked-no-rls')
+        .map((finding) => tableNameFromRlsMessage(finding.message))
+        .filter((table) => Boolean(table)));
+    if (authLinkedTables.size === 0)
+        return [...findings];
+    return findings.filter((finding) => {
+        if (finding.ruleId !== 'supabase-rls')
+            return true;
+        const table = tableNameFromRlsMessage(finding.message);
+        return !table || !authLinkedTables.has(table);
+    });
+}
 function selectFiles(files, maxFiles) {
     const limit = maxFiles === undefined ? null : Math.max(1, Math.floor(maxFiles));
     const selected = limit === null ? [...files] : files.slice(0, limit);
@@ -410,6 +434,11 @@ function scanSqlMigrations(sources) {
             }
         });
     }
+    const hasSupabaseSignal = sources.some((source) => /supabase/i.test(source.file) ||
+        /supabase/i.test(source.content) ||
+        /auth\.uid\(\)/i.test(source.content) ||
+        /auth\.users\b/i.test(source.content));
+    const tableLabel = hasSupabaseSignal ? 'Supabase table' : 'Database table';
     for (const [table, location] of created) {
         if (!rls.has(table) &&
             !['spatial_ref_sys', 'geography_columns', 'geometry_columns'].includes(table))
@@ -418,12 +447,12 @@ function scanSqlMigrations(sources) {
                 severity: 'error',
                 file: location.file,
                 line: location.line,
-                message: `Supabase table '${table}' is created but Row-Level Security (RLS) is not enabled.`,
+                message: `${tableLabel} '${table}' is created but Row-Level Security (RLS) is not enabled.`,
                 suggestion: `Add SQL step: ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`,
             });
     }
     findings.push(...(0, supabasePolicies_1.scanSupabaseDeepPolicies)(sources).findings);
-    return result(findings);
+    return result(subsumeRlsFindings(findings));
 }
 function scanSqlMigration(content, file = 'schema.sql') {
     return scanSqlMigrations([{ file, content }]);
@@ -472,6 +501,27 @@ const FRAMEWORK_ENV_KEYS = new Set([
     'VERCEL_ENV',
     'NEXT_RUNTIME',
     'PORT',
+    // GitHub Actions / runner injected variables — not project secrets to document.
+    'GITHUB_OUTPUT',
+    'GITHUB_STEP_SUMMARY',
+    'GITHUB_ENV',
+    'GITHUB_PATH',
+    'GITHUB_ACTION',
+    'GITHUB_ACTIONS',
+    'GITHUB_WORKSPACE',
+    'GITHUB_EVENT_PATH',
+    'GITHUB_EVENT_NAME',
+    'GITHUB_RUN_ID',
+    'GITHUB_RUN_NUMBER',
+    'GITHUB_SHA',
+    'GITHUB_REF',
+    'GITHUB_REPOSITORY',
+    'GITHUB_JOB',
+    'GITHUB_WORKFLOW',
+    'RUNNER_OS',
+    'RUNNER_ARCH',
+    'RUNNER_TEMP',
+    'RUNNER_TOOL_CACHE',
 ]);
 /** Fallback names documented via their public NEXT_PUBLIC_* counterpart. */
 const DOCUMENTED_ENV_ALIASES = {
@@ -503,6 +553,18 @@ function parseExampleKeys(content) {
             keys.add(key);
     });
     return keys;
+}
+/**
+ * Propose the package-local `.env.example` path for a code file when no ancestor
+ * example exists. Preserves leading workspace prefixes (e.g. `shipready/`).
+ */
+function proposeEnvExamplePath(codePath) {
+    const normalized = codePath.replace(/\\/g, '/');
+    const packageMatch = normalized.match(/^((?:.*\/)?(?:apps|packages)\/[^/]+)\//);
+    if (packageMatch?.[1]) {
+        return `${packageMatch[1]}/.env.example`;
+    }
+    return '.env.example';
 }
 /** Resolve the nearest `.env.example` ancestor for a code path within a monorepo. */
 function resolveEnvExampleForPath(codePath, examples) {
@@ -592,14 +654,21 @@ function scanExampleFileSecrets(exampleContent, exampleFile, findings) {
 }
 function scanEnvVariables(exampleContent, codeContent, exampleFile = '.env.example', codeFile = 'code.ts', options = {}) {
     const findings = [];
-    const resolvedExample = options.allExamples && options.allExamples.length > 0
-        ? resolveEnvExampleForPath(codeFile, options.allExamples)
+    const hasAllExamples = options.allExamples !== undefined;
+    const resolvedExample = hasAllExamples
+        ? resolveEnvExampleForPath(codeFile, options.allExamples ?? [])
         : null;
-    const activeExample = resolvedExample ?? { file: exampleFile, content: exampleContent };
+    // When callers pass allExamples (monorepo mode), never fall back to a
+    // non-ancestor exampleFile — that steals apps/web/.env.example for packages/*.
+    const activeExample = resolvedExample
+        ? resolvedExample
+        : hasAllExamples
+            ? { file: proposeEnvExamplePath(codeFile), content: '' }
+            : { file: exampleFile, content: exampleContent };
     const keys = parseExampleKeys(activeExample.content);
-    if (options.allExamples && options.allExamples.length > 0) {
+    if (hasAllExamples && (options.allExamples?.length ?? 0) > 0) {
         const scannedExampleFiles = new Set();
-        for (const example of options.allExamples) {
+        for (const example of options.allExamples ?? []) {
             if (!example.file.endsWith('.env.example') || scannedExampleFiles.has(example.file)) {
                 continue;
             }
@@ -607,7 +676,7 @@ function scanEnvVariables(exampleContent, codeContent, exampleFile = '.env.examp
             scanExampleFileSecrets(example.content, example.file, findings);
         }
     }
-    else {
+    else if (!hasAllExamples) {
         scanExampleFileSecrets(exampleContent, exampleFile, findings);
     }
     codeContent.split(/\r?\n/).forEach((line, index) => {

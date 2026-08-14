@@ -5,6 +5,7 @@ import { formatScanScopeSummary } from '../../../utils/browserScanner';
 import type { ShipGateReport } from '../../../utils/shipGate';
 import { getShipGateActionHint } from '../../../utils/shipGate';
 import type { BillingPlan } from '../../../utils/entitlements';
+import { formatCount } from '../../../utils/pluralize';
 import { ShipGateGroupRow } from './ShipGateGroupRow';
 
 /** The plan values this panel renders for. Kept aligned with the canonical enum. */
@@ -27,7 +28,7 @@ interface ShipGatePanelProps {
 }
 
 function fileSuffix(count: number): string {
-  return `→ ${count} file${count === 1 ? '' : 's'}`;
+  return `→ ${formatCount(count, 'file')}`;
 }
 
 export function getShareReportButtonLabel(
@@ -137,15 +138,16 @@ export function ShipGatePanel({
       ) : null}
 
       <div className="ship-gate-footer">
-        {report.scannedFileCount === 0 ? null : report.cleanFileCount > 0 ? (
+        {report.scannedFileCount === 0 ? null : report.status === 'ready' ? (
           <p className="ship-gate-clean" role="status">
             <span aria-hidden="true">✓</span>
-            {report.cleanFileCount} file{report.cleanFileCount === 1 ? '' : 's'} clean
+            {report.cleanFileCount > 0
+              ? `${formatCount(report.cleanFileCount, 'file')} clean`
+              : 'All scanned files passed with no issues.'}
           </p>
-        ) : report.status === 'ready' ? (
-          <p className="ship-gate-clean" role="status">
-            <span aria-hidden="true">✓</span>
-            All scanned files passed with no issues.
+        ) : report.cleanFileCount > 0 ? (
+          <p className="ship-gate-clean ship-gate-clean--partial" role="status">
+            {formatCount(report.cleanFileCount, 'file')} of {report.scannedFileCount} had no issues
           </p>
         ) : null}
 

@@ -26,6 +26,11 @@ export interface FileSelection<T> {
     complete: boolean;
     limit: number | null;
 }
+/**
+ * When both `supabase-rls` and `supabase-migration-auth-linked-no-rls` fire for
+ * the same table, keep the richer auth-linked finding and drop the generic one.
+ */
+export declare function subsumeRlsFindings(findings: readonly ScannerFinding[]): ScannerFinding[];
 export declare function selectFiles<T>(files: readonly T[], maxFiles?: number): FileSelection<T>;
 export declare function incompleteScanFinding(selection: FileSelection<unknown>): ScannerFinding | null;
 export declare function scanStripeWebhook(content: string, file?: string): ScanResult;
@@ -42,6 +47,11 @@ export interface ScanEnvOptions {
     /** Keys referenced only from test/fixture files — never flagged as undocumented. */
     testOnlyKeys?: ReadonlySet<string>;
 }
+/**
+ * Propose the package-local `.env.example` path for a code file when no ancestor
+ * example exists. Preserves leading workspace prefixes (e.g. `shipready/`).
+ */
+export declare function proposeEnvExamplePath(codePath: string): string;
 /** Resolve the nearest `.env.example` ancestor for a code path within a monorepo. */
 export declare function resolveEnvExampleForPath(codePath: string, examples: readonly SourceInput[]): SourceInput | null;
 /** Collect env keys that appear exclusively in non-scannable (test/fixture) files. */

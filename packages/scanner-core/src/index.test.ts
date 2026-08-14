@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectTestOnlyEnvKeys,
   incompleteScanFinding,
+  proposeEnvExamplePath,
   resolveEnvExampleForPath,
   scanEdgeRuntime,
   scanEnvVariables,
@@ -83,6 +84,54 @@ describe('shared scanner core', () => {
     expect(scan.findings).toEqual([]);
   });
 
+  it('uses Database table wording when SQL has no Supabase stack signal', () => {
+    const scan = scanSqlMigrations([
+      { file: 'schema.sql', content: 'create table public.orders(id uuid);' },
+    ]);
+    expect(scan.findings[0]?.message).toMatch(/^Database table 'orders'/);
+  });
+
+  it('keeps Supabase table wording when migrations mention Supabase', () => {
+    const scan = scanSqlMigrations([
+      {
+        file: 'supabase/migrations/1.sql',
+        content: 'create table public.orders(id uuid);',
+      },
+    ]);
+    expect(scan.findings[0]?.message).toMatch(/^Supabase table 'orders'/);
+  });
+
+  it('subsumes generic supabase-rls when auth-linked RLS finding exists for the same table', () => {
+    const sql = [
+      'create table profiles (',
+      '  id uuid references auth.users on delete cascade primary key,',
+      '  username text unique',
+      ');',
+      'create table posts (',
+      '  id uuid primary key,',
+      '  author_id uuid references profiles(id)',
+      ');',
+      'alter table posts enable row level security;',
+    ].join('\n');
+
+    const scan = scanSqlMigrations([{ file: 'schema.sql', content: sql }]);
+    const profilesFindings = scan.findings.filter((finding) =>
+      /table 'profiles'/i.test(finding.message),
+    );
+
+    expect(profilesFindings).toHaveLength(1);
+    expect(profilesFindings[0]?.ruleId).toBe('supabase-migration-auth-linked-no-rls');
+    expect(scan.findings.some((finding) => finding.ruleId === 'supabase-rls')).toBe(false);
+  });
+
+  it('keeps standalone supabase-rls for tables that are not auth-linked', () => {
+    const scan = scanSqlMigrations([
+      { file: 'schema.sql', content: 'create table public.orders(id uuid);' },
+    ]);
+    expect(scan.findings).toHaveLength(1);
+    expect(scan.findings[0]?.ruleId).toBe('supabase-rls');
+  });
+
   it('detects service-role access only inside a client boundary', () => {
     expect(
       scanSupabaseClientLeaks(`'use client'; process.env.SUPABASE_SERVICE_ROLE_KEY`).errorCount,
@@ -144,7 +193,32 @@ describe('scanEnvVariables monorepo matching', () => {
     );
   });
 
-  it('ignores framework, CI, and test-only env keys', () => {
+  it('proposes package-local .env.example paths without stealing sibling apps', () => {
+    expect(proposeEnvExamplePath('shipready/packages/cli/src/index.ts')).toBe(
+      'shipready/packages/cli/.env.example',
+    );
+    expect(proposeEnvExamplePath('packages/cli/src/index.ts')).toBe('packages/cli/.env.example');
+    expect(proposeEnvExamplePath('apps/web/src/lib/env.ts')).toBe('apps/web/.env.example');
+    expect(proposeEnvExamplePath('src/app.ts')).toBe('.env.example');
+  });
+
+  it('does not attribute package code to a non-ancestor apps/web .env.example', () => {
+    const webOnlyExamples = [{ file: 'apps/web/.env.example', content: 'WEB_KEY=\n' }];
+    const result = scanEnvVariables(
+      '',
+      'const key = process.env.ASSURLY_API_KEY;',
+      'apps/web/.env.example',
+      'packages/cli/src/index.ts',
+      { allExamples: webOnlyExamples },
+    );
+
+    expect(result.warningCount).toBe(1);
+    expect(result.findings[0]?.message).toContain('packages/cli/.env.example');
+    expect(result.findings[0]?.message).not.toContain('apps/web/.env.example');
+    expect(result.findings[0]?.suggestion).toContain('packages/cli/.env.example');
+  });
+
+  it('ignores framework, CI, Actions runtime, and test-only env keys', () => {
     const testSources = [
       { file: 'src/testing/e2e.ts', content: 'process.env.E2E_ONLY;' },
       { file: 'src/app.ts', content: 'process.env.NODE_ENV;' },
@@ -153,7 +227,11 @@ describe('scanEnvVariables monorepo matching', () => {
 
     const result = scanEnvVariables(
       '',
-      testSources.map((s) => s.content).join('\n'),
+      [
+        ...testSources.map((s) => s.content),
+        'process.env.GITHUB_OUTPUT;',
+        'process.env.GITHUB_STEP_SUMMARY;',
+      ].join('\n'),
       '.env.example',
       'src/app.ts',
       {
@@ -162,6 +240,12 @@ describe('scanEnvVariables monorepo matching', () => {
     );
     expect(result.findings.some((finding) => finding.message.includes('E2E_ONLY'))).toBe(false);
     expect(result.findings.some((finding) => finding.message.includes('NODE_ENV'))).toBe(false);
+    expect(result.findings.some((finding) => finding.message.includes('GITHUB_OUTPUT'))).toBe(
+      false,
+    );
+    expect(result.findings.some((finding) => finding.message.includes('GITHUB_STEP_SUMMARY'))).toBe(
+      false,
+    );
   });
 
   it('treats NEXT_PUBLIC_* keys as documenting server-side fallback names', () => {

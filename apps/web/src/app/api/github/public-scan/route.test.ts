@@ -251,6 +251,45 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
+  // A repository the browser scan cannot ingest is an expected outcome, not a server
+  // fault. Reporting it as a 500 "Internal server error" told the user nothing and hid
+  // a known limit behind an opaque failure.
+  it('returns 413 repository_too_large when the tree body exceeds the size limit', async () => {
+    const oversized = 'x'.repeat(2 * 1024 * 1024 + 1);
+    mockFetch
+      .mockResolvedValueOnce(mockMetadata())
+      .mockResolvedValueOnce(new Response(oversized, { status: 200 }))
+      .mockResolvedValueOnce(mockCommitResponse());
+
+    const req = new Request('http://localhost/api/github/public-scan?repo=vercel/ai&type=tree');
+    const res = await GET(req);
+
+    expect(res.status).toBe(413);
+    const data = await res.json();
+    expect(data.error.code).toBe('repository_too_large');
+    expect(data.error.message).toMatch(/too large/i);
+  });
+
+  it('returns 413 repository_too_large when the tree has more entries than the schema allows', async () => {
+    const tree = {
+      tree: Array.from({ length: 5001 }, (_, index) => ({
+        path: `src/file-${index}.ts`,
+        type: 'blob',
+      })),
+    };
+    mockFetch
+      .mockResolvedValueOnce(mockMetadata())
+      .mockResolvedValueOnce(mockTreeResponse(tree))
+      .mockResolvedValueOnce(mockCommitResponse());
+
+    const req = new Request('http://localhost/api/github/public-scan?repo=vercel/ai&type=tree');
+    const res = await GET(req);
+
+    expect(res.status).toBe(413);
+    const data = await res.json();
+    expect(data.error.code).toBe('repository_too_large');
+  });
+
   it('returns 429 with rate_limit_exceeded when GitHub returns 403 (unauthenticated rate limit)', async () => {
     delete process.env.GITHUB_PAT;
     delete process.env.GITHUB_TOKEN;

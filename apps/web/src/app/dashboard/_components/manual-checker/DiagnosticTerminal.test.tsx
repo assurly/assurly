@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiagnosticTerminal } from './DiagnosticTerminal';
 import {
   buildIssueGroupSummaries,
@@ -9,10 +9,15 @@ import {
   buildScanMetricSummary,
 } from './projectWorkspace';
 import type { ProjectFile } from './useManualScan';
-import type { WebFinding } from '../../../../utils/browserScanner';
+import { scanSqlMigration, type WebFinding } from '../../../../utils/browserScanner';
+import { describeAppliedFix, resetShipLoopFixIdCounterForTests } from './shipLoopJournal';
 
 afterEach(() => {
   cleanup();
+});
+
+beforeEach(() => {
+  resetShipLoopFixIdCounterForTests();
 });
 
 /** Shared, correctly-typed finding fixtures used across the terminal specs. */
@@ -178,33 +183,35 @@ describe('DiagnosticTerminal project mode', () => {
     expect(screen.queryByText(/^2 Errors$/i)).toBeNull();
   });
 
-  it('default SQL mock: 2 file-log errors collapse to 1 Ship Gate blocker badge', () => {
-    // Mirrors ManualChecker DEFAULT_SQL_MOCK: two rules hit `profiles`, one group key.
-    const findings: WebFinding[] = [
-      {
-        ruleId: 'supabase-rls',
-        severity: 'error',
-        message:
-          "Supabase table 'profiles' is created but Row-Level Security (RLS) is not enabled.",
-        file: 'schema.sql',
-        line: 2,
-      },
-      {
-        ruleId: 'supabase-migration-auth-linked-no-rls',
-        severity: 'error',
-        confidence: 'high',
-        message:
-          "Table 'profiles' references auth.users but Row-Level Security (RLS) is not enabled.",
-        file: 'schema.sql',
-        line: 3,
-      },
-    ];
+  it('default SQL mock scan: auth-linked RLS subsumes generic finding (1 file-log error)', () => {
+    // Mirrors ManualChecker DEFAULT_SQL_MOCK — scan-time subsumption keeps one finding.
+    const sql = [
+      'create table profiles (',
+      '  id uuid references auth.users on delete cascade primary key,',
+      '  username text unique,',
+      '  updated_at timestamp with time zone',
+      ');',
+      'create table posts (',
+      '  id uuid primary key,',
+      '  title text,',
+      '  content text,',
+      '  author_id uuid references profiles(id)',
+      ');',
+      'alter table posts enable row level security;',
+    ].join('\n');
+    const scan = scanSqlMigration(sql, 'schema.sql');
+    const profilesFindings = scan.findings.filter((finding) =>
+      /table 'profiles'/i.test(finding.message),
+    );
+
+    expect(profilesFindings).toHaveLength(1);
+    expect(profilesFindings[0]?.ruleId).toBe('supabase-migration-auth-linked-no-rls');
 
     render(
       <DiagnosticTerminal
         activeTab="sql"
         scannedFileLabels={['schema.sql']}
-        results={{ errorCount: 2, warningCount: 0, findings }}
+        results={scan}
         selectedProjectPath={null}
         isFindingFixable={() => false}
         fixingFindingId={null}
@@ -213,12 +220,10 @@ describe('DiagnosticTerminal project mode', () => {
     );
 
     expect(screen.getByText(/^1 Blocker$/i)).toBeTruthy();
-    expect(screen.getByText(/2 in file log/i)).toBeTruthy();
-    expect(screen.queryByText(/^2 Errors$/i)).toBeNull();
+    expect(screen.queryByText(/2 in file log/i)).toBeNull();
     expect(screen.getByText('Blockers (must fix)')).toBeTruthy();
     const blockerList = screen.getByText('Blockers (must fix)').closest('.ship-gate-group');
     expect(blockerList?.querySelectorAll('.ship-gate-list > li').length).toBe(1);
-    expect(screen.getAllByText(/Row-Level Security/i).length).toBeGreaterThanOrEqual(2);
   });
 
   it('updates the active file log when the selected file changes', () => {
@@ -353,5 +358,62 @@ describe('DiagnosticTerminal snippet mode', () => {
 
     expect(screen.getByText('schema.sql')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Auto-fix error in schema.sql/i }));
+  });
+});
+
+describe('DiagnosticTerminal Ship Loop', () => {
+  it('mounts ShipLoopPanel under Ship Gate with applied fixes and handoff', () => {
+    const onUndo = vi.fn();
+    const applied = [
+      describeAppliedFix({
+        kind: 'rls',
+        detail: 'profiles',
+        filePaths: ['schema.sql'],
+      }),
+    ];
+
+    render(
+      <DiagnosticTerminal
+        activeTab="sql"
+        scannedFileLabels={['schema.sql']}
+        results={{
+          errorCount: 1,
+          warningCount: 0,
+          findings: [rlsFinding('schema.sql')],
+        }}
+        selectedProjectPath={null}
+        isFindingFixable={() => false}
+        fixingFindingId={null}
+        onApplyFix={vi.fn()}
+        appliedFixes={applied}
+        shipLoopProjectName="SQL snippet scan"
+        onUndoLastFix={onUndo}
+      />,
+    );
+
+    expect(screen.getByLabelText(/Ship Gate readiness summary/i)).toBeTruthy();
+    expect(screen.getByTestId('ship-loop-what-changed')).toBeTruthy();
+    expect(screen.getByTestId('ship-loop-handoff')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('ship-loop-undo'));
+    expect(onUndo).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not mount Ship Loop while the project tab is idle', () => {
+    render(
+      <DiagnosticTerminal
+        activeTab="project"
+        scannedFileLabels={[]}
+        results={{ errorCount: 0, warningCount: 0, findings: [] }}
+        selectedProjectPath={null}
+        isFindingFixable={() => false}
+        fixingFindingId={null}
+        onApplyFix={vi.fn()}
+        appliedFixes={[describeAppliedFix({ kind: 'stripe', filePaths: ['route.ts'] })]}
+        onUndoLastFix={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('ship-loop-what-changed')).toBeNull();
+    expect(screen.queryByTestId('ship-loop-handoff')).toBeNull();
   });
 });

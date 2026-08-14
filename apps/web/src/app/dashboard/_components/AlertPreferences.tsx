@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, type FormEvent, type ReactElement } from 'react';
+import { formatCount } from '../../../utils/pluralize';
 
 export interface AlertPreferencesProps {
   targetId: string;
@@ -148,8 +149,7 @@ export function AlertPreferences({ targetId }: AlertPreferencesProps): ReactElem
       ) : null}
       {prefs.length === 0 ? null : (
         <p className="alert-prefs__hint" aria-hidden="true">
-          {prefs.filter((pref) => pref.enabled).length} channel
-          {prefs.filter((pref) => pref.enabled).length === 1 ? '' : 's'} configured.
+          {formatCount(prefs.filter((pref) => pref.enabled).length, 'channel')} configured.
         </p>
       )}
     </form>

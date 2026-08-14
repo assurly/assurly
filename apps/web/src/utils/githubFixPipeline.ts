@@ -256,7 +256,9 @@ async function commitFixAndOpenPullRequest(options: {
       );
       commitFileSha = fileSchema.parse(await forkFileResponse.json()).sha;
     }
-  } else if (fileLookupResponse.status === 404 && fix.applyMode === 'create') {
+  } else if (fileLookupResponse.status === 404) {
+    // Missing target is expected for new RLS migrations and absent .env.example —
+    // append and create both start from empty content (same as the batch path).
     original = '';
     commitFileSha = undefined;
   } else {

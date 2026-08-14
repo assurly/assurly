@@ -50,4 +50,25 @@ describe('HomeHeader — navbar sign-in target', () => {
     expect(html).toContain('Go to Dashboard');
     expect(html).not.toContain('href="/api/auth/login"');
   });
+
+  it('accepts product-page nav overrides and a home-linked logo', () => {
+    const html = renderToStaticMarkup(
+      <HomeHeader
+        {...baseProps}
+        authenticated={false}
+        loginUrl="/api/auth/login"
+        logoHref="/"
+        navLinks={[
+          { href: '/#features', label: 'Features' },
+          { href: '/mcp', label: 'MCP Server', current: true },
+        ]}
+      />,
+    );
+
+    expect(html).toContain('href="/"');
+    expect(html).toContain('href="/#features"');
+    expect(html).toContain('aria-current="page"');
+    expect(html).toContain('hamburger-btn');
+    expect(html).toContain('id="primary-navigation"');
+  });
 });

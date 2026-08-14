@@ -13,6 +13,10 @@ import { GET as githubDiscover } from './github/discover/route';
 import { GET as githubPublicScan } from './github/public-scan/route';
 import { POST as githubWebhook } from './github/webhook/route';
 import { POST as repositories } from './repositories/route';
+import {
+  DELETE as repositoriesDelete,
+  PATCH as repositoriesPatch,
+} from './repositories/[id]/route';
 import { DELETE as apiKeysDelete } from './api-keys/[id]/route';
 import { DELETE as scansDelete, GET as scansRead, POST as scansCreate } from './scans/route';
 import { GET as targetsRead, POST as targetsCreate } from './targets/route';
@@ -20,14 +24,16 @@ import { DELETE as targetsDelete } from './targets/[id]/route';
 import { POST as stripeCheckout } from './stripe/checkout/route';
 import { POST as stripePortal } from './stripe/portal/route';
 import { POST as stripeWebhook } from './stripe/webhook/route';
+import { POST as v1Scans } from './v1/scans/route';
 import { GET as canaryCallback } from './canary/[token]/route';
 import { GET as canaryList, POST as canaryIssue } from './targets/[id]/canary/route';
+import { DELETE as canaryDelete } from './targets/[id]/canary/[tokenId]/route';
 import { POST as canaryRevoke } from './targets/[id]/canary/[tokenId]/revoke/route';
 import { POST as dependencyProvenance } from './dependencies/provenance/route';
 
 interface RouteContract {
   name: string;
-  method: 'GET' | 'POST' | 'DELETE';
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   auth: AuthMode;
   csrf: boolean;
   handler: SecuredRouteHandler<unknown, unknown, unknown>;
@@ -65,6 +71,20 @@ const routes: RouteContract[] = [
   },
   { name: 'GitHub webhook', method: 'POST', auth: 'none', csrf: false, handler: githubWebhook },
   { name: 'repositories', method: 'POST', auth: 'required', csrf: true, handler: repositories },
+  {
+    name: 'repositories patch',
+    method: 'PATCH',
+    auth: 'required',
+    csrf: true,
+    handler: repositoriesPatch,
+  },
+  {
+    name: 'repositories delete',
+    method: 'DELETE',
+    auth: 'required',
+    csrf: true,
+    handler: repositoriesDelete,
+  },
   { name: 'scans read', method: 'GET', auth: 'required', csrf: false, handler: scansRead },
   { name: 'scans create', method: 'POST', auth: 'required', csrf: true, handler: scansCreate },
   { name: 'scans delete', method: 'DELETE', auth: 'required', csrf: true, handler: scansDelete },
@@ -113,11 +133,26 @@ const routes: RouteContract[] = [
     handler: canaryRevoke,
   },
   {
+    name: 'canary delete',
+    method: 'DELETE',
+    auth: 'required',
+    csrf: true,
+    handler: canaryDelete,
+  },
+
+  {
     name: 'dependency provenance',
     method: 'POST',
     auth: 'required',
     csrf: true,
     handler: dependencyProvenance,
+  },
+  {
+    name: 'v1 scans submit',
+    method: 'POST',
+    auth: 'apiKey',
+    csrf: false,
+    handler: v1Scans,
   },
   { name: 'targets read', method: 'GET', auth: 'required', csrf: false, handler: targetsRead },
   { name: 'targets create', method: 'POST', auth: 'required', csrf: true, handler: targetsCreate },

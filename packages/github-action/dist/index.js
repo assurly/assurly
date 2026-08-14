@@ -1283,15 +1283,26 @@ async function run() {
     let findings = [];
     try {
       const cleanStdout = stdout.trim();
-      const jsonStartIndex = cleanStdout.indexOf("[");
-      const jsonEndIndex = cleanStdout.lastIndexOf("]");
-      if (jsonStartIndex !== -1 && jsonEndIndex !== -1 && jsonStartIndex < jsonEndIndex) {
-        const jsonContent = cleanStdout.substring(jsonStartIndex, jsonEndIndex + 1);
-        findings = JSON.parse(jsonContent);
-      } else if (cleanStdout === "") {
+      if (cleanStdout === "") {
         findings = [];
       } else {
-        throw new Error("No JSON output structure detected");
+        let parsed;
+        try {
+          parsed = JSON.parse(cleanStdout);
+        } catch {
+          const jsonStartIndex = cleanStdout.indexOf("{");
+          const arrayStartIndex = cleanStdout.indexOf("[");
+          const start = jsonStartIndex === -1 ? arrayStartIndex : arrayStartIndex === -1 ? jsonStartIndex : Math.min(jsonStartIndex, arrayStartIndex);
+          if (start === -1) throw new Error("No JSON output structure detected");
+          parsed = JSON.parse(cleanStdout.slice(start));
+        }
+        if (Array.isArray(parsed)) {
+          findings = parsed;
+        } else if (parsed && typeof parsed === "object" && Array.isArray(parsed.findings)) {
+          findings = parsed.findings;
+        } else {
+          throw new Error("Scan JSON must be a findings array or an Assurly scan report object.");
+        }
       }
     } catch (parseError) {
       info(`Raw CLI stdout: ${stdout}`);

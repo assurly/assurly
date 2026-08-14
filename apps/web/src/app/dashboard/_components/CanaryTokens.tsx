@@ -44,8 +44,8 @@ export function CanaryTokensNotice({ children }: { children: ReactNode }): React
  * uses it, Assurly records a hit — evidence of exposure, not proof of who.
  *
  * Visual language matches `ApiKeys`: one-time plaintext reveal, copy, live /
- * revoked lists, and a revoke confirmation dialog. Reuses `api-keys__*` classes
- * so the two surfaces stay visually identical.
+ * revoked lists, revoke confirmation, and hard-delete of revoked rows via ×.
+ * Reuses `api-keys__*` classes so the two surfaces stay visually identical.
  */
 export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
   const [tokens, setTokens] = useState<CanaryTokenSummary[]>([]);
@@ -54,13 +54,21 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [freshPlaintext, setFreshPlaintext] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [confirmToken, setConfirmToken] = useState<CanaryTokenSummary | null>(null);
+  const [confirmRevoke, setConfirmRevoke] = useState<CanaryTokenSummary | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<CanaryTokenSummary | null>(null);
   const [ownershipBlocked, setOwnershipBlocked] = useState(false);
 
-  const { menuRef: dialogRef, rememberTrigger } = useAccessibleMenu<HTMLDivElement>({
-    open: confirmToken !== null,
-    onClose: () => setConfirmToken(null),
-  });
+  const { menuRef: revokeDialogRef, rememberTrigger: rememberRevokeTrigger } =
+    useAccessibleMenu<HTMLDivElement>({
+      open: confirmRevoke !== null,
+      onClose: () => setConfirmRevoke(null),
+    });
+
+  const { menuRef: deleteDialogRef, rememberTrigger: rememberDeleteTrigger } =
+    useAccessibleMenu<HTMLDivElement>({
+      open: confirmDelete !== null,
+      onClose: () => setConfirmDelete(null),
+    });
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -134,15 +142,20 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
     }
   };
 
-  const openConfirm = (token: CanaryTokenSummary, trigger: HTMLButtonElement): void => {
-    rememberTrigger(trigger);
-    setConfirmToken(token);
+  const openRevokeConfirm = (token: CanaryTokenSummary, trigger: HTMLButtonElement): void => {
+    rememberRevokeTrigger(trigger);
+    setConfirmRevoke(token);
   };
 
-  const confirmRevoke = async (): Promise<void> => {
-    if (!confirmToken) return;
-    const target = confirmToken;
-    setConfirmToken(null);
+  const openDeleteConfirm = (token: CanaryTokenSummary, trigger: HTMLButtonElement): void => {
+    rememberDeleteTrigger(trigger);
+    setConfirmDelete(token);
+  };
+
+  const confirmRevokeAction = async (): Promise<void> => {
+    if (!confirmRevoke) return;
+    const target = confirmRevoke;
+    setConfirmRevoke(null);
     setError(null);
     try {
       await clientApi.canary.revoke(targetId, target.id);
@@ -154,6 +167,24 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
     } catch (revokeError) {
       setError(
         revokeError instanceof Error ? revokeError.message : 'Could not revoke the canary token.',
+      );
+    }
+  };
+
+  const confirmDeleteAction = async (): Promise<void> => {
+    if (!confirmDelete) return;
+    const target = confirmDelete;
+    const previous = tokens;
+    setConfirmDelete(null);
+    setError(null);
+    // Optimistic removal — roll back if the server rejects the delete.
+    setTokens((current) => current.filter((token) => token.id !== target.id));
+    try {
+      await clientApi.canary.delete(targetId, target.id);
+    } catch (deleteError) {
+      setTokens(previous);
+      setError(
+        deleteError instanceof Error ? deleteError.message : 'Could not delete the canary token.',
       );
     }
   };
@@ -273,7 +304,7 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
             <CanaryTokenRow
               key={token.id}
               token={token}
-              onRevoke={(trigger) => openConfirm(token, trigger)}
+              onRevoke={(trigger) => openRevokeConfirm(token, trigger)}
             />
           ))}
         </ul>
@@ -286,20 +317,24 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
           </summary>
           <ul className="api-keys__list api-keys__list--revoked" aria-label="Revoked canary tokens">
             {revokedTokens.map((token) => (
-              <CanaryTokenRow key={token.id} token={token} />
+              <CanaryTokenRow
+                key={token.id}
+                token={token}
+                onDelete={(trigger) => openDeleteConfirm(token, trigger)}
+              />
             ))}
           </ul>
         </details>
       ) : null}
 
-      {confirmToken ? (
+      {confirmRevoke ? (
         <div
           className="scan-delete-dialog__backdrop"
           data-testid="canary-revoke-dialog"
-          onClick={() => setConfirmToken(null)}
+          onClick={() => setConfirmRevoke(null)}
         >
           <div
-            ref={dialogRef}
+            ref={revokeDialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="canary-revoke-dialog-title"
@@ -311,23 +346,65 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
               Revoke canary token?
             </h4>
             <p id="canary-revoke-dialog-desc" className="scan-delete-dialog__desc">
-              Revoke &ldquo;{confirmToken.label}&rdquo; ({confirmToken.tokenPrefix}…)? Further uses
-              will no longer count as hits. The audit trail is kept.
+              Revoke &ldquo;{confirmRevoke.label}&rdquo; ({confirmRevoke.tokenPrefix}…)? Further
+              uses will no longer count as hits. The audit trail is kept.
             </p>
             <div className="scan-delete-dialog__actions">
               <button
                 type="button"
                 className="scan-delete-dialog__cancel"
-                onClick={() => setConfirmToken(null)}
+                onClick={() => setConfirmRevoke(null)}
               >
                 Cancel
               </button>
               <button
                 type="button"
                 className="scan-delete-dialog__confirm"
-                onClick={() => void confirmRevoke()}
+                onClick={() => void confirmRevokeAction()}
               >
                 Revoke canary
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {confirmDelete ? (
+        <div
+          className="scan-delete-dialog__backdrop"
+          data-testid="canary-delete-dialog"
+          onClick={() => setConfirmDelete(null)}
+        >
+          <div
+            ref={deleteDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="canary-delete-dialog-title"
+            aria-describedby="canary-delete-dialog-desc"
+            className="scan-delete-dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h4 id="canary-delete-dialog-title" className="scan-delete-dialog__title">
+              Delete canary token?
+            </h4>
+            <p id="canary-delete-dialog-desc" className="scan-delete-dialog__desc">
+              Permanently delete the revoked canary &ldquo;{confirmDelete.label}&rdquo; (
+              {confirmDelete.tokenPrefix}…)? This cannot be undone.
+            </p>
+            <div className="scan-delete-dialog__actions">
+              <button
+                type="button"
+                className="scan-delete-dialog__cancel"
+                onClick={() => setConfirmDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="scan-delete-dialog__confirm"
+                onClick={() => void confirmDeleteAction()}
+              >
+                Delete canary
               </button>
             </div>
           </div>
@@ -340,9 +417,10 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
 interface CanaryTokenRowProps {
   token: CanaryTokenSummary;
   onRevoke?: (trigger: HTMLButtonElement) => void;
+  onDelete?: (trigger: HTMLButtonElement) => void;
 }
 
-function CanaryTokenRow({ token, onRevoke }: CanaryTokenRowProps): ReactElement {
+function CanaryTokenRow({ token, onRevoke, onDelete }: CanaryTokenRowProps): ReactElement {
   const revoked = Boolean(token.revokedAt);
   const meta = formatApiKeyMetadata({
     createdAt: token.createdAt,
@@ -370,7 +448,20 @@ function CanaryTokenRow({ token, onRevoke }: CanaryTokenRowProps): ReactElement 
       </div>
       <div className="api-keys__item-side">
         {revoked ? (
-          <span className="api-keys__revoked-tag">Revoked</span>
+          <>
+            <span className="api-keys__revoked-tag">Revoked</span>
+            {onDelete ? (
+              <button
+                type="button"
+                className="api-keys__delete"
+                data-testid={`canary-delete-${token.id}`}
+                aria-label={`Delete revoked canary ${token.label}`}
+                onClick={(event) => onDelete(event.currentTarget)}
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            ) : null}
+          </>
         ) : (
           <button
             type="button"

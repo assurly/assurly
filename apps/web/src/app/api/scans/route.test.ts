@@ -151,6 +151,11 @@ describe('/api/scans persistence contract', () => {
       1,
       1,
       expect.arrayContaining([expect.objectContaining({ severity: 'error' })]),
+      expect.objectContaining({
+        scannedFileCount: 2,
+        shipScore: expect.any(Number),
+        verdict: expect.stringMatching(/^(ready|review|blocked|failed)$/),
+      }),
     );
   });
 

@@ -4,8 +4,28 @@
 // (Do not add an environment docblock above — vitest matches the directive
 // anywhere in the leading comments, including inside a sentence about it.)
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import type { ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('next/headers', () => ({
+  headers: async () => ({
+    get: (name: string): string | null => {
+      if (name === 'host') return 'localhost:3000';
+      if (name === 'cookie') return '';
+      return null;
+    },
+  }),
+}));
+
+vi.mock('../../utils/auth', () => ({
+  getSessionUser: vi.fn(async () => null),
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+}));
+
 import McpPage from './page';
 
 /**
@@ -28,9 +48,19 @@ function registeredToolNames(): string[] {
   return [...block.matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
 }
 
+async function renderMcpPageHtml(): Promise<string> {
+  const element = (await McpPage()) as ReactElement;
+  return renderToStaticMarkup(element);
+}
+
 describe('McpPage', () => {
-  it('documents every tool the MCP server registers', () => {
-    const html = renderToStaticMarkup(<McpPage />);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.APP_URL = 'http://localhost:3000';
+  });
+
+  it('documents every tool the MCP server registers', async () => {
+    const html = await renderMcpPageHtml();
     const names = registeredToolNames();
 
     expect(names.length).toBeGreaterThan(0);
@@ -39,8 +69,8 @@ describe('McpPage', () => {
     }
   });
 
-  it('does not understate the tool count in the setup copy', () => {
-    const html = renderToStaticMarkup(<McpPage />);
+  it('does not understate the tool count in the setup copy', async () => {
+    const html = await renderMcpPageHtml();
     const count = registeredToolNames().length;
     const spelled = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven'][count];
 
@@ -49,8 +79,8 @@ describe('McpPage', () => {
     expect(html).toContain(`the ${spelled} `);
   });
 
-  it('renders code snippets as scrollable, keyboard-reachable regions', () => {
-    const html = renderToStaticMarkup(<McpPage />);
+  it('renders code snippets as scrollable, keyboard-reachable regions', async () => {
+    const html = await renderMcpPageHtml();
     // `.code-block` carries `overflow-x: auto`; without it the page-level
     // `overflow-x: clip` silently truncated the install command on phones.
     const blocks = html.match(/class="code-block"/g) ?? [];
@@ -58,8 +88,8 @@ describe('McpPage', () => {
     expect(html).toContain('tabindex="0"');
   });
 
-  it('surfaces the blocked-verdict isError differentiator and real tool output', () => {
-    const html = renderToStaticMarkup(<McpPage />);
+  it('surfaces the blocked-verdict isError differentiator and real tool output', async () => {
+    const html = await renderMcpPageHtml();
     expect(html).toContain('What your agent gets back');
     expect(html).toContain('isError: true');
     expect(html).toContain('Assurly verdict: BLOCKED · Ship Score 42/100');
@@ -78,8 +108,8 @@ describe('McpPage', () => {
     expect(html).toContain('Provide exactly one of `url` or `repo`.');
   });
 
-  it('renders install as a tabbed client picker, not separate Cursor/Claude sections', () => {
-    const html = renderToStaticMarkup(<McpPage />);
+  it('renders install as a tabbed client picker, not separate Cursor/Claude sections', async () => {
+    const html = await renderMcpPageHtml();
     expect(html).toContain('role="tablist"');
     expect(html).toContain('mcp-install-tab-cursor');
     expect(html).toContain('mcp-install-tab-vscode');
@@ -87,8 +117,8 @@ describe('McpPage', () => {
     expect(html).not.toMatch(/<h2>Claude Code<\/h2>/);
   });
 
-  it('uses a product layout, not the legal-document shell', () => {
-    const html = renderToStaticMarkup(<McpPage />);
+  it('uses a product layout, not the legal-document shell', async () => {
+    const html = await renderMcpPageHtml();
     expect(html).toContain('mcp-container');
     expect(html).toContain('mcp-hero');
     expect(html).toContain('mcp-content');
@@ -99,8 +129,8 @@ describe('McpPage', () => {
     expect(html).not.toContain('last-updated');
   });
 
-  it('renders a hero with install command, one-click deeplinks, and npm version', () => {
-    const html = renderToStaticMarkup(<McpPage />);
+  it('renders a hero with install command, one-click deeplinks, and npm version', async () => {
+    const html = await renderMcpPageHtml();
     const version = JSON.parse(
       readFileSync(
         new URL('../../../../../packages/mcp-server/package.json', import.meta.url),
@@ -125,16 +155,21 @@ describe('McpPage', () => {
     expect(html.match(/Add to Cursor/g)?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('mirrors the landing nav order, with FAQ between MCP Server and Contact', () => {
-    const html = renderToStaticMarkup(<McpPage />);
-    const nav = html.match(/aria-label="Product navigation"[\s\S]*?<\/nav>/)?.[0];
+  it('shares the landing primary-nav contract (hamburger + /# anchors)', async () => {
+    const html = await renderMcpPageHtml();
+    expect(html).toContain('hamburger-btn');
+    expect(html).toContain('aria-controls="primary-navigation"');
+    expect(html).toContain('aria-label="Open navigation"');
+    const nav = html.match(/aria-label="Primary navigation"[\s\S]*?<\/nav>/)?.[0];
     expect(nav).toBeTruthy();
     expect(nav).toContain('href="/#faq"');
     expect(nav).toMatch(/MCP Server[\s\S]*FAQ[\s\S]*Contact/);
+    expect(nav).toContain('aria-current="page"');
+    expect(html).toContain('Sign In');
   });
 
-  it('renders the typical agent loop as a visual flow, not a bare numbered list', () => {
-    const html = renderToStaticMarkup(<McpPage />);
+  it('renders the typical agent loop as a visual flow, not a bare numbered list', async () => {
+    const html = await renderMcpPageHtml();
     expect(html).toContain('mcp-agent-loop');
     expect(html).toContain('READY TO SHIP');
     expect(html).toContain('assurly_explain_rule');

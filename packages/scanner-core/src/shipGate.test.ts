@@ -101,6 +101,38 @@ describe('shipGate', () => {
     expect(envGroup?.affectedFileCount).toBe(8);
     expect(envGroup?.label).toBe('Undocumented env: STRIPE_SECRET_KEY');
     expect(envGroup?.severity).toBe('warning');
+    expect(envGroup?.action?.hint).toBe('Add STRIPE_SECRET_KEY= to .env.example.');
+  });
+
+  it('aggregates unique monorepo .env.example targets into the env group Copy fix hint', () => {
+    const groups = buildIssueGroups([
+      {
+        ruleId: 'undocumented-env',
+        severity: 'warning',
+        confidence: 'high',
+        file: 'packages/cli/src/index.ts',
+        line: 46,
+        message:
+          "Environment variable 'process.env.ASSURLY_API_KEY' is used but not documented in 'packages/cli/.env.example'.",
+        suggestion: 'Add ASSURLY_API_KEY= to packages/cli/.env.example.',
+      },
+      {
+        ruleId: 'undocumented-env',
+        severity: 'warning',
+        confidence: 'high',
+        file: 'packages/mcp-server/src/index.ts',
+        line: 119,
+        message:
+          "Environment variable 'process.env.ASSURLY_API_KEY' is used but not documented in 'packages/mcp-server/.env.example'.",
+        suggestion: 'Add ASSURLY_API_KEY= to packages/mcp-server/.env.example.',
+      },
+    ]);
+
+    const envGroup = groups.find((group) => group.id === 'env:ASSURLY_API_KEY');
+    expect(envGroup?.affectedFileCount).toBe(2);
+    expect(envGroup?.action?.hint).toContain('packages/cli/.env.example');
+    expect(envGroup?.action?.hint).toContain('packages/mcp-server/.env.example');
+    expect(envGroup?.action?.hint?.split('\n')).toHaveLength(2);
   });
 
   it('does not treat undocumented-env as a ship blocker', () => {
@@ -212,6 +244,71 @@ describe('shipGate', () => {
     expect(report.status).toBe('review');
     expect(report.shipScore).toBe(96);
     expect(isShipGateBlocked(report)).toBe(false);
+  });
+
+  it('caps incomplete coverage scans as review with score ≤ 79', () => {
+    const report = buildShipGateReport(
+      [
+        {
+          ruleId: 'scan-completeness',
+          severity: 'warning',
+          file: 'Global Configs',
+          message: 'Incomplete scan: analyzed 250 of 561 eligible files.',
+        },
+      ],
+      { scannedFileCount: 250, cleanFileCount: 250 },
+    );
+    expect(report.status).toBe('review');
+    expect(report.headline).toBe('INCOMPLETE SCAN — REVIEW');
+    expect(report.shipScore).toBeLessThanOrEqual(79);
+  });
+
+  it('floors incomplete Instant Gate scores at 40 when there are no blockers', () => {
+    const manyWarnings = Array.from({ length: 30 }, (_, index) => ({
+      ruleId: `env-missing-${index}`,
+      severity: 'warning' as const,
+      file: `apps/web/.env.${index}`,
+      message: `Undocumented env: VAR_${index}`,
+    }));
+    const report = buildShipGateReport(
+      [
+        {
+          ruleId: 'scan-completeness',
+          severity: 'warning',
+          file: 'Global Configs',
+          message: 'Incomplete scan: analyzed 250 of 561 eligible files.',
+        },
+        ...manyWarnings,
+      ],
+      { scannedFileCount: 250, cleanFileCount: 200 },
+    );
+    expect(report.status).toBe('review');
+    expect(report.headline).toBe('INCOMPLETE SCAN — REVIEW');
+    expect(report.shipScore).toBeGreaterThanOrEqual(40);
+    expect(report.shipScore).toBeLessThanOrEqual(79);
+  });
+
+  it('allows incomplete scans with blockers to score below the no-blocker floor', () => {
+    const manyBlockers = Array.from({ length: 8 }, (_, index) => ({
+      ruleId: `supabase-rls-table-${index}`,
+      severity: 'error' as const,
+      file: `schema-${index}.sql`,
+      message: `Supabase table 't${index}' is created but Row-Level Security (RLS) is not enabled.`,
+    }));
+    const report = buildShipGateReport(
+      [
+        {
+          ruleId: 'scan-completeness',
+          severity: 'warning',
+          file: 'Global Configs',
+          message: 'Incomplete scan: analyzed 250 of 561 eligible files.',
+        },
+        ...manyBlockers,
+      ],
+      { scannedFileCount: 250, cleanFileCount: 100 },
+    );
+    expect(report.status).toBe('blocked');
+    expect(report.shipScore).toBeLessThan(40);
   });
 
   it('attaches actionable commands to CI workflow warnings', () => {

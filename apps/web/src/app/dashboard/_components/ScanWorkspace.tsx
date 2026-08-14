@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import type { Organization, Repository, Scan, ScanFinding } from '../../../utils/dbAdapter';
 import type { ScanFixSummary } from '../../../utils/fixSummary';
 import type { ShipGateReport } from '../../../utils/shipGate';
@@ -15,6 +15,7 @@ import {
   DashboardZapIcon,
 } from './icons/DashboardIcons';
 import type { RepoDetailStatus } from './repoSelection';
+import { fullGateCliCommand } from './verdictCardsView';
 
 export interface ScanWorkspaceProps {
   selectedRepo: Repository | null;
@@ -70,6 +71,12 @@ function getScanLogLineClass(log: string): string {
   return 'dashboard-scan-log__line dashboard-scan-log__line--muted';
 }
 
+/** Instant Gate fail-fast: repo exceeds in-browser tree limits. */
+export function isTooLargeScanError(message: string | null | undefined): boolean {
+  if (!message) return false;
+  return /too large for the in-browser scan|too large for Instant Gate/i.test(message);
+}
+
 export function ScanWorkspace({
   selectedRepo,
   githubInstallationId,
@@ -105,6 +112,20 @@ export function ScanWorkspace({
   onCreateFixPr,
   onCreateBatchFixPr,
 }: ScanWorkspaceProps): ReactElement {
+  const [copiedCli, setCopiedCli] = useState(false);
+  const isCliOnly = selectedRepo?.scan_capability === 'cli_only';
+  const cliCommand = fullGateCliCommand(selectedRepo?.name);
+  const isTooLargeError = isTooLargeScanError(scanError);
+
+  const copyFullGateCommand = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(cliCommand);
+      setCopiedCli(true);
+      window.setTimeout(() => setCopiedCli(false), 2000);
+    } catch {
+      setCopiedCli(false);
+    }
+  };
   if (!selectedRepo) {
     return (
       <section id="repo-scan-workspace" className="dashboard-scan-workspace">
@@ -149,30 +170,76 @@ export function ScanWorkspace({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onRunScan}
-            disabled={isScanning}
-            className="dashboard-scan-action-btn dashboard-scan-action-btn--primary"
-            data-cta="primary"
-            aria-label={isScanning ? 'Scanning repository' : 'Run secure scan'}
-            aria-busy={isScanning}
-          >
-            {!isScanning ? <DashboardZapIcon /> : null}
-            {isScanning ? 'Scanning...' : 'Run Secure Scan'}
-          </button>
+          {isCliOnly ? (
+            <button
+              type="button"
+              onClick={() => void copyFullGateCommand()}
+              className="dashboard-scan-action-btn dashboard-scan-action-btn--primary"
+              data-cta="primary"
+              aria-label={copiedCli ? 'Full Gate command copied' : 'Copy Full Gate CLI command'}
+            >
+              {copiedCli ? 'Copied' : 'Copy Full Gate command'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onRunScan}
+              disabled={isScanning}
+              className="dashboard-scan-action-btn dashboard-scan-action-btn--primary"
+              data-cta="primary"
+              aria-label={isScanning ? 'Scanning repository' : 'Run secure scan'}
+              aria-busy={isScanning}
+            >
+              {!isScanning ? <DashboardZapIcon /> : null}
+              {isScanning ? 'Scanning...' : 'Run Secure Scan'}
+            </button>
+          )}
         </div>
 
         {scanError && !isScanning ? (
-          <div className="dashboard-scan-error" role="alert" data-testid="scan-error-panel">
+          <div
+            className={`dashboard-scan-error${isTooLargeError ? ' dashboard-scan-error--cli' : ''}`}
+            role="alert"
+            data-testid="scan-error-panel"
+          >
             <div className="dashboard-scan-error__content">
-              <div>
-                <p className="dashboard-scan-error__title">Scan failed</p>
-                <p className="dashboard-scan-error__message">{scanError}</p>
-                <p className="dashboard-scan-error__hint">
-                  Fix the issue above, then run the scan again. This message stays here until you
-                  retry or switch repositories.
-                </p>
+              <div className="dashboard-scan-error__body">
+                {isTooLargeError ? (
+                  <>
+                    <p className="dashboard-scan-error__title">Too large for Instant Gate</p>
+                    <p className="dashboard-scan-error__message">
+                      This repository exceeds the in-browser size limit. Run Full Gate on your
+                      machine (or in CI) — source code never leaves your environment.
+                    </p>
+                    <div className="dashboard-scan-error__cli" data-testid="scan-error-full-gate">
+                      <pre className="dashboard-scan-error__code">
+                        <code>{cliCommand}</code>
+                      </pre>
+                      <button
+                        type="button"
+                        className="dashboard-scan-action-btn dashboard-scan-action-btn--primary"
+                        onClick={() => void copyFullGateCommand()}
+                        aria-label={
+                          copiedCli ? 'Full Gate command copied' : 'Copy Full Gate CLI command'
+                        }
+                      >
+                        {copiedCli ? 'Copied' : 'Copy command'}
+                      </button>
+                    </div>
+                    <p className="dashboard-scan-error__hint">
+                      Paste into your terminal, then open the dashboard again to see the verdict.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="dashboard-scan-error__title">Scan failed</p>
+                    <p className="dashboard-scan-error__message">{scanError}</p>
+                    <p className="dashboard-scan-error__hint">
+                      Fix the issue above, then run the scan again. This message stays here until
+                      you retry or switch repositories.
+                    </p>
+                  </>
+                )}
               </div>
               <button
                 type="button"
@@ -252,10 +319,35 @@ export function ScanWorkspace({
             <span className="dashboard-empty-state__icon">
               <DashboardZapIcon className="dashboard-icon--lg" />
             </span>
-            <h4 className="dashboard-empty-state__title">No scans found for this repository</h4>
-            <p className="dashboard-empty-state__copy">
-              Click &quot;Run Secure Scan&quot; above to initiate static analysis.
-            </p>
+            {isCliOnly ? (
+              <>
+                <h4 className="dashboard-empty-state__title">
+                  Too large for Instant Gate — run Full Gate locally
+                </h4>
+                <p className="dashboard-empty-state__copy">
+                  This repository exceeds the in-browser size limit. Run Assurly on your machine (or
+                  in CI) and submit the verdict — source code never leaves your environment.
+                </p>
+                <pre className="dashboard-empty-state__code" data-testid="full-gate-cli-command">
+                  <code>{cliCommand}</code>
+                </pre>
+                <button
+                  type="button"
+                  className="dashboard-scan-action-btn dashboard-scan-action-btn--primary"
+                  onClick={() => void copyFullGateCommand()}
+                  aria-label={copiedCli ? 'Full Gate command copied' : 'Copy Full Gate CLI command'}
+                >
+                  {copiedCli ? 'Copied' : 'Copy Full Gate command'}
+                </button>
+              </>
+            ) : (
+              <>
+                <h4 className="dashboard-empty-state__title">No scans found for this repository</h4>
+                <p className="dashboard-empty-state__copy">
+                  Click &quot;Run Secure Scan&quot; above to initiate static analysis.
+                </p>
+              </>
+            )}
           </div>
         ) : null}
       </div>

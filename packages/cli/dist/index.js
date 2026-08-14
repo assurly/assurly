@@ -46,6 +46,8 @@ const shipGateReporter_1 = require("./shipGateReporter");
 const scanProject_1 = require("./scanProject");
 const fixer_1 = require("./fixer");
 const ci_1 = require("./ci");
+const scanReportJson_1 = require("./scanReportJson");
+const submitScan_1 = require("./submitScan");
 const program = new commander_1.Command();
 // Read from package.json rather than hardcoding: the literal had drifted to 1.0.0
 // while the package shipped 1.0.2, so `assurly --version` misreported itself in
@@ -59,8 +61,11 @@ program
     .command('scan', { isDefault: true })
     .description('Scans the workspace for configuration, security, and integration vulnerabilities')
     .option('-p, --path <dir>', 'Root directory of the project to scan', '.')
-    .option('-j, --json', 'Output findings in raw JSON format', false)
+    .option('-j, --json', 'Output a versioned Ship Gate JSON report (findings + shipScore + scanScope)', false)
     .option('-f, --fix', 'Automatically attempt to fix configuration issues', false)
+    .option('--submit', 'Submit Ship Gate SoT to Assurly (findings only — never uploads source). Requires ASSURLY_API_KEY and --repo', false)
+    .option('--repo <owner/repo>', 'Connected Assurly repository for --submit (owner/repo)')
+    .option('--api-url <url>', 'Assurly API base URL for --submit', process.env.ASSURLY_API_URL || 'https://assurly.dev')
     .option('--agent', 'Focused mode: scan only the agent stack (MCP configs and instruction files)', false)
     .option('--supply', 'Focused mode: scan only install-time trust (npm allowScripts / lockfile scripts)', false)
     .action(async (options) => {
@@ -109,11 +114,38 @@ program
                 console.log(chalk_1.default.gray('No auto-fixable issues found.\n'));
             }
         }
+        const reportJson = (0, scanReportJson_1.buildAssurlyScanReportJson)({
+            findings,
+            report: shipGate,
+            context,
+            summary: '',
+            markdown: '',
+        });
+        if (options.submit) {
+            if (surface) {
+                throw new Error('Focused scans (--agent/--supply) cannot be submitted as a Ship Gate.');
+            }
+            const apiKey = process.env.ASSURLY_API_KEY;
+            const repo = typeof options.repo === 'string' ? options.repo.trim() : '';
+            if (!apiKey) {
+                throw new Error('ASSURLY_API_KEY is required for --submit.');
+            }
+            if (!repo || !repo.includes('/')) {
+                throw new Error('--repo owner/repo is required for --submit.');
+            }
+            const submitted = await (0, submitScan_1.submitScanReport)({
+                apiKey,
+                apiBaseUrl: String(options.apiUrl),
+                repo,
+                report: reportJson,
+            });
+            console.log(chalk_1.default.green(`Submitted Ship Gate to Assurly: ${submitted.verdict} · ${submitted.shipScore}/100 (scan ${submitted.id})`));
+        }
         // 3. Output results
         if (options.json) {
-            console.log(JSON.stringify(findings, null, 2));
+            console.log(JSON.stringify(reportJson, null, 2));
         }
-        else {
+        else if (!options.submit) {
             // Log detected stack
             console.log(chalk_1.default.bold('Detected Stack:'));
             console.log(`  Framework:  ${chalk_1.default.green(context.detectedStack.framework.toUpperCase())}`);
@@ -127,7 +159,9 @@ program
                 process.exit(0);
             }
             (0, shipGateReporter_1.printShipGateSummary)(shipGate);
-            process.exit(shipGate.status === 'blocked' ? 1 : 0);
+        }
+        else if (!options.json) {
+            (0, shipGateReporter_1.printShipGateSummary)(shipGate);
         }
         process.exit(shipGate.status === 'blocked' ? 1 : 0);
     }

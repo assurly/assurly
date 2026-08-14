@@ -28,6 +28,9 @@ export interface Membership {
   created_at: string;
 }
 
+/** Whether the dashboard can scan this repository in-browser. */
+export type RepositoryScanCapability = 'browser' | 'cli_only' | 'invalid';
+
 export interface Repository {
   id: string;
   organization_id: string;
@@ -35,6 +38,20 @@ export interface Repository {
   github_repo_id: number;
   is_active: boolean;
   created_at: string;
+  scan_capability?: RepositoryScanCapability;
+}
+
+/** Ship Gate status persisted at scan time (source of truth for trend/cards). */
+export type ScanGateVerdict = 'ready' | 'review' | 'blocked' | 'failed';
+
+/** Optional Ship Gate metadata written with each scan row. */
+export interface ScanShipGateMeta {
+  shipScore?: number | null;
+  verdict?: ScanGateVerdict | null;
+  scannedFileCount?: number | null;
+  cleanFileCount?: number | null;
+  scanScope?: Record<string, unknown> | null;
+  failureReason?: string | null;
 }
 
 export interface Scan {
@@ -47,6 +64,12 @@ export interface Scan {
   warning_count: number;
   share_token?: string | null;
   created_at: string;
+  ship_score?: number | null;
+  verdict?: ScanGateVerdict | null;
+  scanned_file_count?: number | null;
+  clean_file_count?: number | null;
+  scan_scope?: Record<string, unknown> | null;
+  failure_reason?: string | null;
 }
 
 export interface ScanFinding {
@@ -356,6 +379,11 @@ export interface DbAdapter {
   getRepository(repoId: string): Promise<Repository | null>;
   getRepositoryByGithubRepoId(githubRepoId: number): Promise<Repository | null>;
   addRepository(orgId: string, name: string, githubRepoId: number): Promise<Repository>;
+  updateRepositoryScanCapability(
+    repoId: string,
+    capability: RepositoryScanCapability,
+  ): Promise<void>;
+  deleteRepository(repoId: string): Promise<void>;
   saveScan(
     repoId: string,
     commitSha: string,
@@ -364,6 +392,7 @@ export interface DbAdapter {
     errors: number,
     warnings: number,
     findings: Omit<ScanFinding, 'id' | 'scan_id' | 'created_at'>[],
+    meta?: ScanShipGateMeta,
   ): Promise<Scan>;
   getScan(scanId: string): Promise<Scan | null>;
   getRecentScans(repoId: string): Promise<Scan[]>;
@@ -432,6 +461,8 @@ export interface DbAdapter {
   getCanaryTokenByHash(tokenHash: string): Promise<CanaryTokenAuthRow | null>;
   recordCanaryTokenHit(input: RecordCanaryTokenHitInput): Promise<void>;
   revokeCanaryToken(id: string): Promise<void>;
+  /** Hard-delete a canary row. Callers must ensure the token is already revoked. */
+  deleteCanaryToken(id: string): Promise<void>;
 }
 
 function eq(value: string | number): string {
@@ -467,6 +498,12 @@ export class SupabaseDbAdapter implements DbAdapter {
 
     if (!response.ok) {
       const detail = await response.text();
+      const missingColumn = detail.match(/Could not find the '([^']+)' column of '([^']+)'/i);
+      if (missingColumn) {
+        throw new Error(
+          `Database schema missing column ${missingColumn[2]}.${missingColumn[1]} — apply pending Supabase migrations.`,
+        );
+      }
       throw new Error(`Supabase request failed (${response.status}): ${detail}`);
     }
 
@@ -654,9 +691,26 @@ export class SupabaseDbAdapter implements DbAdapter {
         organization_id: orgId,
         name,
         github_repo_id: githubRepoId,
+        scan_capability: 'browser',
       }),
     });
     return rows[0];
+  }
+
+  async updateRepositoryScanCapability(
+    repoId: string,
+    capability: RepositoryScanCapability,
+  ): Promise<void> {
+    await this.fetchDb(`repositories?id=eq.${eq(repoId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ scan_capability: capability }),
+    });
+  }
+
+  async deleteRepository(repoId: string): Promise<void> {
+    await this.fetchDb(`repositories?id=eq.${eq(repoId)}`, {
+      method: 'DELETE',
+    });
   }
 
   async saveScan(
@@ -667,6 +721,7 @@ export class SupabaseDbAdapter implements DbAdapter {
     errors: number,
     warnings: number,
     findings: Omit<ScanFinding, 'id' | 'scan_id' | 'created_at'>[],
+    meta?: ScanShipGateMeta,
   ): Promise<Scan> {
     const rows = await this.fetchDb<Scan[]>('scans', {
       method: 'POST',
@@ -677,6 +732,12 @@ export class SupabaseDbAdapter implements DbAdapter {
         status,
         error_count: errors,
         warning_count: warnings,
+        ship_score: meta?.shipScore ?? null,
+        verdict: meta?.verdict ?? null,
+        scanned_file_count: meta?.scannedFileCount ?? null,
+        clean_file_count: meta?.cleanFileCount ?? null,
+        scan_scope: meta?.scanScope ?? null,
+        failure_reason: meta?.failureReason ?? null,
       }),
     });
     const scan = rows[0];
@@ -1174,6 +1235,23 @@ export class SupabaseDbAdapter implements DbAdapter {
       headers: { Prefer: 'return=minimal' },
       body: JSON.stringify({ revoked_at: new Date().toISOString() }),
     });
+  }
+
+  async deleteCanaryToken(id: string): Promise<void> {
+    // RLS scopes this DELETE to the caller's org. The route must refuse live
+    // tokens before calling here — deleting an active canary would silently
+    // drop a planted decoy. Hits cascade via ON DELETE CASCADE.
+    //
+    // `return=representation` is load-bearing: under RLS a DELETE that matches
+    // no row is NOT an error. Asserting a row came back turns a silent no-op
+    // (missing DELETE policy) into a loud failure — same invariant as deleteApiKey.
+    const rows = await this.fetchDb<CanaryTokenRow[]>(`canary_tokens?id=eq.${eq(id)}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=representation' },
+    });
+    if (!rows?.length) {
+      throw new Error(`Supabase delete matched no canary_tokens row (${id}).`);
+    }
   }
 }
 

@@ -230,6 +230,10 @@ export const CONSEQUENCE_MAP: Record<string, ConsequenceEntry> = {
     consequence:
       'Your app is missing basic browser protections, making common attacks like clickjacking and content-sniffing easier against your users.',
   },
+  'runtime-target-unreachable': {
+    consequence:
+      'This deployment URL is not live (removed or failing), so a green Ship Score would be dishonest — fix or replace the URL before you ship.',
+  },
 
   // --- Data / RSC leaks --------------------------------------------------------
   'rsc-data-leaks': {

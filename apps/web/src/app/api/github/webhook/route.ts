@@ -361,6 +361,26 @@ export async function scanPullRequest(
     message: finding.message,
     suggestion: finding.suggestion || '',
   }));
+  const affectedPaths = new Set(
+    findings
+      .map((finding) => finding.path || finding.file)
+      .filter((path): path is string => Boolean(path)),
+  );
+  const shipGate = buildShipGateReport(
+    findings.map((finding) => ({
+      severity: finding.severity,
+      confidence: finding.confidence,
+      message: finding.message,
+      file: finding.path || finding.file,
+      line: finding.line,
+      ruleId: finding.ruleId,
+      suggestion: finding.suggestion,
+    })),
+    {
+      scannedFileCount: selection.files.length,
+      cleanFileCount: Math.max(0, selection.files.length - affectedPaths.size),
+    },
+  );
   const savedScan = await db.saveScan(
     repository.id,
     commitSha,
@@ -369,6 +389,12 @@ export async function scanPullRequest(
     errors,
     warnings,
     persistedFindings,
+    {
+      shipScore: shipGate.shipScore,
+      verdict: shipGate.status,
+      scannedFileCount: selection.files.length,
+      cleanFileCount: shipGate.cleanFileCount,
+    },
   );
 
   const recentScans = await db.getRecentScans(repository.id);

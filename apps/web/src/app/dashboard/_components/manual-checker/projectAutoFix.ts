@@ -1,4 +1,8 @@
-import type { WebFinding } from '../../../../utils/browserScanner';
+import {
+  proposeEnvExamplePath,
+  resolveEnvExampleForPath,
+  type WebFinding,
+} from '../../../../utils/browserScanner';
 import type { ProjectFile } from './useManualScan';
 
 export interface ProjectAutoFixBatchResult {
@@ -38,24 +42,45 @@ export function countFixableFindings(findings: WebFinding[]): number {
   return findings.filter(isManualFindingFixable).length;
 }
 
+/**
+ * Replaces an unauthenticated `await req.json()` webhook body read with
+ * Stripe signature verification. Preserves the original statement indent and
+ * strips the demo "Vulnerability: …" comment when present.
+ */
 export function fixStripeWebhook(content: string): string {
-  const jsonPattern = /(const|let|var)\s+(\w+)\s*=\s*await\s+req\.json\(\)/i;
+  const jsonPattern = /^([ \t]*)(const|let|var)\s+(\w+)\s*=\s*await\s+req\.json\(\)\s*;?/m;
   const match = content.match(jsonPattern);
-  if (match) {
-    const bodyVar = match[2];
-    const replacement = `const rawBody = await req.text();
-    const signature = req.headers.get('stripe-signature') || '';
-    let event;
-    try {
-      event = stripe.webhooks.constructEvent(rawBody, signature, process.env.STRIPE_WEBHOOK_SECRET!);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Invalid signature';
-      return new Response(\`Webhook Error: \${message}\`, { status: 400 });
-    }
-    const ${bodyVar} = event;`;
-    return content.replace(jsonPattern, replacement);
+  if (!match || match.index === undefined) {
+    return content;
   }
-  return content;
+
+  const indent = match[1];
+  const bodyVar = match[3];
+  const nested = `${indent}  `;
+  const replacement = [
+    `${indent}const rawBody = await req.text();`,
+    `${indent}const signature = req.headers.get('stripe-signature') || '';`,
+    `${indent}let event;`,
+    `${indent}try {`,
+    `${nested}event = stripe.webhooks.constructEvent(rawBody, signature, process.env.STRIPE_WEBHOOK_SECRET!);`,
+    `${indent}} catch (error: unknown) {`,
+    `${nested}const message = error instanceof Error ? error.message : 'Invalid signature';`,
+    `${nested}return new Response(\`Webhook Error: \${message}\`, { status: 400 });`,
+    `${indent}}`,
+    `${indent}const ${bodyVar} = event;`,
+  ].join('\n');
+
+  // Drop the demo vulnerability comment on the line immediately above the match.
+  let start = match.index;
+  const before = content.slice(0, match.index);
+  const prevComment = before.match(
+    /(?:^|\n)([ \t]*\/\/[ \t]*Vulnerability:.*[Ss]tripe.*signature[^\n]*\n)$/,
+  );
+  if (prevComment?.[1]) {
+    start = before.length - prevComment[1].length;
+  }
+
+  return `${content.slice(0, start)}${replacement}${content.slice(match.index + match[0].length)}`;
 }
 
 export function fixRscDataLeak(content: string, moduleSpecifier: string): string {
@@ -90,30 +115,52 @@ function findEnvExamplePath(files: ProjectFile[]): string | null {
   return match?.path ?? null;
 }
 
+/** Parse undocumented-env finding → variable name + correct .env.example target path. */
+export function parseUndocumentedEnvTarget(finding: {
+  message?: string;
+  suggestion?: string;
+  file?: string;
+}): { varName: string; examplePath: string } | null {
+  const message = finding.message ?? '';
+  const varMatch = message.match(/variable 'process\.env\.([^']+)'/i);
+  if (!varMatch?.[1]) return null;
+
+  const pathFromMessage = message.match(/not documented in '([^']+)'/i)?.[1];
+  const pathFromSuggestion = finding.suggestion
+    ?.match(/^Add\s+\S+=\s+to\s+(.+?)\.?$/i)?.[1]
+    ?.trim();
+  const examplePath =
+    pathFromMessage ||
+    pathFromSuggestion ||
+    (finding.file ? proposeEnvExamplePath(finding.file) : '.env.example');
+
+  return { varName: varMatch[1], examplePath };
+}
+
 export function applyEnvVarsToExampleFiles(
   files: ProjectFile[],
   varNames: readonly string[],
+  targetExamplePath?: string,
 ): ProjectFile[] {
   if (varNames.length === 0) return files;
 
   const uniqueVars = [...new Set(varNames.map((name) => name.trim()).filter(Boolean))];
   if (uniqueVars.length === 0) return files;
 
-  const envExamplePath = findEnvExamplePath(files);
+  const envExamplePath = targetExamplePath ?? findEnvExamplePath(files) ?? '.env.example';
+  const existing = files.find((file) => file.path === envExamplePath);
   const additions = uniqueVars
     .filter((varName) => {
-      if (!envExamplePath) return true;
-      const example = files.find((file) => file.path === envExamplePath);
-      if (!example) return true;
+      if (!existing) return true;
       const pattern = new RegExp(`^\\s*${varName}\\s*=`, 'm');
-      return !pattern.test(example.content);
+      return !pattern.test(existing.content);
     })
     .map((varName) => `${varName}=`)
     .join('\n');
 
   if (!additions) return files;
 
-  if (envExamplePath) {
+  if (existing) {
     return files.map((file) => {
       if (file.path !== envExamplePath) return file;
       return {
@@ -126,7 +173,7 @@ export function applyEnvVarsToExampleFiles(
     });
   }
 
-  return [...files, { path: '.env.example', content: additions }];
+  return [...files, { path: envExamplePath, content: additions }];
 }
 
 export function applyAllFixableFindingsToProject(
@@ -136,12 +183,18 @@ export function applyAllFixableFindingsToProject(
   let nextFiles = files.map((file) => ({ ...file }));
   const modifiedPaths = new Set<string>();
 
-  const envVarNames = new Set<string>();
+  const envVarsByTarget = new Map<string, Set<string>>();
   const rlsByFile = new Map<string, Set<string>>();
   const stripePaths = new Set<string>();
   const rscFixes: Array<{ path: string; module: string }> = [];
 
   const fixableFindings = findings.filter(isManualFindingFixable);
+
+  const addEnvVar = (examplePath: string, varName: string): void => {
+    const bucket = envVarsByTarget.get(examplePath) ?? new Set<string>();
+    bucket.add(varName);
+    envVarsByTarget.set(examplePath, bucket);
+  };
 
   for (const finding of fixableFindings) {
     const filePath = finding.file || '';
@@ -149,8 +202,8 @@ export function applyAllFixableFindingsToProject(
     const msg = (finding.message || '').toLowerCase();
 
     if (msg.includes('environment variable') && msg.includes('not documented in')) {
-      const varMatch = finding.message.match(/variable 'process\.env\.([^']+)'/i);
-      if (varMatch?.[1]) envVarNames.add(varMatch[1]);
+      const parsed = parseUndocumentedEnvTarget(finding);
+      if (parsed) addEnvVar(parsed.examplePath, parsed.varName);
       continue;
     }
 
@@ -177,10 +230,31 @@ export function applyAllFixableFindingsToProject(
     }
   }
 
-  if (envVarNames.size > 0) {
-    const beforePath = findEnvExamplePath(nextFiles);
-    nextFiles = applyEnvVarsToExampleFiles(nextFiles, [...envVarNames]);
-    modifiedPaths.add(beforePath ?? '.env.example');
+  // Stripe webhook autofix introduces STRIPE_WEBHOOK_SECRET — document it on the
+  // package-local example (or nearest ancestor), never a sibling package's file.
+  if (stripePaths.size > 0) {
+    const examples = nextFiles
+      .filter((file) => /(?:^|\/)\.env\.example$/i.test(file.path))
+      .map((file) => ({ file: file.path, content: file.content }));
+    for (const stripePath of stripePaths) {
+      const resolved = resolveEnvExampleForPath(stripePath, examples);
+      addEnvVar(resolved?.file ?? proposeEnvExamplePath(stripePath), 'STRIPE_WEBHOOK_SECRET');
+    }
+  }
+
+  let envVarsAdded = 0;
+  for (const [examplePath, varNames] of envVarsByTarget) {
+    const before = nextFiles.find((file) => file.path === examplePath)?.content;
+    nextFiles = applyEnvVarsToExampleFiles(nextFiles, [...varNames], examplePath);
+    const after = nextFiles.find((file) => file.path === examplePath)?.content;
+    if (after && after !== before) {
+      modifiedPaths.add(examplePath);
+      for (const varName of varNames) {
+        if (!before || !new RegExp(`^\\s*${varName}\\s*=`, 'm').test(before)) {
+          envVarsAdded += 1;
+        }
+      }
+    }
   }
 
   for (const [path, tables] of rlsByFile) {
@@ -219,7 +293,7 @@ export function applyAllFixableFindingsToProject(
     files: nextFiles,
     appliedFindingCount: fixableFindings.length,
     modifiedFileCount: modifiedPaths.size,
-    envVarsAdded: envVarNames.size,
+    envVarsAdded,
     rlsTablesFixed: [...rlsByFile.values()].reduce((total, tables) => total + tables.size, 0),
     stripeFilesFixed: stripePaths.size,
     rscImportsFixed: rscSeen.size,

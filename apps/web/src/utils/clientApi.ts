@@ -16,6 +16,7 @@ const organizationSchema = z.object({
   github_installation_id: z.string().optional(),
   created_at: z.string(),
 });
+const scanCapabilitySchema = z.enum(['browser', 'cli_only', 'invalid']);
 const repositorySchema = z.object({
   id: z.string(),
   organization_id: z.string(),
@@ -23,7 +24,16 @@ const repositorySchema = z.object({
   github_repo_id: z.number(),
   is_active: z.boolean(),
   created_at: z.string(),
+  scan_capability: scanCapabilitySchema.optional(),
 });
+const scanGateVerdictSchema = z.enum(['ready', 'review', 'blocked', 'failed']);
+const scanScopeSchema = z
+  .object({
+    scanned: z.number().int().nonnegative(),
+    skipped: z.number().int().nonnegative().optional(),
+    roots: z.array(z.string()).optional(),
+  })
+  .passthrough();
 const scanSchema = z.object({
   id: z.string(),
   repository_id: z.string(),
@@ -34,6 +44,12 @@ const scanSchema = z.object({
   warning_count: z.number(),
   share_token: z.string().nullable().optional(),
   created_at: z.string(),
+  ship_score: z.number().int().min(0).max(100).nullable().optional(),
+  verdict: scanGateVerdictSchema.nullable().optional(),
+  scanned_file_count: z.number().int().nonnegative().nullable().optional(),
+  clean_file_count: z.number().int().nonnegative().nullable().optional(),
+  scan_scope: scanScopeSchema.nullable().optional(),
+  failure_reason: z.string().nullable().optional(),
 });
 // Persisted rows return an explicit `null` for unset optional columns (Postgres/
 // PostgREST, not "absent key"), so these accept null in addition to undefined —
@@ -103,6 +119,11 @@ const saveScanBodySchema = z.object({
   // Optional metadata for the target's current-verdict projection (Phase 1).
   generatorFingerprint: z.enum(['lovable', 'v0', 'bolt', 'cursor', 'replit', 'unknown']).optional(),
   scannedFileCount: z.number().int().nonnegative().optional(),
+  cleanFileCount: z.number().int().nonnegative().optional(),
+  shipScore: z.number().int().min(0).max(100).optional(),
+  verdict: scanGateVerdictSchema.optional(),
+  scanScope: scanScopeSchema.optional(),
+  failureReason: z.string().max(120).optional(),
 });
 const verdictTopIssueSchema = z.object({
   key: z.string(),
@@ -128,6 +149,8 @@ const targetCardSchema = z.object({
   guardianEnabled: z.boolean().default(false),
   scoreDropped: z.boolean().default(false),
   badgeToken: z.string().nullable().default(null),
+  /** Repo-only: whether the in-browser scanner can run this target. */
+  scanCapability: scanCapabilitySchema.default('browser'),
 });
 const targetsSchema = z.object({ targets: z.array(targetCardSchema) });
 export type TargetCard = z.infer<typeof targetCardSchema>;
@@ -170,6 +193,7 @@ const canaryIssuedSchema = z.object({
   createdAt: z.string(),
 });
 const canaryRevokedSchema = z.object({ revoked: z.boolean() });
+const canaryDeletedSchema = z.object({ deleted: z.boolean() });
 export type CanaryTokenSummary = z.infer<typeof canaryTokenSchema>;
 
 const dependencyProvenanceFindingSchema = z.object({
@@ -267,6 +291,22 @@ export const clientApi = {
   session: (): Promise<SessionResult> => requestJson('/api/auth/session', sessionSchema),
   createRepository: (name: string, githubRepoId: number): Promise<Repository> =>
     requestJson('/api/repositories', repositorySchema, jsonRequest('POST', { name, githubRepoId })),
+  updateRepositoryScanCapability: (
+    repositoryId: string,
+    scanCapability: z.infer<typeof scanCapabilitySchema>,
+  ): Promise<Repository> =>
+    requestJson(
+      `/api/repositories/${encodeURIComponent(repositoryId)}`,
+      repositorySchema,
+      jsonRequest('PATCH', { scanCapability }),
+    ),
+  deleteRepository: async (repositoryId: string): Promise<void> => {
+    await requestJson(
+      `/api/repositories/${encodeURIComponent(repositoryId)}`,
+      z.object({ deleted: z.boolean() }),
+      jsonRequest('DELETE'),
+    );
+  },
   scans: (repositoryId: string): Promise<{ scans: Scan[] }> =>
     requestJson(`/api/scans?repoId=${encodeURIComponent(repositoryId)}`, scansSchema),
   targets: (): Promise<{ targets: TargetCard[] }> => requestJson('/api/targets', targetsSchema),
@@ -377,6 +417,12 @@ export const clientApi = {
         `/api/targets/${encodeURIComponent(targetId)}/canary/${encodeURIComponent(tokenId)}/revoke`,
         canaryRevokedSchema,
         jsonRequest('POST'),
+      ),
+    delete: (targetId: string, tokenId: string): Promise<{ deleted: boolean }> =>
+      requestJson(
+        `/api/targets/${encodeURIComponent(targetId)}/canary/${encodeURIComponent(tokenId)}`,
+        canaryDeletedSchema,
+        jsonRequest('DELETE'),
       ),
   },
   dependencyProvenance: (

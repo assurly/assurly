@@ -5,6 +5,7 @@ import { emptyBodySchema, RATE_LIMITS, secureRoute, ApiError } from '../../../..
 import {
   fetchGitHubFile,
   fetchGitHubFilesBatch,
+  GITHUB_FETCH_TIMEOUT_MS,
   githubHeaders,
   githubRepositoryApiUrl,
   readLimitedResponseText,
@@ -67,6 +68,11 @@ const treeSchema = z
   .passthrough();
 const commitSchema = z.object({ sha: z.string().min(1).max(64) }).passthrough();
 
+/** Byte ceiling for GitHub's recursive tree response, matching `treeSchema`'s entry cap. */
+const TREE_MAX_BYTES = 2 * 1024 * 1024;
+const REPOSITORY_TOO_LARGE_MESSAGE =
+  'This repository is too large for the in-browser scan. Run `npx assurly scan` locally for a complete scan of a repository this size.';
+
 function rateLimitMessage(authenticated: boolean): string {
   if (authenticated) {
     return 'GitHub API rate limit exceeded. Please wait a few minutes and try again.';
@@ -91,7 +97,10 @@ export const GET = secureRoute(
     const token = resolveGitHubReadToken(githubAccessToken);
     const authenticated = Boolean(token);
     const headers = githubHeaders(token);
-    const metadataResponse = await fetch(githubRepositoryApiUrl(query.repo), { headers });
+    const metadataResponse = await fetch(githubRepositoryApiUrl(query.repo), {
+      headers,
+      signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS),
+    });
     if (!metadataResponse.ok) {
       if (metadataResponse.status === 404) {
         throw new ApiError(
@@ -116,8 +125,8 @@ export const GET = secureRoute(
       const commitUrl = githubRepositoryApiUrl(query.repo, 'commits', branch);
 
       const [treeResponse, commitResponse] = await Promise.all([
-        fetch(treeUrl, { headers }),
-        fetch(commitUrl, { headers }),
+        fetch(treeUrl, { headers, signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS) }),
+        fetch(commitUrl, { headers, signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS) }),
       ]);
 
       if (!treeResponse.ok) {
@@ -127,9 +136,18 @@ export const GET = secureRoute(
         throw new ApiError(502, 'github_unavailable', 'GitHub is temporarily unavailable.');
       }
 
-      const tree = treeSchema.parse(
-        JSON.parse(await readLimitedResponseText(treeResponse, 2 * 1024 * 1024)),
-      );
+      // A repository larger than the browser scan can ingest is an expected outcome,
+      // not a server fault: both the byte cap and the entry cap are deliberate limits.
+      // Reporting them as a 500 left the user with "Internal server error" and no idea
+      // that the repository size was the reason.
+      let tree: z.infer<typeof treeSchema>;
+      try {
+        tree = treeSchema.parse(
+          JSON.parse(await readLimitedResponseText(treeResponse, TREE_MAX_BYTES)),
+        );
+      } catch {
+        throw new ApiError(413, 'repository_too_large', REPOSITORY_TOO_LARGE_MESSAGE);
+      }
 
       // Best-effort: if the commit lookup fails (e.g. edge-case permissions), omit the SHA
       // rather than failing the entire scan.
@@ -182,7 +200,10 @@ export const POST = secureRoute(
     const authenticated = Boolean(token);
     const headers = githubHeaders(token);
 
-    const metadataResponse = await fetch(githubRepositoryApiUrl(body.repo), { headers });
+    const metadataResponse = await fetch(githubRepositoryApiUrl(body.repo), {
+      headers,
+      signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS),
+    });
     if (!metadataResponse.ok) {
       if (metadataResponse.status === 404) {
         throw new ApiError(

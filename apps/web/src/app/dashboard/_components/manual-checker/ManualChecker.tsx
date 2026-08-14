@@ -13,6 +13,7 @@ import { DashboardArchiveIcon, DashboardFolderIcon } from '../icons/DashboardIco
 import { DiagnosticTerminal } from './DiagnosticTerminal';
 import { ManualCheckerNavigation } from './ManualCheckerNavigation';
 import { ProjectWorkspaceView } from './ProjectWorkspaceView';
+import { ProjectLoadStatus, type ProjectLoadState } from './ProjectLoadStatus';
 import {
   buildIssueGroupSummaries,
   buildProjectScanOverview,
@@ -33,6 +34,58 @@ import {
   isManualFindingFixable,
 } from './projectAutoFix';
 import { downloadProjectPatch, downloadProjectZip } from './projectExport';
+import {
+  cloneProjectFilesForUndo,
+  describeAppliedFix,
+  describeBatchAppliedFixes,
+  popUndoEntry,
+  pushUndoEntry,
+} from './shipLoopJournal';
+import type { AppliedManualFix, ManualFixKind, ShipLoopUndoEntry } from './shipLoopTypes';
+
+function manualFixKindFromFinding(finding: WebFinding): ManualFixKind | null {
+  const filePath = (finding.file || '').toLowerCase();
+  const msg = (finding.message || '').toLowerCase();
+  if (filePath.endsWith('.sql') && msg.includes('row-level security')) return 'rls';
+  if (msg.includes('stripe webhook endpoint') && msg.includes('signature verification')) {
+    return 'stripe';
+  }
+  if (msg.includes('environment variable') && msg.includes('not documented in')) return 'env';
+  if (msg.includes("client component ('use client') imports server-side module")) return 'rsc';
+  return null;
+}
+
+function projectFilesDifferFromSnapshot(
+  files: ProjectFile[],
+  snapshot: ProjectFile[] | null,
+): boolean {
+  if (!snapshot) return files.length > 0;
+  if (files.length !== snapshot.length) return true;
+  const byPath = new Map(snapshot.map((file) => [file.path, file.content]));
+  return files.some((file) => byPath.get(file.path) !== file.content);
+}
+
+function describeFindingFix(finding: WebFinding): AppliedManualFix | null {
+  const kind = manualFixKindFromFinding(finding);
+  if (!kind) return null;
+  const tableMatch = finding.message.match(/table '([^']+)'/i);
+  const varMatch = finding.message.match(/variable 'process\.env\.([^']+)'/i);
+  const moduleMatch = finding.message.match(/database client '([^']+)'/i);
+  const detail =
+    kind === 'rls'
+      ? tableMatch?.[1]
+      : kind === 'env'
+        ? varMatch?.[1]
+        : kind === 'rsc'
+          ? moduleMatch?.[1]
+          : undefined;
+  return describeAppliedFix({
+    kind,
+    ruleId: finding.ruleId,
+    detail,
+    filePaths: finding.file ? [finding.file] : [],
+  });
+}
 
 // Default mock contents for demonstration
 const DEFAULT_SQL_MOCK = `-- Create profiles table
@@ -113,6 +166,7 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
   const [projectName, setProjectName] = useState<string>('');
   const [selectedProjectPath, setSelectedProjectPath] = useState<string | null>(null);
+  const [projectLoad, setProjectLoad] = useState<ProjectLoadState | null>(null);
 
   // Drag & drop state
   const [dragActive, setDragActive] = useState<boolean>(false);
@@ -129,6 +183,15 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
   const projectSnapshotRef = useRef<ProjectFile[] | null>(null);
   const [projectHasLocalChanges, setProjectHasLocalChanges] = useState<boolean>(false);
 
+  // Ship Loop: applied-fix journal + undo stack
+  const [appliedFixes, setAppliedFixes] = useState<AppliedManualFix[]>([]);
+  const [undoStack, setUndoStack] = useState<ShipLoopUndoEntry[]>([]);
+
+  const clearShipLoop = (): void => {
+    setAppliedFixes([]);
+    setUndoStack([]);
+  };
+
   const results = useManualScan({
     activeTab,
     sqlContent,
@@ -144,20 +207,75 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
 
   const isFindingFixable = isManualFindingFixable;
 
+  const handleUndoLastFix = (): void => {
+    const { entry, stack } = popUndoEntry(undoStack);
+    if (!entry) {
+      onToast?.('Nothing to undo.', 'info');
+      return;
+    }
+
+    setUndoStack(stack);
+    setAppliedFixes(entry.fixes);
+
+    if (entry.mode === 'project') {
+      setProjectFiles(entry.files);
+      setProjectHasLocalChanges(
+        projectFilesDifferFromSnapshot(entry.files, projectSnapshotRef.current),
+      );
+      onToast?.('Reverted the last Assurly auto-fix.', 'info');
+      return;
+    }
+
+    if (entry.mode === 'sql' && entry.content.sql !== undefined) {
+      setSqlContent(entry.content.sql);
+    } else if (entry.mode === 'stripe' && entry.content.stripe !== undefined) {
+      setStripeContent(entry.content.stripe);
+    } else if (entry.mode === 'env') {
+      if (entry.content.envExample !== undefined) {
+        setEnvExampleContent(entry.content.envExample);
+      }
+      if (entry.content.envCode !== undefined) {
+        setEnvCodeContent(entry.content.envCode);
+      }
+    }
+    onToast?.('Reverted the last Assurly auto-fix.', 'info');
+  };
+
   const handleApplyFix = (f: WebFinding): void => {
     const findingId = getManualFindingKey(f);
     setFixingFindingId(findingId);
 
     const filePath = (f.file || '').toLowerCase();
     const msg = (f.message || '').toLowerCase();
+    const journalCard = describeFindingFix(f);
+
+    const undoEntry: ShipLoopUndoEntry =
+      activeTab === 'project'
+        ? {
+            mode: 'project',
+            files: cloneProjectFilesForUndo(projectFiles),
+            fixes: [...appliedFixes],
+          }
+        : activeTab === 'sql'
+          ? { mode: 'sql', content: { sql: sqlContent }, fixes: [...appliedFixes] }
+          : activeTab === 'stripe'
+            ? { mode: 'stripe', content: { stripe: stripeContent }, fixes: [...appliedFixes] }
+            : {
+                mode: 'env',
+                content: { envExample: envExampleContent, envCode: envCodeContent },
+                fixes: [...appliedFixes],
+              };
 
     setTimeout(() => {
-      if (activeTab === 'project') {
-        setProjectFiles((prev) => {
-          const next = applySingleFindingToProject(prev, f);
-          setProjectHasLocalChanges(true);
-          return next;
-        });
+      setUndoStack((stack) => pushUndoEntry(stack, undoEntry));
+      if (journalCard) {
+        setAppliedFixes((prev) => [...prev, journalCard]);
+      }
+
+      if (activeTab === 'project' && undoEntry.mode === 'project') {
+        const next = applySingleFindingToProject(undoEntry.files, f);
+        setProjectFiles(next);
+        setProjectHasLocalChanges(true);
 
         if (filePath.endsWith('.sql') && msg.includes('row-level security')) {
           setFlashSql(true);
@@ -194,7 +312,9 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
       } else if (filePath.endsWith('.sql') && msg.includes('row-level security')) {
         const tableMatch = f.message.match(/table '([^']+)'/i);
         const tableName = tableMatch?.[1] ?? 'unknown';
-        setSqlContent((prev) => appendRlsFix(prev, tableName));
+        const baseSql =
+          undoEntry.mode === 'sql' ? (undoEntry.content.sql ?? sqlContent) : sqlContent;
+        setSqlContent(appendRlsFix(baseSql, tableName));
         setFlashSql(true);
         setTimeout(() => setFlashSql(false), 1500);
         onToast?.(
@@ -204,13 +324,15 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
       } else if (msg.includes('environment variable') && msg.includes('not documented in')) {
         const varMatch = f.message.match(/variable 'process\.env\.([^']+)'/i);
         const varName = varMatch?.[1] ?? 'UNKNOWN';
-        setEnvExampleContent((prev) => {
-          const [updated] = applyEnvVarsToExampleFiles(
-            [{ path: envExampleFileName ?? '.env.example', content: prev }],
-            [varName],
-          );
-          return updated?.content ?? prev;
-        });
+        const baseEnv =
+          undoEntry.mode === 'env'
+            ? (undoEntry.content.envExample ?? envExampleContent)
+            : envExampleContent;
+        const [updated] = applyEnvVarsToExampleFiles(
+          [{ path: envExampleFileName ?? '.env.example', content: baseEnv }],
+          [varName],
+        );
+        setEnvExampleContent(updated?.content ?? baseEnv);
         setFlashEnv(true);
         setTimeout(() => setFlashEnv(false), 1500);
         onToast?.(
@@ -221,7 +343,9 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
         msg.includes('stripe webhook endpoint') &&
         msg.includes('signature verification')
       ) {
-        setStripeContent((prev) => fixStripeWebhook(prev));
+        const baseStripe =
+          undoEntry.mode === 'stripe' ? (undoEntry.content.stripe ?? stripeContent) : stripeContent;
+        setStripeContent(fixStripeWebhook(baseStripe));
         setFlashStripe(true);
         setTimeout(() => setFlashStripe(false), 1500);
         onToast?.('Stripe webhook signature verification successfully added!', 'success');
@@ -229,7 +353,11 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
         const moduleMatch = f.message.match(/database client '([^']+)'/i);
         const moduleSpecifier = moduleMatch?.[1] ?? '';
         if (moduleSpecifier) {
-          setStripeContent((prev) => fixRscDataLeak(prev, moduleSpecifier));
+          const baseStripe =
+            undoEntry.mode === 'stripe'
+              ? (undoEntry.content.stripe ?? stripeContent)
+              : stripeContent;
+          setStripeContent(fixRscDataLeak(baseStripe, moduleSpecifier));
           setFlashStripe(true);
           setTimeout(() => setFlashStripe(false), 1500);
           onToast?.(
@@ -251,11 +379,28 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
       return;
     }
 
+    const undoEntry: ShipLoopUndoEntry = {
+      mode: 'project',
+      files: cloneProjectFilesForUndo(projectFiles),
+      fixes: [...appliedFixes],
+    };
+
     setIsApplyingAllFixes(true);
     setTimeout(() => {
-      const result = applyAllFixableFindingsToProject(projectFiles, results.findings);
+      const result = applyAllFixableFindingsToProject(undoEntry.files, results.findings);
       const remainingErrors = countShipGateBlockers(scanProject(result.files).findings);
+      const batchCards = describeBatchAppliedFixes(
+        result,
+        result.files
+          .filter((file, _index, all) => {
+            const before = new Map(undoEntry.files.map((item) => [item.path, item.content]));
+            return before.get(file.path) !== file.content;
+          })
+          .map((file) => file.path),
+      );
 
+      setUndoStack((stack) => pushUndoEntry(stack, undoEntry));
+      setAppliedFixes((prev) => [...prev, ...batchCards]);
       setProjectFiles(result.files);
       setProjectHasLocalChanges(true);
       setFlashEnv(true);
@@ -317,6 +462,7 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
   };
 
   const handleSelectFolder = (): void => {
+    if (projectLoad) return;
     // Prefer the native directory input — it keeps the user gesture attached to the
     // click and works reliably across browsers (including automation edge cases).
     folderInputRef.current?.click();
@@ -336,6 +482,7 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
     setProjectName(name);
     setActiveTab('project');
     setSelectedProjectPath(overview.initialFilePath);
+    clearShipLoop();
 
     const summary =
       overview.errorCount > 0
@@ -352,7 +499,12 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
   const handleFolderInputChange = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
     const selectedFiles = Array.from(e.target.files ?? []);
     e.target.value = '';
-    if (selectedFiles.length === 0) return;
+    if (selectedFiles.length === 0 || projectLoad) return;
+
+    const relativePath = selectedFiles[0]?.webkitRelativePath ?? '';
+    const label = relativePath.split('/')[0] || 'selected folder';
+    setProjectLoad({ kind: 'folder', label });
+    setActiveTab('project');
 
     try {
       const { files, rootFolderName } = await readFileListFromInput(selectedFiles);
@@ -360,19 +512,26 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       onToast?.(`Failed to open directory: ${message}`, 'info');
+    } finally {
+      setProjectLoad(null);
     }
   };
 
   const handleZipFileChange = async (e: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
     const archive = e.target.files?.[0];
     e.target.value = '';
-    if (!archive) return;
+    if (!archive || projectLoad) return;
+
+    setProjectLoad({ kind: 'zip', label: archive.name });
+    setActiveTab('project');
 
     try {
       const files = await readZipFile(archive);
       applyProjectSelection(files, archive.name.replace(/\.zip$/i, ''));
     } catch (err) {
       onToast?.(`Failed to parse ZIP archive: ${(err as Error).message}`, 'info');
+    } finally {
+      setProjectLoad(null);
     }
   };
 
@@ -381,23 +540,36 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
     e.stopPropagation();
     setDragActive(false);
     dragCounter.current = 0;
+    if (projectLoad) return;
 
     const items = e.dataTransfer.items;
     if (items && items.length > 0) {
       const item = items[0].webkitGetAsEntry() as FileSystemEntry | null;
       if (item) {
         if (item.isDirectory) {
-          const files = await readDroppedEntry(item);
-          applyProjectSelection(files, item.name);
+          setProjectLoad({ kind: 'drop', label: item.name });
+          setActiveTab('project');
+          try {
+            const files = await readDroppedEntry(item);
+            applyProjectSelection(files, item.name);
+          } catch (err) {
+            onToast?.(`Failed to read dropped folder: ${(err as Error).message}`, 'info');
+          } finally {
+            setProjectLoad(null);
+          }
           return;
         } else if (item.isFile) {
           const file = e.dataTransfer.files[0];
           if (file && file.name.endsWith('.zip')) {
+            setProjectLoad({ kind: 'zip', label: file.name });
+            setActiveTab('project');
             try {
               const files = await readZipFile(file);
               applyProjectSelection(files, file.name.replace(/\.zip$/i, ''));
             } catch (err) {
               onToast?.(`Failed to read ZIP archive: ${(err as Error).message}`, 'info');
+            } finally {
+              setProjectLoad(null);
             }
             return;
           }
@@ -648,33 +820,51 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
           {activeTab === 'project' && (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               {projectFiles.length === 0 ? (
-                <div className="empty-project-placeholder">
-                  <div className="placeholder-icon" aria-hidden="true">
-                    <DashboardFolderIcon className="dashboard-icon--xl" />
-                  </div>
-                  <h4>Scan Local Project Workspace</h4>
-                  <p>
-                    Analyze a whole directory or a ZIP archive locally. All operations run 100%
-                    in-browser. Your proprietary code never leaves your computer.
-                  </p>
-                  <div className="placeholder-actions">
-                    <button
-                      type="button"
-                      className="project-action-btn primary"
-                      onClick={handleSelectFolder}
-                    >
-                      <DashboardFolderIcon />
-                      Select Project Folder
-                    </button>
-                    <button
-                      type="button"
-                      className="project-action-btn secondary"
-                      onClick={() => zipInputRef.current?.click()}
-                    >
-                      <DashboardArchiveIcon />
-                      Upload ZIP Archive
-                    </button>
-                  </div>
+                <div
+                  className="empty-project-placeholder"
+                  aria-busy={projectLoad ? true : undefined}
+                >
+                  {projectLoad ? (
+                    <ProjectLoadStatus
+                      kind={projectLoad.kind}
+                      label={projectLoad.label}
+                      variant="placeholder"
+                    />
+                  ) : (
+                    <>
+                      <div className="placeholder-icon" aria-hidden="true">
+                        <DashboardFolderIcon className="dashboard-icon--xl" />
+                      </div>
+                      <h4>Scan Local Project Workspace</h4>
+                      <p>
+                        Analyze a whole directory or a ZIP archive locally. All operations run 100%
+                        in-browser. Your proprietary code never leaves your computer.
+                      </p>
+                      <div className="placeholder-actions">
+                        <button
+                          type="button"
+                          className="project-action-btn primary"
+                          onClick={handleSelectFolder}
+                          disabled={Boolean(projectLoad)}
+                        >
+                          <DashboardFolderIcon />
+                          Select Project Folder
+                        </button>
+                        <button
+                          type="button"
+                          className="project-action-btn secondary"
+                          onClick={() => {
+                            if (projectLoad) return;
+                            zipInputRef.current?.click();
+                          }}
+                          disabled={Boolean(projectLoad)}
+                        >
+                          <DashboardArchiveIcon />
+                          Upload ZIP Archive
+                        </button>
+                      </div>
+                    </>
+                  )}
                   <input
                     type="file"
                     ref={folderInputRef}
@@ -686,15 +876,17 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
                     style={{ display: 'none' }}
                     aria-label="Select project folder"
                     tabIndex={-1}
+                    disabled={Boolean(projectLoad)}
                   />
                   <input
                     type="file"
                     ref={zipInputRef}
                     accept=".zip"
-                    onChange={handleZipFileChange}
+                    onChange={(event) => void handleZipFileChange(event)}
                     style={{ display: 'none' }}
                     aria-label="Upload ZIP archive"
                     tabIndex={-1}
+                    disabled={Boolean(projectLoad)}
                   />
                 </div>
               ) : (
@@ -706,6 +898,7 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
                   fixableCount={projectFixableCount}
                   isApplyingAllFixes={isApplyingAllFixes}
                   canExportPatch={projectHasLocalChanges}
+                  projectLoad={projectLoad}
                   onFixAll={handleApplyAllFixes}
                   onDownloadZip={handleDownloadProjectZip}
                   onDownloadPatch={handleDownloadProjectPatch}
@@ -722,6 +915,7 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
                     setSelectedProjectPath(null);
                     projectSnapshotRef.current = null;
                     setProjectHasLocalChanges(false);
+                    clearShipLoop();
                   }}
                 />
               )}
@@ -741,6 +935,19 @@ export default function ManualChecker({ onToast }: ManualCheckerProps): React.Re
           isApplyingAllFixes={isApplyingAllFixes}
           onApplyFix={handleApplyFix}
           onFixAll={activeTab === 'project' ? handleApplyAllFixes : undefined}
+          appliedFixes={appliedFixes}
+          shipLoopProjectName={
+            activeTab === 'project' && projectName.trim()
+              ? projectName
+              : activeTab === 'sql'
+                ? 'SQL snippet scan'
+                : activeTab === 'stripe'
+                  ? 'Stripe snippet scan'
+                  : activeTab === 'env'
+                    ? 'Env snippet scan'
+                    : 'snippet scan'
+          }
+          onUndoLastFix={handleUndoLastFix}
         />
       </div>
     </div>

@@ -1,131 +1,68 @@
 import { describe, expect, it } from 'vitest';
 import type { TargetCard } from '../../../utils/clientApi';
 import {
-  filterCardsByKind,
+  countByVerdict,
+  coverageLabelForCard,
   filterCardsByVerdict,
-  shouldShowGuardianChip,
-  sortVerdictCards,
+  isBrowserUnscannedCard,
 } from './verdictCardsView';
 
-function card(
-  partial: Partial<TargetCard> & Pick<TargetCard, 'id' | 'kind' | 'verdict'>,
-): TargetCard {
+function card(partial: Partial<TargetCard> & Pick<TargetCard, 'id' | 'verdict'>): TargetCard {
   return {
+    kind: 'repo',
     identifier: partial.identifier ?? partial.id,
     displayName: partial.displayName ?? partial.id,
-    repositoryId: partial.repositoryId ?? (partial.kind === 'repo' ? 'repo-1' : null),
-    generatorFingerprint: partial.generatorFingerprint ?? null,
-    shipScore: partial.shipScore ?? 96,
-    topIssue: partial.topIssue ?? null,
+    repositoryId: partial.repositoryId ?? partial.id,
+    generatorFingerprint: null,
+    shipScore: partial.shipScore ?? null,
+    topIssue: null,
     lastCheckedAt: partial.lastCheckedAt ?? null,
-    latestScanId: partial.latestScanId ?? null,
-    ownershipVerified: partial.ownershipVerified ?? false,
-    guardianEnabled: partial.guardianEnabled ?? false,
-    scoreDropped: partial.scoreDropped ?? false,
-    badgeToken: partial.badgeToken ?? null,
+    latestScanId: null,
+    ownershipVerified: false,
+    guardianEnabled: true,
+    scoreDropped: false,
+    badgeToken: null,
+    scanCapability: partial.scanCapability ?? 'browser',
     ...partial,
   };
 }
 
-describe('sortVerdictCards', () => {
-  it('puts blockers first, then lower scores within the same verdict', () => {
+describe('Unscanned hygiene', () => {
+  it('excludes cli_only and invalid repos from Unscanned filter/count', () => {
     const cards = [
-      card({
-        id: 'ready-high',
-        kind: 'repo',
-        verdict: 'ready',
-        shipScore: 96,
-        displayName: 'z/app',
-      }),
-      card({
-        id: 'blocked-high',
-        kind: 'repo',
-        verdict: 'blocked',
-        shipScore: 80,
-        displayName: 'a/api',
-      }),
-      card({
-        id: 'blocked-low',
-        kind: 'repo',
-        verdict: 'blocked',
-        shipScore: 40,
-        displayName: 'b/api',
-      }),
-      card({
-        id: 'review',
-        kind: 'url',
-        verdict: 'review',
-        shipScore: 92,
-        displayName: 'https://r.app',
-      }),
+      card({ id: 'a', verdict: 'unknown', scanCapability: 'browser' }),
+      card({ id: 'b', verdict: 'unknown', scanCapability: 'cli_only' }),
+      card({ id: 'c', verdict: 'unknown', scanCapability: 'invalid' }),
+      card({ id: 'd', verdict: 'ready', shipScore: 100, scanCapability: 'browser' }),
     ];
 
-    const sorted = sortVerdictCards(cards, 'urgency').map((entry) => entry.id);
-    expect(sorted).toEqual(['blocked-low', 'blocked-high', 'review', 'ready-high']);
+    expect(filterCardsByVerdict(cards, 'unknown').map((item) => item.id)).toEqual(['a']);
+    expect(countByVerdict(cards).unknown).toBe(1);
+    expect(isBrowserUnscannedCard(cards[1]!)).toBe(false);
   });
 
-  it('sorts by score ascending with missing scores last', () => {
-    const cards = [
-      card({ id: 'null', kind: 'repo', verdict: 'unknown', shipScore: null }),
-      card({ id: 'high', kind: 'repo', verdict: 'ready', shipScore: 96 }),
-      card({ id: 'low', kind: 'repo', verdict: 'blocked', shipScore: 40 }),
-    ];
-    expect(sortVerdictCards(cards, 'score-asc').map((entry) => entry.id)).toEqual([
-      'low',
-      'high',
-      'null',
-    ]);
-  });
-});
-
-describe('filterCardsByVerdict / filterCardsByKind', () => {
-  const cards = [
-    card({ id: 'r1', kind: 'repo', verdict: 'blocked' }),
-    card({ id: 'u1', kind: 'url', verdict: 'ready', displayName: 'https://ok.app' }),
-    card({ id: 'r2', kind: 'repo', verdict: 'ready' }),
-  ];
-
-  it('filters by verdict', () => {
-    expect(filterCardsByVerdict(cards, 'ready').map((c) => c.id)).toEqual(['u1', 'r2']);
-    expect(filterCardsByVerdict(cards, 'blocked').map((c) => c.id)).toEqual(['r1']);
-  });
-
-  it('filters by kind', () => {
-    expect(filterCardsByKind(cards, 'urls').map((c) => c.id)).toEqual(['u1']);
-    expect(filterCardsByKind(cards, 'repos').map((c) => c.id)).toEqual(['r1', 'r2']);
-  });
-});
-
-describe('shouldShowGuardianChip', () => {
-  it('hides Guardian on repos to avoid badge fatigue', () => {
+  it('labels Instant incomplete vs Full Gate coverage honestly', () => {
     expect(
-      shouldShowGuardianChip(
-        card({ id: 'r1', kind: 'repo', verdict: 'ready', guardianEnabled: true }),
-      ),
-    ).toBe(false);
-  });
-
-  it('shows Guardian only for guarded URLs', () => {
-    expect(
-      shouldShowGuardianChip(
+      coverageLabelForCard(
         card({
-          id: 'u1',
-          kind: 'url',
-          verdict: 'ready',
-          guardianEnabled: true,
-          ownershipVerified: true,
+          id: 'incomplete',
+          verdict: 'review',
+          shipScore: 79,
+          topIssue: {
+            key: 'rule:scan-completeness',
+            label: 'Incomplete scan',
+            severity: 'warning',
+            sampleMessage: 'Incomplete',
+            affectedFileCount: 1,
+            occurrenceCount: 1,
+          },
         }),
       ),
-    ).toBe(true);
+    ).toBe('Instant · incomplete');
     expect(
-      shouldShowGuardianChip(
-        card({
-          id: 'u2',
-          kind: 'url',
-          verdict: 'ready',
-          guardianEnabled: false,
-        }),
+      coverageLabelForCard(
+        card({ id: 'cli', verdict: 'blocked', shipScore: 64, scanCapability: 'cli_only' }),
       ),
-    ).toBe(false);
+    ).toBe('Full Gate');
   });
 });

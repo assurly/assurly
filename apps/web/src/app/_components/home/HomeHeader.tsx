@@ -1,25 +1,45 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, type ReactElement } from 'react';
 import { AuthButton } from './AuthButton';
 import { AssurlyMark } from '../AssurlyMark';
 import { AssurlyWordmark } from '../AssurlyWordmark';
 import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
 
+export interface SiteNavLink {
+  href: string;
+  label: string;
+  /** Marks the active page in the primary nav (`aria-current="page"`). */
+  current?: boolean;
+}
+
 interface HomeHeaderProps {
   authenticated: boolean;
   loginUrl: string;
   menuOpen: boolean;
   onMenuChange: (open: boolean) => void;
+  /** Override landing anchors when reused on product pages (e.g. `/mcp`). */
+  navLinks?: readonly SiteNavLink[];
+  /** When set, the brand mark links home (product pages). Landing keeps a static mark. */
+  logoHref?: string;
 }
 
-const NAV_LINKS = [
+export const LANDING_NAV_LINKS: readonly SiteNavLink[] = [
   { href: '#features', label: 'Features' },
   { href: '#pricing', label: 'Pricing' },
   { href: '/mcp', label: 'MCP Server' },
   { href: '#faq', label: 'FAQ' },
   { href: '#contact', label: 'Contact' },
-] as const;
+];
+
+export const MCP_NAV_LINKS: readonly SiteNavLink[] = [
+  { href: '/#features', label: 'Features' },
+  { href: '/#pricing', label: 'Pricing' },
+  { href: '/mcp', label: 'MCP Server', current: true },
+  { href: '/#faq', label: 'FAQ' },
+  { href: '/#contact', label: 'Contact' },
+];
 
 const HEADER_AUTH_LABELS = {
   signIn: 'Sign In',
@@ -36,6 +56,8 @@ export function HomeHeader({
   loginUrl,
   menuOpen,
   onMenuChange,
+  navLinks = LANDING_NAV_LINKS,
+  logoHref,
 }: HomeHeaderProps): ReactElement {
   const closeMenu = useCallback((): void => {
     onMenuChange(false);
@@ -59,13 +81,25 @@ export function HomeHeader({
     [rememberTrigger, toggleMenu],
   );
 
+  const brand = (
+    <>
+      <AssurlyMark className="site-logo-mark" />
+      <AssurlyWordmark accentClassName="site-logo-accent" />
+    </>
+  );
+
   return (
     <header className={joinClasses(menuOpen && 'site-header-menu-open')}>
       <div className="container nav-container">
-        <div className="logo" id="header-logo" role="img" aria-label="Assurly">
-          <AssurlyMark className="site-logo-mark" />
-          <AssurlyWordmark accentClassName="site-logo-accent" />
-        </div>
+        {logoHref ? (
+          <Link href={logoHref} className="logo" id="header-logo" aria-label="Assurly">
+            {brand}
+          </Link>
+        ) : (
+          <div className="logo" id="header-logo" role="img" aria-label="Assurly">
+            {brand}
+          </div>
+        )}
         <button
           type="button"
           className="hamburger-btn"
@@ -84,8 +118,13 @@ export function HomeHeader({
           className={joinClasses(menuOpen && 'open')}
           aria-label="Primary navigation"
         >
-          {NAV_LINKS.map((link) => (
-            <a key={link.href} href={link.href} onClick={closeMenu}>
+          {navLinks.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              onClick={closeMenu}
+              {...(link.current ? { 'aria-current': 'page' as const } : {})}
+            >
               {link.label}
             </a>
           ))}

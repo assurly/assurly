@@ -7,6 +7,7 @@ export {
   isAgentMcpConfigFile,
   isAgentStackFile,
   isScannableFile,
+  proposeEnvExamplePath,
   rankFilesByRelevance,
   resolveEnvExampleForPath,
   scanAgentInstructionFile,

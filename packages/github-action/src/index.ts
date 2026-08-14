@@ -71,17 +71,37 @@ export async function run(): Promise<void> {
 
     try {
       const cleanStdout = stdout.trim();
-      // Ensure we find the starting JSON array if there's any preceding/succeeding text output
-      const jsonStartIndex = cleanStdout.indexOf('[');
-      const jsonEndIndex = cleanStdout.lastIndexOf(']');
-
-      if (jsonStartIndex !== -1 && jsonEndIndex !== -1 && jsonStartIndex < jsonEndIndex) {
-        const jsonContent = cleanStdout.substring(jsonStartIndex, jsonEndIndex + 1);
-        findings = JSON.parse(jsonContent);
-      } else if (cleanStdout === '') {
+      if (cleanStdout === '') {
         findings = [];
       } else {
-        throw new Error('No JSON output structure detected');
+        // Prefer a full JSON value (versioned Ship Gate object or legacy array).
+        // Fall back to the first array slice for noisy stdout.
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(cleanStdout);
+        } catch {
+          const jsonStartIndex = cleanStdout.indexOf('{');
+          const arrayStartIndex = cleanStdout.indexOf('[');
+          const start =
+            jsonStartIndex === -1
+              ? arrayStartIndex
+              : arrayStartIndex === -1
+                ? jsonStartIndex
+                : Math.min(jsonStartIndex, arrayStartIndex);
+          if (start === -1) throw new Error('No JSON output structure detected');
+          parsed = JSON.parse(cleanStdout.slice(start));
+        }
+        if (Array.isArray(parsed)) {
+          findings = parsed as Finding[];
+        } else if (
+          parsed &&
+          typeof parsed === 'object' &&
+          Array.isArray((parsed as { findings?: unknown }).findings)
+        ) {
+          findings = (parsed as { findings: Finding[] }).findings;
+        } else {
+          throw new Error('Scan JSON must be a findings array or an Assurly scan report object.');
+        }
       }
     } catch (parseError: unknown) {
       core.info(`Raw CLI stdout: ${stdout}`);

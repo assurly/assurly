@@ -14,7 +14,9 @@ export function isScannableFile(filePath: string): boolean {
     normalized.includes('/dist/') ||
     normalized.startsWith('dist/') ||
     normalized.includes('/.next/') ||
-    normalized.startsWith('.next/')
+    normalized.startsWith('.next/') ||
+    normalized.includes('/coverage/') ||
+    normalized.startsWith('coverage/')
   ) {
     return false;
   }
@@ -24,14 +26,22 @@ export function isScannableFile(filePath: string): boolean {
   // singular through, and a fixture written to fail every rule then reads as
   // production code: Assurly's own repository reported two missing-RLS blockers
   // from a fixture and failed its own ship gate for it.
+  //
+  // `/testing/` and `__mocks__/` are app-local harness paths (e.g. e2e fixtures);
+  // playwright configs are tooling, not ship-gate surface area.
   if (
     normalized.includes('/__tests__/') ||
     normalized.startsWith('__tests__/') ||
+    normalized.includes('/__mocks__/') ||
+    normalized.startsWith('__mocks__/') ||
     /(^|\/)test-projects?\//.test(normalized) ||
     normalized.includes('/fixtures/') ||
     normalized.startsWith('fixtures/') ||
+    normalized.includes('/testing/') ||
+    normalized.startsWith('testing/') ||
     normalized.includes('/vendor/') ||
-    normalized.startsWith('vendor/')
+    normalized.startsWith('vendor/') ||
+    /(^|\/)playwright\.config\.ts$/i.test(normalized)
   ) {
     return false;
   }

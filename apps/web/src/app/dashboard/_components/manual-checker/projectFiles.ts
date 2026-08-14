@@ -1,7 +1,23 @@
 import JSZip from 'jszip';
+import { isScannableFile } from '../../../../utils/browserScanner';
 import type { ProjectFile } from './useManualScan';
 
-const EXCLUDED_DIRECTORIES = new Set(['node_modules', '.git', '.next', 'dist', 'build']);
+/** Directory segment early-out before reading (I/O). Keep in sync with isScannableFile noise paths. */
+const EXCLUDED_DIRECTORIES = new Set([
+  'node_modules',
+  '.git',
+  '.next',
+  'dist',
+  'build',
+  'coverage',
+  'vendor',
+  'fixtures',
+  '__tests__',
+  '__mocks__',
+  'test-project',
+  'test-projects',
+  'testing',
+]);
 const SUPPORTED_FILE = /(?:\.sql|\.env|\.env\.example|\.[jt]sx?|\.json)$/i;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_PROJECT_FILES = 1_000;
@@ -47,9 +63,12 @@ export interface DirectoryPickerWindow extends Window {
 }
 
 function allowedPath(path: string): boolean {
-  const segments = path.replaceAll('\\', '/').split('/');
+  const normalized = path.replaceAll('\\', '/');
+  const segments = normalized.split('/');
   return (
-    !segments.some((segment) => EXCLUDED_DIRECTORIES.has(segment)) && SUPPORTED_FILE.test(path)
+    !segments.some((segment) => EXCLUDED_DIRECTORIES.has(segment)) &&
+    SUPPORTED_FILE.test(normalized) &&
+    isScannableFile(normalized)
   );
 }
 

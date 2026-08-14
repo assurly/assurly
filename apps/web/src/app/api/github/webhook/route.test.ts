@@ -135,6 +135,11 @@ describe('GitHub webhook security and idempotency', () => {
       0,
       0,
       [],
+      expect.objectContaining({
+        shipScore: expect.any(Number),
+        verdict: expect.stringMatching(/^(ready|review|blocked)$/),
+        scannedFileCount: expect.any(Number),
+      }),
     );
     expect(db.finishGitHubDelivery).toHaveBeenCalledWith('delivery-1', true);
     expect(

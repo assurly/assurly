@@ -9,6 +9,8 @@ import { printShipGateSummary } from './shipGateReporter';
 import { scanProjectDirectory } from './scanProject';
 import { applyFixesInteractive } from './fixer';
 import { setupGitHubAction } from './ci';
+import { buildAssurlyScanReportJson } from './scanReportJson';
+import { submitScanReport } from './submitScan';
 
 const program = new Command();
 
@@ -26,8 +28,23 @@ program
   .command('scan', { isDefault: true })
   .description('Scans the workspace for configuration, security, and integration vulnerabilities')
   .option('-p, --path <dir>', 'Root directory of the project to scan', '.')
-  .option('-j, --json', 'Output findings in raw JSON format', false)
+  .option(
+    '-j, --json',
+    'Output a versioned Ship Gate JSON report (findings + shipScore + scanScope)',
+    false,
+  )
   .option('-f, --fix', 'Automatically attempt to fix configuration issues', false)
+  .option(
+    '--submit',
+    'Submit Ship Gate SoT to Assurly (findings only — never uploads source). Requires ASSURLY_API_KEY and --repo',
+    false,
+  )
+  .option('--repo <owner/repo>', 'Connected Assurly repository for --submit (owner/repo)')
+  .option(
+    '--api-url <url>',
+    'Assurly API base URL for --submit',
+    process.env.ASSURLY_API_URL || 'https://assurly.dev',
+  )
   .option(
     '--agent',
     'Focused mode: scan only the agent stack (MCP configs and instruction files)',
@@ -92,10 +109,43 @@ program
         }
       }
 
+      const reportJson = buildAssurlyScanReportJson({
+        findings,
+        report: shipGate,
+        context,
+        summary: '',
+        markdown: '',
+      });
+
+      if (options.submit) {
+        if (surface) {
+          throw new Error('Focused scans (--agent/--supply) cannot be submitted as a Ship Gate.');
+        }
+        const apiKey = process.env.ASSURLY_API_KEY;
+        const repo = typeof options.repo === 'string' ? options.repo.trim() : '';
+        if (!apiKey) {
+          throw new Error('ASSURLY_API_KEY is required for --submit.');
+        }
+        if (!repo || !repo.includes('/')) {
+          throw new Error('--repo owner/repo is required for --submit.');
+        }
+        const submitted = await submitScanReport({
+          apiKey,
+          apiBaseUrl: String(options.apiUrl),
+          repo,
+          report: reportJson,
+        });
+        console.log(
+          chalk.green(
+            `Submitted Ship Gate to Assurly: ${submitted.verdict} · ${submitted.shipScore}/100 (scan ${submitted.id})`,
+          ),
+        );
+      }
+
       // 3. Output results
       if (options.json) {
-        console.log(JSON.stringify(findings, null, 2));
-      } else {
+        console.log(JSON.stringify(reportJson, null, 2));
+      } else if (!options.submit) {
         // Log detected stack
         console.log(chalk.bold('Detected Stack:'));
         console.log(`  Framework:  ${chalk.green(context.detectedStack.framework.toUpperCase())}`);
@@ -116,7 +166,8 @@ program
           process.exit(0);
         }
         printShipGateSummary(shipGate);
-        process.exit(shipGate.status === 'blocked' ? 1 : 0);
+      } else if (!options.json) {
+        printShipGateSummary(shipGate);
       }
 
       process.exit(shipGate.status === 'blocked' ? 1 : 0);

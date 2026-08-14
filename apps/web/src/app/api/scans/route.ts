@@ -4,7 +4,12 @@ import { ApiError, RATE_LIMITS, requireRouteUser, secureRoute } from '../../../u
 import { requireRepositoryAccess, requireScanAccess } from '../../../utils/authorization';
 import { resolveVerdictFromScanFindings } from '../../../utils/shipGate';
 import { GENERATOR_FINGERPRINTS } from '../../../utils/generatorFingerprint';
-import type { DbAdapter, ScanFinding } from '../../../utils/dbAdapter';
+import type { ScanFinding, ScanShipGateMeta } from '../../../utils/dbAdapter';
+import {
+  persistRepoScan,
+  resetRepoTargetToNeutral,
+  syncRepoTargetVerdict,
+} from '../../../utils/persistRepoScan';
 
 const scanQuery = z
   .object({
@@ -44,6 +49,18 @@ const saveScanBody = z
     generatorFingerprint: z.enum(GENERATOR_FINGERPRINTS).optional(),
     // The true number of files the scan analyzed, for accurate verdict evidence.
     scannedFileCount: z.number().int().nonnegative().max(100_000).optional(),
+    cleanFileCount: z.number().int().nonnegative().max(100_000).optional(),
+    shipScore: z.number().int().min(0).max(100).optional(),
+    verdict: z.enum(['ready', 'review', 'blocked', 'failed']).optional(),
+    scanScope: z
+      .object({
+        scanned: z.number().int().nonnegative(),
+        skipped: z.number().int().nonnegative().optional(),
+        roots: z.array(z.string().max(255)).max(50).optional(),
+      })
+      .passthrough()
+      .optional(),
+    failureReason: z.string().trim().min(1).max(120).optional(),
   })
   .strict();
 
@@ -70,86 +87,6 @@ export const GET = secureRoute(
   },
 );
 
-interface RepoTargetVerdictInput {
-  findings: ScanFinding[];
-  /** True file count the scan analyzed, when known (POST only). */
-  scannedFileCount?: number;
-  /** Detected AI builder, when known. Undefined preserves any prior value. */
-  generatorFingerprint?: string;
-  /** When the source scan ran; null falls back to now. */
-  lastCheckedAt: string | null;
-}
-
-/**
- * Recomputes and writes the repo's `target` (the current-verdict projection)
- * from a set of scan findings. Shared by the scan SAVE (POST) and DELETE paths
- * so the "Ship Score / READY-vs-NOT" card is derived by the exact same math in
- * both — deleting the newest scan must recompute from the new newest remaining
- * one, not leave a stale verdict. Best-effort: a target-sync failure must never
- * turn a successful scan mutation into a 5xx.
- */
-async function syncRepoTargetVerdict(
-  db: DbAdapter,
-  repoId: string,
-  input: RepoTargetVerdictInput,
-): Promise<void> {
-  try {
-    const repo = await db.getRepository(repoId);
-    if (!repo) return;
-    const verdict = resolveVerdictFromScanFindings(input.findings, {
-      scannedFileCount: input.scannedFileCount,
-    });
-    await db.upsertTarget({
-      organizationId: repo.organization_id,
-      kind: 'repo',
-      identifier: repo.name,
-      displayName: repo.name,
-      repositoryId: repo.id,
-      // Preserve a prior fingerprint when the caller didn't detect one.
-      generatorFingerprint: input.generatorFingerprint ?? undefined,
-      currentVerdict: verdict.status,
-      currentShipScore: verdict.shipScore,
-      verdictEvidence: {
-        topIssue: verdict.topIssue,
-        blockerCount: verdict.blockerCount,
-        reviewCount: verdict.reviewCount,
-        warningCount: verdict.warningCount,
-        headline: verdict.headline,
-      },
-      lastCheckedAt: input.lastCheckedAt ?? new Date().toISOString(),
-    });
-  } catch (error) {
-    // Swallowed so the (already persisted) scan mutation still succeeds.
-    console.error('Failed to sync target from scan:', error);
-  }
-}
-
-/**
- * Resets the repo's `target` back to the neutral "not yet scanned" verdict used
- * for a repo with no scans (see `deriveCardFromLatestScan` in api/targets): an
- * `unknown` verdict, no score, and no evidence. Called when the last scan of a
- * repo is deleted. Best-effort, like `syncRepoTargetVerdict`.
- */
-async function resetRepoTargetToNeutral(db: DbAdapter, repoId: string): Promise<void> {
-  try {
-    const repo = await db.getRepository(repoId);
-    if (!repo) return;
-    await db.upsertTarget({
-      organizationId: repo.organization_id,
-      kind: 'repo',
-      identifier: repo.name,
-      displayName: repo.name,
-      repositoryId: repo.id,
-      currentVerdict: 'unknown',
-      currentShipScore: null,
-      verdictEvidence: {},
-      lastCheckedAt: null,
-    });
-  } catch (error) {
-    console.error('Failed to reset target after deleting the last scan:', error);
-  }
-}
-
 export const POST = secureRoute(
   {
     routeId: 'scans:create',
@@ -173,20 +110,27 @@ export const POST = secureRoute(
     ) {
       throw new ApiError(400, 'invalid_counts', 'Finding counts do not match the findings.');
     }
-    const scan = await context.db.saveScan(
-      body.repoId,
-      body.commitSha,
-      body.branch,
-      body.status,
-      errors,
-      warnings,
-      body.findings,
-    );
-    await syncRepoTargetVerdict(context.db, body.repoId, {
-      findings: body.findings as unknown as ScanFinding[],
+    const computed = resolveVerdictFromScanFindings(body.findings as unknown as ScanFinding[], {
       scannedFileCount: body.scannedFileCount,
+    });
+
+    const meta: ScanShipGateMeta = {
+      shipScore: body.shipScore ?? computed.shipScore,
+      verdict: body.verdict ?? computed.status,
+      scannedFileCount: body.scannedFileCount ?? computed.scannedFileCount,
+      cleanFileCount: body.cleanFileCount ?? computed.cleanFileCount,
+      scanScope: body.scanScope ?? null,
+      failureReason: body.failureReason ?? null,
+    };
+
+    const scan = await persistRepoScan(context.db, {
+      repoId: body.repoId,
+      commitSha: body.commitSha,
+      branch: body.branch,
+      status: body.status,
+      findings: body.findings,
+      meta,
       generatorFingerprint: body.generatorFingerprint,
-      lastCheckedAt: scan.created_at ?? null,
     });
     return NextResponse.json(scan, { status: 201 });
   },

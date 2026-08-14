@@ -44,8 +44,14 @@ import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
 import { dedupeRepositoriesByGithubId } from '../../../utils/repositories';
 import { isAutoFixableFinding } from '../../../utils/githubAutoFix';
 import { summarizeScanFixes } from '../../../utils/fixSummary';
+import { isGitHubRepositoryName } from '../../../utils/githubApp';
 import { preferPublicScanForRepository, sanitizeGitHubOwner } from '../../../utils/scanProxy';
-import { buildShipGateFromScanFindings } from '../../../utils/shipGate';
+import {
+  buildShipGateFromScanFindings,
+  buildShipGateFromWebFindings,
+} from '../../../utils/shipGate';
+import { resolveDisplayedShipScore } from '../../../utils/shipScoreDisplay';
+import { resolveShipGateScanContext } from '../../../utils/shipGateScanContext';
 import { RepoListPanel } from './RepoListPanel';
 import { buildRepoTargetLookup } from './buildRepoTargetLookup';
 import { VerdictCardsSection } from './VerdictCardsSection';
@@ -167,15 +173,32 @@ export function renderCanaryPanel(
  * the status text so the scanner always surfaces an actionable reason instead of
  * an empty "No scans found" state.
  */
-async function readProxyErrorMessage(response: Response): Promise<string> {
+async function readProxyError(response: Response): Promise<{ message: string; code?: string }> {
   try {
-    const data = (await response.clone().json()) as { error?: { message?: unknown } };
+    const data = (await response.clone().json()) as {
+      error?: { message?: unknown; code?: unknown };
+    };
+    const code = typeof data?.error?.code === 'string' ? data.error.code : undefined;
     const message = data?.error?.message;
-    if (typeof message === 'string' && message.trim()) return message;
+    if (typeof message === 'string' && message.trim()) {
+      if (code === 'invalid_request' || /validation failed/i.test(message)) {
+        return {
+          code,
+          message: 'Repository name must be owner/repo (for example acme/saas).',
+        };
+      }
+      return { message, code };
+    }
   } catch {
     // Non-JSON body – fall through to a generic, still-actionable description.
   }
-  return response.statusText || `Request failed with status ${response.status}.`;
+  return {
+    message: response.statusText || `Request failed with status ${response.status}.`,
+  };
+}
+
+async function readProxyErrorMessage(response: Response): Promise<string> {
+  return (await readProxyError(response)).message;
 }
 
 interface GitHubTreeNode {
@@ -285,6 +308,10 @@ function DashboardContent({
   const [lastScanFileCount, setLastScanFileCount] = useState<number | null>(null);
   const [lastScanScope, setLastScanScope] = useState<ScanScope | null>(null);
   const scanAbortRef = useRef<boolean>(false);
+  /** Per-repo Instant Gate session cache keyed by HEAD commit SHA. */
+  const scanSessionCacheRef = useRef<
+    Map<string, { commitSha: string; contents: Map<string, string | null> }>
+  >(new Map());
   const initialToast = useMemo<ToastNotification | null>(() => {
     const success = searchParams.get('success');
     const cancel = searchParams.get('cancel');
@@ -341,6 +368,8 @@ function DashboardContent({
     setScans(reset.scans);
     setShareError(reset.shareError);
     setRepoDetailStatus(reset.repoDetailStatus);
+    setLastScanScope(reset.lastScanScope);
+    setLastScanFileCount(reset.lastScanFileCount);
     setScanError(null);
     setDeleteScanError(null);
     setScanLogs([]);
@@ -372,6 +401,7 @@ function DashboardContent({
   const [verdictCards, setVerdictCards] = useState<TargetCard[] | null>(null);
   const [verdictCardsError, setVerdictCardsError] = useState<string | null>(null);
   const [removingTargetId, setRemovingTargetId] = useState<string | null>(null);
+  const [removingRepositoryId, setRemovingRepositoryId] = useState<string | null>(null);
   const [rescanningTargetId, setRescanningTargetId] = useState<string | null>(null);
   /** Bumps when a card Rescan targets an already-selected repo (selection alone would not re-fire). */
   const [scanKickToken, setScanKickToken] = useState(0);
@@ -446,6 +476,29 @@ function DashboardContent({
     }
   };
 
+  const handleRemoveInvalidRepo = async (repositoryId: string): Promise<void> => {
+    setRemovingRepositoryId(repositoryId);
+    setVerdictCardsError(null);
+    const previousCards = verdictCards;
+    const previousRepos = repos;
+    setVerdictCards((cards) =>
+      cards ? cards.filter((card) => card.repositoryId !== repositoryId) : cards,
+    );
+    setRepos((current) => current.filter((repo) => repo.id !== repositoryId));
+    try {
+      await clientApi.deleteRepository(repositoryId);
+      setVerdictRefreshKey((key) => key + 1);
+    } catch (err: unknown) {
+      setVerdictCards(previousCards);
+      setRepos(previousRepos);
+      setVerdictCardsError(
+        err instanceof ClientApiError ? err.message : 'Could not remove that repository.',
+      );
+    } finally {
+      setRemovingRepositoryId(null);
+    }
+  };
+
   const wasScanningRef = useRef(false);
   // Set when a scan is kicked off from the tools column (Scan Public Repository),
   // where the user is scrolled away from the results canvas. On completion we
@@ -473,8 +526,22 @@ function DashboardContent({
       .targets()
       .then(({ targets }) => {
         if (cancelled) return;
-        setVerdictCards(targets);
-        setTargetLookup({ status: 'ready', byRepoId: buildRepoTargetLookup(targets) });
+        // Sticky session capabilities (cli_only / invalid) win over a stale API
+        // projection when persist failed or has not replicated yet.
+        const localCapabilityByRepoId = new Map(
+          repos.map((repo) => [repo.id, repo.scan_capability ?? 'browser'] as const),
+        );
+        const mergedTargets = targets.map((card) => {
+          if (card.kind !== 'repo' || !card.repositoryId) return card;
+          const localCapability = localCapabilityByRepoId.get(card.repositoryId);
+          if (localCapability !== 'cli_only' && localCapability !== 'invalid') {
+            return card;
+          }
+          if (card.scanCapability === localCapability) return card;
+          return { ...card, scanCapability: localCapability };
+        });
+        setVerdictCards(mergedTargets);
+        setTargetLookup({ status: 'ready', byRepoId: buildRepoTargetLookup(mergedTargets) });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -553,6 +620,10 @@ function DashboardContent({
     if (!selectedRepoId) {
       return;
     }
+    // Belt-and-suspenders: any selectedRepoId change drops Instant Gate session
+    // overrides so Ship Gate scope cannot leak from the previously viewed repo.
+    setLastScanScope(null);
+    setLastScanFileCount(null);
     const repoId = selectedRepoId;
     let cancelled = false;
     let sessionExpired = false;
@@ -751,17 +822,30 @@ function DashboardContent({
 
   const shipGateReport = useMemo(() => {
     if (!selectedScan) return null;
-    if (displayedFindings.length === 0) {
-      return buildShipGateFromScanFindings([], { scannedFileCount: 1, cleanFileCount: 1 });
-    }
+
+    const { scanScope: resolvedScope, scannedFileCount: resolvedScanned } =
+      resolveShipGateScanContext(selectedScan, {
+        lastScanScope,
+        lastScanFileCount,
+      });
 
     const affectedPaths = new Set(displayedFindings.map((finding) => finding.file_path));
-    const scannedFileCount = lastScanFileCount ?? Math.max(affectedPaths.size, 1);
-    return buildShipGateFromScanFindings(displayedFindings, {
+    const scannedFileCount =
+      resolvedScanned ?? (displayedFindings.length === 0 ? 0 : Math.max(affectedPaths.size, 0));
+    const cleanFileCount =
+      typeof selectedScan.clean_file_count === 'number'
+        ? selectedScan.clean_file_count
+        : Math.max(0, scannedFileCount - affectedPaths.size);
+
+    // Prefer the persisted Ship Gate score when present so reload matches save.
+    // Incomplete coverage is still capped so detail never outranks trend/cards.
+    const report = buildShipGateFromScanFindings(displayedFindings, {
       scannedFileCount,
-      cleanFileCount: Math.max(0, scannedFileCount - affectedPaths.size),
-      scanScope: lastScanScope ?? undefined,
+      cleanFileCount,
+      scanScope: resolvedScope ?? undefined,
     });
+    const shipScore = resolveDisplayedShipScore(selectedScan, displayedFindings);
+    return { ...report, shipScore };
   }, [displayedFindings, selectedScan, lastScanFileCount, lastScanScope]);
 
   const selectedRepoScanCount = useMemo(() => {
@@ -1131,13 +1215,52 @@ function DashboardContent({
 
     const allFindings: WebFinding[] = [];
 
+    const scanStartedAt = performance.now();
+    let treeMs = 0;
+    let fetchFilesMs = 0;
+    let engineMs = 0;
+    let persistMs = 0;
+
     try {
-      // Resolve the canonical "owner/repo" used by the public-scan proxy and the
-      // scan logs. Repositories connected via the GitHub App may be stored as a
-      // bare name, so prefix the workspace owner when no slash is present.
-      let repoFullName = selectedRepo.name;
-      if (!repoFullName.includes('/')) {
-        repoFullName = `${org.name}/${selectedRepo.name}`;
+      // Never invent `${org}/${bare}` — bare names are permanently broken for
+      // public-scan validation and produce dishonest "Request validation failed".
+      const repoFullName = selectedRepo.name;
+      if (!isGitHubRepositoryName(repoFullName)) {
+        const message =
+          'Repository name must be owner/repo (for example acme/saas). Remove this entry and reconnect with the full GitHub name.';
+        setScanLogs((prev) => [...prev, `❌ ERROR: ${message}`]);
+        setScanError(message);
+        setIsScanning(false);
+        setScanProgress(100);
+        setToast({ message: `Scan failed: ${message}`, type: 'error', autoDismissMs: null });
+        try {
+          await clientApi.updateRepositoryScanCapability(selectedRepo.id, 'invalid');
+          setRepos((current) =>
+            current.map((repo) =>
+              repo.id === selectedRepo.id ? { ...repo, scan_capability: 'invalid' } : repo,
+            ),
+          );
+          setSelectedRepo((current) =>
+            current && current.id === selectedRepo.id
+              ? { ...current, scan_capability: 'invalid' }
+              : current,
+          );
+          setVerdictRefreshKey((key) => key + 1);
+        } catch (capabilityError) {
+          console.error('Failed to mark repository invalid:', capabilityError);
+          setRepos((current) =>
+            current.map((repo) =>
+              repo.id === selectedRepo.id ? { ...repo, scan_capability: 'invalid' } : repo,
+            ),
+          );
+          setSelectedRepo((current) =>
+            current && current.id === selectedRepo.id
+              ? { ...current, scan_capability: 'invalid' }
+              : current,
+          );
+          setVerdictRefreshKey((key) => key + 1);
+        }
+        return;
       }
 
       // Authenticated installations use the private proxy for repos the app owns.
@@ -1177,6 +1300,9 @@ function DashboardContent({
       // bounded-concurrency prefetch keeps every unique file to one round trip
       // and lets the passes read from memory.
       const contentCache = new Map<string, string | null>();
+      // Session cache: identical HEAD commit reuses prior file contents (skip GitHub
+      // downloads) while still re-running the engine for fresh rules.
+      const priorSession = scanSessionCacheRef.current.get(selectedRepo.id);
 
       const loadFileContent = async (filePath: string): Promise<string | null> => {
         const cached = contentCache.get(filePath);
@@ -1246,6 +1372,7 @@ function DashboardContent({
         }
       };
 
+      const treeStartedAt = performance.now();
       let treeResponse = await fetch(treeRequestUrl());
 
       // Graceful fallback: when a private installation has no access to the
@@ -1266,10 +1393,16 @@ function DashboardContent({
       }
 
       if (!treeResponse.ok) {
-        throw new Error(
-          `Failed to fetch repository tree: ${await readProxyErrorMessage(treeResponse)}`,
-        );
+        const proxyError = await readProxyError(treeResponse);
+        const err = new Error(`Failed to fetch repository tree: ${proxyError.message}`) as Error & {
+          code?: string;
+          status?: number;
+        };
+        err.code = proxyError.code;
+        err.status = treeResponse.status;
+        throw err;
       }
+      treeMs = Math.round(performance.now() - treeStartedAt);
 
       const treeData = await treeResponse.json();
       if (treeData.default_branch) {
@@ -1280,6 +1413,21 @@ function DashboardContent({
           ? treeData.commit_sha
           : undefined;
       const tree: GitHubTreeNode[] = treeData.tree || [];
+
+      if (
+        priorSession &&
+        resolvedCommitSha &&
+        priorSession.commitSha === resolvedCommitSha &&
+        priorSession.contents.size > 0
+      ) {
+        for (const [path, content] of priorSession.contents) {
+          contentCache.set(path, content);
+        }
+        setScanLogs((prev) => [
+          ...prev,
+          `✓ Reusing ${priorSession.contents.size} cached file(s) for commit ${resolvedCommitSha.slice(0, 7)}.`,
+        ]);
+      }
 
       setScanProgress(15);
       setScanLogs((prev) => [
@@ -1319,10 +1467,48 @@ function DashboardContent({
         (path) => path,
       );
       const fileSelection = selectFiles(rankedCandidates, 250);
-      setLastScanFileCount(fileSelection.files.length);
-      setLastScanScope(
-        buildScanScope([...new Set([...sqlFiles, ...codeFiles])], fileSelection.files),
+      const scanScope = buildScanScope(
+        [...new Set([...sqlFiles, ...codeFiles])],
+        fileSelection.files,
       );
+      setLastScanFileCount(fileSelection.files.length);
+      setLastScanScope(scanScope);
+
+      if (fileSelection.files.length === 0) {
+        const message =
+          'No scannable application files (JS/TS/SQL) were found. This may be a native, docs-only, or unsupported repository — use Manual Checker or `npx assurly scan` locally if relevant.';
+        setScanLogs((prev) => [...prev, `❌ ERROR: ${message}`]);
+        setScanError(message);
+        setIsScanning(false);
+        setScanProgress(100);
+        setToast({
+          message: `Scan failed: ${message}`,
+          type: 'error',
+          autoDismissMs: null,
+        });
+        try {
+          await clientApi.saveScan({
+            repoId: selectedRepo.id,
+            commitSha: resolvedCommitSha ?? 'unknown',
+            branch: defaultBranch,
+            status: 'failed',
+            errors: 0,
+            warnings: 0,
+            findings: [],
+            scannedFileCount: 0,
+            cleanFileCount: 0,
+            shipScore: 0,
+            verdict: 'failed',
+            scanScope: { ...scanScope },
+            failureReason: 'no_eligible_files',
+          });
+          invalidateRepoScansCache(selectedRepo.id);
+        } catch (saveError) {
+          console.error('Failed to persist empty-file scan failure:', saveError);
+        }
+        return;
+      }
+
       const selectedFiles = new Set(fileSelection.files);
       const incompleteFinding = incompleteScanFinding(fileSelection);
       if (incompleteFinding) allFindings.push(incompleteFinding);
@@ -1397,7 +1583,16 @@ function DashboardContent({
         ]),
       ];
       setScanLogs((prev) => [...prev, `📥 Fetching ${filesToFetch.length} file(s) in parallel...`]);
+      const fetchFilesStartedAt = performance.now();
       await prefetchContents(filesToFetch);
+      fetchFilesMs = Math.round(performance.now() - fetchFilesStartedAt);
+      if (resolvedCommitSha) {
+        scanSessionCacheRef.current.set(selectedRepo.id, {
+          commitSha: resolvedCommitSha,
+          contents: new Map(contentCache),
+        });
+      }
+      const engineStartedAt = performance.now();
       setScanProgress(45);
 
       // Scan SQL Migrations
@@ -1578,11 +1773,20 @@ function DashboardContent({
         });
       }
 
+      engineMs = Math.round(performance.now() - engineStartedAt);
       setScanProgress(100);
       setScanLogs((prev) => [...prev, '🏁 Scan finished. Generating report.']);
 
       const errorCount = allFindings.filter((f) => f.severity === 'error').length;
       const warningCount = allFindings.filter((f) => f.severity === 'warning').length;
+      const affectedPaths = new Set(
+        allFindings.map((finding) => finding.file).filter((file): file is string => Boolean(file)),
+      );
+      const shipGate = buildShipGateFromWebFindings(allFindings, {
+        scannedFileCount: fileSelection.files.length,
+        cleanFileCount: Math.max(0, fileSelection.files.length - affectedPaths.size),
+        scanScope,
+      });
 
       const deriveRuleId = (file: string | undefined): string => {
         if (file?.includes('.sql')) return 'rls-check';
@@ -1602,6 +1806,11 @@ function DashboardContent({
         error_count: errorCount,
         warning_count: warningCount,
         created_at: new Date().toISOString(),
+        ship_score: shipGate.shipScore,
+        verdict: shipGate.status,
+        scanned_file_count: fileSelection.files.length,
+        clean_file_count: shipGate.cleanFileCount,
+        scan_scope: { ...scanScope },
       };
 
       // The API rejects payloads with more than SAVE_FINDINGS_LIMIT findings and
@@ -1642,8 +1851,9 @@ function DashboardContent({
       const persistedErrors = dbFindings.filter((f) => f.severity === 'error').length;
       const persistedWarnings = dbFindings.length - persistedErrors;
 
-      (async () => {
+      void (async () => {
         try {
+          const persistStartedAt = performance.now();
           const savedScan = await clientApi.saveScan({
             repoId: selectedRepo.id,
             commitSha: newScan.commit_sha,
@@ -1656,7 +1866,23 @@ function DashboardContent({
             // Feed the target's current-verdict projection + corpus moat (Phase 1).
             generatorFingerprint,
             scannedFileCount: fileSelection.files.length,
+            cleanFileCount: shipGate.cleanFileCount,
+            shipScore: shipGate.shipScore,
+            verdict: shipGate.status,
+            scanScope: { ...scanScope },
           });
+          persistMs = Math.round(performance.now() - persistStartedAt);
+          if (process.env.NODE_ENV !== 'production') {
+            console.info('[assurly:scan-timing]', {
+              repo: selectedRepo.name,
+              treeMs,
+              fetchFilesMs,
+              engineMs,
+              persistMs,
+              totalMs: Math.round(performance.now() - scanStartedAt),
+              scannedFiles: fileSelection.files.length,
+            });
+          }
 
           // Keep the full result visible for the rest of the session without
           // sacrificing durability or auto-fix:
@@ -1696,9 +1922,15 @@ function DashboardContent({
           setLocalFindings(sessionFindings);
           setSelectedScan(sessionScan);
           setRepoDetailStatus('ready');
+          const toastType =
+            shipGate.status === 'blocked'
+              ? 'error'
+              : shipGate.status === 'ready'
+                ? 'success'
+                : 'info';
           setToast({
-            message: `Scan completed & saved: ${errorCount} errors, ${warningCount} warnings found.`,
-            type: errorCount > 0 ? 'error' : 'success',
+            message: `Scan completed & saved: ${shipGate.blockers.length} blockers, ${shipGate.reviews.length + shipGate.warnings.length} warnings to review (Ship Score ${shipGate.shipScore}/100).`,
+            type: toastType,
           });
         } catch (e) {
           // Persistence failed (commonly a missing APP_URL / Supabase env var or an
@@ -1720,9 +1952,27 @@ function DashboardContent({
             type: 'error',
           });
         }
-      })();
+      })().catch((persistError: unknown) => {
+        // Belt-and-suspenders: never let a ClientApiError become an unhandled
+        // rejection that opens the Next.js issues overlay.
+        console.error('Unhandled scan persist failure:', persistError);
+        setIsScanning(false);
+      });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to scan repository.';
+      const errorCode =
+        error instanceof Error && 'code' in error && typeof error.code === 'string'
+          ? error.code
+          : undefined;
+      const errorStatus =
+        error instanceof Error && 'status' in error && typeof error.status === 'number'
+          ? error.status
+          : undefined;
+      const tooLarge =
+        errorStatus === 413 ||
+        errorCode === 'repository_too_large' ||
+        /too large for the in-browser scan/i.test(errorMessage);
+
       setScanLogs((prev) => [...prev, `❌ ERROR: ${errorMessage}`]);
       setScanError(errorMessage);
       setIsScanning(false);
@@ -1731,6 +1981,99 @@ function DashboardContent({
         type: 'error',
         autoDismissMs: null,
       });
+
+      if (tooLarge && selectedRepo) {
+        // Sticky optimistic capability so Unscanned / Scan now disappear even if
+        // the PATCH fails (e.g. schema not migrated yet). Keep selectedRepo in
+        // sync so the detail workspace swaps Instant Gate → Full Gate CTA.
+        setRepos((current) =>
+          current.map((repo) =>
+            repo.id === selectedRepo.id ? { ...repo, scan_capability: 'cli_only' } : repo,
+          ),
+        );
+        setSelectedRepo((current) =>
+          current && current.id === selectedRepo.id
+            ? { ...current, scan_capability: 'cli_only' }
+            : current,
+        );
+        setVerdictRefreshKey((key) => key + 1);
+
+        const persistCapability = async (): Promise<void> => {
+          try {
+            await clientApi.updateRepositoryScanCapability(selectedRepo.id, 'cli_only');
+          } catch (firstError) {
+            console.error('Failed to persist cli_only capability (retrying once):', firstError);
+            await clientApi.updateRepositoryScanCapability(selectedRepo.id, 'cli_only');
+          }
+        };
+
+        try {
+          await persistCapability();
+        } catch (capabilityError) {
+          console.error('Failed to persist cli_only capability:', capabilityError);
+          const reason =
+            capabilityError instanceof ClientApiError && capabilityError.message
+              ? capabilityError.message
+              : 'capability could not be saved';
+          setToast({
+            message: `This repository needs a local Full Gate scan. We marked it CLI-only in this session, but could not save that setting (${reason}).`,
+            type: 'error',
+            autoDismissMs: null,
+          });
+        }
+
+        try {
+          const savedScan = await clientApi.saveScan({
+            repoId: selectedRepo.id,
+            commitSha: 'unknown',
+            branch: 'main',
+            status: 'failed',
+            errors: 0,
+            warnings: 0,
+            findings: [],
+            scannedFileCount: 0,
+            cleanFileCount: 0,
+            shipScore: 0,
+            verdict: 'failed',
+            failureReason: 'too_large',
+          });
+          invalidateRepoScansCache(selectedRepo.id);
+          setScans((prev) => [savedScan, ...prev.filter((scan) => scan.id !== savedScan.id)]);
+          setScanCountsByRepoId((prev) => ({
+            ...prev,
+            [selectedRepo.id]: (prev[selectedRepo.id] ?? 0) + 1,
+          }));
+          setSelectedScan(savedScan);
+          setLocalScan(savedScan);
+          setLocalFindings([]);
+          setRepoDetailStatus('ready');
+        } catch (saveError) {
+          console.error('Failed to persist too_large failed scan:', saveError);
+          const reason =
+            saveError instanceof ClientApiError && saveError.message
+              ? saveError.message
+              : 'failed scan could not be saved';
+          setToast({
+            message: `This repository is too large for Instant Gate. Run a local Full Gate scan — we could not record the failure (${reason}).`,
+            type: 'error',
+            autoDismissMs: null,
+          });
+          setRepoDetailStatus('empty');
+        }
+      }
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[assurly:scan-timing]', {
+          repo: selectedRepo?.name,
+          treeMs,
+          fetchFilesMs,
+          engineMs,
+          persistMs,
+          totalMs: Math.round(performance.now() - scanStartedAt),
+          failed: true,
+          errorCode,
+        });
+      }
     }
   };
 
@@ -1786,8 +2129,10 @@ function DashboardContent({
             <VerdictCardsSection
               onOpenRepo={handleOpenVerdict}
               onRemoveUrl={handleRemoveUrlTarget}
+              onRemoveRepo={(repositoryId) => void handleRemoveInvalidRepo(repositoryId)}
               onRescan={(card) => void handleRescanVerdict(card)}
               removingTargetId={removingTargetId}
+              removingRepositoryId={removingRepositoryId}
               rescanningTargetId={rescanningTargetId}
               rescanBlocked={isScanning || Boolean(rescanningTargetId)}
               cards={verdictCards}

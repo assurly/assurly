@@ -134,15 +134,23 @@ export function resolveVerdictFromScanFindings(
   return resolveVerdict(buildShipGateFromScanFindings(findings, options));
 }
 
-export function getShipGateActionHint(report: ShipGateReport): string {
+export function getShipGateActionHint(
+  report: ShipGateReport,
+  options?: { surface?: 'repo' | 'manual' },
+): string {
   if (report.scannedFileCount === 0 && report.status !== 'ready') {
-    return 'Select a folder or ZIP to start';
+    return options?.surface === 'manual'
+      ? 'Select a folder or ZIP to start'
+      : 'No scannable application files (JS/TS/SQL) were found in this repository.';
   }
 
   switch (report.status) {
     case 'blocked':
       return 'Fix all blockers above before deploying to production.';
     case 'review':
+      if (report.headline.includes('INCOMPLETE')) {
+        return 'Coverage is incomplete — run a full local CLI scan before you trust a clean result.';
+      }
       if (report.blockers.length === 0 && report.reviews.length > 0) {
         return 'No blockers detected. Review heuristic findings and warnings before shipping.';
       }

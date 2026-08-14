@@ -1,17 +1,18 @@
 import type { Metadata } from 'next';
-import { StructuredData } from '../_components/StructuredData';
-import { subPageGraph } from '../../utils/structuredData';
-import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
-import Link from 'next/link';
-import React from 'react';
+import { headers } from 'next/headers';
+import type { ReactElement } from 'react';
 import mcpServerPackage from '../../../../../packages/mcp-server/package.json';
-import { AssurlyMark } from '../_components/AssurlyMark';
-import { AssurlyWordmark } from '../_components/AssurlyWordmark';
+import { getSessionUser } from '../../utils/auth';
+import { resolveApplicationUrlFromHost } from '../../utils/env';
+import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
+import { subPageGraph } from '../../utils/structuredData';
 import { SiteFooter } from '../_components/SiteFooter';
+import { StructuredData } from '../_components/StructuredData';
 import { AgentLoop } from './_components/AgentLoop';
 import { CodeBlock } from './_components/CodeBlock';
 import { MCP_INSTALL_COMMAND, MCP_NPM_PACKAGE_URL } from './_components/installDeeplinks';
 import { InstallTabs } from './_components/InstallTabs';
+import { McpHeader } from './_components/McpHeader';
 import { OneClickInstall } from './_components/OneClickInstall';
 
 const PAGE_TITLE = 'Assurly MCP Server | Ship Gate for AI Agents';
@@ -79,40 +80,28 @@ const ERR_API_KEY_MISSING =
 const ERR_API_KEY_INVALID = 'The Assurly API key is invalid or revoked (401). Issue a new key.';
 const ERR_VERDICT_ARGS = 'Provide exactly one of `url` or `repo`.';
 
-const MCP_NAV_LINKS = [
-  { href: '/#features', label: 'Features' },
-  { href: '/#pricing', label: 'Pricing' },
-  { href: '/mcp', label: 'MCP Server', current: true },
-  { href: '/#faq', label: 'FAQ' },
-  { href: '/#contact', label: 'Contact' },
-] as const;
-
 /** Published version from packages/mcp-server/package.json — bundled at build time. */
 const MCP_SERVER_VERSION: string = mcpServerPackage.version;
 
-export default function McpPage(): React.ReactElement {
+export default async function McpPage(): Promise<ReactElement> {
+  const requestHeaders = await headers();
+  const appUrl = resolveApplicationUrlFromHost(
+    requestHeaders.get('x-forwarded-host') ?? requestHeaders.get('host'),
+    requestHeaders.get('x-forwarded-proto'),
+  );
+  const user = await getSessionUser(
+    new Request('http://assurly.local/', {
+      headers: { cookie: requestHeaders.get('cookie') ?? '' },
+    }),
+  );
+
   return (
     <div className="mcp-container">
       <StructuredData graph={subPageGraph('/mcp', 'MCP Server', PAGE_DESCRIPTION)} />
-      <header className="mcp-header">
-        <div className="mcp-header-inner">
-          <Link href="/" className="logo mcp-header-logo" aria-label="Assurly">
-            <AssurlyMark className="site-logo-mark" />
-            <AssurlyWordmark />
-          </Link>
-          <nav className="mcp-header-nav" aria-label="Product navigation">
-            {MCP_NAV_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                {...('current' in link && link.current ? { 'aria-current': 'page' as const } : {})}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-      </header>
+      <McpHeader
+        authenticated={user !== null}
+        loginUrl={new URL('/api/auth/login', appUrl).toString()}
+      />
 
       <main className="mcp-content">
         <section className="mcp-hero" aria-labelledby="mcp-hero-heading">

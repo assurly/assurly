@@ -25,6 +25,7 @@ function card(
     guardianEnabled: partial.guardianEnabled ?? false,
     scoreDropped: partial.scoreDropped ?? false,
     badgeToken: partial.badgeToken ?? null,
+    scanCapability: partial.scanCapability ?? 'browser',
     ...partial,
   };
 }

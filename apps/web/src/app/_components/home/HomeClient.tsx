@@ -16,6 +16,7 @@ import {
   type WebFinding,
 } from '../../../utils/browserScanner';
 import { clientApi, githubApi, type GitHubRepository } from '../../../utils/clientApi';
+import { formatCount } from '../../../utils/pluralize';
 import { sanitizeGitHubOwner } from '../../../utils/scanProxy';
 import { isLikelyScannableUrl } from '../../../utils/urlValidation';
 import {
@@ -1023,10 +1024,8 @@ export default function HomeClient({
                       <div className="scanner-results-info">
                         <h4>Ship Gate for {urlScanResults.targetUrl}</h4>
                         <p>
-                          Runtime verdict — {urlScanResults.errorCount} blocker
-                          {urlScanResults.errorCount === 1 ? '' : 's'},{' '}
-                          {urlScanResults.warningCount} warning
-                          {urlScanResults.warningCount === 1 ? '' : 's'}.
+                          Runtime verdict — {formatCount(urlScanResults.errorCount, 'blocker')},{' '}
+                          {formatCount(urlScanResults.warningCount, 'warning')}.
                         </p>
                       </div>
                       <ShipGatePanel

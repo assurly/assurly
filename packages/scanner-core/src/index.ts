@@ -59,6 +59,31 @@ const result = (findings: ScannerFinding[]): ScanResult => ({
   findings,
 });
 
+function tableNameFromRlsMessage(message: string): string | null {
+  const match = message.match(/table '([^']+)'/i);
+  return match?.[1] ?? null;
+}
+
+/**
+ * When both `supabase-rls` and `supabase-migration-auth-linked-no-rls` fire for
+ * the same table, keep the richer auth-linked finding and drop the generic one.
+ */
+export function subsumeRlsFindings(findings: readonly ScannerFinding[]): ScannerFinding[] {
+  const authLinkedTables = new Set(
+    findings
+      .filter((finding) => finding.ruleId === 'supabase-migration-auth-linked-no-rls')
+      .map((finding) => tableNameFromRlsMessage(finding.message))
+      .filter((table): table is string => Boolean(table)),
+  );
+  if (authLinkedTables.size === 0) return [...findings];
+
+  return findings.filter((finding) => {
+    if (finding.ruleId !== 'supabase-rls') return true;
+    const table = tableNameFromRlsMessage(finding.message);
+    return !table || !authLinkedTables.has(table);
+  });
+}
+
 export function selectFiles<T>(files: readonly T[], maxFiles?: number): FileSelection<T> {
   const limit = maxFiles === undefined ? null : Math.max(1, Math.floor(maxFiles));
   const selected = limit === null ? [...files] : files.slice(0, limit);
@@ -459,6 +484,14 @@ export function scanSqlMigrations(sources: readonly SourceInput[]): ScanResult {
       }
     });
   }
+  const hasSupabaseSignal = sources.some(
+    (source) =>
+      /supabase/i.test(source.file) ||
+      /supabase/i.test(source.content) ||
+      /auth\.uid\(\)/i.test(source.content) ||
+      /auth\.users\b/i.test(source.content),
+  );
+  const tableLabel = hasSupabaseSignal ? 'Supabase table' : 'Database table';
   for (const [table, location] of created) {
     if (
       !rls.has(table) &&
@@ -469,13 +502,13 @@ export function scanSqlMigrations(sources: readonly SourceInput[]): ScanResult {
         severity: 'error',
         file: location.file,
         line: location.line,
-        message: `Supabase table '${table}' is created but Row-Level Security (RLS) is not enabled.`,
+        message: `${tableLabel} '${table}' is created but Row-Level Security (RLS) is not enabled.`,
         suggestion: `Add SQL step: ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`,
       });
   }
 
   findings.push(...scanSupabaseDeepPolicies(sources).findings);
-  return result(findings);
+  return result(subsumeRlsFindings(findings));
 }
 
 export function scanSqlMigration(content: string, file = 'schema.sql'): ScanResult {
@@ -528,6 +561,27 @@ const FRAMEWORK_ENV_KEYS = new Set([
   'VERCEL_ENV',
   'NEXT_RUNTIME',
   'PORT',
+  // GitHub Actions / runner injected variables — not project secrets to document.
+  'GITHUB_OUTPUT',
+  'GITHUB_STEP_SUMMARY',
+  'GITHUB_ENV',
+  'GITHUB_PATH',
+  'GITHUB_ACTION',
+  'GITHUB_ACTIONS',
+  'GITHUB_WORKSPACE',
+  'GITHUB_EVENT_PATH',
+  'GITHUB_EVENT_NAME',
+  'GITHUB_RUN_ID',
+  'GITHUB_RUN_NUMBER',
+  'GITHUB_SHA',
+  'GITHUB_REF',
+  'GITHUB_REPOSITORY',
+  'GITHUB_JOB',
+  'GITHUB_WORKFLOW',
+  'RUNNER_OS',
+  'RUNNER_ARCH',
+  'RUNNER_TEMP',
+  'RUNNER_TOOL_CACHE',
 ]);
 
 /** Fallback names documented via their public NEXT_PUBLIC_* counterpart. */
@@ -568,6 +622,19 @@ function parseExampleKeys(content: string): Set<string> {
     if (key) keys.add(key);
   });
   return keys;
+}
+
+/**
+ * Propose the package-local `.env.example` path for a code file when no ancestor
+ * example exists. Preserves leading workspace prefixes (e.g. `shipready/`).
+ */
+export function proposeEnvExamplePath(codePath: string): string {
+  const normalized = codePath.replace(/\\/g, '/');
+  const packageMatch = normalized.match(/^((?:.*\/)?(?:apps|packages)\/[^/]+)\//);
+  if (packageMatch?.[1]) {
+    return `${packageMatch[1]}/.env.example`;
+  }
+  return '.env.example';
 }
 
 /** Resolve the nearest `.env.example` ancestor for a code path within a monorepo. */
@@ -682,24 +749,30 @@ export function scanEnvVariables(
   options: ScanEnvOptions = {},
 ): ScanResult {
   const findings: ScannerFinding[] = [];
-  const resolvedExample =
-    options.allExamples && options.allExamples.length > 0
-      ? resolveEnvExampleForPath(codeFile, options.allExamples)
-      : null;
+  const hasAllExamples = options.allExamples !== undefined;
+  const resolvedExample = hasAllExamples
+    ? resolveEnvExampleForPath(codeFile, options.allExamples ?? [])
+    : null;
 
-  const activeExample = resolvedExample ?? { file: exampleFile, content: exampleContent };
+  // When callers pass allExamples (monorepo mode), never fall back to a
+  // non-ancestor exampleFile — that steals apps/web/.env.example for packages/*.
+  const activeExample = resolvedExample
+    ? resolvedExample
+    : hasAllExamples
+      ? { file: proposeEnvExamplePath(codeFile), content: '' }
+      : { file: exampleFile, content: exampleContent };
   const keys = parseExampleKeys(activeExample.content);
 
-  if (options.allExamples && options.allExamples.length > 0) {
+  if (hasAllExamples && (options.allExamples?.length ?? 0) > 0) {
     const scannedExampleFiles = new Set<string>();
-    for (const example of options.allExamples) {
+    for (const example of options.allExamples ?? []) {
       if (!example.file.endsWith('.env.example') || scannedExampleFiles.has(example.file)) {
         continue;
       }
       scannedExampleFiles.add(example.file);
       scanExampleFileSecrets(example.content, example.file, findings);
     }
-  } else {
+  } else if (!hasAllExamples) {
     scanExampleFileSecrets(exampleContent, exampleFile, findings);
   }
 

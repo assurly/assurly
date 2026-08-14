@@ -1,5 +1,41 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchGitHubFilesBatch, getGitHubServerPat } from './githubApp';
+import { fetchGitHubFilesBatch, getGitHubServerPat, readLimitedResponseText } from './githubApp';
+
+describe('readLimitedResponseText', () => {
+  /**
+   * Builds an oversized response whose underlying source never settles `cancel()`.
+   * This is how the body behaves in production: Next.js patches `fetch` and `tee()`s
+   * the response, and cancelling one branch of a tee never releases the source.
+   */
+  function neverCancellingResponse(): Response {
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(1024));
+      },
+      cancel() {
+        return new Promise<never>(() => {});
+      },
+    });
+    return new Response(stream);
+  }
+
+  it('rejects over the size limit even when the stream cancel never settles', async () => {
+    const outcome = await Promise.race([
+      readLimitedResponseText(neverCancellingResponse(), 2048).then(
+        () => 'resolved',
+        (error: Error) => `rejected: ${error.message}`,
+      ),
+      new Promise<string>((resolve) => setTimeout(() => resolve('HUNG'), 1000)),
+    ]);
+
+    expect(outcome).toBe('rejected: GitHub response exceeds the configured size limit.');
+  });
+
+  it('returns the body when it stays under the limit', async () => {
+    const response = new Response('{"tree":[]}');
+    await expect(readLimitedResponseText(response, 2048)).resolves.toBe('{"tree":[]}');
+  });
+});
 
 describe('fetchGitHubFilesBatch', () => {
   afterEach(() => vi.unstubAllGlobals());

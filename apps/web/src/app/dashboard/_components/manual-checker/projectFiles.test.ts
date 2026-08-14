@@ -53,8 +53,46 @@ describe('readZipFile', () => {
     expect(files).toEqual([{ path: 'src/app.ts', content: 'export const app = true;' }]);
   });
 
+  it('excludes tests, fixtures, and intentional broken sample apps', async () => {
+    const files = await readZipFile(
+      await zipFile({
+        'apps/web/src/app.ts': 'export const app = true;',
+        'apps/web/src/app.test.ts': 'export const test = true;',
+        'test-projects/broken/schema.sql': 'create table users (id uuid);',
+        'data/fixtures/seed.sql': 'create table posts (id uuid);',
+        'vendor/lib.js': 'export default 1;',
+        'src/testing/e2eFixture.ts': 'export const fixture = true;',
+        'test-projection/src/app.ts': 'export const kept = true;',
+      }),
+    );
+    const paths = files.map((file) => file.path).sort();
+    expect(paths).toEqual(['apps/web/src/app.ts', 'test-projection/src/app.ts']);
+  });
+
   it('rejects archive traversal paths', async () => {
     const archive = await zipFile({ '../secret.ts': 'export const secret = true;' });
     await expect(readZipFile(archive)).rejects.toThrow('unsafe path');
+  });
+});
+
+describe('readFileListFromInput noise filter', () => {
+  it('does not load unit tests or fixture directories from a folder selection', async () => {
+    const keep = new File(['export const ok = true;'], 'route.ts', { type: 'text/plain' });
+    Object.defineProperty(keep, 'webkitRelativePath', {
+      value: 'shipready/apps/web/src/app/api/route.ts',
+    });
+    const testFile = new File(['export const t = true;'], 'route.test.ts', { type: 'text/plain' });
+    Object.defineProperty(testFile, 'webkitRelativePath', {
+      value: 'shipready/apps/web/src/app/api/route.test.ts',
+    });
+    const fixture = new File(['create table users (id uuid);'], 'init.sql', { type: 'text/plain' });
+    Object.defineProperty(fixture, 'webkitRelativePath', {
+      value: 'shipready/test-projects/broken-project/supabase/migrations/init.sql',
+    });
+
+    const result = await readFileListFromInput([keep, testFile, fixture]);
+    expect(result.files).toEqual([
+      { path: 'shipready/apps/web/src/app/api/route.ts', content: 'export const ok = true;' },
+    ]);
   });
 });

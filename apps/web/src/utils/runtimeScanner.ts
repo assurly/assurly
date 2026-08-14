@@ -701,6 +701,15 @@ export interface ScanLiveUrlResult {
   visibility?: VisibilityReport;
 }
 
+function isDeploymentNotFoundBody(body: string): boolean {
+  const normalized = body.toLowerCase();
+  return (
+    normalized.includes('deployment_not_found') ||
+    normalized.includes('deployment not found') ||
+    (normalized.includes('404: not found') && normalized.includes('vercel'))
+  );
+}
+
 export async function scanLiveUrlWithEvidence(
   rawUrl: string,
   fetchImpl: typeof fetch = fetch,
@@ -717,11 +726,36 @@ export async function scanLiveUrlWithEvidence(
   const evidence: ProbeEvidence[] = [];
   let planSource: 'ai' | 'deterministic' | undefined;
 
+  // Dead deploys (404/410/5xx / Vercel DEPLOYMENT_NOT_FOUND) must never look READY.
+  // Read a short body preview first so we can short-circuit before header/SEO noise.
+  const html = await readRuntimeResponseText(pageResponse);
+  const unreachable =
+    !pageResponse.ok ||
+    pageResponse.status === 404 ||
+    pageResponse.status === 410 ||
+    pageResponse.status >= 500 ||
+    isDeploymentNotFoundBody(html);
+  if (unreachable) {
+    findings.push({
+      ruleId: 'runtime-target-unreachable',
+      severity: 'error',
+      confidence: 'high',
+      file: pageUrl.toString(),
+      message: `Live target returned HTTP ${pageResponse.status} and is not reachable for a ship check.`,
+      suggestion:
+        'Confirm the deployment URL is live (not a removed Vercel deployment) before trusting a Ship Score.',
+    });
+    evidence.push({
+      findingRuleId: 'runtime-target-unreachable',
+      kind: 'open_endpoint',
+      summary: `Target responded with HTTP ${pageResponse.status} and is unreachable.`,
+    });
+    return { findings, evidence, pageText: html, ...(planSource ? { planSource } : {}) };
+  }
+
   const headerResult = checkSecurityHeadersWithEvidence(pageResponse.headers);
   findings.push(...headerResult.findings);
   evidence.push(...headerResult.evidence);
-
-  const html = await readRuntimeResponseText(pageResponse);
   const htmlSecrets = scanBundleForSecretsWithEvidence(html);
   findings.push(...htmlSecrets.findings);
   evidence.push(...htmlSecrets.evidence);

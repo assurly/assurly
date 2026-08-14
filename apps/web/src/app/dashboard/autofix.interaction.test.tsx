@@ -150,8 +150,9 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
     await renderWithFixableFinding();
     fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
 
-    const status = await screen.findByRole('status');
-    expect(status.textContent).toMatch(/creating fix branch and pull request/i);
+    // Prefer text match — Ship Gate also uses role="status" for clean-file copy.
+    const status = await screen.findByText(/creating fix branch and pull request/i);
+    expect(status.closest('[role="status"]')).toBeTruthy();
   });
 
   it('replaces the "Fix it" button with a "View Fix PR" link on success', async () => {
@@ -172,10 +173,13 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
     await renderWithFixableFinding();
     fireEvent.click(screen.getByRole('button', { name: /fix it/i }));
 
-    const status = await screen.findByRole('status');
-    expect(status.textContent).toMatch(/pull request created on github/i);
+    const message = await screen.findByText(/pull request created on github/i);
+    const status = message.closest('[role="status"]');
+    expect(status).toBeTruthy();
     // The toast carries a reliable, clickable link to the PR (not a silent swap).
-    const toastLink = within(status).getByRole('link', { name: /view pull request/i });
+    const toastLink = within(status as HTMLElement).getByRole('link', {
+      name: /view pull request/i,
+    });
     expect(toastLink.getAttribute('href')).toBe(FIX_PR_URL);
     expect(toastLink.getAttribute('target')).toBe('_blank');
   });

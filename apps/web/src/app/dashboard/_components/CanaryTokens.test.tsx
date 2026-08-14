@@ -16,6 +16,7 @@ vi.mock('../../../utils/clientApi', async (importOriginal) => {
         list: vi.fn(),
         issue: vi.fn(),
         revoke: vi.fn(),
+        delete: vi.fn(),
       },
     },
   };
@@ -24,6 +25,7 @@ vi.mock('../../../utils/clientApi', async (importOriginal) => {
 const listMock = vi.mocked(clientApi.canary.list);
 const issueMock = vi.mocked(clientApi.canary.issue);
 const revokeMock = vi.mocked(clientApi.canary.revoke);
+const deleteMock = vi.mocked(clientApi.canary.delete);
 
 const TARGET_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
@@ -52,6 +54,7 @@ beforeEach(() => {
     tokens: [],
   });
   revokeMock.mockResolvedValue({ revoked: true });
+  deleteMock.mockResolvedValue({ deleted: true });
 });
 
 describe('CanaryTokens', () => {
@@ -137,6 +140,116 @@ describe('CanaryTokens', () => {
     await waitFor(() => {
       expect(revokeMock).toHaveBeenCalledWith(TARGET_ID, 't1');
     });
+  });
+
+  it('shows delete only on revoked rows and requires confirm before deleting', async () => {
+    listMock.mockResolvedValue({
+      targetId: TARGET_ID,
+      prefix: 'ask_canary_',
+      tokens: [
+        token({ id: 'active-1', label: 'Live decoy' }),
+        token({
+          id: 'revoked-1',
+          label: 'Dead decoy',
+          revokedAt: '2026-07-19T00:00:00.000Z',
+        }),
+      ],
+    });
+
+    render(<CanaryTokens targetId={TARGET_ID} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Live decoy')).toBeTruthy();
+    });
+
+    expect(screen.queryByTestId('canary-delete-active-1')).toBeNull();
+
+    fireEvent.click(screen.getByText('Revoked canaries (1)'));
+    const deleteBtn = screen.getByTestId('canary-delete-revoked-1');
+    expect(deleteBtn).toBeTruthy();
+
+    fireEvent.click(deleteBtn);
+    expect(screen.getByRole('dialog', { name: 'Delete canary token?' })).toBeTruthy();
+    expect(deleteMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete canary' }));
+    await waitFor(() => {
+      expect(deleteMock).toHaveBeenCalledWith(TARGET_ID, 'revoked-1');
+    });
+  });
+
+  it('aborts delete via Cancel without calling the API', async () => {
+    listMock.mockResolvedValue({
+      targetId: TARGET_ID,
+      prefix: 'ask_canary_',
+      tokens: [
+        token({
+          id: 'revoked-1',
+          label: 'Dead decoy',
+          revokedAt: '2026-07-19T00:00:00.000Z',
+        }),
+      ],
+    });
+
+    render(<CanaryTokens targetId={TARGET_ID} />);
+    fireEvent.click(await screen.findByText('Revoked canaries (1)'));
+    fireEvent.click(screen.getByTestId('canary-delete-revoked-1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByTestId('canary-delete-dialog')).toBeNull();
+    expect(deleteMock).not.toHaveBeenCalled();
+    expect(screen.getByText('Dead decoy')).toBeTruthy();
+  });
+
+  it('aborts delete via Escape without calling the API', async () => {
+    listMock.mockResolvedValue({
+      targetId: TARGET_ID,
+      prefix: 'ask_canary_',
+      tokens: [
+        token({
+          id: 'revoked-1',
+          label: 'Dead decoy',
+          revokedAt: '2026-07-19T00:00:00.000Z',
+        }),
+      ],
+    });
+
+    render(<CanaryTokens targetId={TARGET_ID} />);
+    fireEvent.click(await screen.findByText('Revoked canaries (1)'));
+    fireEvent.click(screen.getByTestId('canary-delete-revoked-1'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('canary-delete-dialog')).toBeNull();
+    });
+    expect(deleteMock).not.toHaveBeenCalled();
+  });
+
+  it('optimistically removes a revoked canary and rolls back on failure', async () => {
+    listMock.mockResolvedValue({
+      targetId: TARGET_ID,
+      prefix: 'ask_canary_',
+      tokens: [
+        token({
+          id: 'revoked-1',
+          label: 'Dead decoy',
+          revokedAt: '2026-07-19T00:00:00.000Z',
+        }),
+      ],
+    });
+    deleteMock.mockRejectedValueOnce(new Error('Delete failed.'));
+
+    render(<CanaryTokens targetId={TARGET_ID} />);
+    fireEvent.click(await screen.findByText('Revoked canaries (1)'));
+    fireEvent.click(screen.getByTestId('canary-delete-revoked-1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete canary' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('Delete failed.');
+    });
+    expect(screen.getByText('Revoked canaries (1)')).toBeTruthy();
+    fireEvent.click(screen.getByText('Revoked canaries (1)'));
+    expect(screen.getByText('Dead decoy')).toBeTruthy();
   });
 
   it('explains hits as exposure evidence, not attribution', async () => {

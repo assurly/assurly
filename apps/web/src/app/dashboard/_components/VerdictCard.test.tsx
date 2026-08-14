@@ -31,6 +31,7 @@ function card(overrides: Partial<TargetCard> = {}): TargetCard {
     guardianEnabled: true,
     scoreDropped: false,
     badgeToken: null,
+    scanCapability: 'browser',
     ...overrides,
   };
 }
@@ -141,6 +142,40 @@ describe('VerdictCard', () => {
     render(<VerdictCard card={target} onOpen={onOpen} />);
     fireEvent.click(screen.getByRole('button', { name: /acme\/api/i }));
     expect(onOpen).toHaveBeenCalledWith(target);
+  });
+
+  it('keeps cli_only cards openable so the Full Gate workspace can be selected', () => {
+    const onOpen = vi.fn();
+    const target = card({
+      displayName: 'vercel/vercel',
+      identifier: 'vercel/vercel',
+      scanCapability: 'cli_only',
+      verdict: 'unknown',
+      shipScore: null,
+      topIssue: null,
+    });
+    render(<VerdictCard card={target} onOpen={onOpen} />);
+
+    const open = screen.getByRole('button', { name: /vercel\/vercel: Use CLI/i });
+    expect(open).toHaveProperty('disabled', false);
+    fireEvent.click(open);
+    expect(onOpen).toHaveBeenCalledWith(target);
+    expect(
+      screen.getByRole('button', { name: /Copy Full Gate command for vercel\/vercel/i }),
+    ).toBeTruthy();
+  });
+
+  it('disables open when a repo card has no linked repositoryId', () => {
+    render(
+      <VerdictCard
+        card={card({ repositoryId: null, scanCapability: 'cli_only' })}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /acme\/api: Use CLI/i })).toHaveProperty(
+      'disabled',
+      true,
+    );
   });
 
   it('shows a regression indicator when score dropped without repeating Guardian on repos', () => {
