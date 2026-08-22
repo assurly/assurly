@@ -10,6 +10,9 @@ coverage
 /apps/web/playwright-report/
 /apps/web/test-results/
 
+# Signing Keys
+.secrets/
+
 # Environment Variables
 .env
 .env.local
