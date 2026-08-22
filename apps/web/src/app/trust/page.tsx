@@ -1,6 +1,8 @@
+import type { Metadata } from 'next';
 import React from 'react';
 import { StructuredData } from '../_components/StructuredData';
 import { subPageGraph } from '../../utils/structuredData';
+import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
 import Link from 'next/link';
 import { AssurlyMark } from '../_components/AssurlyMark';
 import { AssurlyWordmark } from '../_components/AssurlyWordmark';
@@ -8,13 +10,27 @@ import { SiteFooter } from '../_components/SiteFooter';
 import { ThemeToggle } from '../_components/ThemeToggle';
 import { DISCLOSURE_CONTACT_PATH } from '../../utils/disclosureContact';
 
+const TRUST_TITLE = 'Trust & Security · Assurly';
 const TRUST_DESCRIPTION =
   'How Assurly keeps customer apps and data safe: security posture, data handling, subprocessors, and our coordinated vulnerability disclosure policy.';
 
-export const metadata = {
-  title: 'Trust & Security · Assurly',
-  description:
-    'How Assurly keeps customer apps and data safe: security posture, data handling, subprocessors, and our coordinated vulnerability disclosure policy.',
+export const metadata: Metadata = {
+  title: TRUST_TITLE,
+  description: TRUST_DESCRIPTION,
+  // Buyers share this page to vouch for Assurly, so the preview has to describe
+  // the page rather than inherit the root layout's site-wide card.
+  openGraph: {
+    title: TRUST_TITLE,
+    description: TRUST_DESCRIPTION,
+    type: 'website',
+    url: '/trust',
+    images: [SITE_OG_IMAGE],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: TRUST_TITLE,
+    description: TRUST_DESCRIPTION,
+  },
   // This is the page buyers read before connecting a private repository, and
   // sitemap.ts gives it the highest priority after / and /mcp. Inheriting the
   // root layout's `canonical: '/'` would fold it into the homepage instead.
