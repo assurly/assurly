@@ -388,6 +388,43 @@ export function githubRepositoryApiUrl(fullName: string, ...segments: string[]):
   return `${GITHUB_API_URL}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}${suffix}`;
 }
 
+function isSafeGitHubBranchName(name: string): boolean {
+  return name.length > 0 && name.length <= 255 && !name.includes('..') && !name.includes('\0');
+}
+
+/**
+ * Lists up to 100 branch names for Instant Gate's branch picker.
+ * Does not follow pagination — that is enough for typical SaaS repos.
+ */
+export async function listGitHubBranchNames(
+  repo: string,
+  headers: HeadersInit,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string[]> {
+  const url = new URL(githubRepositoryApiUrl(repo, 'branches'));
+  url.searchParams.set('per_page', '100');
+  const response = await fetchImpl(url.toString(), {
+    headers,
+    signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new GitHubApiError(response.status, `GitHub branch list failed (${response.status}).`);
+  }
+  const payload: unknown = await response.json();
+  if (!Array.isArray(payload)) {
+    throw new GitHubApiError(502, 'GitHub branch list returned an unexpected payload.');
+  }
+  const branches: string[] = [];
+  for (const item of payload) {
+    if (!item || typeof item !== 'object' || !('name' in item)) continue;
+    const name = item.name;
+    if (typeof name === 'string' && isSafeGitHubBranchName(name)) {
+      branches.push(name);
+    }
+  }
+  return branches;
+}
+
 export function requireGitHubRef(ref: string): string {
   if (!ref || ref.length > 255 || ref.includes('\0') || ref.includes('..')) {
     throw new Error('Invalid GitHub ref.');

@@ -35,6 +35,14 @@
     "*.{ts,tsx,js,jsx,json,css,md}": "prettier --write",
     "packages/cli/src/**/*.{ts,tsx}": "npx vitest related --run --passWithNoTests --root packages/cli"
   },
+  "allowScripts": {
+    "@vscode/vsce-sign@2.0.9": true,
+    "esbuild@0.28.1": true,
+    "fsevents@2.3.3||2.3.2": true,
+    "keytar@7.9.0": true,
+    "sharp@0.34.5": true,
+    "unrs-resolver@1.12.2": true
+  },
   "devDependencies": {
     "husky": "^9.1.7",
     "lint-staged": "^17.0.7",

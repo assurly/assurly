@@ -25,6 +25,18 @@ afterEach(() => {
 });
 
 describe('detectStack', () => {
+  it('detects Next.js and Stripe from a web/package.json (Attesta-style layout)', () => {
+    const project = makeTempProject();
+    writeJson(path.join(project, 'web/package.json'), {
+      dependencies: { next: '16.0.0', stripe: '^17.0.0' },
+    });
+
+    const stack = detectStack(project);
+
+    expect(stack.framework).toBe('nextjs');
+    expect(stack.payments).toBe('stripe');
+  });
+
   it('detects the stack from a flat single-package project (unchanged behaviour)', () => {
     const project = makeTempProject();
     writeJson(path.join(project, 'package.json'), {

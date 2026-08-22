@@ -14,9 +14,16 @@ import {
   getInstallationAccessToken,
   githubHeaders,
   githubRepositoryApiUrl,
+  GitHubApiError,
   isGitHubRepositoryName,
-  readLimitedResponseText,
+  listGitHubBranchNames,
 } from '../../../../utils/githubApp';
+import {
+  InstantGateTreeError,
+  loadInstantGateTree,
+  REPOSITORY_TOO_LARGE_MESSAGE,
+} from '../../../../utils/instantGateTree';
+import { INSTANT_GATE_MAX_FILES } from '@assurly/scanner-core';
 
 const branchSchema = z
   .string()
@@ -40,31 +47,16 @@ const baseQuery = {
 const proxyQuery = z.discriminatedUnion('type', [
   z.object({ ...baseQuery, type: z.literal('tree') }).strict(),
   z.object({ ...baseQuery, type: z.literal('file'), path: filePathSchema }).strict(),
+  z.object({ ...baseQuery, type: z.literal('branches') }).strict(),
 ]);
 const batchBody = z
   .object({
     repoId: z.string().uuid(),
     branch: branchSchema.optional(),
-    paths: z.array(filePathSchema).min(1).max(300),
+    paths: z.array(filePathSchema).min(1).max(INSTANT_GATE_MAX_FILES),
   })
   .strict();
 const metadataSchema = z.object({ default_branch: z.string().min(1).max(255) }).passthrough();
-const treeSchema = z
-  .object({
-    tree: z
-      .array(
-        z
-          .object({
-            path: z.string().min(1).max(1024),
-            type: z.enum(['blob', 'tree', 'commit']),
-          })
-          .passthrough(),
-      )
-      .max(5000),
-    truncated: z.boolean().optional(),
-  })
-  .passthrough();
-const commitSchema = z.object({ sha: z.string().min(1).max(64) }).passthrough();
 
 interface PrivateRepoContext {
   repositoryName: string;
@@ -133,34 +125,43 @@ export const GET = secureRoute(
     );
 
     if (query.type === 'tree') {
-      const treeUrl = new URL(githubRepositoryApiUrl(repositoryName, 'git', 'trees', branch));
-      treeUrl.searchParams.set('recursive', '1');
-      const commitUrl = githubRepositoryApiUrl(repositoryName, 'commits', branch);
-      const authHeaders = githubHeaders(token);
-
-      const [treeResponse, commitResponse] = await Promise.all([
-        fetch(treeUrl, { headers: authHeaders }),
-        fetch(commitUrl, { headers: authHeaders }),
-      ]);
-
-      if (!treeResponse.ok) throw new ApiError(502, 'github_unavailable', 'GitHub is unavailable.');
-
-      const tree = treeSchema.parse(
-        JSON.parse(await readLimitedResponseText(treeResponse, 2 * 1024 * 1024)),
-      );
-
-      // Best-effort: if the commit lookup fails, omit SHA rather than failing the scan.
-      let commitSha: string | undefined;
-      if (commitResponse.ok) {
-        try {
-          const commitData = commitSchema.parse(await commitResponse.json());
-          commitSha = commitData.sha;
-        } catch {
-          // Non-critical – scan proceeds without a commit SHA
+      try {
+        const tree = await loadInstantGateTree({
+          repo: repositoryName,
+          branch,
+          headers: githubHeaders(token),
+          cacheKey: `proxy:${query.repoId}`,
+        });
+        return NextResponse.json(tree, {
+          headers: { 'Cache-Control': 'private, max-age=60' },
+        });
+      } catch (error) {
+        if (error instanceof InstantGateTreeError) {
+          if (error.kind === 'too_large') {
+            throw new ApiError(413, 'repository_too_large', REPOSITORY_TOO_LARGE_MESSAGE);
+          }
+          if (error.kind === 'rate_limit') {
+            throw new ApiError(429, 'rate_limit_exceeded', 'GitHub API rate limit exceeded.');
+          }
+          throw new ApiError(502, 'github_unavailable', 'GitHub is unavailable.');
         }
+        throw error;
       }
+    }
 
-      return NextResponse.json({ ...tree, default_branch: branch, commit_sha: commitSha });
+    if (query.type === 'branches') {
+      try {
+        const branches = await listGitHubBranchNames(repositoryName, githubHeaders(token));
+        return NextResponse.json({ default_branch: branch, branches });
+      } catch (error) {
+        if (error instanceof GitHubApiError) {
+          if (error.status === 403 || error.status === 429) {
+            throw new ApiError(429, 'rate_limit_exceeded', 'GitHub API rate limit exceeded.');
+          }
+          throw new ApiError(502, 'github_unavailable', 'GitHub is unavailable.');
+        }
+        throw error;
+      }
     }
 
     const content = await fetchGitHubFile(token, repositoryName, query.path, branch, 1024 * 1024);

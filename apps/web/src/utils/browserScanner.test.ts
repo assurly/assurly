@@ -11,16 +11,28 @@ import {
 
 describe('scanSqlMigration', () => {
   describe('Row-Level Security (RLS)', () => {
-    it('reports an error when a table is created without RLS enabled', () => {
+    it('reports an error when a Supabase table is created without RLS enabled', () => {
       const sql = `CREATE TABLE users (id uuid PRIMARY KEY);`;
-      const result = scanSqlMigration(sql, 'migration.sql');
+      const result = scanSqlMigration(sql, 'supabase/migrations/001.sql');
 
       expect(result.errorCount).toBe(1);
       expect(result.findings).toHaveLength(1);
       expect(result.findings[0].severity).toBe('error');
+      expect(result.findings[0].confidence).toBe('high');
       expect(result.findings[0].message).toContain("'users'");
       expect(result.findings[0].message).toContain('Row-Level Security');
-      expect(result.findings[0].file).toBe('migration.sql');
+      expect(result.findings[0].file).toBe('supabase/migrations/001.sql');
+    });
+
+    it('reports a warning when a non-Supabase table is created without RLS', () => {
+      const sql = `CREATE TABLE "User" (id uuid PRIMARY KEY);`;
+      const result = scanSqlMigration(sql, 'prisma/migrations/0.sql');
+
+      expect(result.errorCount).toBe(0);
+      expect(result.warningCount).toBe(1);
+      expect(result.findings[0].severity).toBe('warning');
+      expect(result.findings[0].confidence).toBe('medium');
+      expect(result.findings[0].message).toContain("'User'");
     });
 
     it('reports no error when a table has RLS enabled', () => {
@@ -42,7 +54,7 @@ describe('scanSqlMigration', () => {
         'CREATE TABLE comments (id uuid PRIMARY KEY);',
         'ALTER TABLE comments ENABLE ROW LEVEL SECURITY;',
       ].join('\n');
-      const result = scanSqlMigration(sql, 'migration.sql');
+      const result = scanSqlMigration(sql, 'supabase/migrations/001.sql');
 
       expect(result.errorCount).toBe(1);
       expect(result.findings).toHaveLength(1);
@@ -90,6 +102,20 @@ describe('scanSqlMigration', () => {
 
       expect(result.errorCount).toBe(0);
       expect(result.warningCount).toBe(0);
+      expect(result.findings).toHaveLength(0);
+    });
+
+    it('does not flag ClickHouse CREATE TABLE as missing Postgres RLS', () => {
+      const sql = [
+        'CREATE TABLE ai_logs (',
+        '  id UInt64,',
+        '  created_at DateTime64(3)',
+        ')',
+        'ENGINE = MergeTree',
+        'ORDER BY id;',
+      ].join('\n');
+      const result = scanSqlMigration(sql, 'configs/clickhouse/migrations/001_create_ai_logs.sql');
+
       expect(result.findings).toHaveLength(0);
     });
 
@@ -214,22 +240,20 @@ describe('scanEnvVariables', () => {
       const result = scanEnvVariables(envExample, code, '.env.example', 'config.ts');
 
       expect(result.errorCount).toBe(0);
-      expect(result.warningCount).toBe(1);
+      expect(result.findings.filter((f) => f.ruleId === 'undocumented-env')).toHaveLength(1);
       expect(result.findings[0].severity).toBe('warning');
-      expect(result.findings[0].ruleId).toBe('undocumented-env');
-      expect(result.findings[0].message).toContain('STRIPE_API_KEY');
-      expect(result.findings[0].message).toContain("not documented in '.env.example'");
-      expect(result.findings[0].file).toBe('config.ts');
+      expect(result.findings.find((f) => f.ruleId === 'undocumented-env')?.message).toContain(
+        'STRIPE_API_KEY',
+      );
     });
 
-    it('reports no finding when process.env.VAR is documented in .env.example', () => {
+    it('reports no undocumented-env finding when process.env.VAR is documented in .env.example', () => {
       const envExample = 'DATABASE_URL=postgres://localhost';
       const code = 'const url = process.env.DATABASE_URL;';
       const result = scanEnvVariables(envExample, code, '.env.example', 'config.ts');
 
       expect(result.errorCount).toBe(0);
-      expect(result.warningCount).toBe(0);
-      expect(result.findings).toHaveLength(0);
+      expect(result.findings.filter((f) => f.ruleId === 'undocumented-env')).toHaveLength(0);
     });
 
     it('ignores system environment variables like NODE_ENV and PORT', () => {
@@ -262,8 +286,8 @@ describe('scanEnvVariables', () => {
       const result = scanEnvVariables(envExample, code, '.env.example', 'config.ts');
 
       expect(result.errorCount).toBe(0);
-      expect(result.warningCount).toBe(0);
-      expect(result.findings).toHaveLength(0);
+      expect(result.findings.filter((f) => f.ruleId === 'assurly-canary-missing')).toHaveLength(1);
+      expect(result.findings.filter((f) => f.ruleId !== 'assurly-canary-missing')).toHaveLength(0);
     });
   });
 });

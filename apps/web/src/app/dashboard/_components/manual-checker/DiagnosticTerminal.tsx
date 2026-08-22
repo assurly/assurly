@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, type ReactElement } from 'react';
 import { ShipGatePanel } from '../../../_components/ship-gate/ShipGatePanel';
 import type { WebFinding } from '../../../../utils/browserScanner';
-import { buildShipGateFromWebFindings } from '../../../../utils/shipGate';
+import {
+  buildShipGateFromWebFindings,
+  type ShipGateGroup,
+  type ShipGateReport,
+} from '../../../../utils/shipGate';
 import { formatCount } from '../../../../utils/pluralize';
 import type { ManualCheckerTab } from './useManualScan';
 import {
@@ -13,6 +17,30 @@ import {
 } from './projectWorkspace';
 import { ShipLoopPanel } from './ShipLoopPanel';
 import type { AppliedManualFix } from './shipLoopTypes';
+
+const MANUAL_CHECKER_CANARY_HINT =
+  'Plant ASSURLY_CANARY_URL in .env.example via MCP assurly_plant_canary or `assurly plant`. The Apps dashboard can mint a live callback URL.';
+
+function remapCanaryAction(group: ShipGateGroup): ShipGateGroup {
+  if (group.id !== 'rule:assurly-canary-missing') return group;
+  return {
+    ...group,
+    action: {
+      label: 'Add a silent alarm',
+      kind: 'hint',
+      hint: MANUAL_CHECKER_CANARY_HINT,
+    },
+  };
+}
+
+function localizeManualCheckerShipGate(report: ShipGateReport): ShipGateReport {
+  return {
+    ...report,
+    blockers: report.blockers.map(remapCanaryAction),
+    reviews: report.reviews.map(remapCanaryAction),
+    warnings: report.warnings.map(remapCanaryAction),
+  };
+}
 
 interface DiagnosticTerminalProps {
   activeTab: ManualCheckerTab;
@@ -226,10 +254,12 @@ export function DiagnosticTerminal({
       return buildShipGateFromWebFindings([], { scannedFileCount: 0, cleanFileCount: 0 });
     }
     if (isProjectMode && projectScan) {
-      return buildShipGateFromWebFindings(results.findings, {
-        scannedFileCount: projectScan.metrics.scannedFileCount,
-        cleanFileCount: projectScan.metrics.cleanFileCount,
-      });
+      return localizeManualCheckerShipGate(
+        buildShipGateFromWebFindings(results.findings, {
+          scannedFileCount: projectScan.metrics.scannedFileCount,
+          cleanFileCount: projectScan.metrics.cleanFileCount,
+        }),
+      );
     }
 
     const scannedFileCount = Math.max(
@@ -239,10 +269,12 @@ export function DiagnosticTerminal({
     const affectedCount = new Set(results.findings.map((finding) => finding.file).filter(Boolean))
       .size;
 
-    return buildShipGateFromWebFindings(results.findings, {
-      scannedFileCount,
-      cleanFileCount: Math.max(0, scannedFileCount - affectedCount),
-    });
+    return localizeManualCheckerShipGate(
+      buildShipGateFromWebFindings(results.findings, {
+        scannedFileCount,
+        cleanFileCount: Math.max(0, scannedFileCount - affectedCount),
+      }),
+    );
   }, [isProjectIdle, isProjectMode, projectScan, results.findings, scannedFileLabels.length]);
 
   const verdict = getOverallVerdict(
@@ -341,7 +373,7 @@ export function DiagnosticTerminal({
         </div>
 
         <div className="log-line log-command">
-          <span>$ assurly scan --browser-mode</span>
+          <span>$ assurly scan</span>
         </div>
 
         {isProjectIdle ? (

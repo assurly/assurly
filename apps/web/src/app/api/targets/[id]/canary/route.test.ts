@@ -8,6 +8,7 @@ import { GET, POST } from './route';
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
   generateCanaryToken: vi.fn(),
+  getApplicationUrl: vi.fn(() => 'https://assurly.dev'),
 }));
 
 vi.mock('../../../../../utils/auth', async (importOriginal) => ({
@@ -22,6 +23,11 @@ vi.mock('../../../../../utils/canaryTokens', async (importOriginal) => {
     generateCanaryToken: mocks.generateCanaryToken,
   };
 });
+
+vi.mock('../../../../../utils/env', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../../utils/env')>()),
+  getApplicationUrl: () => mocks.getApplicationUrl(),
+}));
 
 const TARGET_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const TOKEN_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -136,6 +142,7 @@ describe('POST /api/targets/[id]/canary (issue)', () => {
     });
     db.getTargetById.mockResolvedValue(ownedTarget());
     db.createCanaryToken.mockResolvedValue(tokenRow());
+    mocks.getApplicationUrl.mockReturnValue('https://assurly.dev');
     mocks.generateCanaryToken.mockReturnValue({
       plaintext: PLAINTEXT,
       tokenHash: 'hash-once',
@@ -156,6 +163,16 @@ describe('POST /api/targets/[id]/canary (issue)', () => {
     const body = await res.json();
     expect(body.token).toBe(PLAINTEXT);
     expect(body.tokenPrefix).toBe(`${ASSURLY_CANARY_PREFIX}bbbbbb`);
+    expect(body.callbackUrl).toBe(
+      `https://assurly.dev/api/canary/${encodeURIComponent(PLAINTEXT)}`,
+    );
+    expect(body.snippet).toContain('ASSURLY_CANARY_URL=');
+    expect(body.snippet).toContain(body.callbackUrl);
+    expect(body.snippet).not.toContain('NEXT_PUBLIC_SUPABASE_URL=');
+    expect(body.snippet).not.toContain('STRIPE_SECRET_KEY=');
+    expect(body.snippet).not.toContain('DATABASE_URL=');
+    expect(body.mcpSnippet).toContain('assurly-cloud-auth');
+    expect(body.mcpSnippet).toContain(body.callbackUrl);
     expect(db.createCanaryToken).toHaveBeenCalledWith(
       expect.objectContaining({
         tokenHash: 'hash-once',
@@ -167,5 +184,24 @@ describe('POST /api/targets/[id]/canary (issue)', () => {
     const persistedArg = db.createCanaryToken.mock.calls[0]![0] as Record<string, unknown>;
     expect(persistedArg).not.toHaveProperty('token');
     expect(JSON.stringify(persistedArg)).not.toContain(PLAINTEXT);
+  });
+
+  it('plants the public Assurly origin even when issued from localhost', async () => {
+    mocks.getApplicationUrl.mockReturnValue('http://localhost:3000');
+    const res = await POST(
+      new Request(`http://localhost/api/targets/${TARGET_ID}/canary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: 'Silent alarm' }),
+      }),
+      routeContext(),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.callbackUrl).toBe(
+      `https://assurly.dev/api/canary/${encodeURIComponent(PLAINTEXT)}`,
+    );
+    expect(body.snippet).toContain('https://assurly.dev/api/canary/');
+    expect(body.snippet).not.toContain('localhost');
   });
 });

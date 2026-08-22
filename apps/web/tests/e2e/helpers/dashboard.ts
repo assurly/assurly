@@ -6,6 +6,7 @@ import {
   e2eLeaksRepo,
   resolveE2eFindingsForScan,
   resolveE2eScansForRepo,
+  resolveE2eTrendPoints,
 } from '../../../src/testing/e2eDashboardFixture';
 
 const SESSION_COOKIE_NAME = 'assurly-session';
@@ -20,7 +21,56 @@ export async function installDashboardSession(context: BrowserContext): Promise<
   ]);
 }
 
+function jsonOk(body: unknown): { status: number; contentType: string; body: string } {
+  return {
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(body),
+  };
+}
+
+/**
+ * Client fetches that would 401 against real auth (the E2E fixture only seeds
+ * the dashboard page session). A 401 here expires the in-app session.
+ */
+export async function mockDashboardClientApis(page: Page): Promise<void> {
+  await page.route('**/api/targets/*/canary', async (route: Route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    const path = new URL(route.request().url()).pathname.split('/');
+    const targetsIndex = path.indexOf('targets');
+    const targetId = targetsIndex >= 0 ? (path[targetsIndex + 1] ?? 'e2e-target') : 'e2e-target';
+    await route.fulfill(jsonOk({ targetId, prefix: 'asrly_', tokens: [] }));
+  });
+
+  await page.route('**/api/targets', async (route: Route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonOk({ targets: [] }));
+  });
+
+  await page.route('**/api/api-keys', async (route: Route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonOk({ keys: [] }));
+  });
+
+  await page.route('**/api/repositories/*/trend', async (route: Route) => {
+    const path = new URL(route.request().url()).pathname.split('/');
+    const repositoriesIndex = path.indexOf('repositories');
+    const repositoryId = repositoriesIndex >= 0 ? (path[repositoriesIndex + 1] ?? '') : '';
+    await route.fulfill(jsonOk({ points: resolveE2eTrendPoints(repositoryId) }));
+  });
+}
+
 export async function mockDashboardScanApi(page: Page): Promise<void> {
+  await mockDashboardClientApis(page);
   await page.route('**/api/scans**', async (route: Route) => {
     const requestUrl = new URL(route.request().url());
     const scanId = requestUrl.searchParams.get('scanId');
@@ -49,8 +99,11 @@ export async function mockDashboardScanApi(page: Page): Promise<void> {
 }
 
 export async function openAuthenticatedDashboard(page: Page): Promise<void> {
-  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('repo-list-panel').waitFor({ state: 'visible' });
+  await mockDashboardClientApis(page);
+  await page.goto(`/dashboard?view=app&repo=${e2eAttestaRepo.id}`, {
+    waitUntil: 'domcontentloaded',
+  });
+  await page.getByRole('button', { name: 'Apps', exact: true }).waitFor({ state: 'visible' });
   await page.getByTestId('scan-details-ship-gate').waitFor({ state: 'visible' });
 }
 
@@ -75,16 +128,7 @@ export async function assertJumpToScanDetails(page: Page): Promise<void> {
   await expect(jumpButton).toBeVisible();
   await jumpButton.click();
 
-  await expect
-    .poll(
-      async () =>
-        page.getByTestId('scan-details-container').evaluate((element) => {
-          const rect = element.getBoundingClientRect();
-          return rect.top >= 0 && rect.top <= window.innerHeight * 0.45;
-        }),
-      { timeout: 10_000 },
-    )
-    .toBe(true);
+  await expect(page.getByTestId('scan-details-container')).toBeInViewport({ timeout: 10_000 });
 }
 
 export const dashboardFixture = {

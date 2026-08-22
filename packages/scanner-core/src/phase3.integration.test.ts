@@ -60,4 +60,51 @@ describe('Phase 3 integration fixtures', () => {
       findings.some((finding) => finding.confidence === 'high' && finding.severity === 'error'),
     ).toBe(false);
   });
+
+  it('does not flag a Stripe webhook that delegates idempotency to a helper', () => {
+    const findings = runDeeperStackScans([
+      {
+        file: 'apps/web/src/app/api/stripe/webhook/route.ts',
+        content: [
+          "import Stripe from 'stripe';",
+          "import { processStripeEvent } from '../../../../utils/stripeBilling';",
+          'export async function POST(req: Request) {',
+          '  const event = stripe.webhooks.constructEvent(await req.text(), sig, secret);',
+          '  await processStripeEvent(stripe, db, event);',
+          '}',
+        ].join('\n'),
+      },
+      {
+        file: 'apps/web/src/utils/stripeBilling.ts',
+        content: [
+          'export async function processStripeEvent(stripe, db, event) {',
+          '  return db.processStripeBillingEvent({ eventId: event.id });',
+          '}',
+        ].join('\n'),
+      },
+    ]).findings;
+
+    expect(findings.some((finding) => finding.ruleId === 'stripe-webhook-no-idempotency')).toBe(
+      false,
+    );
+  });
+
+  it('does not flag Assurly own Stripe webhook that delegates to the billing ledger', () => {
+    const webhookPath = 'apps/web/src/app/api/stripe/webhook/route.ts';
+    const billingPath = 'apps/web/src/utils/stripeBilling.ts';
+    const findings = runDeeperStackScans([
+      {
+        file: webhookPath,
+        content: fs.readFileSync(path.join(REPO_ROOT, webhookPath), 'utf8'),
+      },
+      {
+        file: billingPath,
+        content: fs.readFileSync(path.join(REPO_ROOT, billingPath), 'utf8'),
+      },
+    ]).findings;
+
+    expect(findings.some((finding) => finding.ruleId === 'stripe-webhook-no-idempotency')).toBe(
+      false,
+    );
+  });
 });

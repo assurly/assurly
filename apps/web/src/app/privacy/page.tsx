@@ -8,8 +8,10 @@ import { AssurlyMark } from '../_components/AssurlyMark';
 import { AssurlyWordmark } from '../_components/AssurlyWordmark';
 import { CookieInventoryTable } from '../_components/CookieInventoryTable';
 import { SiteFooter } from '../_components/SiteFooter';
+import { ThemeToggle } from '../_components/ThemeToggle';
 import { COOKIE_NAME } from '../../utils/auth';
 import { CONTACT_SUBJECT_PARAM } from '../../utils/contactSubjects';
+import { PRO_TRIAL_PERIOD_DAYS } from '../../utils/pricing';
 
 /**
  * Deep link to the contact form with the privacy subject preselected. The query
@@ -53,15 +55,18 @@ export default function PrivacyPage() {
         <Link href="/" className="back-link">
           ← Back to Home
         </Link>
-        <div className="logo" role="img" aria-label="Assurly">
-          <AssurlyMark className="site-logo-mark" />
-          <AssurlyWordmark accentClassName="site-logo-accent" />
+        <div className="legal-header-end">
+          <ThemeToggle />
+          <div className="logo" role="img" aria-label="Assurly">
+            <AssurlyMark className="site-logo-mark" />
+            <AssurlyWordmark accentClassName="site-logo-accent" />
+          </div>
         </div>
       </header>
 
       <main className="legal-content">
         <h1>Privacy Policy</h1>
-        <p className="last-updated">Last updated: July 24, 2026</p>
+        <p className="last-updated">Last updated: August 17, 2026</p>
 
         <section className="legal-section">
           <h2>1. Who we are and how to reach us</h2>
@@ -178,8 +183,10 @@ export default function PrivacyPage() {
           <p>
             We store your workspace name, billing plan, GitHub organisation and installation
             identifiers, and — if you subscribe — the Stripe customer, subscription, and price
-            identifiers together with billing event records. We never receive or store your full
-            card number; card data is handled exclusively by Stripe.
+            identifiers together with billing event records. Pro checkout, including the{' '}
+            {PRO_TRIAL_PERIOD_DAYS}-day free trial, collects a payment method on Stripe; no charge
+            is taken until the trial ends unless you cancel first. We never receive or store your
+            full card number; card data is handled exclusively by Stripe.
           </p>
 
           <h3>4.3 Scanning and product data</h3>

@@ -12,9 +12,23 @@ import {
   scanAgentStack,
   incompleteScanFinding,
   isAgentStackFile,
+  isAnalyzedCodeFile,
+  isScannableFile,
+  rankFilesByRelevance,
   selectFiles,
+  instantGateSurfaceFiles,
+  buildScanScope,
+  summarizeUnanalyzedSource,
+  unanalyzedLanguageCounts,
+  unanalyzedSourceFinding,
+  formatUnanalyzedLogLine,
+  detectStackFromManifests,
+  describeDetectedStack,
+  selectPackageManifestPaths,
   type WebFinding,
+  githubActionsIntegrationMessage,
 } from '../../../utils/browserScanner';
+import { isNestedReadme, prefetchPublicScanFiles } from '../../../utils/publicScanPrefetch';
 import { clientApi, githubApi, type GitHubRepository } from '../../../utils/clientApi';
 import { formatCount } from '../../../utils/pluralize';
 import { sanitizeGitHubOwner } from '../../../utils/scanProxy';
@@ -25,7 +39,11 @@ import {
   type ContactSubject,
 } from '../../../utils/contactSubjects';
 import { ShipGatePanel } from '../ship-gate/ShipGatePanel';
-import { buildShipGateFromWebFindings, type ShipGateReport } from '../../../utils/shipGate';
+import {
+  buildShipGateFromWebFindings,
+  countCleanScannedFiles,
+  type ShipGateReport,
+} from '../../../utils/shipGate';
 import { ProofEvidence, type ProofEvidenceItem } from '../../dashboard/_components/ProofEvidence';
 import { SiteFooter } from '../SiteFooter';
 import { AuthButton } from './AuthButton';
@@ -59,7 +77,7 @@ import {
   isVisibilityHeadline,
   type VisibilityHeadline,
 } from './VisibilityScanResult';
-import { PRICES } from '../../../utils/pricing';
+import { PRICES, PRO_TRIAL_COPY } from '../../../utils/pricing';
 
 interface HomeClientProps {
   initialAuthenticated: boolean;
@@ -349,7 +367,12 @@ export default function HomeClient({
       `Fetching repository tree for "${repoFullName}"...`,
     ]);
 
-    const allFindings: { severity: 'error' | 'warning'; file: string; message: string }[] = [];
+    const allFindings: {
+      severity: 'error' | 'warning';
+      file: string;
+      message: string;
+      ruleId?: string;
+    }[] = [];
 
     try {
       // Fetch Git Tree from our server-side proxy which resolves default branch and handles auth
@@ -397,23 +420,6 @@ export default function HomeClient({
         'Detecting stack and analyzing project structure...',
       ]);
 
-      const fetchFileContent = async (filePath: string): Promise<Response> => {
-        const response = await fetch(
-          `/api/github/public-scan?repo=${encodeURIComponent(repoFullName)}&branch=${encodeURIComponent(
-            defaultBranch,
-          )}&type=file&path=${encodeURIComponent(filePath)}`,
-        );
-        if (response.status === 429) {
-          throw new Error(
-            await readApiErrorMessage(
-              response,
-              'GitHub API rate limit exceeded. Sign in with GitHub to scan more repositories.',
-            ),
-          );
-        }
-        return response;
-      };
-
       const sqlFiles: string[] = [];
       const envFiles: string[] = [];
       const codeFiles: string[] = [];
@@ -421,9 +427,11 @@ export default function HomeClient({
 
       for (const node of tree) {
         if (node.type !== 'blob') continue;
+        if (!isScannableFile(node.path) && !isAgentStackFile(node.path)) continue;
         const pathLower = node.path.toLowerCase();
 
         if (isAgentStackFile(node.path)) {
+          if (isNestedReadme(node.path)) continue;
           agentFiles.push(node.path);
         } else if (pathLower.endsWith('.sql')) {
           sqlFiles.push(node.path);
@@ -433,243 +441,231 @@ export default function HomeClient({
           pathLower.endsWith('.env.local')
         ) {
           envFiles.push(node.path);
-        } else if (/\.(js|ts|jsx|tsx)$/.test(pathLower)) {
-          if (
-            !node.path.includes('node_modules') &&
-            !node.path.includes('.next') &&
-            !node.path.startsWith('dist/') &&
-            !node.path.startsWith('build/')
-          ) {
-            codeFiles.push(node.path);
-          }
+        } else if (isAnalyzedCodeFile(node.path)) {
+          codeFiles.push(node.path);
         }
       }
 
-      const fileSelection = selectFiles([...new Set([...sqlFiles, ...codeFiles])], 100);
+      const treePaths = tree.filter((node) => node.type === 'blob').map((node) => node.path);
+      const packageJsonPaths = selectPackageManifestPaths(treePaths);
+      const rankedCandidates = rankFilesByRelevance(
+        [...new Set([...sqlFiles, ...codeFiles])],
+        (path) => path,
+      );
+      const fileSelection = selectFiles(rankedCandidates, 100);
       const selectedFiles = new Set(fileSelection.files);
+      const coveragePaths = instantGateSurfaceFiles(
+        treePaths.filter((path) => isScannableFile(path)),
+        (path) => path,
+      );
+      const unanalyzedSummary = summarizeUnanalyzedSource(coveragePaths);
+      const scanScope = buildScanScope(rankedCandidates, fileSelection.files, {
+        treePaths,
+        unanalyzed: unanalyzedLanguageCounts(unanalyzedSummary),
+        limit: 100,
+      });
       const incompleteFinding = incompleteScanFinding(fileSelection);
       if (incompleteFinding) {
         allFindings.push({
           severity: incompleteFinding.severity,
           file: 'Repository scan',
           message: incompleteFinding.message,
+          ruleId: incompleteFinding.ruleId,
+        });
+      }
+      const coverageFinding = unanalyzedSourceFinding(unanalyzedSummary);
+      if (coverageFinding) {
+        allFindings.push({
+          severity: coverageFinding.severity,
+          file: coverageFinding.file ?? 'Repository scan',
+          message: coverageFinding.message,
+          ruleId: coverageFinding.ruleId,
         });
       }
 
-      const hasPackageJson = tree.some((node) => node.path === 'package.json');
-      let detectedFramework = 'Unknown';
-      let hasSupabase = false;
-      let hasStripe = false;
+      const sqlToScan = sqlFiles.filter((path) => selectedFiles.has(path));
+      const codeToScan = codeFiles.filter((path) => selectedFiles.has(path));
+      const stripeToScan = codeToScan.filter(
+        (p) => p.toLowerCase().includes('stripe') || p.toLowerCase().includes('webhook'),
+      );
+      const envExamplePath = envFiles.find((p) => p.endsWith('.env.example')) || envFiles[0];
+      const filesToFetch = [
+        ...new Set([
+          ...packageJsonPaths,
+          ...sqlToScan,
+          ...codeToScan,
+          ...(envExamplePath ? [envExamplePath] : []),
+          ...agentFiles,
+        ]),
+      ];
 
-      if (hasPackageJson) {
-        try {
-          const pkgRes = await fetchFileContent('package.json');
-          if (pkgRes.ok) {
-            const pkgData = (await pkgRes.ok) ? await pkgRes.json() : {};
-            const allDeps = {
-              ...(pkgData.dependencies || {}),
-              ...(pkgData.devDependencies || {}),
-            };
-            if (allDeps['next']) detectedFramework = 'Next.js';
-            if (allDeps['@supabase/supabase-js'] || allDeps['@supabase/ssr']) hasSupabase = true;
-            if (allDeps['stripe'] || allDeps['@stripe/stripe-js']) hasStripe = true;
-          }
-        } catch {
-          // Ignore package.json read failures
-        }
-      }
+      setScanLogs((prev) => [...prev, `Fetching ${filesToFetch.length} file(s) in one batch...`]);
+      const contentCache = await prefetchPublicScanFiles({
+        repo: repoFullName,
+        branch: defaultBranch,
+        paths: filesToFetch,
+      });
+      const readCached = (filePath: string): string | null => contentCache.get(filePath) ?? null;
+
+      const manifests = packageJsonPaths.flatMap((manifestPath) => {
+        const content = readCached(manifestPath);
+        return content ? [{ path: manifestPath, content }] : [];
+      });
+      const stackLog = describeDetectedStack(
+        detectStackFromManifests({ manifests, filePaths: treePaths }),
+      );
+      const unanalyzedLog = formatUnanalyzedLogLine(unanalyzedSummary);
 
       setScanProgress(30);
       setScanLogs((prev) => [
         ...prev,
-        `Framework: ${detectedFramework}`,
-        `Supabase: ${hasSupabase ? 'Detected' : 'Not Detected'}`,
-        `Stripe: ${hasStripe ? 'Detected' : 'Not Detected'}`,
+        `Framework: ${stackLog.framework}`,
+        `Supabase: ${stackLog.supabase}`,
+        `Stripe: ${stackLog.stripe}`,
+        ...(unanalyzedLog ? [`⚠ ${unanalyzedLog}`] : []),
         'Running Ship Gate checks...',
       ]);
 
-      const sqlToScan = sqlFiles.filter((path) => selectedFiles.has(path));
       for (const sqlPath of sqlToScan) {
-        setScanLogs((prev) => [...prev, `Reading ${sqlPath}...`]);
-        try {
-          const res = await fetchFileContent(sqlPath);
-          if (res.ok) {
-            const content = await res.text();
-            const scan = scanSqlMigration(content, sqlPath);
-            allFindings.push(
-              ...scan.findings.map((f) => ({
-                severity: f.severity as 'error' | 'warning',
-                file: sqlPath,
-                message: f.message,
-              })),
-            );
-            setScanLogs((prev) => [
-              ...prev,
-              `  Scanned ${sqlPath}: ${scan.errorCount} errors, ${scan.warningCount} warnings.`,
-            ]);
-          }
-        } catch {
-          // Continue scanning other files
-        }
+        const content = readCached(sqlPath);
+        if (content === null) continue;
+        const scan = scanSqlMigration(content, sqlPath);
+        allFindings.push(
+          ...scan.findings.map((f) => ({
+            severity: f.severity as 'error' | 'warning',
+            file: sqlPath,
+            message: f.message,
+          })),
+        );
+        setScanLogs((prev) => [
+          ...prev,
+          `  Scanned ${sqlPath}: ${scan.errorCount} errors, ${scan.warningCount} warnings.`,
+        ]);
       }
 
       setScanProgress(55);
 
-      const stripeToScan = codeFiles
-        .filter((p) => p.toLowerCase().includes('stripe') || p.toLowerCase().includes('webhook'))
-        .filter((path) => selectedFiles.has(path));
       for (const webhookPath of stripeToScan) {
-        setScanLogs((prev) => [...prev, `Reading ${webhookPath}...`]);
-        try {
-          const res = await fetchFileContent(webhookPath);
-          if (res.ok) {
-            const content = await res.text();
-            const scan = scanStripeWebhook(content, webhookPath);
-            allFindings.push(
-              ...scan.findings.map((f) => ({
-                severity: f.severity as 'error' | 'warning',
-                file: webhookPath,
-                message: f.message,
-              })),
-            );
-            setScanLogs((prev) => [
-              ...prev,
-              `  Scanned ${webhookPath}: ${scan.errorCount} errors.`,
-            ]);
-          }
-        } catch {
-          // Continue scanning
-        }
+        const content = readCached(webhookPath);
+        if (content === null) continue;
+        const scan = scanStripeWebhook(content, webhookPath);
+        allFindings.push(
+          ...scan.findings.map((f) => ({
+            severity: f.severity as 'error' | 'warning',
+            file: webhookPath,
+            message: f.message,
+          })),
+        );
+        setScanLogs((prev) => [...prev, `  Scanned ${webhookPath}: ${scan.errorCount} errors.`]);
       }
 
       setScanProgress(70);
 
-      const envExamplePath = envFiles.find((p) => p.endsWith('.env.example')) || envFiles[0];
       if (envExamplePath) {
-        setScanLogs((prev) => [...prev, `Reading env configuration from ${envExamplePath}...`]);
-        try {
-          const envRes = await fetchFileContent(envExamplePath);
-          if (envRes.ok) {
-            const envContent = await envRes.text();
-            let concatenatedCode = '';
-            const codeToScan = codeFiles.filter((path) => selectedFiles.has(path));
-            for (const codePath of codeToScan) {
-              try {
-                const codeRes = await fetchFileContent(codePath);
-                if (codeRes.ok) {
-                  concatenatedCode += `\n// --- File: ${codePath} ---\n` + (await codeRes.text());
-                }
-              } catch {
-                // Skip unreadable files
-              }
+        const envContent = readCached(envExamplePath);
+        if (envContent !== null) {
+          let concatenatedCode = '';
+          for (const codePath of codeToScan) {
+            const codeContent = readCached(codePath);
+            if (codeContent !== null) {
+              concatenatedCode += `\n// --- File: ${codePath} ---\n` + codeContent;
             }
-
-            const scan = scanEnvVariables(
-              envContent,
-              concatenatedCode,
-              envExamplePath,
-              'Repository Codebase',
-            );
-            allFindings.push(
-              ...scan.findings.map((f) => ({
-                severity: f.severity as 'error' | 'warning',
-                file: envExamplePath,
-                message: f.message,
-              })),
-            );
-            setScanLogs((prev) => [...prev, `  Checked env variables: ${scan.errorCount} errors.`]);
           }
-        } catch {
-          // Continue scanning
+
+          const scan = scanEnvVariables(
+            envContent,
+            concatenatedCode,
+            envExamplePath,
+            'Repository Codebase',
+          );
+          allFindings.push(
+            ...scan.findings.map((f) => ({
+              severity: f.severity as 'error' | 'warning',
+              file: envExamplePath,
+              message: f.message,
+            })),
+          );
+          setScanLogs((prev) => [...prev, `  Checked env variables: ${scan.errorCount} errors.`]);
         }
       }
 
       setScanProgress(85);
 
-      for (const codePath of codeFiles.filter((path) => selectedFiles.has(path))) {
-        try {
-          const res = await fetchFileContent(codePath);
-          if (res.ok) {
-            const content = await res.text();
+      for (const codePath of codeToScan) {
+        const content = readCached(codePath);
+        if (content === null) continue;
 
-            const edgeScan = scanEdgeRuntime(content, codePath);
+        const edgeScan = scanEdgeRuntime(content, codePath);
+        allFindings.push(
+          ...edgeScan.findings.map((finding) => ({
+            severity: finding.severity,
+            file: codePath,
+            message: finding.message,
+          })),
+        );
+
+        const rscScan = scanRscDataLeaks(content, codePath);
+        if (rscScan.findings.length > 0) {
+          allFindings.push(
+            ...rscScan.findings.map((f) => ({
+              severity: f.severity as 'error' | 'warning',
+              file: codePath,
+              message: f.message,
+            })),
+          );
+        }
+
+        const supabaseScan = scanSupabaseClientLeaks(content, codePath);
+        allFindings.push(
+          ...supabaseScan.findings.map((finding) => ({
+            severity: finding.severity,
+            file: codePath,
+            message: finding.message,
+          })),
+        );
+
+        if (codePath.includes('/api/')) {
+          const csScan = scanColdStart(content, codePath);
+          if (csScan.findings.length > 0) {
             allFindings.push(
-              ...edgeScan.findings.map((finding) => ({
-                severity: finding.severity,
+              ...csScan.findings.map((f) => ({
+                severity: f.severity as 'error' | 'warning',
                 file: codePath,
-                message: finding.message,
+                message: f.message,
               })),
             );
-
-            const rscScan = scanRscDataLeaks(content, codePath);
-            if (rscScan.findings.length > 0) {
-              allFindings.push(
-                ...rscScan.findings.map((f) => ({
-                  severity: f.severity as 'error' | 'warning',
-                  file: codePath,
-                  message: f.message,
-                })),
-              );
-            }
-
-            const supabaseScan = scanSupabaseClientLeaks(content, codePath);
-            allFindings.push(
-              ...supabaseScan.findings.map((finding) => ({
-                severity: finding.severity,
-                file: codePath,
-                message: finding.message,
-              })),
-            );
-
-            if (codePath.includes('/api/')) {
-              const csScan = scanColdStart(content, codePath);
-              if (csScan.findings.length > 0) {
-                allFindings.push(
-                  ...csScan.findings.map((f) => ({
-                    severity: f.severity as 'error' | 'warning',
-                    file: codePath,
-                    message: f.message,
-                  })),
-                );
-              }
-            }
           }
-        } catch {
-          // Skip unreadable files
         }
       }
 
       for (const agentPath of agentFiles) {
-        try {
-          const res = await fetchFileContent(agentPath);
-          if (!res.ok) continue;
-          const content = await res.text();
-          const agentScan = scanAgentStack(content, agentPath);
-          allFindings.push(
-            ...agentScan.findings.map((finding: WebFinding) => ({
-              severity: finding.severity,
-              file: agentPath,
-              message: finding.message,
-            })),
-          );
-        } catch {
-          // Skip unreadable agent-stack files
-        }
+        const content = readCached(agentPath);
+        if (content === null) continue;
+        const agentScan = scanAgentStack(content, agentPath);
+        allFindings.push(
+          ...agentScan.findings.map((finding: WebFinding) => ({
+            severity: finding.severity,
+            file: agentPath,
+            message: finding.message,
+          })),
+        );
       }
 
-      const hasCiWorkflow = tree.some((node) => {
-        const pathLower = node.path.toLowerCase();
-        return (
-          pathLower === '.github/workflows/assurly.yml' ||
-          pathLower === '.github/workflows/assurly.yaml'
-        );
-      });
+      const workflowPaths = tree.filter(
+        (node) =>
+          node.type === 'blob' &&
+          /^\.github\/workflows\/.*\.(ya?ml)$/i.test(node.path.replace(/\\/g, '/')),
+      );
+      const hasAssurlyWorkflow = workflowPaths.some((node) =>
+        /(?:^|\/)assurly\.ya?ml$/i.test(node.path.replace(/\\/g, '/')),
+      );
 
-      if (!hasCiWorkflow) {
+      if (!hasAssurlyWorkflow) {
         allFindings.push({
+          ruleId: 'github-actions-integration',
           severity: 'warning',
           file: 'Global Configs',
-          message: 'GitHub Actions workflow for Assurly is missing.',
+          message: githubActionsIntegrationMessage(workflowPaths.length),
         });
       }
 
@@ -678,17 +674,21 @@ export default function HomeClient({
 
       const errorCount = allFindings.filter((f) => f.severity === 'error').length;
       const warningCount = allFindings.filter((f) => f.severity === 'warning').length;
-      const affectedPaths = new Set(allFindings.map((finding) => finding.file).filter(Boolean));
       const shipGate = buildShipGateFromWebFindings(
         allFindings.map((finding) => ({
           severity: finding.severity,
           message: finding.message,
           file: finding.file,
-          ruleId: 'general',
+          ruleId: finding.ruleId ?? 'general',
         })),
         {
           scannedFileCount: selectedFiles.size,
-          cleanFileCount: Math.max(0, selectedFiles.size - affectedPaths.size),
+          cleanFileCount: countCleanScannedFiles(
+            selectedFiles.size,
+            allFindings.map((finding) => finding.file),
+            [...selectedFiles],
+          ),
+          scanScope,
         },
       );
 
@@ -1625,8 +1625,9 @@ export default function HomeClient({
         <section id="pricing" className="pricing-section">
           <h2>Simple, Transparent Pricing</h2>
           <p className="pricing-subtitle">
-            Start free with the live proof-probe and one guarded app. Upgrade for a continuous
-            guardian on every deploy — or embed the verdict in your own platform.
+            Start free with the live proof-probe and one guarded app. {PRO_TRIAL_COPY.sectionHint}{' '}
+            Upgrade for a continuous guardian on every deploy — or embed the verdict in your own
+            platform.
           </p>
 
           <div className="pricing-controls-container">
@@ -1708,6 +1709,10 @@ export default function HomeClient({
               <ul className="pricing-features">
                 <li>
                   <HomeCheckIcon className="pricing-feature-icon" />
+                  <span>{PRO_TRIAL_COPY.featureBullet}</span>
+                </li>
+                <li>
+                  <HomeCheckIcon className="pricing-feature-icon" />
                   <span>Everything in Free, unlimited guarded apps</span>
                 </li>
                 <li>
@@ -1732,7 +1737,7 @@ export default function HomeClient({
                 </li>
               </ul>
               {renderAuthButton('primary', {
-                signIn: 'Start Pro Trial',
+                signIn: PRO_TRIAL_COPY.cta,
                 dashboard: 'Go to Dashboard',
               })}
             </div>

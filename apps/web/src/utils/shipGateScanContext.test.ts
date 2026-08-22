@@ -28,6 +28,62 @@ describe('resolveShipGateScanContext', () => {
     expect(resolved.scannedFileCount).toBe(71);
   });
 
+  it('preserves unanalyzed language counts from persisted scan_scope', () => {
+    const resolved = resolveShipGateScanContext(
+      {
+        scan_scope: {
+          scanned: 71,
+          skipped: 98,
+          roots: ['repository'],
+          unanalyzed: [{ language: 'Go', fileCount: 53 }],
+        },
+        scanned_file_count: 71,
+      },
+      staleSession,
+    );
+
+    expect(resolved.scanScope).toEqual({
+      scanned: 71,
+      skipped: 98,
+      roots: ['repository'],
+      unanalyzed: [{ language: 'Go', fileCount: 53 }],
+    });
+  });
+
+  it('round-trips sourceTotal, limit, and gaps from persisted scan_scope', () => {
+    const resolved = resolveShipGateScanContext(
+      {
+        scan_scope: {
+          scanned: 72,
+          skipped: 54,
+          roots: ['repository'],
+          unanalyzed: [
+            { language: 'Go', fileCount: 53 },
+            { language: 'Python', fileCount: 1 },
+          ],
+          sourceTotal: 126,
+          limit: 400,
+          gaps: { notAnalysed: 54, overLimit: 0, outsideAppRoots: 0 },
+        },
+        scanned_file_count: 72,
+      },
+      staleSession,
+    );
+
+    expect(resolved.scanScope).toEqual({
+      scanned: 72,
+      skipped: 54,
+      roots: ['repository'],
+      unanalyzed: [
+        { language: 'Go', fileCount: 53 },
+        { language: 'Python', fileCount: 1 },
+      ],
+      sourceTotal: 126,
+      limit: 400,
+      gaps: { notAnalysed: 54, overLimit: 0, outsideAppRoots: 0 },
+    });
+  });
+
   it('falls back to session when the scan row has no SoT columns', () => {
     const resolved = resolveShipGateScanContext(
       { scan_scope: null, scanned_file_count: null },

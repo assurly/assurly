@@ -22,6 +22,10 @@ test.describe('MCP public page', () => {
     await expect(cursorConfig).toContainText('"@assurly/mcp-server"');
 
     await page.getByRole('tab', { name: 'Claude Code' }).click();
+    await expect(page.getByRole('tab', { name: 'Claude Code' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await expect(page.getByRole('region', { name: 'Claude Code install command' })).toHaveText(
       'claude mcp add assurly -- npx -y @assurly/mcp-server',
     );

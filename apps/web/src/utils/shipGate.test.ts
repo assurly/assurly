@@ -122,6 +122,14 @@ describe('getShipGateActionHint', () => {
       'Select a folder or ZIP to start',
     );
   });
+
+  it('uses Full Gate copy when Instant Gate rejected a too-large repository', () => {
+    const report = buildShipGateReport([], { scannedFileCount: 0, cleanFileCount: 0 });
+    expect(getShipGateActionHint(report, { reason: 'too_large' })).toContain('Full Gate');
+    expect(getShipGateActionHint(report, { reason: 'too_large' })).not.toContain(
+      'No scannable application files',
+    );
+  });
 });
 
 describe('resolveVerdict', () => {

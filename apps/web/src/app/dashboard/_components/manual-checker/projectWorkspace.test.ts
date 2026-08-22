@@ -9,7 +9,7 @@ import {
 import type { ProjectFile } from './useManualScan';
 
 const SQL_WITHOUT_RLS: ProjectFile = {
-  path: 'demo/schema.sql',
+  path: 'demo/supabase/migrations/schema.sql',
   content: 'create table users (id uuid primary key);',
 };
 
@@ -18,8 +18,13 @@ const CLEAN_ENV: ProjectFile = {
   content: 'PORT=3000\n',
 };
 
+const CLEAN_LIB: ProjectFile = {
+  path: 'demo/lib.ts',
+  content: 'export const ok = true;\n',
+};
+
 const CODE_WITH_ENV: ProjectFile = {
-  path: 'demo/src/route.ts',
+  path: 'src/route.ts',
   content: 'const key = process.env.STRIPE_SECRET_KEY;\nexport const route = key;',
 };
 
@@ -49,19 +54,21 @@ describe('projectWorkspace', () => {
     const files = [CLEAN_ENV, SQL_WITHOUT_RLS];
     const scan = scanProject(files);
 
-    expect(pickInitialProjectFile(files, scan.findings)).toBe('demo/schema.sql');
+    expect(pickInitialProjectFile(files, scan.findings)).toBe(
+      'demo/supabase/migrations/schema.sql',
+    );
   });
 
   it('summarizes scan health and prioritizes issue files', () => {
-    const files = [CLEAN_ENV, SQL_WITHOUT_RLS];
+    const files = [CLEAN_LIB, SQL_WITHOUT_RLS];
     const scan = scanProject(files);
     const overview = buildProjectScanOverview(files, scan.findings);
 
     expect(overview.verdict).toBe('failed');
     expect(overview.errorCount).toBeGreaterThan(0);
     expect(overview.cleanFileCount).toBe(1);
-    expect(overview.initialFilePath).toBe('demo/schema.sql');
-    expect(overview.fileStats[0]?.path).toBe('demo/schema.sql');
+    expect(overview.initialFilePath).toBe('demo/supabase/migrations/schema.sql');
+    expect(overview.fileStats[0]?.path).toBe('demo/supabase/migrations/schema.sql');
     expect(overview.fileStats[0]?.status).toBe('error');
   });
 
@@ -127,21 +134,21 @@ describe('projectWorkspace', () => {
     ).toBe(true);
   });
 
-  it('points package env gaps at package-local .env.example and ignores Actions runtime keys', () => {
+  it('does not flag CLI/MCP tooling packages for undocumented env (CLI parity)', () => {
     const files: ProjectFile[] = [
       {
-        path: 'shipready/apps/web/.env.example',
+        path: 'apps/web/.env.example',
         content: 'NEXT_PUBLIC_SUPABASE_URL=\n',
       },
       {
-        path: 'shipready/packages/cli/src/index.ts',
+        path: 'packages/cli/src/index.ts',
         content: [
           'export const url = process.env.ASSURLY_API_URL;',
           'export const key = process.env.ASSURLY_API_KEY;',
         ].join('\n'),
       },
       {
-        path: 'shipready/packages/github-action/src/runtime.ts',
+        path: 'packages/github-action/src/runtime.ts',
         content: [
           'const out = process.env.GITHUB_OUTPUT;',
           'const summary = process.env.GITHUB_STEP_SUMMARY;',
@@ -157,31 +164,66 @@ describe('projectWorkspace', () => {
     expect(
       scan.findings.some(
         (finding) =>
-          finding.ruleId === 'undocumented-env' &&
-          finding.message.includes('ASSURLY_API_KEY') &&
-          finding.message.includes('shipready/packages/cli/.env.example') &&
-          !finding.message.includes('apps/web/.env.example'),
+          finding.ruleId === 'undocumented-env' && finding.message.includes('ASSURLY_API_KEY'),
       ),
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      scan.findings.some(
+        (finding) =>
+          finding.ruleId === 'undocumented-env' && finding.message.includes('ASSURLY_API_URL'),
+      ),
+    ).toBe(false);
+  });
+
+  it('correlates RLS across migration files instead of blocking on a follow-up ALTER', () => {
+    const files: ProjectFile[] = [
+      {
+        path: 'apps/web/supabase/migrations/20260815120000_billing_hardening.sql',
+        content: [
+          'create table if not exists private.stripe_trial_card_fingerprints (',
+          '  fingerprint_hash text primary key',
+          ');',
+          'revoke all on table private.stripe_trial_card_fingerprints from public, anon, authenticated;',
+        ].join('\n'),
+      },
+      {
+        path: 'apps/web/supabase/migrations/20260815121000_stripe_trial_fingerprint_rls.sql',
+        content: 'alter table private.stripe_trial_card_fingerprints enable row level security;',
+      },
+    ];
+    const scan = scanProject(files);
+
+    expect(scan.findings.some((finding) => finding.ruleId === 'supabase-rls')).toBe(false);
+  });
+
+  it('still blocks when a public Supabase table is created without RLS in the corpus', () => {
+    const files: ProjectFile[] = [SQL_WITHOUT_RLS];
+    const scan = scanProject(files);
+    const overview = buildProjectScanOverview(files, scan.findings);
+
+    expect(scan.findings.some((finding) => finding.ruleId === 'supabase-rls')).toBe(true);
+    expect(overview.verdict).toBe('failed');
+    expect(overview.errorCount).toBeGreaterThan(0);
   });
 
   it('counts Ship Gate blockers, not raw error occurrences, for overview badges', () => {
     const files: ProjectFile[] = [
       {
-        path: 'a.sql',
+        path: 'supabase/migrations/a.sql',
         content: 'create table users (id uuid primary key);',
       },
       {
-        path: 'b.sql',
+        path: 'supabase/migrations/b.sql',
         content: 'create table users (id uuid primary key);',
       },
     ];
     const scan = scanProject(files);
     const overview = buildProjectScanOverview(files, scan.findings);
     const metrics = buildScanMetricSummary(scan.findings, overview.fileStats);
+    const rlsErrors = scan.findings.filter((finding) => finding.ruleId === 'supabase-rls');
 
-    expect(scan.findings.filter((f) => f.severity === 'error').length).toBe(2);
-    expect(overview.totalErrorFindings).toBe(2);
+    expect(rlsErrors.length).toBe(1);
+    expect(overview.totalErrorFindings).toBeGreaterThanOrEqual(1);
     expect(overview.errorCount).toBe(1);
     expect(metrics.uniqueErrorCount).toBe(1);
     expect(metrics.uniqueErrorCount).toBe(overview.errorCount);

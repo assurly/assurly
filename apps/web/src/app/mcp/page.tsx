@@ -4,6 +4,8 @@ import type { ReactElement } from 'react';
 import mcpServerPackage from '../../../../../packages/mcp-server/package.json';
 import { getSessionUser } from '../../utils/auth';
 import { resolveApplicationUrlFromHost } from '../../utils/env';
+import { MCP_TOOL_COUNT } from '../../utils/productFacts';
+import { PRO_TRIAL_COPY, PRO_TRIAL_PERIOD_DAYS } from '../../utils/pricing';
 import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
 import { subPageGraph } from '../../utils/structuredData';
 import { SiteFooter } from '../_components/SiteFooter';
@@ -40,7 +42,7 @@ export const metadata: Metadata = {
 };
 
 const SCAN_PATH_SAMPLE = `⚠️ REVIEW RECOMMENDED                            Ship Score: 88/100
-Scanned repository, 0 files, skipped tests & fixtures
+Scanned repository · 0 of 0 source files
 Warnings (review):
   · No .env.example file found at the root of the project. It is highly r… → 1 file
   · GitHub Actions workflow for Assurly is missing.     → 1 file
@@ -113,7 +115,7 @@ export default async function McpPage(): Promise<ReactElement> {
           <CodeBlock code={MCP_INSTALL_COMMAND} label="Install command" />
           <OneClickInstall />
           <p className="mcp-hero-meta">
-            free · 5 tools · MIT ·{' '}
+            free · {MCP_TOOL_COUNT} tools · MIT ·{' '}
             <a href={MCP_NPM_PACKAGE_URL} rel="noopener noreferrer">
               v{MCP_SERVER_VERSION}
             </a>
@@ -199,6 +201,16 @@ export default async function McpPage(): Promise<ReactElement> {
                     blocks ship (<code>isError</code> stays false).
                   </td>
                 </tr>
+                <tr>
+                  <td>
+                    <code>assurly_plant_canary</code>
+                  </td>
+                  <td>
+                    Mint <code>ASSURLY_CANARY_URL</code> via the hosted API and append it to local{' '}
+                    <code>.env.example</code>. Requires <code>ASSURLY_API_KEY</code>. Never uploads
+                    source.
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -261,7 +273,7 @@ export default async function McpPage(): Promise<ReactElement> {
             </li>
             <li>
               <strong>Tools not appearing after install.</strong> Restart the client or reload MCP,
-              then confirm the five <code>assurly_*</code> tools are listed.
+              then confirm the six <code>assurly_*</code> tools are listed.
             </li>
             <li>
               <strong>Missing API key.</strong> <code>{ERR_API_KEY_MISSING}</code>
@@ -283,7 +295,9 @@ export default async function McpPage(): Promise<ReactElement> {
           </p>
           <p>
             Paid plans (Pro and OEM) add monitoring, private repos, auto-fix PRs, regression alerts,
-            AI deep review, and the white-label keyed verdict.
+            AI deep review, and the white-label keyed verdict. {PRO_TRIAL_COPY.sectionHint} A
+            payment method is required at checkout; cancel before day {PRO_TRIAL_PERIOD_DAYS} and
+            you pay nothing.
           </p>
         </section>
       </main>

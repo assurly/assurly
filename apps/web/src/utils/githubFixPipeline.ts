@@ -4,6 +4,7 @@ import type { GitHubAutoFix, GitHubAutoFixFileGroup } from './githubAutoFix';
 import {
   applyAutoFixToFileContent,
   autoFixGroupCommitMessage,
+  fileHasEnvStatementKey,
   resolveAutoFixTargetPath,
   summarizeAutoFixPlan,
 } from './githubAutoFix';
@@ -233,8 +234,10 @@ async function commitFixAndOpenPullRequest(options: {
 
   await ensureFixBranch(commitRepositoryName, baseBranch, fixBranch, ref.object.sha, token);
 
+  // Read the current blob on the fix branch (not main). A stable seed such as
+  // canary-plant:<targetId> reuses the branch; GitHub 409s if we PUT main's SHA.
   const fileLookupResponse = await githubRequest(
-    githubContentsApiUrl(repositoryName, filePath, baseBranch),
+    githubContentsApiUrl(commitRepositoryName, filePath, fixBranch),
     token,
   );
 
@@ -245,17 +248,6 @@ async function commitFixAndOpenPullRequest(options: {
     const file = fileSchema.parse(await fileLookupResponse.json());
     original = Buffer.from(file.content.replace(/\n/g, ''), 'base64').toString('utf8');
     commitFileSha = file.sha;
-
-    if (commitRepositoryName !== repositoryName) {
-      const forkFileResponse = await requireOk(
-        await githubRequest(
-          githubContentsApiUrl(commitRepositoryName, filePath, baseBranch),
-          token,
-        ),
-        'Fork file lookup',
-      );
-      commitFileSha = fileSchema.parse(await forkFileResponse.json()).sha;
-    }
   } else if (fileLookupResponse.status === 404) {
     // Missing target is expected for new RLS migrations and absent .env.example —
     // append and create both start from empty content (same as the batch path).
@@ -263,6 +255,24 @@ async function commitFixAndOpenPullRequest(options: {
     commitFileSha = undefined;
   } else {
     await requireOk(fileLookupResponse, 'File lookup');
+  }
+
+  if (fix.applyMode === 'upsert-env') {
+    const baseLookupResponse = await githubRequest(
+      githubContentsApiUrl(repositoryName, filePath, baseBranch),
+      token,
+    );
+    if (baseLookupResponse.ok) {
+      const baseFile = fileSchema.parse(await baseLookupResponse.json());
+      const baseOriginal = Buffer.from(baseFile.content.replace(/\n/g, ''), 'base64').toString(
+        'utf8',
+      );
+      if (fileHasEnvStatementKey(baseOriginal, fix.statement)) {
+        throw new AutoFixAlreadyAppliedError();
+      }
+    } else if (baseLookupResponse.status !== 404) {
+      await requireOk(baseLookupResponse, 'Base file lookup');
+    }
   }
 
   const content = applyAutoFixToFileContent(original, fix);

@@ -9,7 +9,8 @@
  *
  * Keep the plan enum in sync across three places (Phase 8 convention):
  *   1. the DB checks (`organizations.billing_plan`, `api_keys.plan`),
- *   2. `apiKeyRateLimitForPlan` in utils/apiSecurity.ts,
+ *   2. `apiKeyRateLimitForPlan` in utils/apiSecurity.ts — enforced from the
+ *      organization's *live* billing_plan at request time, not the key snapshot,
  *   3. this module.
  * The exhaustive `switch` below fails to compile if a new plan is added without
  * a mapping, which forces (2) and the DB migration to be updated alongside it.
@@ -28,7 +29,7 @@
  */
 export type BillingPlan = 'free' | 'pro' | 'oem';
 
-/** The API-key rate tier snapshotted onto a key at issuance. */
+/** The API-key rate tier. Issuance snapshots it onto the key for display; auth uses the live org plan. */
 export type ApiKeyTier = BillingPlan;
 
 export interface Entitlements {
@@ -84,6 +85,21 @@ export function entitlementsForPlan(plan: BillingPlan): Entitlements {
         visibilityReportEnabled: true,
         oem: true,
       };
+    default: {
+      const exhaustive: never = plan;
+      throw new Error(`Unknown billing plan: ${String(exhaustive)}`);
+    }
+  }
+}
+
+/** Shareable public reports are a paid workspace feature (Pro and OEM). */
+export function planAllowsShareableReports(plan: BillingPlan): boolean {
+  switch (plan) {
+    case 'pro':
+    case 'oem':
+      return true;
+    case 'free':
+      return false;
     default: {
       const exhaustive: never = plan;
       throw new Error(`Unknown billing plan: ${String(exhaustive)}`);

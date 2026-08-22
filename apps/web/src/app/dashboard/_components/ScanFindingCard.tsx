@@ -2,7 +2,7 @@
 
 import type { ReactElement } from 'react';
 import type { FixOutcomeStatus, ScanFinding } from '../../../utils/dbAdapter';
-import { getCuratedConsequence } from '../../../utils/consequenceMap';
+import { getCuratedConsequenceForFinding } from '../../../utils/consequenceMap';
 import { findingFixPrUrl } from '../../../utils/fixSummary';
 import { VerifiedFixTimeline } from './VerifiedFixTimeline';
 
@@ -32,7 +32,10 @@ export function ScanFindingCard({
   const severityClass =
     finding.severity === 'error' ? 'scan-finding-card--error' : 'scan-finding-card--warning';
   const fixPrUrl = findingFixPrUrl(finding);
-  const consequence = getCuratedConsequence(finding.rule_id);
+  const consequence = getCuratedConsequenceForFinding({
+    ruleId: finding.rule_id,
+    message: finding.message,
+  });
   // Consequence is the primary line a non-engineer reads; fall back to the raw
   // message only when no curated consequence exists for the rule.
   const primaryLine = consequence?.consequence ?? finding.message;

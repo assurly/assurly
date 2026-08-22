@@ -23,6 +23,28 @@ describe('isAutoFixableFinding', () => {
     ).toBe(true);
   });
 
+  it('does not treat ClickHouse SQL RLS findings as auto-fixable', () => {
+    expect(
+      isAutoFixableFinding({
+        severity: 'error',
+        file_path: 'configs/clickhouse/migrations/001_create_ai_logs.sql',
+        message: "Database table 'ai_logs' is created but Row-Level Security (RLS) is not enabled.",
+        rule_id: 'supabase-rls',
+      }),
+    ).toBe(false);
+  });
+
+  it('allows github-actions-integration warnings when CI already exists', () => {
+    expect(
+      isAutoFixableFinding({
+        severity: 'warning',
+        file_path: 'Global Configs',
+        message: 'GitHub Actions workflows exist, but none runs the Assurly scan.',
+        rule_id: 'github-actions-integration',
+      }),
+    ).toBe(true);
+  });
+
   it('allows github-actions-integration warnings', () => {
     expect(
       isAutoFixableFinding({
@@ -36,6 +58,16 @@ describe('isAutoFixableFinding', () => {
 });
 
 describe('buildGitHubAutoFix', () => {
+  it('refuses an RLS auto-fix for a ClickHouse migration path', () => {
+    expect(
+      buildGitHubAutoFix(
+        'configs/clickhouse/migrations/001_create_ai_logs.sql',
+        "Database table 'ai_logs' is created but Row-Level Security (RLS) is not enabled.",
+        'supabase-rls',
+      ),
+    ).toBeNull();
+  });
+
   it('generates an env example append fix for undocumented-env', () => {
     const fix = buildGitHubAutoFix(
       'apps/web/src/lib/stripe.ts',
@@ -99,6 +131,20 @@ describe('applyAutoFixToFileContent idempotency', () => {
 
     expect(once).toContain('Run Assurly Scan');
     expect(twice).toBe(once);
+  });
+
+  it('upsert-env replaces an existing env value instead of no-op', () => {
+    const original = 'PORT=3000\nASSURLY_CANARY_URL=https://assurly.dev/api/canary/old\n';
+    const next = applyAutoFixToFileContent(original, {
+      statement: 'ASSURLY_CANARY_URL=https://assurly.dev/api/canary/new',
+      description: 'Plant',
+      title: 'Plant',
+      targetFilePath: '.env.example',
+      applyMode: 'upsert-env',
+    });
+    expect(next).toContain('PORT=3000');
+    expect(next).toContain('ASSURLY_CANARY_URL=https://assurly.dev/api/canary/new');
+    expect(next).not.toContain('/old');
   });
 });
 

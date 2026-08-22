@@ -2,10 +2,15 @@
 
 import React, { useState, useEffect, useEffectEvent, useRef, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { collectDependencyNames, parsePackageJsonDependencies } from '@assurly/scanner-core';
+import {
+  collectDependencyNames,
+  countCleanScannedFiles,
+  parsePackageJsonDependencies,
+  type SourceInput,
+} from '@assurly/scanner-core';
 import type { User, Organization, Repository, Scan, ScanFinding } from '../../../utils/dbAdapter';
 import {
-  scanSqlMigration,
+  scanSqlMigrations,
   scanStripeWebhook,
   scanSupabaseClientLeaks,
   scanEnvVariables,
@@ -17,15 +22,25 @@ import {
   scanServerActionAuth,
   scanServiceRoleBypass,
   scanStripeMissingSubscriptionEvents,
-  scanStripeWebhookIdempotency,
-  scanSupabaseDeepPolicies,
+  scanStripeWebhookIdempotencyForProject,
   scanAgentStack,
   incompleteScanFinding,
   selectFiles,
   buildScanScope,
   isAgentStackFile,
+  isAnalyzedCodeFile,
   isScannableFile,
   rankFilesByRelevance,
+  instantGateSurfaceFiles,
+  summarizeUnanalyzedSource,
+  unanalyzedLanguageCounts,
+  unanalyzedSourceFinding,
+  formatUnanalyzedLogLine,
+  detectStackFromManifests,
+  describeDetectedStack,
+  selectPackageManifestPaths,
+  INSTANT_GATE_MAX_FILES,
+  githubActionsIntegrationMessage,
   WebFinding,
   type ScanScope,
 } from '../../../utils/browserScanner';
@@ -36,7 +51,6 @@ import {
   clientApi,
   ClientApiError,
   githubApi,
-  type GitHubRepository,
   type SessionResult,
   type TargetCard,
 } from '../../../utils/clientApi';
@@ -45,26 +59,53 @@ import { dedupeRepositoriesByGithubId } from '../../../utils/repositories';
 import { isAutoFixableFinding } from '../../../utils/githubAutoFix';
 import { summarizeScanFixes } from '../../../utils/fixSummary';
 import { isGitHubRepositoryName } from '../../../utils/githubApp';
-import { preferPublicScanForRepository, sanitizeGitHubOwner } from '../../../utils/scanProxy';
+import { parsePublicRepoInput } from '../../../utils/publicRepoInput';
+import { preferPublicScanForRepository } from '../../../utils/scanProxy';
+import {
+  branchQueryParam,
+  parseGithubBranchList,
+  suggestAlternateScanBranches,
+} from '../../../utils/scanBranch';
 import {
   buildShipGateFromScanFindings,
   buildShipGateFromWebFindings,
 } from '../../../utils/shipGate';
 import { resolveDisplayedShipScore } from '../../../utils/shipScoreDisplay';
+import {
+  countVisibleScanHistory,
+  excludeTooLargeFailedScans,
+  selectLatestScanPerCommit,
+} from '../../../utils/scanHistoryDisplay';
 import { resolveShipGateScanContext } from '../../../utils/shipGateScanContext';
 import { RepoListPanel } from './RepoListPanel';
 import { buildRepoTargetLookup } from './buildRepoTargetLookup';
 import { VerdictCardsSection } from './VerdictCardsSection';
 import { ApiKeys } from './ApiKeys';
+import { CanarySilentAlarm } from './CanarySilentAlarm';
 import { CanaryTokens, CanaryTokensNotice } from './CanaryTokens';
 import { WorkspaceHeader } from './WorkspaceHeader';
-import { DashboardTabs } from './DashboardTabs';
+import { DashboardNav } from './DashboardNav';
 import { PublicRepoConnect } from './PublicRepoConnect';
 import { DeployedUrlScanCard, DeployedUrlScanResults, useDeployedUrlScan } from './DeployedUrlScan';
 import { ScanWorkspace } from './ScanWorkspace';
 import { DashboardToast } from './DashboardToast';
-import { DashboardHeader } from './DashboardHeader';
+import { DashboardHeader, DASHBOARD_NAV_OVERLAY_MQ } from './DashboardHeader';
 import { DashboardSplash } from './DashboardSplash';
+import { DashboardOverview } from './DashboardOverview';
+import { DashboardAppView } from './DashboardAppView';
+import { DashboardSettings } from './DashboardSettings';
+import {
+  navIdForView,
+  parseDashboardRoute,
+  replaceDashboardUrl,
+  routeAfterNavChange,
+  routeAfterRepositorySelect,
+  type DashboardNavId,
+  type DashboardRoute,
+  type DashboardView,
+} from './dashboardView';
+import { planAllowsShareableReports } from '../../../utils/entitlements';
+import { PRO_TRIAL_COPY } from '../../../utils/pricing';
 import { SiteFooter } from '../../_components/SiteFooter';
 import {
   createRepoSelectionReset,
@@ -77,15 +118,16 @@ import {
   createPublicRepoConnectSession,
   INITIAL_PUBLIC_REPO_CONNECT_SESSION,
   shouldClearPublicRepoInputOnRepoSelect,
-  shouldClearPublicRepoInputOnTabChange,
-  type DashboardMainTab,
+  shouldClearPublicRepoInputOnViewChange,
   type PublicRepoConnectSession,
 } from './publicRepoInputReset';
-import { scrollToScanDetails } from '../../../utils/scrollToScanDetails';
+import { scrollToRepoWorkspace, scrollToScanDetails } from '../../../utils/scrollToScanDetails';
 import { consumeDashboardSplashRequest } from '../../../utils/splashSignal';
 import { invalidateRepoScansCache, loadRepoScans } from '../../../utils/scansQueryCache';
-
-type DashboardTab = DashboardMainTab;
+import {
+  subscribeToUnauthorizedSession,
+  notifyUnauthorizedSession,
+} from '../../../utils/unauthorizedSession';
 
 type ToastNotification = {
   message: string;
@@ -109,6 +151,15 @@ const DEFAULT_TOAST_DISMISS_MS: Record<ToastNotification['type'], number> = {
  * most this many findings while still displaying every finding locally.
  */
 const SAVE_FINDINGS_LIMIT = 100;
+
+function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    (error as { name: unknown }).name === 'AbortError'
+  );
+}
 
 /**
  * Client-generated (not yet persisted) scans use a `scan-...` id, whereas scans
@@ -143,26 +194,53 @@ function isLocalFindingId(id: string): boolean {
 export function renderCanaryPanel(
   lookup: { status: 'loading' | 'ready' | 'error'; byRepoId: Record<string, string> },
   repositoryId: string,
+  variant: 'alarm' | 'settings',
+  options?: { hasGitHubInstallation?: boolean },
 ): React.ReactElement {
   const targetId = lookup.byRepoId[repositoryId];
-  if (targetId) return <CanaryTokens targetId={targetId} />;
+  if (targetId) {
+    switch (variant) {
+      case 'alarm':
+        return (
+          <CanarySilentAlarm
+            targetId={targetId}
+            hasGitHubInstallation={Boolean(options?.hasGitHubInstallation)}
+          />
+        );
+      case 'settings':
+        return <CanaryTokens targetId={targetId} />;
+      default: {
+        const neverVariant: never = variant;
+        throw new Error(`Unhandled canary panel variant: ${String(neverVariant)}`);
+      }
+    }
+  }
 
   if (lookup.status === 'loading') {
-    return <CanaryTokensNotice>Loading canary tokens for this repository…</CanaryTokensNotice>;
+    return (
+      <CanaryTokensNotice ariaLabel={variant === 'alarm' ? 'Silent alarm' : 'Canary tokens'}>
+        {variant === 'alarm'
+          ? 'Loading silent alarm for this repository…'
+          : 'Loading canary tokens for this repository…'}
+      </CanaryTokensNotice>
+    );
   }
 
   if (lookup.status === 'error') {
     return (
-      <CanaryTokensNotice>
-        Could not load canary tokens for this repository. Refresh to try again.
+      <CanaryTokensNotice ariaLabel={variant === 'alarm' ? 'Silent alarm' : 'Canary tokens'}>
+        {variant === 'alarm'
+          ? 'Could not load the silent alarm for this repository. Refresh to try again.'
+          : 'Could not load canary tokens for this repository. Refresh to try again.'}
       </CanaryTokensNotice>
     );
   }
 
   return (
-    <CanaryTokensNotice>
-      Scan this repository once to enable canary tokens. A canary is a fake credential you plant
-      where a thief might look — if anyone ever uses it, Assurly records a hit.
+    <CanaryTokensNotice ariaLabel={variant === 'alarm' ? 'Silent alarm' : 'Canary tokens'}>
+      {variant === 'alarm'
+        ? 'Scan this repository once to add a silent alarm. If someone steals your env, Assurly will let you know.'
+        : 'Scan this repository once to enable canary tokens. A canary is a tripwire URL you plant in .env.example — if anyone ever fetches it, Assurly records a hit.'}
     </CanaryTokensNotice>
   );
 }
@@ -195,10 +273,6 @@ async function readProxyError(response: Response): Promise<{ message: string; co
   return {
     message: response.statusText || `Request failed with status ${response.status}.`,
   };
-}
-
-async function readProxyErrorMessage(response: Response): Promise<string> {
-  return (await readProxyError(response)).message;
 }
 
 interface GitHubTreeNode {
@@ -248,19 +322,30 @@ function DashboardContent({
     }
   }, []);
 
-  const [user] = useState<User | null>(initialSession.user);
+  const [user, setUser] = useState<User | null>(initialSession.user);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [org] = useState<Organization | null>(initialSession.organization);
   const [repos, setRepos] = useState<Repository[]>(() =>
     dedupeRepositoriesByGithubId(initialSession.repositories),
   );
-  const [activeTab, setActiveTab] = useState<DashboardTab>('repositories');
+  const initialRoute = parseDashboardRoute(
+    { view: searchParams.get('view'), repo: searchParams.get('repo') },
+    initialSession.repositories.map((repository) => repository.id),
+  );
+  const [dashboardView, setDashboardView] = useState<DashboardView>(initialRoute.view);
   const [publicRepoInput, setPublicRepoInput] = useState('');
   const [isAddingRepo, setIsAddingRepo] = useState(false);
   const autoStartScanRef = useRef(false);
 
-  const [selectedRepo, setSelectedRepo] = useState<Repository | null>(
-    initialSession.repositories[0] ?? null,
-  );
+  const [selectedRepo, setSelectedRepo] = useState<Repository | null>(() => {
+    if (initialRoute.repoId) {
+      return (
+        initialSession.repositories.find((repository) => repository.id === initialRoute.repoId) ??
+        null
+      );
+    }
+    return initialSession.repositories[0] ?? null;
+  });
   const [scans, setScans] = useState<Scan[]>([]);
   const [selectedScan, setSelectedScan] = useState<Scan | null>(null);
   const [findings, setFindings] = useState<ScanFinding[]>([]);
@@ -282,7 +367,6 @@ function DashboardContent({
   // misconfiguration). Kept in dedicated state so a visibility refresh never wipes it.
   const [localScan, setLocalScan] = useState<Scan | null>(null);
   const localScanRef = useRef<Scan | null>(null);
-  localScanRef.current = localScan;
   const [localFindings, setLocalFindings] = useState<ScanFinding[]>([]);
   const [currency] = useState<'USD' | 'EUR'>('USD');
   const currencySymbol = currency === 'USD' ? '$' : '€';
@@ -292,7 +376,7 @@ function DashboardContent({
     useAccessibleMenu<HTMLDivElement>({
       open: isProfileOpen,
       onClose: () => setIsProfileOpen(false),
-      trapAt: '(max-width: 768px)',
+      trapAt: DASHBOARD_NAV_OVERLAY_MQ,
     });
 
   const [isScanning, setIsScanning] = useState(false);
@@ -300,6 +384,9 @@ function DashboardContent({
   const [scanLogs, setScanLogs] = useState<string[]>([]);
   /** Last scan failure for the current repository — shown in-panel until cleared or retried. */
   const [scanError, setScanError] = useState<string | null>(null);
+  const [scanBranch, setScanBranch] = useState<string | null>(null);
+  const [repoBranches, setRepoBranches] = useState<string[]>([]);
+  const [emptyScanAltBranches, setEmptyScanAltBranches] = useState<string[]>([]);
   const [scanCountsByRepoId, setScanCountsByRepoId] = useState<Record<string, number>>({});
   const [shareUrlsByScanId, setShareUrlsByScanId] = useState<Record<string, string>>({});
   const [sharingScanId, setSharingScanId] = useState<string | null>(null);
@@ -307,7 +394,20 @@ function DashboardContent({
   const [deleteScanError, setDeleteScanError] = useState<string | null>(null);
   const [lastScanFileCount, setLastScanFileCount] = useState<number | null>(null);
   const [lastScanScope, setLastScanScope] = useState<ScanScope | null>(null);
-  const scanAbortRef = useRef<boolean>(false);
+  const scanControllerRef = useRef<AbortController | null>(null);
+  const scanMountedRef = useRef(true);
+
+  useEffect(() => {
+    localScanRef.current = localScan;
+  }, [localScan]);
+
+  useEffect(() => {
+    scanMountedRef.current = true;
+    return () => {
+      scanMountedRef.current = false;
+      scanControllerRef.current?.abort();
+    };
+  }, []);
   /** Per-repo Instant Gate session cache keyed by HEAD commit SHA. */
   const scanSessionCacheRef = useRef<
     Map<string, { commitSha: string; contents: Map<string, string | null> }>
@@ -316,7 +416,7 @@ function DashboardContent({
     const success = searchParams.get('success');
     const cancel = searchParams.get('cancel');
     if (success === 'stripe_upgrade')
-      return { message: 'Success! Upgraded to Assurly Pro Plan. 🚀', type: 'success' };
+      return { message: PRO_TRIAL_COPY.checkoutSuccess, type: 'success' };
     if (success === 'stripe_downgrade')
       return { message: 'Subscription cancelled. Downgraded to Free Plan.', type: 'info' };
     if (success === 'github_app_installed')
@@ -329,26 +429,30 @@ function DashboardContent({
 
   const [fixingFindingId, setFixingFindingId] = useState<string | null>(null);
 
-  const [isFetchingPublicRepos, setIsFetchingPublicRepos] = useState(false);
-  const [discoveredPublicRepos, setDiscoveredPublicRepos] = useState<GitHubRepository[]>([]);
+  const [publicRepoConnectError, setPublicRepoConnectError] = useState<string | null>(null);
   const publicConnectSessionRef = useRef<PublicRepoConnectSession>(
     INITIAL_PUBLIC_REPO_CONNECT_SESSION,
   );
 
   const clearPublicRepoConnectUi = (): void => {
     setPublicRepoInput('');
-    setDiscoveredPublicRepos([]);
+    setPublicRepoConnectError(null);
   };
 
-  const handleDashboardTabChange = (nextTab: DashboardTab): void => {
-    if (shouldClearPublicRepoInputOnTabChange(activeTab, nextTab)) {
+  const navigateDashboard = (route: DashboardRoute): void => {
+    setDashboardView(route.view);
+    replaceDashboardUrl(route);
+  };
+
+  const handleDashboardNavChange = (nextNav: DashboardNavId): void => {
+    if (shouldClearPublicRepoInputOnViewChange(dashboardView, nextNav)) {
       clearPublicRepoConnectUi();
       publicConnectSessionRef.current = INITIAL_PUBLIC_REPO_CONNECT_SESSION;
     }
-    setActiveTab(nextTab);
+    navigateDashboard(routeAfterNavChange(nextNav, selectedRepo?.id ?? null));
   };
 
-  const handleSelectRepo = (repo: Repository): void => {
+  const applyRepositorySelection = (repo: Repository): void => {
     if (
       shouldClearPublicRepoInputOnRepoSelect(
         repo.id,
@@ -358,6 +462,11 @@ function DashboardContent({
     ) {
       clearPublicRepoConnectUi();
       publicConnectSessionRef.current = INITIAL_PUBLIC_REPO_CONNECT_SESSION;
+    }
+
+    if (selectedRepo?.id === repo.id) {
+      setResultsView('repo');
+      return;
     }
 
     const reset = createRepoSelectionReset();
@@ -371,16 +480,51 @@ function DashboardContent({
     setLastScanScope(reset.lastScanScope);
     setLastScanFileCount(reset.lastScanFileCount);
     setScanError(null);
+    setScanBranch(null);
+    setRepoBranches([]);
+    setEmptyScanAltBranches([]);
     setDeleteScanError(null);
     setScanLogs([]);
   };
 
-  // Opening a verdict card drops the user into the existing repo detail/scan flow.
+  const handleSelectRepo = (repo: Repository): void => {
+    applyRepositorySelection(repo);
+    navigateDashboard(routeAfterRepositorySelect(dashboardView, repo.id));
+  };
+
+  useEffect(() => {
+    if (!selectedRepo || !org) return;
+    const repoId = selectedRepo.id;
+    const repoFullName = selectedRepo.name;
+    if (!isGitHubRepositoryName(repoFullName)) return;
+    const controller = new AbortController();
+    void (async () => {
+      const usePrivateProxy =
+        Boolean(org.github_installation_id) && !preferPublicScanForRepository(repoFullName, repos);
+      const url = usePrivateProxy
+        ? `/api/github/proxy?repoId=${repoId}&type=branches`
+        : `/api/github/public-scan?repo=${encodeURIComponent(repoFullName)}&type=branches`;
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) return;
+        const parsed = parseGithubBranchList(await response.json());
+        if (controller.signal.aborted) return;
+        setRepoBranches(parsed.branches);
+        setScanBranch((current) => current ?? parsed.default_branch);
+      } catch {
+        // Branch picker is best-effort; scans still run against GitHub's default.
+      }
+    })();
+    return () => controller.abort();
+  }, [selectedRepo, org, repos]);
+
+  // Opening a verdict card always drops into the app workspace, even if the
+  // same repository is already selected on Settings.
   const handleOpenVerdict = (repositoryId: string): void => {
     const repo = repos.find((candidate) => candidate.id === repositoryId);
     if (!repo) return;
-    handleSelectRepo(repo);
-    scrollToScanDetails();
+    applyRepositorySelection(repo);
+    navigateDashboard({ view: 'app', repoId: repo.id });
   };
 
   /**
@@ -425,9 +569,7 @@ function DashboardContent({
       setScanKickToken((token) => token + 1);
       // Show progress immediately — do not wait until the scan finishes.
       requestAnimationFrame(() => {
-        document
-          .getElementById('repo-scan-workspace')
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        scrollToRepoWorkspace();
       });
       return;
     }
@@ -476,15 +618,30 @@ function DashboardContent({
     }
   };
 
-  const handleRemoveInvalidRepo = async (repositoryId: string): Promise<void> => {
+  const handleRemoveRepo = async (repositoryId: string): Promise<void> => {
     setRemovingRepositoryId(repositoryId);
     setVerdictCardsError(null);
     const previousCards = verdictCards;
     const previousRepos = repos;
+    const removingSelected = selectedRepo?.id === repositoryId;
     setVerdictCards((cards) =>
       cards ? cards.filter((card) => card.repositoryId !== repositoryId) : cards,
     );
     setRepos((current) => current.filter((repo) => repo.id !== repositoryId));
+    if (removingSelected) {
+      const reset = createRepoSelectionReset();
+      setSelectedRepo(null);
+      setSelectedScan(reset.selectedScan);
+      setFindings(reset.findings);
+      setScans(reset.scans);
+      setShareError(reset.shareError);
+      setRepoDetailStatus(reset.repoDetailStatus);
+      setLastScanScope(reset.lastScanScope);
+      setLastScanFileCount(reset.lastScanFileCount);
+      setScanError(null);
+      setDeleteScanError(null);
+      setScanLogs([]);
+    }
     try {
       await clientApi.deleteRepository(repositoryId);
       setVerdictRefreshKey((key) => key + 1);
@@ -511,9 +668,7 @@ function DashboardContent({
       setRescanningTargetId(null);
       if (pendingWorkspaceScrollRef.current) {
         pendingWorkspaceScrollRef.current = false;
-        document
-          .getElementById('repo-scan-workspace')
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        scrollToRepoWorkspace();
       }
     }
     wasScanningRef.current = isScanning;
@@ -521,6 +676,7 @@ function DashboardContent({
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- drop stale error before the targets refetch
     setVerdictCardsError(null);
     void clientApi
       .targets()
@@ -586,7 +742,7 @@ function DashboardContent({
   // Click outside to close the desktop profile dropdown (mobile uses useAccessibleMenu).
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent | TouchEvent): void => {
-      if (window.matchMedia('(max-width: 768px)').matches) return;
+      if (window.matchMedia(DASHBOARD_NAV_OVERLAY_MQ).matches) return;
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
         setIsProfileOpen(false);
       }
@@ -597,6 +753,18 @@ function DashboardContent({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('touchstart', handleClickOutside);
     };
+  }, []);
+
+  // Leave overlay mode when the viewport crosses 1100px so dashboard-menu-open
+  // cannot stick with a hidden hamburger (same pattern as HomeHeader).
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(DASHBOARD_NAV_OVERLAY_MQ);
+    const onChange = (): void => {
+      if (!media.matches) setIsProfileOpen(false);
+    };
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
   }, []);
 
   // Body scroll lock and layout toggling when mobile/profile menu is open
@@ -613,23 +781,33 @@ function DashboardContent({
 
   const selectedRepoId = selectedRepo?.id ?? null;
 
+  useEffect(() => {
+    return subscribeToUnauthorizedSession(() => {
+      setUser(null);
+      setSessionExpired(true);
+    });
+  }, []);
+
   // Load scans when the selected repo changes. No interval polling — that was a
   // launch P0 cost bug (~100+/session for one repoId). Refresh only on select,
   // tab focus, and after mutations (save/delete invalidate the query cache).
   useEffect(() => {
-    if (!selectedRepoId) {
+    if (!user || !selectedRepoId) {
       return;
     }
     // Belt-and-suspenders: any selectedRepoId change drops Instant Gate session
     // overrides so Ship Gate scope cannot leak from the previously viewed repo.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset session scan scope when the selected repo changes
     setLastScanScope(null);
     setLastScanFileCount(null);
     const repoId = selectedRepoId;
     let cancelled = false;
-    let sessionExpired = false;
+    let unauthorized = false;
 
     const applyScans = (repoScans: Scan[]): void => {
       if (cancelled) return;
+      const visibleScans = selectLatestScanPerCommit(repoScans);
+      const uniqueCount = countVisibleScanHistory(repoScans);
       setScans((prev) => {
         if (JSON.stringify(prev) === JSON.stringify(repoScans)) {
           return prev;
@@ -637,21 +815,21 @@ function DashboardContent({
         return repoScans;
       });
       setScanCountsByRepoId((prev) =>
-        prev[repoId] === repoScans.length ? prev : { ...prev, [repoId]: repoScans.length },
+        prev[repoId] === uniqueCount ? prev : { ...prev, [repoId]: uniqueCount },
       );
 
       setSelectedScan((prev) => {
         // Keep an unsaved local selection alive, but only while it belongs to the
         // repo currently in view; otherwise fall back to the newest server scan.
         if (prev && isLocalScanId(prev.id)) {
-          return prev.repository_id === repoId ? prev : (repoScans[0] ?? null);
+          return prev.repository_id === repoId ? prev : (visibleScans[0] ?? null);
         }
-        if (repoScans.length === 0) {
+        if (visibleScans.length === 0) {
           return prev?.repository_id === repoId ? prev : null;
         }
-        if (!prev) return repoScans[0];
-        const stillExists = repoScans.some((s) => s.id === prev.id);
-        return stillExists ? prev : repoScans[0];
+        if (!prev) return visibleScans[0];
+        const stillVisible = visibleScans.some((s) => s.id === prev.id);
+        return stillVisible ? prev : (visibleScans[0] ?? null);
       });
 
       setRepoDetailStatus((current) => {
@@ -660,23 +838,22 @@ function DashboardContent({
         }
         const local = localScanRef.current;
         return resolveRepoDetailStatusAfterScans(
-          repoScans.length,
+          visibleScans.length,
           Boolean(local && local.repository_id === repoId),
         );
       });
     };
 
     const fetchScans = async (force: boolean): Promise<void> => {
-      if (sessionExpired || cancelled) return;
+      if (unauthorized || cancelled) return;
       try {
         const { scans: repoScans } = await loadRepoScans(repoId, { force });
         applyScans(repoScans);
       } catch (e) {
         if (cancelled) return;
         if (e instanceof ClientApiError && e.status === 401) {
-          sessionExpired = true;
-          setScanError('Your session expired. Sign in again to continue.');
-          setRepoDetailStatus((current) => (current === 'loading' ? 'empty' : current));
+          unauthorized = true;
+          notifyUnauthorizedSession();
           return;
         }
         console.error(e);
@@ -697,7 +874,7 @@ function DashboardContent({
       cancelled = true;
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [selectedRepoId]);
+  }, [selectedRepoId, user]);
 
   // Stable key so a new array identity for the same repos does not re-prefetch.
   const repoIdsKey = useMemo(() => repos.map((repo) => repo.id).join(','), [repos]);
@@ -714,7 +891,7 @@ function DashboardContent({
       ids.map(async (repoId) => {
         try {
           const { scans: repoScans } = await loadRepoScans(repoId);
-          return [repoId, repoScans.length] as const;
+          return [repoId, countVisibleScanHistory(repoScans)] as const;
         } catch {
           return [repoId, 0] as const;
         }
@@ -797,13 +974,12 @@ function DashboardContent({
 
   // Merge the (optional) unsaved local scan in front of persisted scans so the UI
   // always reflects the most recent run, even when persistence failed.
-  const displayedScans = useMemo<Scan[]>(
-    () =>
-      localScanForRepo
-        ? [localScanForRepo, ...scans.filter((s) => s.id !== localScanForRepo.id)]
-        : scans,
-    [localScanForRepo, scans],
-  );
+  const displayedScans = useMemo<Scan[]>(() => {
+    const merged = localScanForRepo
+      ? [localScanForRepo, ...scans.filter((s) => s.id !== localScanForRepo.id)]
+      : scans;
+    return excludeTooLargeFailedScans(selectLatestScanPerCommit(merged));
+  }, [localScanForRepo, scans]);
 
   const displayedFindings = useMemo(() => {
     if (!selectedScan) {
@@ -829,13 +1005,16 @@ function DashboardContent({
         lastScanFileCount,
       });
 
-    const affectedPaths = new Set(displayedFindings.map((finding) => finding.file_path));
+    const findingFiles = displayedFindings.map((finding) => finding.file_path);
     const scannedFileCount =
-      resolvedScanned ?? (displayedFindings.length === 0 ? 0 : Math.max(affectedPaths.size, 0));
+      resolvedScanned ??
+      (displayedFindings.length === 0
+        ? 0
+        : Math.max(new Set(findingFiles.filter(Boolean)).size, 0));
     const cleanFileCount =
       typeof selectedScan.clean_file_count === 'number'
         ? selectedScan.clean_file_count
-        : Math.max(0, scannedFileCount - affectedPaths.size);
+        : countCleanScannedFiles(scannedFileCount, findingFiles);
 
     // Prefer the persisted Ship Gate score when present so reload matches save.
     // Incomplete coverage is still capped so detail never outranks trend/cards.
@@ -848,12 +1027,7 @@ function DashboardContent({
     return { ...report, shipScore };
   }, [displayedFindings, selectedScan, lastScanFileCount, lastScanScope]);
 
-  const selectedRepoScanCount = useMemo(() => {
-    if (!selectedRepo) {
-      return 0;
-    }
-    return Math.max(scanCountsByRepoId[selectedRepo.id] ?? 0, displayedScans.length);
-  }, [selectedRepo, scanCountsByRepoId, displayedScans.length]);
+  const selectedRepoScanCount = selectedRepo ? displayedScans.length : 0;
 
   const canJumpToScanResults =
     repoDetailStatus === 'ready' && selectedScan !== null && shipGateReport !== null;
@@ -882,7 +1056,7 @@ function DashboardContent({
   }, [selectedShareToken]);
 
   const handleShareScan = async (): Promise<void> => {
-    if (!selectedScan || org?.billing_plan !== 'pro') return;
+    if (!selectedScan || !org || !planAllowsShareableReports(org.billing_plan)) return;
     if (isLocalScanId(selectedScan.id)) {
       setShareError('Save the scan to your repository history before sharing.');
       return;
@@ -936,7 +1110,7 @@ function DashboardContent({
       }
       setScanCountsByRepoId((current) => ({
         ...current,
-        [repoId]: Math.max(0, (current[repoId] ?? remainingDisplayed.length + 1) - 1),
+        [repoId]: remainingDisplayed.length,
       }));
       return;
     }
@@ -949,7 +1123,7 @@ function DashboardContent({
     }
     setScanCountsByRepoId((current) => ({
       ...current,
-      [repoId]: Math.max(0, (current[repoId] ?? remainingDisplayed.length + 1) - 1),
+      [repoId]: remainingDisplayed.length,
     }));
 
     void (async () => {
@@ -961,7 +1135,10 @@ function DashboardContent({
           invalidateRepoScansCache(repoId);
           const { scans: repoScans } = await loadRepoScans(repoId, { force: true });
           setScans(repoScans);
-          setScanCountsByRepoId((current) => ({ ...current, [repoId]: repoScans.length }));
+          setScanCountsByRepoId((current) => ({
+            ...current,
+            [repoId]: countVisibleScanHistory(repoScans),
+          }));
           setSelectedScan((prev) => {
             if (!prev || prev.id === scan.id) {
               return repoScans[0] ?? null;
@@ -1090,6 +1267,27 @@ function DashboardContent({
       const { url } = await clientApi.checkout(plan);
       window.location.assign(url);
     } catch (error: unknown) {
+      if (error instanceof ClientApiError && error.code === 'already_subscribed') {
+        setToast({
+          message: error.message,
+          type: 'info',
+        });
+        try {
+          const { url } = await clientApi.portal();
+          window.location.assign(url);
+          return;
+        } catch (portalError: unknown) {
+          setToast({
+            message:
+              portalError instanceof ClientApiError
+                ? portalError.message
+                : 'Billing management is temporarily unavailable. Please try again.',
+            type: 'error',
+          });
+          setBillingAction(null);
+          return;
+        }
+      }
       setToast({
         message:
           error instanceof ClientApiError
@@ -1119,54 +1317,12 @@ function DashboardContent({
     }
   };
 
-  const handleAddPublicRepo = async (
-    e?: React.FormEvent,
-    forcedRepoName?: string,
-  ): Promise<void> => {
+  const handleAddPublicRepo = async (e?: React.FormEvent): Promise<void> => {
     if (e) e.preventDefault();
-    const inputVal = forcedRepoName || publicRepoInput;
-    if (!inputVal.trim() || isAddingRepo || isFetchingPublicRepos) return;
+    const repoFullName = parsePublicRepoInput(publicRepoInput);
+    if (!repoFullName || isAddingRepo) return;
 
-    let repoName = inputVal.trim();
-    if (repoName.includes('github.com/')) {
-      repoName = repoName.split('github.com/')[1];
-    }
-    repoName = repoName.replace(/\/$/, '');
-
-    const containsSlash = repoName.includes('/');
-    if (!containsSlash) {
-      const owner = sanitizeGitHubOwner(repoName);
-      if (!owner) {
-        setToast({ message: 'Enter a valid GitHub username or organization.', type: 'error' });
-        return;
-      }
-      setDiscoveredPublicRepos([]);
-      setIsFetchingPublicRepos(true);
-      setToast({ message: `Fetching repositories for "${owner}"...`, type: 'info' });
-
-      try {
-        const repositories = await githubApi.repositories(owner);
-        if (repositories.length === 0) {
-          throw new Error('No public repositories found for this user/organization.');
-        }
-        setDiscoveredPublicRepos(repositories);
-        setToast(null);
-      } catch (error: unknown) {
-        setToast({
-          message: error instanceof Error ? error.message : 'Failed to fetch repositories.',
-          type: 'error',
-        });
-      } finally {
-        setIsFetchingPublicRepos(false);
-      }
-      return;
-    }
-
-    const parts = repoName.split('/');
-    const owner = parts[parts.length - 2];
-    const repo = parts[parts.length - 1];
-    const repoFullName = `${owner}/${repo}`;
-
+    setPublicRepoConnectError(null);
     setIsAddingRepo(true);
     setToast({ message: `Fetching public repository "${repoFullName}"...`, type: 'info' });
 
@@ -1180,6 +1336,7 @@ function DashboardContent({
       publicConnectSessionRef.current = createPublicRepoConnectSession(newRepo.id);
       handleSelectRepo(newRepo);
       setPublicRepoInput('');
+      setPublicRepoConnectError(null);
       autoStartScanRef.current = true;
       pendingWorkspaceScrollRef.current = true;
       setToast({
@@ -1187,10 +1344,10 @@ function DashboardContent({
         type: 'success',
       });
     } catch (error: unknown) {
-      setToast({
-        message: error instanceof Error ? error.message : 'Failed to connect public repository.',
-        type: 'error',
-      });
+      const message =
+        error instanceof Error ? error.message : 'Failed to connect public repository.';
+      setPublicRepoConnectError(message);
+      setToast({ message, type: 'error' });
     } finally {
       setIsAddingRepo(false);
     }
@@ -1200,18 +1357,38 @@ function DashboardContent({
    * Triggers a real scan using the browserScanner engine.
    * Fetches files from GitHub API and runs all scanner rules against them.
    */
-  const triggerScan = async (): Promise<void> => {
+  const triggerScan = async (branchOverride?: string): Promise<void> => {
     if (!selectedRepo || !org) return;
 
     setResultsView('repo');
     setIsScanning(true);
     setScanProgress(0);
     setScanError(null);
+    setEmptyScanAltBranches([]);
+    if (typeof branchOverride === 'string' && branchOverride.length > 0) {
+      setScanBranch(branchOverride);
+    }
     setScanLogs([
       '⚙ Initializing Assurly Scanner...',
       `📥 Fetching repository tree for "${selectedRepo.name}"...`,
     ]);
-    scanAbortRef.current = false;
+    scanControllerRef.current?.abort();
+    const controller = new AbortController();
+    scanControllerRef.current = controller;
+    const { signal } = controller;
+
+    const settleIfAborted = (): boolean => {
+      if (!controller.signal.aborted) {
+        return false;
+      }
+      if (scanControllerRef.current === controller && scanMountedRef.current) {
+        setIsScanning(false);
+        setScanProgress(0);
+        setScanLogs([]);
+        setToast({ message: 'Scan stopped.', type: 'info' });
+      }
+      return true;
+    };
 
     const allFindings: WebFinding[] = [];
 
@@ -1270,13 +1447,22 @@ function DashboardContent({
         Boolean(org?.github_installation_id) && !preferPublicScanForRepository(repoFullName, repos);
 
       let defaultBranch = 'main';
+      const requestedBranch =
+        typeof branchOverride === 'string' && branchOverride.length > 0
+          ? branchOverride
+          : scanBranch;
+      if (requestedBranch) {
+        defaultBranch = requestedBranch;
+      }
 
-      // Do not specify a branch for the tree request; let the proxy resolve the
-      // default branch dynamically (it may differ from "main").
-      const treeRequestUrl = (): string =>
-        usePrivateProxy
-          ? `/api/github/proxy?repoId=${selectedRepo.id}&type=tree`
-          : `/api/github/public-scan?repo=${encodeURIComponent(repoFullName)}&type=tree`;
+      // Pin the tree to the picker branch when one is selected; otherwise the
+      // proxy resolves GitHub's default branch.
+      const treeRequestUrl = (): string => {
+        const branchParam = branchQueryParam(requestedBranch);
+        return usePrivateProxy
+          ? `/api/github/proxy?repoId=${selectedRepo.id}&type=tree${branchParam}`
+          : `/api/github/public-scan?repo=${encodeURIComponent(repoFullName)}&type=tree${branchParam}`;
+      };
 
       const fetchFileContent = async (filePath: string): Promise<Response> => {
         if (usePrivateProxy) {
@@ -1284,12 +1470,14 @@ function DashboardContent({
             `/api/github/proxy?repoId=${selectedRepo.id}&type=file&branch=${encodeURIComponent(
               defaultBranch,
             )}&path=${encodeURIComponent(filePath)}`,
+            { signal },
           );
         }
         return fetch(
           `/api/github/public-scan?repo=${encodeURIComponent(repoFullName)}&branch=${encodeURIComponent(
             defaultBranch,
           )}&type=file&path=${encodeURIComponent(filePath)}`,
+          { signal },
         );
       };
 
@@ -1311,7 +1499,10 @@ function DashboardContent({
         try {
           const res = await fetchFileContent(filePath);
           text = res.ok ? await res.text() : null;
-        } catch {
+        } catch (error) {
+          if (isAbortError(error)) {
+            throw error;
+          }
           text = null;
         }
         contentCache.set(filePath, text);
@@ -1341,6 +1532,7 @@ function DashboardContent({
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify(batch.body),
+            signal,
           });
           if (res.ok) {
             const data: unknown = await res.json();
@@ -1360,20 +1552,23 @@ function DashboardContent({
             }
             return;
           }
-        } catch {
+        } catch (error) {
+          if (isAbortError(error)) {
+            throw error;
+          }
           // Fall through to per-file fetching below.
         }
 
         // Batch failed (e.g. transient error): fall back to serial per-file
         // fetching, which respects the proxy rate limit and still completes.
         for (const path of pending) {
-          if (scanAbortRef.current) break;
+          if (controller.signal.aborted) break;
           await loadFileContent(path);
         }
       };
 
       const treeStartedAt = performance.now();
-      let treeResponse = await fetch(treeRequestUrl());
+      let treeResponse = await fetch(treeRequestUrl(), { signal });
 
       // Graceful fallback: when a private installation has no access to the
       // repository (404/422) but it is a public "owner/repo", retry through the
@@ -1389,7 +1584,7 @@ function DashboardContent({
           'ℹ Installation cannot access this repository — retrying as a public scan...',
         ]);
         usePrivateProxy = false;
-        treeResponse = await fetch(treeRequestUrl());
+        treeResponse = await fetch(treeRequestUrl(), { signal });
       }
 
       if (!treeResponse.ok) {
@@ -1457,20 +1652,28 @@ function DashboardContent({
           pathLower.endsWith('.env.local')
         ) {
           envFiles.push(node.path);
-        } else if (/\.(js|ts|jsx|tsx)$/.test(pathLower)) {
+        } else if (isAnalyzedCodeFile(node.path)) {
           codeFiles.push(node.path);
         }
       }
 
+      const treePaths = tree.filter((node) => node.type === 'blob').map((node) => node.path);
+      const packageJsonPaths = selectPackageManifestPaths(treePaths);
       const rankedCandidates = rankFilesByRelevance(
-        [...new Set([...sqlFiles, ...codeFiles])],
+        instantGateSurfaceFiles([...new Set([...sqlFiles, ...codeFiles])], (path) => path),
         (path) => path,
       );
-      const fileSelection = selectFiles(rankedCandidates, 250);
-      const scanScope = buildScanScope(
-        [...new Set([...sqlFiles, ...codeFiles])],
-        fileSelection.files,
+      const fileSelection = selectFiles(rankedCandidates, INSTANT_GATE_MAX_FILES);
+      const coveragePaths = instantGateSurfaceFiles(
+        treePaths.filter((path) => isScannableFile(path)),
+        (path) => path,
       );
+      const unanalyzedSummary = summarizeUnanalyzedSource(coveragePaths);
+      const scanScope = buildScanScope(rankedCandidates, fileSelection.files, {
+        treePaths,
+        unanalyzed: unanalyzedLanguageCounts(unanalyzedSummary),
+        limit: INSTANT_GATE_MAX_FILES,
+      });
       setLastScanFileCount(fileSelection.files.length);
       setLastScanScope(scanScope);
 
@@ -1497,7 +1700,6 @@ function DashboardContent({
             findings: [],
             scannedFileCount: 0,
             cleanFileCount: 0,
-            shipScore: 0,
             verdict: 'failed',
             scanScope: { ...scanScope },
             failureReason: 'no_eligible_files',
@@ -1506,54 +1708,27 @@ function DashboardContent({
         } catch (saveError) {
           console.error('Failed to persist empty-file scan failure:', saveError);
         }
+        try {
+          const branchesUrl = usePrivateProxy
+            ? `/api/github/proxy?repoId=${selectedRepo.id}&type=branches`
+            : `/api/github/public-scan?repo=${encodeURIComponent(repoFullName)}&type=branches`;
+          const branchesResponse = await fetch(branchesUrl, { signal });
+          if (branchesResponse.ok) {
+            const parsed = parseGithubBranchList(await branchesResponse.json());
+            setRepoBranches(parsed.branches);
+            setEmptyScanAltBranches(suggestAlternateScanBranches(defaultBranch, parsed.branches));
+          }
+        } catch (branchError) {
+          console.error('Failed to list branches after empty scan:', branchError);
+        }
         return;
       }
 
       const selectedFiles = new Set(fileSelection.files);
       const incompleteFinding = incompleteScanFinding(fileSelection);
       if (incompleteFinding) allFindings.push(incompleteFinding);
-
-      // Detect stack from package.json
-      const hasPackageJson = tree.some((node) => node.path === 'package.json');
-      let detectedFramework = 'Unknown';
-      let hasSupabase = false;
-      let hasStripe = false;
-      let packageJsonText: string | null = null;
-
-      if (hasPackageJson) {
-        try {
-          const pkgRes = await fetchFileContent('package.json');
-          if (pkgRes.ok) {
-            packageJsonText = await pkgRes.text();
-            const pkgData = JSON.parse(packageJsonText);
-            const allDeps = {
-              ...(pkgData.dependencies || {}),
-              ...(pkgData.devDependencies || {}),
-            };
-            if (allDeps['next']) detectedFramework = 'Next.js';
-            if (allDeps['@supabase/supabase-js'] || allDeps['@supabase/ssr']) hasSupabase = true;
-            if (allDeps['stripe'] || allDeps['@stripe/stripe-js']) hasStripe = true;
-          }
-        } catch {
-          // Ignore package.json read failures
-        }
-      }
-
-      // Which AI builder produced this app — recorded on the target to seed the
-      // corpus moat (Phase 1). Derived from the repo tree + package.json.
-      const generatorFingerprint = detectGeneratorFingerprint({
-        filePaths: tree.map((node) => node.path),
-        packageJson: packageJsonText,
-      });
-
-      setScanProgress(30);
-      setScanLogs((prev) => [
-        ...prev,
-        `✓ Framework: ${detectedFramework}`,
-        `✓ Supabase: ${hasSupabase ? 'Detected' : 'Not Detected'}`,
-        `✓ Stripe: ${hasStripe ? 'Detected' : 'Not Detected'}`,
-        '🛡 Running static analysis scanner rules...',
-      ]);
+      const coverageFinding = unanalyzedSourceFinding(unanalyzedSummary);
+      if (coverageFinding) allFindings.push(coverageFinding);
 
       // Resolve every file this scan will read, then fetch them all in one
       // bounded-concurrency batch. Doing this up front (instead of serially
@@ -1580,11 +1755,15 @@ function DashboardContent({
           ...envExamplePaths,
           ...workflowPaths,
           ...agentFiles,
+          ...packageJsonPaths,
         ]),
       ];
       setScanLogs((prev) => [...prev, `📥 Fetching ${filesToFetch.length} file(s) in parallel...`]);
       const fetchFilesStartedAt = performance.now();
       await prefetchContents(filesToFetch);
+      if (settleIfAborted()) {
+        return;
+      }
       fetchFilesMs = Math.round(performance.now() - fetchFilesStartedAt);
       if (resolvedCommitSha) {
         scanSessionCacheRef.current.set(selectedRepo.id, {
@@ -1592,30 +1771,65 @@ function DashboardContent({
           contents: new Map(contentCache),
         });
       }
+
+      const manifests = packageJsonPaths.flatMap((manifestPath) => {
+        const content = contentCache.get(manifestPath);
+        return typeof content === 'string' ? [{ path: manifestPath, content }] : [];
+      });
+      const packageJsonText =
+        manifests.length > 0 ? manifests.map((item) => item.content).join('\n') : null;
+      const detectedStack = detectStackFromManifests({
+        manifests,
+        filePaths: treePaths,
+      });
+      const stackLog = describeDetectedStack(detectedStack);
+      const generatorFingerprint = detectGeneratorFingerprint({
+        filePaths: treePaths,
+        packageJson: packageJsonText,
+      });
+      const unanalyzedLog = formatUnanalyzedLogLine(unanalyzedSummary);
+
       const engineStartedAt = performance.now();
       setScanProgress(45);
+      setScanLogs((prev) => [
+        ...prev,
+        `✓ Framework: ${stackLog.framework}`,
+        `✓ Supabase: ${stackLog.supabase}`,
+        `✓ Stripe: ${stackLog.stripe}`,
+        ...(unanalyzedLog ? [`⚠ ${unanalyzedLog}`] : []),
+        '🛡 Running static analysis scanner rules...',
+      ]);
 
-      // Scan SQL Migrations
+      // Scan SQL Migrations in one batch so RLS correlation and the Supabase
+      // stack signal apply across files, not per migration.
+      const sqlSources: SourceInput[] = [];
       for (const sqlPath of sqlToScan) {
-        if (scanAbortRef.current) break;
+        if (controller.signal.aborted) break;
         const content = await loadFileContent(sqlPath);
         if (content === null) continue;
-        const scan = scanSqlMigration(content, sqlPath);
+        sqlSources.push({ file: sqlPath, content });
+      }
+      if (sqlSources.length > 0) {
+        const scan = scanSqlMigrations(sqlSources);
         allFindings.push(...scan.findings);
-        // Phase 3: deeper Supabase policy quality (permissive RLS, public
-        // storage defaults, auth-linked tables without RLS).
-        allFindings.push(...scanSupabaseDeepPolicies([{ file: sqlPath, content }]).findings);
-        setScanLogs((prev) => [
-          ...prev,
-          `  ✓ Scanned ${sqlPath}: ${scan.errorCount} errors, ${scan.warningCount} warnings.`,
-        ]);
+        for (const source of sqlSources) {
+          const fileFindings = scan.findings.filter((finding) => finding.file === source.file);
+          const errorCount = fileFindings.filter((finding) => finding.severity === 'error').length;
+          const warningCount = fileFindings.filter(
+            (finding) => finding.severity === 'warning',
+          ).length;
+          setScanLogs((prev) => [
+            ...prev,
+            `  ✓ Scanned ${source.file}: ${errorCount} errors, ${warningCount} warnings.`,
+          ]);
+        }
       }
 
       setScanProgress(50);
 
       // Scan Stripe Webhooks
       for (const webhookPath of stripeToScan) {
-        if (scanAbortRef.current) break;
+        if (controller.signal.aborted) break;
         const content = await loadFileContent(webhookPath);
         if (content === null) continue;
         const scan = scanStripeWebhook(content, webhookPath);
@@ -1676,10 +1890,12 @@ function DashboardContent({
       setScanProgress(80);
 
       // Scan for RSC leaks and Cold Start issues
+      const codeSources: SourceInput[] = [];
       for (const codePath of codeToScan) {
-        if (scanAbortRef.current) break;
+        if (controller.signal.aborted) break;
         const content = await loadFileContent(codePath);
         if (content === null) continue;
+        codeSources.push({ file: codePath, content });
 
         allFindings.push(...scanEdgeRuntime(content, codePath).findings);
 
@@ -1689,7 +1905,6 @@ function DashboardContent({
         allFindings.push(...scanServerActionAuth(content, codePath).findings);
         allFindings.push(...scanRouteHandlerAuth(content, codePath).findings);
         allFindings.push(...scanServiceRoleBypass(content, codePath).findings);
-        allFindings.push(...scanStripeWebhookIdempotency(content, codePath).findings);
         allFindings.push(...scanStripeMissingSubscriptionEvents(content, codePath).findings);
 
         // RSC data leak check
@@ -1708,11 +1923,15 @@ function DashboardContent({
         }
       }
 
+      if (!controller.signal.aborted) {
+        allFindings.push(...scanStripeWebhookIdempotencyForProject(codeSources).findings);
+      }
+
       // Agent stack — MCP configs and instruction files (advisory; never blocks).
       if (agentFiles.length > 0) {
         setScanLogs((prev) => [...prev, `🤖 Scanning ${agentFiles.length} agent-stack file(s)...`]);
         for (const agentPath of agentFiles) {
-          if (scanAbortRef.current) break;
+          if (controller.signal.aborted) break;
           const content = await loadFileContent(agentPath);
           if (content === null) continue;
           const agentScan = scanAgentStack(content, agentPath);
@@ -1722,26 +1941,34 @@ function DashboardContent({
 
       // Dependency provenance — server proxy (never hit npm from the browser).
       // Degrade silently: a registry outage must not fail the rest of the scan.
-      if (packageJsonText && !scanAbortRef.current) {
+      if (manifests.length > 0 && !controller.signal.aborted) {
         try {
-          const parsedManifest = parsePackageJsonDependencies(packageJsonText);
-          const declared = parsedManifest ? [...collectDependencyNames(parsedManifest)] : [];
+          const declared = [
+            ...new Set(
+              manifests.flatMap((manifest) => {
+                const parsedManifest = parsePackageJsonDependencies(manifest.content);
+                return parsedManifest ? [...collectDependencyNames(parsedManifest)] : [];
+              }),
+            ),
+          ];
           if (declared.length > 0) {
             setScanLogs((prev) => [
               ...prev,
               `📦 Checking dependency provenance (${declared.length} package(s))...`,
             ]);
             const depResult = await clientApi.dependencyProvenance(declared);
-            for (const finding of depResult.findings) {
-              allFindings.push({
-                ruleId: finding.ruleId,
-                severity: finding.severity,
-                confidence: finding.confidence,
-                file: finding.file,
-                line: finding.line,
-                message: finding.message,
-                suggestion: finding.suggestion,
-              });
+            if (!controller.signal.aborted) {
+              for (const finding of depResult.findings) {
+                allFindings.push({
+                  ruleId: finding.ruleId,
+                  severity: finding.severity,
+                  confidence: finding.confidence,
+                  file: finding.file,
+                  line: finding.line,
+                  message: finding.message,
+                  suggestion: finding.suggestion,
+                });
+              }
             }
           }
         } catch {
@@ -1767,10 +1994,14 @@ function DashboardContent({
           ruleId: 'github-actions-integration',
           severity: 'warning',
           file: 'Global Configs',
-          message: 'GitHub Actions workflow for Assurly is missing.',
+          message: githubActionsIntegrationMessage(workflowPaths.length),
           suggestion:
             'Run "npx assurly init" in your repository to automatically configure the CI/CD pipeline.',
         });
+      }
+
+      if (settleIfAborted()) {
+        return;
       }
 
       engineMs = Math.round(performance.now() - engineStartedAt);
@@ -1779,12 +2010,13 @@ function DashboardContent({
 
       const errorCount = allFindings.filter((f) => f.severity === 'error').length;
       const warningCount = allFindings.filter((f) => f.severity === 'warning').length;
-      const affectedPaths = new Set(
-        allFindings.map((finding) => finding.file).filter((file): file is string => Boolean(file)),
-      );
       const shipGate = buildShipGateFromWebFindings(allFindings, {
         scannedFileCount: fileSelection.files.length,
-        cleanFileCount: Math.max(0, fileSelection.files.length - affectedPaths.size),
+        cleanFileCount: countCleanScannedFiles(
+          fileSelection.files.length,
+          allFindings.map((finding) => finding.file),
+          fileSelection.files,
+        ),
         scanScope,
       });
 
@@ -1853,6 +2085,9 @@ function DashboardContent({
 
       void (async () => {
         try {
+          if (controller.signal.aborted) {
+            return;
+          }
           const persistStartedAt = performance.now();
           const savedScan = await clientApi.saveScan({
             repoId: selectedRepo.id,
@@ -1913,10 +2148,14 @@ function DashboardContent({
 
           setIsScanning(false);
           invalidateRepoScansCache(selectedRepo.id);
-          setScans((prev) => [savedScan, ...prev.filter((s) => s.id !== savedScan.id)]);
-          setScanCountsByRepoId((prev) => ({
-            ...prev,
-            [selectedRepo.id]: (prev[selectedRepo.id] ?? 0) + 1,
+          let nextScans: Scan[] = [];
+          setScans((prev) => {
+            nextScans = [savedScan, ...prev.filter((s) => s.id !== savedScan.id)];
+            return nextScans;
+          });
+          setScanCountsByRepoId((counts) => ({
+            ...counts,
+            [selectedRepo.id]: countVisibleScanHistory(nextScans),
           }));
           setLocalScan(sessionScan);
           setLocalFindings(sessionFindings);
@@ -1959,6 +2198,10 @@ function DashboardContent({
         setIsScanning(false);
       });
     } catch (error: unknown) {
+      if (isAbortError(error)) {
+        settleIfAborted();
+        return;
+      }
       const errorMessage = error instanceof Error ? error.message : 'Failed to scan repository.';
       const errorCode =
         error instanceof Error && 'code' in error && typeof error.code === 'string'
@@ -2022,44 +2265,7 @@ function DashboardContent({
           });
         }
 
-        try {
-          const savedScan = await clientApi.saveScan({
-            repoId: selectedRepo.id,
-            commitSha: 'unknown',
-            branch: 'main',
-            status: 'failed',
-            errors: 0,
-            warnings: 0,
-            findings: [],
-            scannedFileCount: 0,
-            cleanFileCount: 0,
-            shipScore: 0,
-            verdict: 'failed',
-            failureReason: 'too_large',
-          });
-          invalidateRepoScansCache(selectedRepo.id);
-          setScans((prev) => [savedScan, ...prev.filter((scan) => scan.id !== savedScan.id)]);
-          setScanCountsByRepoId((prev) => ({
-            ...prev,
-            [selectedRepo.id]: (prev[selectedRepo.id] ?? 0) + 1,
-          }));
-          setSelectedScan(savedScan);
-          setLocalScan(savedScan);
-          setLocalFindings([]);
-          setRepoDetailStatus('ready');
-        } catch (saveError) {
-          console.error('Failed to persist too_large failed scan:', saveError);
-          const reason =
-            saveError instanceof ClientApiError && saveError.message
-              ? saveError.message
-              : 'failed scan could not be saved';
-          setToast({
-            message: `This repository is too large for Instant Gate. Run a local Full Gate scan — we could not record the failure (${reason}).`,
-            type: 'error',
-            autoDismissMs: null,
-          });
-          setRepoDetailStatus('empty');
-        }
+        setRepoDetailStatus((status) => (status === 'ready' ? status : 'empty'));
       }
 
       if (process.env.NODE_ENV !== 'production') {
@@ -2077,6 +2283,10 @@ function DashboardContent({
     }
   };
 
+  const stopScan = (): void => {
+    scanControllerRef.current?.abort();
+  };
+
   const startScan = useEffectEvent(() => void triggerScan());
 
   useEffect(() => {
@@ -2090,7 +2300,177 @@ function DashboardContent({
     setToast({ message, type });
   };
 
-  if (!user) return <UnauthenticatedDashboard loginUrl={loginUrl} />;
+  const scanWorkspaceElement = (
+    <ScanWorkspace
+      selectedRepo={selectedRepo}
+      githubInstallationId={org?.github_installation_id}
+      billingPlan={org?.billing_plan}
+      selectedRepoScanCount={selectedRepoScanCount}
+      canJumpToScanResults={canJumpToScanResults}
+      onJumpToResults={() => {
+        scrollToScanDetails();
+      }}
+      isScanning={isScanning}
+      onRunScan={() => {
+        void triggerScan();
+      }}
+      onStopScan={stopScan}
+      scanError={scanError}
+      onDismissScanError={() => {
+        setScanError(null);
+        setScanLogs([]);
+        setEmptyScanAltBranches([]);
+      }}
+      scanProgress={scanProgress}
+      scanLogs={scanLogs}
+      scanBranch={scanBranch}
+      repoBranches={repoBranches}
+      onScanBranchChange={setScanBranch}
+      alternateScanBranches={emptyScanAltBranches}
+      onScanAlternateBranch={(branch) => {
+        void triggerScan(branch);
+      }}
+      repoDetailStatus={repoDetailStatus}
+      displayedScans={displayedScans}
+      selectedScan={selectedScan}
+      onSelectScan={(scan) => {
+        setShareError(null);
+        setDeleteScanError(null);
+        setSelectedScan(scan);
+      }}
+      onDeleteScan={handleDeleteScan}
+      deleteScanError={deleteScanError}
+      shipGateReport={shipGateReport}
+      fixSummary={fixSummary}
+      displayedFindings={displayedFindings}
+      findingsLimit={SAVE_FINDINGS_LIMIT}
+      selectedShareUrl={selectedShareUrl}
+      selectedBadgeMarkdown={selectedBadgeMarkdown}
+      fetchTrend={clientApi.trend}
+      initialTrendPoints={initialTrendPoints}
+      onShare={
+        org && planAllowsShareableReports(org.billing_plan) && !selectedShareUrl
+          ? () => void handleShareScan()
+          : undefined
+      }
+      isSharing={sharingScanId === selectedScan?.id}
+      shareError={shareError}
+      fixingFindingId={fixingFindingId}
+      isFindingFixable={isFindingFixable}
+      onCreateFixPr={(finding) => void handleCreateFixPr(finding)}
+      onCreateBatchFixPr={() => void handleCreateBatchFixPr()}
+    />
+  );
+
+  if (!user) {
+    return <UnauthenticatedDashboard loginUrl={loginUrl} sessionExpired={sessionExpired} />;
+  }
+
+  const renderDashboardView = (): React.ReactElement => {
+    switch (dashboardView) {
+      case 'apps':
+        return (
+          <DashboardOverview
+            header={
+              <WorkspaceHeader
+                orgName={org?.name}
+                ownerLabel={user.name}
+                billingPlan={org?.billing_plan}
+              />
+            }
+            apps={
+              <VerdictCardsSection
+                onOpenRepo={handleOpenVerdict}
+                onRemoveUrl={handleRemoveUrlTarget}
+                onRemoveRepo={(repositoryId) => void handleRemoveRepo(repositoryId)}
+                onRescan={(card) => void handleRescanVerdict(card)}
+                removingTargetId={removingTargetId}
+                removingRepositoryId={removingRepositoryId}
+                rescanningTargetId={rescanningTargetId}
+                rescanBlocked={isScanning || Boolean(rescanningTargetId)}
+                cards={verdictCards}
+                error={verdictCardsError}
+              />
+            }
+            tools={
+              <>
+                <PublicRepoConnect
+                  publicRepoInput={publicRepoInput}
+                  isAddingRepo={isAddingRepo}
+                  connectError={publicRepoConnectError}
+                  onInputChange={(value) => {
+                    setPublicRepoInput(value);
+                    setPublicRepoConnectError(null);
+                  }}
+                  onSubmit={(event) => void handleAddPublicRepo(event)}
+                />
+                <DeployedUrlScanCard scan={urlScan} />
+              </>
+            }
+            urlResults={
+              resultsView === 'url' && urlScan.hasActivity ? (
+                <DeployedUrlScanResults
+                  scan={urlScan}
+                  loginUrl={loginUrl}
+                  onGuarded={() => setVerdictRefreshKey((key) => key + 1)}
+                />
+              ) : null
+            }
+          />
+        );
+      case 'app':
+        return (
+          <DashboardAppView
+            repositories={repos}
+            selectedRepoId={selectedRepo?.id ?? null}
+            onBackToApps={() => navigateDashboard({ view: 'apps', repoId: null })}
+            onSelectRepository={handleSelectRepo}
+            workspace={scanWorkspaceElement}
+            canary={
+              selectedRepo ? (
+                renderCanaryPanel(targetLookup, selectedRepo.id, 'alarm', {
+                  hasGitHubInstallation: Boolean(org?.github_installation_id),
+                })
+              ) : (
+                <CanaryTokensNotice ariaLabel="Silent alarm">
+                  Select an app to add a silent alarm for it.
+                </CanaryTokensNotice>
+              )
+            }
+          />
+        );
+      case 'settings':
+        return (
+          <DashboardSettings
+            repoList={
+              <RepoListPanel
+                repositories={repos}
+                selectedRepoId={selectedRepo?.id ?? null}
+                scanCountsByRepoId={scanCountsByRepoId}
+                hasGitHubInstallation={Boolean(org?.github_installation_id)}
+                onSelectRepository={handleSelectRepo}
+              />
+            }
+            apiKeys={<ApiKeys />}
+            canary={
+              selectedRepo ? (
+                renderCanaryPanel(targetLookup, selectedRepo.id, 'settings')
+              ) : (
+                <CanaryTokensNotice>
+                  Select a connected repository to manage its canary tokens.
+                </CanaryTokensNotice>
+              )
+            }
+          />
+        );
+      case 'checker':
+        return <ManualChecker onToast={handleCheckerToast} />;
+      default: {
+        const neverView: never = dashboardView;
+        throw new Error(`Unhandled dashboard view: ${String(neverView)}`);
+      }
+    }
+  };
 
   // AUTHORIZED DASHBOARD VIEW
   return (
@@ -2121,116 +2501,13 @@ function DashboardContent({
       />
 
       <main className="dashboard-main">
-        <WorkspaceHeader orgName={org?.name} ownerLabel={user?.name} />
-        <DashboardTabs activeTab={activeTab} onTabChange={handleDashboardTabChange} />
-
-        {activeTab === 'repositories' ? (
-          <>
-            <VerdictCardsSection
-              onOpenRepo={handleOpenVerdict}
-              onRemoveUrl={handleRemoveUrlTarget}
-              onRemoveRepo={(repositoryId) => void handleRemoveInvalidRepo(repositoryId)}
-              onRescan={(card) => void handleRescanVerdict(card)}
-              removingTargetId={removingTargetId}
-              removingRepositoryId={removingRepositoryId}
-              rescanningTargetId={rescanningTargetId}
-              rescanBlocked={isScanning || Boolean(rescanningTargetId)}
-              cards={verdictCards}
-              error={verdictCardsError}
-            />
-            <div className="dashboard-grid">
-              <div className="dashboard-repo-column">
-                <RepoListPanel
-                  repositories={repos}
-                  selectedRepoId={selectedRepo?.id ?? null}
-                  scanCountsByRepoId={scanCountsByRepoId}
-                  hasGitHubInstallation={Boolean(org?.github_installation_id)}
-                  onSelectRepository={handleSelectRepo}
-                />
-
-                <PublicRepoConnect
-                  publicRepoInput={publicRepoInput}
-                  isAddingRepo={isAddingRepo}
-                  isFetchingPublicRepos={isFetchingPublicRepos}
-                  discoveredPublicRepos={discoveredPublicRepos}
-                  onInputChange={setPublicRepoInput}
-                  onSubmit={(event) => void handleAddPublicRepo(event)}
-                  onClearDiscovered={() => setDiscoveredPublicRepos([])}
-                  onSelectDiscoveredRepo={(fullName) => {
-                    setPublicRepoInput(fullName);
-                    setDiscoveredPublicRepos([]);
-                    void handleAddPublicRepo(undefined, fullName);
-                  }}
-                />
-
-                <DeployedUrlScanCard scan={urlScan} />
-
-                <ApiKeys />
-
-                {selectedRepo ? renderCanaryPanel(targetLookup, selectedRepo.id) : null}
-              </div>
-
-              {resultsView === 'url' && urlScan.hasActivity ? (
-                <DeployedUrlScanResults
-                  scan={urlScan}
-                  loginUrl={loginUrl}
-                  onGuarded={() => setVerdictRefreshKey((key) => key + 1)}
-                />
-              ) : (
-                <ScanWorkspace
-                  selectedRepo={selectedRepo}
-                  githubInstallationId={org?.github_installation_id}
-                  billingPlan={org?.billing_plan}
-                  selectedRepoScanCount={selectedRepoScanCount}
-                  canJumpToScanResults={canJumpToScanResults}
-                  onJumpToResults={() => {
-                    scrollToScanDetails();
-                  }}
-                  isScanning={isScanning}
-                  onRunScan={triggerScan}
-                  scanError={scanError}
-                  onDismissScanError={() => {
-                    setScanError(null);
-                    setScanLogs([]);
-                  }}
-                  scanProgress={scanProgress}
-                  scanLogs={scanLogs}
-                  repoDetailStatus={repoDetailStatus}
-                  displayedScans={displayedScans}
-                  selectedScan={selectedScan}
-                  onSelectScan={(scan) => {
-                    setShareError(null);
-                    setDeleteScanError(null);
-                    setSelectedScan(scan);
-                  }}
-                  onDeleteScan={handleDeleteScan}
-                  deleteScanError={deleteScanError}
-                  shipGateReport={shipGateReport}
-                  fixSummary={fixSummary}
-                  displayedFindings={displayedFindings}
-                  findingsLimit={SAVE_FINDINGS_LIMIT}
-                  selectedShareUrl={selectedShareUrl}
-                  selectedBadgeMarkdown={selectedBadgeMarkdown}
-                  fetchTrend={clientApi.trend}
-                  initialTrendPoints={initialTrendPoints}
-                  onShare={
-                    org?.billing_plan === 'pro' && !selectedShareUrl
-                      ? () => void handleShareScan()
-                      : undefined
-                  }
-                  isSharing={sharingScanId === selectedScan?.id}
-                  shareError={shareError}
-                  fixingFindingId={fixingFindingId}
-                  isFindingFixable={isFindingFixable}
-                  onCreateFixPr={(finding) => void handleCreateFixPr(finding)}
-                  onCreateBatchFixPr={() => void handleCreateBatchFixPr()}
-                />
-              )}
-            </div>
-          </>
-        ) : (
-          <ManualChecker onToast={handleCheckerToast} />
-        )}
+        <div className="dashboard-main__inner">
+          <DashboardNav
+            active={navIdForView(dashboardView)}
+            onNavigate={handleDashboardNavChange}
+          />
+          {renderDashboardView()}
+        </div>
       </main>
 
       <SiteFooter variant="compact" />

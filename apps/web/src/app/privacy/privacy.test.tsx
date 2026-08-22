@@ -44,4 +44,12 @@ describe('Legal Pages Component Structure', () => {
     const main = within(container).getByRole('main');
     expect(within(main).getByRole('heading', { level: 1 }).textContent).toBe('Terms of Service');
   });
+
+  it('Privacy and Terms both disclose the 3-day Pro trial', () => {
+    const privacy = render(<PrivacyPage />);
+    const terms = render(<TermsPage />);
+
+    expect(within(privacy.container).getByRole('main').textContent).toMatch(/3-day free trial/);
+    expect(within(terms.container).getByRole('main').textContent).toMatch(/3-day free trial/);
+  });
 });

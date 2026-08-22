@@ -7,12 +7,14 @@ import * as clientApiModule from '../../utils/clientApi';
 import { SCAN_DETAILS_CONTAINER_ID } from '../../utils/scrollToScanDetails';
 import type { Scan, ScanFinding } from '../../utils/dbAdapter';
 import { __resetScansQueryCacheForTests } from '../../utils/scansQueryCache';
+import { openDashboardAppView } from './testUtils/openDashboardAppView';
 
 type SessionResult = clientApiModule.SessionResult;
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () =>
+    new URLSearchParams({ view: 'app', repo: '11000000-0000-4000-8000-000000000010' }),
 }));
 
 vi.mock('./_components/manual-checker/ManualChecker', () => ({
@@ -116,13 +118,11 @@ afterEach(() => {
 
 describe('Selected repo header jump navigation', () => {
   it('scrolls the scan details container into view when Jump to results is clicked', async () => {
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value: scrollIntoView,
-    });
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
 
     render(<DashboardClient initialSession={session} />);
+    openDashboardAppView(attestaRepo.name);
 
     await waitFor(() => expect(scansMock).toHaveBeenCalledWith(attestaRepo.id));
     const header = await screen.findByTestId('selected-repo-header');
@@ -130,13 +130,15 @@ describe('Selected repo header jump navigation', () => {
     expect(within(header).getByText('1 scan')).toBeTruthy();
 
     const jumpButton = await screen.findByRole('button', { name: /jump to results/i });
-    scrollIntoView.mockClear();
+    scrollTo.mockClear();
     fireEvent.click(jumpButton);
 
     const target = document.getElementById(SCAN_DETAILS_CONTAINER_ID);
     expect(target).toBeTruthy();
-    expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'instant', top: expect.any(Number) }),
+    );
   });
 
   it('hides Jump to results while scan details are still loading', async () => {
@@ -150,6 +152,7 @@ describe('Selected repo header jump navigation', () => {
     );
 
     render(<DashboardClient initialSession={session} />);
+    openDashboardAppView(attestaRepo.name);
 
     const header = await screen.findByTestId('selected-repo-header');
     expect(within(header).getByRole('heading', { name: attestaRepo.name })).toBeTruthy();

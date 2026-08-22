@@ -1,5 +1,5 @@
 import { FAQ_ENTRIES } from './faq';
-import { PRICES } from './pricing';
+import { PRICES, PRO_TRIAL_PERIOD_DAYS } from './pricing';
 import { SITE_ORIGIN } from './siteMetadata';
 
 /**
@@ -122,8 +122,7 @@ function softwareApplication(): JsonLdNode {
         name: 'Pro',
         price: usd.guardMonthly,
         priceCurrency: 'USD',
-        description:
-          'Unlimited guarded apps, continuous monitoring on every deploy, AI deep review, auto-fix pull requests, and private repository scanning.',
+        description: `${PRO_TRIAL_PERIOD_DAYS}-day free trial, then unlimited guarded apps, continuous monitoring on every deploy, AI deep review, auto-fix pull requests, and private repository scanning.`,
         url: `${SITE_ORIGIN}/#pricing`,
         priceSpecification: {
           '@type': 'UnitPriceSpecification',

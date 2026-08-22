@@ -74,6 +74,7 @@ describe('authenticateApiKey', () => {
       id: 'key-1',
       organization_id: 'org-1',
       plan: 'pro',
+      organization_billing_plan: 'pro',
       revoked_at: null,
     };
     const touchApiKey = vi.fn().mockResolvedValue(undefined);
@@ -87,12 +88,42 @@ describe('authenticateApiKey', () => {
     expect(touchApiKey).toHaveBeenCalledWith('key-1');
   });
 
+  it('enforces the live organization plan, not the snapshotted key plan', async () => {
+    const row: ApiKeyAuthContext = {
+      id: 'key-1',
+      organization_id: 'org-1',
+      plan: 'pro',
+      organization_billing_plan: 'free',
+      revoked_at: null,
+    };
+    const context = await authenticateApiKey(bearer(generateApiKey().plaintext), {
+      getDb: () => authDb({ getApiKeyByHash: vi.fn().mockResolvedValue(row) }),
+    });
+    expect(context).toEqual({ id: 'key-1', organizationId: 'org-1', plan: 'free' });
+  });
+
+  it('fails closed when the live organization plan is missing', async () => {
+    const context = await authenticateApiKey(bearer(generateApiKey().plaintext), {
+      getDb: () =>
+        authDb({
+          getApiKeyByHash: vi.fn().mockResolvedValue({
+            id: 'key-1',
+            organization_id: 'org-1',
+            plan: 'pro',
+            revoked_at: null,
+          }),
+        }),
+    });
+    expect(context).toBeNull();
+  });
+
   it('returns null for a revoked key', async () => {
     const db = authDb({
       getApiKeyByHash: vi.fn().mockResolvedValue({
         id: 'key-1',
         organization_id: 'org-1',
         plan: 'free',
+        organization_billing_plan: 'free',
         revoked_at: '2026-07-18T00:00:00.000Z',
       }),
     });

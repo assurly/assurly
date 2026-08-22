@@ -13,6 +13,7 @@ interface QuestionNode {
 interface OfferNode {
   name: string;
   price: number;
+  description?: string;
 }
 
 function nodesOf(graph: Node): Node[] {
@@ -78,6 +79,11 @@ describe('structured data', () => {
 
     expect(offers.find((offer) => offer.name === 'Free')?.price).toBe(PRICES.USD.free);
     expect(offers.find((offer) => offer.name === 'Pro')?.price).toBe(PRICES.USD.guardMonthly);
+  });
+
+  it('describes the Pro offer as starting with a 3-day trial', () => {
+    const offers = findByType(homePageGraph('Home'), 'SoftwareApplication').offers as OfferNode[];
+    expect(offers.find((offer) => offer.name === 'Pro')?.description).toMatch(/^3-day free trial/);
   });
 
   /**

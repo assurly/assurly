@@ -80,6 +80,30 @@ describe('POST /api/scan-url', () => {
     );
   });
 
+  it('returns an honest unknown — no Ship Gate — when the target refused the scanner', async () => {
+    scanLiveUrlMock.mockResolvedValue({
+      findings: [],
+      evidence: [],
+      pageText: '',
+      blocked: { status: 403, source: 'cloudflare' },
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://protected.example' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.blocked).toEqual({ status: 403, source: 'cloudflare' });
+    // A page we never saw gets no score in either direction.
+    expect(json.report).toBeUndefined();
+    expect(json.findings).toBeUndefined();
+  });
+
   it('returns NOT READY TO SHIP when runtime RLS is open', async () => {
     scanLiveUrlMock.mockResolvedValue({
       findings: [

@@ -38,6 +38,15 @@ const undocumentedEnvFinding = (): WebFinding => ({
   line: 1,
 });
 
+const canaryMissingFinding = (): WebFinding => ({
+  ruleId: 'assurly-canary-missing',
+  severity: 'warning',
+  message:
+    'No Assurly silent alarm in .env.example. Plant ASSURLY_CANARY_URL so Assurly can alert if an attacker fetches stolen env.',
+  file: 'demo/.env.example',
+  line: 1,
+});
+
 const files: ProjectFile[] = [
   { path: 'demo/.env.example', content: 'PORT=3000\n' },
   {
@@ -113,6 +122,8 @@ describe('DiagnosticTerminal project mode', () => {
     expect(screen.getByText(/files affected/i)).toBeTruthy();
     expect(screen.getByText('NOT READY TO SHIP')).toBeTruthy();
     expect(screen.getByText(/Fix blocking errors in the workspace above/i)).toBeTruthy();
+    expect(screen.getByText('$ assurly scan')).toBeTruthy();
+    expect(screen.queryByText(/--browser-mode/)).toBeNull();
   });
 
   it('aligns the metric badge with Ship Gate blockers when findings are grouped', () => {
@@ -153,6 +164,39 @@ describe('DiagnosticTerminal project mode', () => {
     expect(screen.getByText('Blockers (must fix)')).toBeTruthy();
     const blockerList = screen.getByText('Blockers (must fix)').closest('.ship-gate-group');
     expect(blockerList?.querySelectorAll('.ship-gate-list > li').length).toBe(1);
+  });
+
+  it('renders the canary group as a hint, not a #canary-silent-alarm link', () => {
+    const finding = canaryMissingFinding();
+    const canaryFiles: ProjectFile[] = [{ path: 'demo/.env.example', content: 'PORT=3000\n' }];
+    const canaryOverview = buildProjectScanOverview(canaryFiles, [finding]);
+    const canaryScan = {
+      fileStats: canaryOverview.fileStats,
+      metrics: buildScanMetricSummary([finding], canaryOverview.fileStats),
+      issueGroups: buildIssueGroupSummaries([finding]),
+    };
+
+    render(
+      <DiagnosticTerminal
+        activeTab="project"
+        scannedFileLabels={[]}
+        projectScan={canaryScan}
+        results={{
+          errorCount: 0,
+          warningCount: 1,
+          findings: [finding],
+        }}
+        selectedProjectPath="demo/.env.example"
+        isFindingFixable={() => false}
+        fixingFindingId={null}
+        onApplyFix={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText('No silent alarm planted').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Plant ASSURLY_CANARY_URL in \.env\.example via MCP/i)).toBeTruthy();
+    expect(document.querySelector('a[href="#canary-silent-alarm"]')).toBeNull();
+    expect(screen.queryByRole('link', { name: /Add a silent alarm/i })).toBeNull();
   });
 
   it('snippet-mode badge uses Ship Gate blocker count, not raw error findings', () => {

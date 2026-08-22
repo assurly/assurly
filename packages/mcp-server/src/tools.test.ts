@@ -1,10 +1,11 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ASSURLY_MCP_TOOL_NAMES,
   handleExplainRule,
+  handlePlantCanary,
   handleScanAgent,
   handleScanFiles,
   handleScanPath,
@@ -29,6 +30,7 @@ describe('Assurly MCP tool handlers', () => {
       'assurly_explain_rule',
       'assurly_verdict',
       'assurly_scan_agent',
+      'assurly_plant_canary',
     ]);
   });
 
@@ -81,7 +83,8 @@ describe('Assurly MCP tool handlers', () => {
         },
         {
           path: '.env.example',
-          content: 'NEXT_PUBLIC_SUPABASE_URL=\nNEXT_PUBLIC_SUPABASE_ANON_KEY=\n',
+          content:
+            'NEXT_PUBLIC_SUPABASE_URL=\nNEXT_PUBLIC_SUPABASE_ANON_KEY=\nASSURLY_CANARY_URL=\n',
         },
         {
           path: 'supabase/migrations/init.sql',
@@ -154,6 +157,46 @@ describe('Assurly MCP tool handlers', () => {
       const result = await handleScanAgent({ path: tempDir });
       expect(result.isError).toBe(false);
       expect(textBlocks(result)).toMatch(/agent-mcp-shell-execution|shell/i);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('assurly_plant_canary mints via the API and writes local .env.example', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'assurly-mcp-plant-'));
+    try {
+      fs.writeFileSync(path.join(tempDir, '.env.example'), 'DATABASE_URL=\n');
+      const snippet = [
+        '# Assurly silent alarm',
+        'ASSURLY_CANARY_URL=https://assurly.dev/api/canary/ask_canary_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      ].join('\n');
+      const fetchImpl = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            snippet,
+            mcpSnippet:
+              '{"mcpServers":{"assurly-cloud-auth":{"url":"https://assurly.dev/api/canary/x"}}}',
+            callbackUrl:
+              'https://assurly.dev/api/canary/ask_canary_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+
+      const result = await handlePlantCanary(
+        { path: tempDir, repo: 'acme/app' },
+        { apiUrl: 'https://assurly.dev', apiKey: 'ask_test', fetchImpl },
+      );
+
+      expect(result.isError).not.toBe(true);
+      expect(fetchImpl).toHaveBeenCalledWith(
+        'https://assurly.dev/api/v1/canary',
+        expect.objectContaining({ method: 'POST' }),
+      );
+      const env = fs.readFileSync(path.join(tempDir, '.env.example'), 'utf8');
+      expect(env).toContain('DATABASE_URL=');
+      expect(env).toContain('ASSURLY_CANARY_URL=https://assurly.dev/api/canary/');
+      expect(textBlocks(result)).toMatch(/Planted silent alarm/i);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }

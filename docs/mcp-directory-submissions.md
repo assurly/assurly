@@ -78,7 +78,7 @@ than an open submission queue.
 
 An earlier version of this document assumed a submission flow existed. It does
 not. The realistic path is to contact Windsurf directly, with the published
-package, the five tools and a working `initialize` response as the argument.
+package, the six tools and a working `initialize` response as the argument.
 
 (Windsurf's documentation now redirects to `docs.devin.ai` — it sits under
 Cognition, which is probably who to ask.)

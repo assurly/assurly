@@ -3,7 +3,7 @@ import {
   INITIAL_PUBLIC_REPO_CONNECT_SESSION,
   createPublicRepoConnectSession,
   shouldClearPublicRepoInputOnRepoSelect,
-  shouldClearPublicRepoInputOnTabChange,
+  shouldClearPublicRepoInputOnViewChange,
 } from './publicRepoInputReset';
 
 describe('publicRepoInputReset policy', () => {
@@ -37,9 +37,12 @@ describe('publicRepoInputReset policy', () => {
     ).toBe(false);
   });
 
-  it('clears public repo input when leaving Repositories for Manual Checker', () => {
-    expect(shouldClearPublicRepoInputOnTabChange('repositories', 'checker')).toBe(true);
-    expect(shouldClearPublicRepoInputOnTabChange('checker', 'repositories')).toBe(false);
-    expect(shouldClearPublicRepoInputOnTabChange('repositories', 'repositories')).toBe(false);
+  it('clears public repo input when leaving Apps or Settings for Manual Checker', () => {
+    expect(shouldClearPublicRepoInputOnViewChange('apps', 'checker')).toBe(true);
+    expect(shouldClearPublicRepoInputOnViewChange('settings', 'checker')).toBe(true);
+    expect(shouldClearPublicRepoInputOnViewChange('app', 'checker')).toBe(true);
+    expect(shouldClearPublicRepoInputOnViewChange('checker', 'apps')).toBe(false);
+    expect(shouldClearPublicRepoInputOnViewChange('apps', 'apps')).toBe(false);
+    expect(shouldClearPublicRepoInputOnViewChange('apps', 'settings')).toBe(false);
   });
 });

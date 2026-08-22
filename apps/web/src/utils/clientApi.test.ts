@@ -1,5 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clientApi, githubApi } from './clientApi';
+import {
+  __resetUnauthorizedSessionForTests,
+  subscribeToUnauthorizedSession,
+} from './unauthorizedSession';
+
+function unauthorizedResponse(): Response {
+  return Response.json(
+    { error: { code: 'unauthorized', message: 'Authentication is required.' } },
+    { status: 401 },
+  );
+}
 
 describe('githubApi', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -46,6 +57,7 @@ describe('githubApi', () => {
 describe('clientApi error handling', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    __resetUnauthorizedSessionForTests();
   });
 
   it('preserves structured API error details without stringifying the object', async () => {
@@ -65,6 +77,9 @@ describe('clientApi error handling', () => {
       ),
     );
 
+    const unauthorized = vi.fn();
+    subscribeToUnauthorizedSession(unauthorized);
+
     await expect(clientApi.portal()).rejects.toMatchObject({
       name: 'ClientApiError',
       message: 'Billing account is unavailable.',
@@ -72,6 +87,7 @@ describe('clientApi error handling', () => {
       code: 'billing_account_unavailable',
       requestId: 'request_12345678',
     });
+    expect(unauthorized).not.toHaveBeenCalled();
   });
 
   it('uses a safe fallback for malformed error responses', async () => {
@@ -84,5 +100,47 @@ describe('clientApi error handling', () => {
       message: 'The request could not be completed.',
       status: 500,
     });
+  });
+
+  it('retries a 401 once and does not notify when the retry succeeds', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(unauthorizedResponse())
+      .mockResolvedValueOnce(Response.json({ scans: [] }, { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const unauthorized = vi.fn();
+    subscribeToUnauthorizedSession(unauthorized);
+
+    await expect(clientApi.scans('11000000-0000-4000-8000-000000000001')).resolves.toEqual({
+      scans: [],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(unauthorized).not.toHaveBeenCalled();
+  });
+
+  it('notifies subscribers and throws after a 401 retry still fails', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(unauthorizedResponse()));
+    vi.stubGlobal('fetch', fetchMock);
+    const unauthorized = vi.fn();
+    subscribeToUnauthorizedSession(unauthorized);
+
+    await expect(clientApi.scans('11000000-0000-4000-8000-000000000001')).rejects.toMatchObject({
+      name: 'ClientApiError',
+      status: 401,
+      code: 'unauthorized',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(unauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not treat /api/auth/session 401 as a zombie dashboard session', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(unauthorizedResponse()));
+    vi.stubGlobal('fetch', fetchMock);
+    const unauthorized = vi.fn();
+    subscribeToUnauthorizedSession(unauthorized);
+
+    await expect(clientApi.session()).rejects.toMatchObject({ status: 401 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(unauthorized).not.toHaveBeenCalled();
   });
 });

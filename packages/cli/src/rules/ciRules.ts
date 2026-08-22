@@ -1,5 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+  githubActionsIntegrationMessage,
+  GITHUB_ACTIONS_INIT_SUGGESTION,
+} from '@assurly/scanner-core';
 import { Rule, ProjectContext, Finding } from '../types';
 
 const WORKFLOW_PATTERN = /^\.github\/workflows\/.*\.(ya?ml)$/i;
@@ -39,9 +43,8 @@ export const ciRules: Rule = {
       {
         ruleId: this.id,
         severity: 'warning',
-        message: 'GitHub Actions workflow for Assurly is missing.',
-        suggestion:
-          'Run "npx assurly init" to automatically generate the .github/workflows/assurly.yml workflow file.',
+        message: githubActionsIntegrationMessage(workflowFiles.length),
+        suggestion: GITHUB_ACTIONS_INIT_SUGGESTION,
       },
     ];
   },

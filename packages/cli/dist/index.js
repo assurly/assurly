@@ -46,6 +46,7 @@ const shipGateReporter_1 = require("./shipGateReporter");
 const scanProject_1 = require("./scanProject");
 const fixer_1 = require("./fixer");
 const ci_1 = require("./ci");
+const canaryPlant_1 = require("./canaryPlant");
 const scanReportJson_1 = require("./scanReportJson");
 const submitScan_1 = require("./submitScan");
 const program = new commander_1.Command();
@@ -185,6 +186,44 @@ program
     }
     else {
         spinner.fail(chalk_1.default.red(result.message));
+        process.exit(1);
+    }
+});
+program
+    .command('canary')
+    .description('Silent-alarm tripwire helpers')
+    .command('plant')
+    .description('Mint ASSURLY_CANARY_URL via Assurly and append it to local .env.example (never uploads source)')
+    .option('-p, --path <dir>', 'Root directory of the project', '.')
+    .option('--repo <owner/repo>', 'Connected Assurly repository (owner/repo)')
+    .option('--api-url <url>', 'Assurly API base URL', process.env.ASSURLY_API_URL || 'https://assurly.dev')
+    .action(async (options) => {
+    const targetDir = path.resolve(options.path);
+    const spinner = (0, ora_1.default)(chalk_1.default.cyan('Planting silent alarm...')).start();
+    try {
+        const apiKey = process.env.ASSURLY_API_KEY;
+        const repo = typeof options.repo === 'string' ? options.repo.trim() : '';
+        if (!apiKey) {
+            throw new Error('ASSURLY_API_KEY is required to plant a silent alarm.');
+        }
+        if (!repo || !repo.includes('/')) {
+            throw new Error('--repo owner/repo is required.');
+        }
+        const planted = await (0, canaryPlant_1.plantCanaryLocally)({
+            projectPath: targetDir,
+            repo,
+            apiKey,
+            apiBaseUrl: String(options.apiUrl),
+        });
+        spinner.succeed(chalk_1.default.green(planted.changed
+            ? `Planted silent alarm in ${planted.envPath}`
+            : `Silent alarm already present in ${planted.envPath}`));
+        process.exit(0);
+    }
+    catch (error) {
+        spinner.stop();
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(chalk_1.default.red(`\nPlant failed. ${message}\n`));
         process.exit(1);
     }
 });

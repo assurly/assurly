@@ -72,6 +72,16 @@ export interface Scan {
   failure_reason?: string | null;
 }
 
+/** Compact latest-scan projection for Your apps cards. */
+export interface LatestScanSummary {
+  id: string;
+  repository_id: string;
+  ship_score: number | null;
+  created_at: string;
+  verdict?: ScanGateVerdict | null;
+  failure_reason?: string | null;
+}
+
 export interface ScanFinding {
   id: string;
   scan_id: string;
@@ -250,7 +260,10 @@ export interface ApiKeyRow {
 export interface ApiKeyAuthContext {
   id: string;
   organization_id: string;
+  /** Snapshotted onto the key at issuance (dashboard badge). */
   plan: BillingPlan;
+  /** Live organization plan — this is what gates the programmatic rate limit. */
+  organization_billing_plan: BillingPlan;
   revoked_at: string | null;
 }
 
@@ -334,6 +347,13 @@ export interface StripeBillingEvent {
   stripePriceId: string;
 }
 
+export interface TrialCardFingerprintClaim {
+  fingerprintHash: string;
+  stripeCustomerId: string;
+  organizationId: string;
+  stripeSubscriptionId: string;
+}
+
 export interface GitHubRepositoryMapping {
   id: number;
   fullName: string;
@@ -358,6 +378,11 @@ export interface DbAdapter {
   getMembership(userId: string, orgId: string): Promise<Membership | null>;
   setOrganizationStripeCustomerId(organizationId: string, stripeCustomerId: string): Promise<void>;
   processStripeBillingEvent(event: StripeBillingEvent): Promise<boolean>;
+  /**
+   * First writer for this card fingerprint wins. `true` = this subscription may
+   * keep its trial; `false` = the fingerprint already belongs to another trial.
+   */
+  claimTrialCardFingerprint(claim: TrialCardFingerprintClaim): Promise<boolean>;
   connectGitHubInstallation(
     organizationId: string,
     githubAccountId: number,
@@ -383,6 +408,8 @@ export interface DbAdapter {
     repoId: string,
     capability: RepositoryScanCapability,
   ): Promise<void>;
+  setRepositoryActive(repoId: string, isActive: boolean, name?: string): Promise<void>;
+  /** Hides the repo from Your apps (`is_active = false`). Scan history is kept. */
   deleteRepository(repoId: string): Promise<void>;
   saveScan(
     repoId: string,
@@ -396,6 +423,8 @@ export interface DbAdapter {
   ): Promise<Scan>;
   getScan(scanId: string): Promise<Scan | null>;
   getRecentScans(repoId: string): Promise<Scan[]>;
+  /** Latest scan id/score per repository — one query for dashboard cards. */
+  getLatestScanSummaries(repoIds: readonly string[]): Promise<Map<string, LatestScanSummary>>;
   /** Permanently deletes one scan. Findings/probe evidence cascade; fix outcomes null out. */
   deleteScan(scanId: string): Promise<void>;
   getScanFindings(scanId: string): Promise<ScanFinding[]>;
@@ -469,6 +498,17 @@ function eq(value: string | number): string {
   return encodeURIComponent(String(value));
 }
 
+/** Git commit SHAs we treat as identity keys. Placeholders like `unknown` are excluded. */
+const HEX_COMMIT_SHA = /^[0-9a-f]{7,40}$/i;
+
+function isHexCommitSha(commitSha: string): boolean {
+  return HEX_COMMIT_SHA.test(commitSha);
+}
+
+function persistableCommitSha(commitSha: string): string {
+  return isHexCommitSha(commitSha) ? commitSha.toLowerCase() : commitSha;
+}
+
 /** api_keys columns safe to expose to a client — `key_hash` is deliberately absent. */
 const API_KEY_SAFE_COLUMNS =
   'id,organization_id,label,key_prefix,plan,last_used_at,revoked_at,created_at';
@@ -476,6 +516,10 @@ const API_KEY_SAFE_COLUMNS =
 /** canary_tokens columns safe to expose — `token_hash` is deliberately absent. */
 const CANARY_TOKEN_SAFE_COLUMNS =
   'id,organization_id,target_id,token_prefix,label,last_hit_at,hit_count,revoked_at,created_at';
+
+/** Scan columns the dashboard history rail and card derivation need. */
+const SCAN_LIST_COLUMNS =
+  'id,repository_id,commit_sha,branch,status,error_count,warning_count,share_token,created_at,ship_score,verdict,scanned_file_count,clean_file_count,scan_scope,failure_reason';
 
 export class SupabaseDbAdapter implements DbAdapter {
   constructor(
@@ -573,10 +617,11 @@ export class SupabaseDbAdapter implements DbAdapter {
   }
 
   async getOrganizationByUserId(userId: string): Promise<Organization | null> {
-    const membership = await this.first<Membership>(
-      `memberships?select=*&user_id=eq.${eq(userId)}`,
+    const row = await this.first<{ organizations: Organization | Organization[] | null }>(
+      `memberships?select=organizations(*)&user_id=eq.${eq(userId)}`,
     );
-    return membership ? this.getOrganization(membership.organization_id) : null;
+    if (!row?.organizations) return null;
+    return Array.isArray(row.organizations) ? (row.organizations[0] ?? null) : row.organizations;
   }
 
   async createOrganization(name: string): Promise<Organization> {
@@ -614,6 +659,18 @@ export class SupabaseDbAdapter implements DbAdapter {
         target_stripe_customer_id: event.stripeCustomerId,
         target_stripe_subscription_id: event.stripeSubscriptionId,
         target_stripe_price_id: event.stripePriceId,
+      }),
+    });
+  }
+
+  async claimTrialCardFingerprint(claim: TrialCardFingerprintClaim): Promise<boolean> {
+    return this.fetchDb<boolean>('rpc/claim_trial_card_fingerprint', {
+      method: 'POST',
+      body: JSON.stringify({
+        fingerprint_hash: claim.fingerprintHash,
+        stripe_customer_id: claim.stripeCustomerId,
+        organization_id: claim.organizationId,
+        stripe_subscription_id: claim.stripeSubscriptionId,
       }),
     });
   }
@@ -672,7 +729,7 @@ export class SupabaseDbAdapter implements DbAdapter {
 
   async getRepositories(orgId: string): Promise<Repository[]> {
     return this.fetchDb(
-      `repositories?select=*&organization_id=eq.${eq(orgId)}&order=created_at.desc`,
+      `repositories?select=*&organization_id=eq.${eq(orgId)}&is_active=eq.true&order=created_at.desc`,
     );
   }
 
@@ -707,10 +764,17 @@ export class SupabaseDbAdapter implements DbAdapter {
     });
   }
 
-  async deleteRepository(repoId: string): Promise<void> {
+  async setRepositoryActive(repoId: string, isActive: boolean, name?: string): Promise<void> {
+    const patch: { is_active: boolean; name?: string } = { is_active: isActive };
+    if (name) patch.name = name;
     await this.fetchDb(`repositories?id=eq.${eq(repoId)}`, {
-      method: 'DELETE',
+      method: 'PATCH',
+      body: JSON.stringify(patch),
     });
+  }
+
+  async deleteRepository(repoId: string): Promise<void> {
+    await this.setRepositoryActive(repoId, false);
   }
 
   async saveScan(
@@ -723,11 +787,12 @@ export class SupabaseDbAdapter implements DbAdapter {
     findings: Omit<ScanFinding, 'id' | 'scan_id' | 'created_at'>[],
     meta?: ScanShipGateMeta,
   ): Promise<Scan> {
+    const persistedSha = persistableCommitSha(commitSha);
     const rows = await this.fetchDb<Scan[]>('scans', {
       method: 'POST',
       body: JSON.stringify({
         repository_id: repoId,
-        commit_sha: commitSha,
+        commit_sha: persistedSha,
         branch,
         status,
         error_count: errors,
@@ -765,7 +830,31 @@ export class SupabaseDbAdapter implements DbAdapter {
       });
     }
 
+    if (isHexCommitSha(persistedSha)) {
+      await this.pruneOlderScansForCommit(repoId, persistedSha, scan);
+    }
+
     return scan;
+  }
+
+  /**
+   * Re-scanning the same commit replaces history, not appends it. Delete only
+   * strictly older siblings so two concurrent inserts cannot delete each other.
+   */
+  private async pruneOlderScansForCommit(
+    repoId: string,
+    commitSha: string,
+    keep: Pick<Scan, 'id' | 'created_at'>,
+  ): Promise<void> {
+    if (!keep.created_at) return;
+    const siblings = await this.fetchDb<Array<{ id: string; created_at: string }>>(
+      `scans?select=id,created_at&repository_id=eq.${eq(repoId)}&commit_sha=eq.${eq(commitSha)}`,
+    );
+    for (const sibling of siblings) {
+      if (sibling.id === keep.id) continue;
+      if (sibling.created_at >= keep.created_at) continue;
+      await this.deleteScan(sibling.id);
+    }
   }
 
   getScan(scanId: string): Promise<Scan | null> {
@@ -773,7 +862,27 @@ export class SupabaseDbAdapter implements DbAdapter {
   }
 
   getRecentScans(repoId: string): Promise<Scan[]> {
-    return this.fetchDb(`scans?select=*&repository_id=eq.${eq(repoId)}&order=created_at.desc`);
+    return this.fetchDb(
+      `scans?select=${SCAN_LIST_COLUMNS}&repository_id=eq.${eq(repoId)}&order=created_at.desc&limit=50`,
+    );
+  }
+
+  async getLatestScanSummaries(
+    repoIds: readonly string[],
+  ): Promise<Map<string, LatestScanSummary>> {
+    const summaries = new Map<string, LatestScanSummary>();
+    if (repoIds.length === 0) return summaries;
+    const uniqueIds = [...new Set(repoIds)];
+    const inList = uniqueIds.map((id) => eq(id)).join(',');
+    const rows = await this.fetchDb<LatestScanSummary[]>(
+      `scans?select=id,repository_id,ship_score,created_at,verdict,failure_reason&repository_id=in.(${inList})&order=created_at.desc`,
+    );
+    for (const row of rows) {
+      if (!summaries.has(row.repository_id)) {
+        summaries.set(row.repository_id, row);
+      }
+    }
+    return summaries;
   }
 
   async deleteScan(scanId: string): Promise<void> {
@@ -1112,10 +1221,33 @@ export class SupabaseDbAdapter implements DbAdapter {
     );
   }
 
-  getApiKeyByHash(keyHash: string): Promise<ApiKeyAuthContext | null> {
-    return this.first(
-      `api_keys?select=id,organization_id,plan,revoked_at&key_hash=eq.${eq(keyHash)}`,
+  async getApiKeyByHash(keyHash: string): Promise<ApiKeyAuthContext | null> {
+    const row = await this.first<{
+      id: string;
+      organization_id: string;
+      plan: BillingPlan;
+      revoked_at: string | null;
+      organizations: { billing_plan: BillingPlan } | { billing_plan: BillingPlan }[] | null;
+    }>(
+      `api_keys?select=id,organization_id,plan,revoked_at,organizations(billing_plan)&key_hash=eq.${eq(keyHash)}`,
     );
+    if (!row) return null;
+    const joined = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations;
+    const organizationBillingPlan = joined?.billing_plan;
+    if (
+      organizationBillingPlan !== 'free' &&
+      organizationBillingPlan !== 'pro' &&
+      organizationBillingPlan !== 'oem'
+    ) {
+      return null;
+    }
+    return {
+      id: row.id,
+      organization_id: row.organization_id,
+      plan: row.plan,
+      organization_billing_plan: organizationBillingPlan,
+      revoked_at: row.revoked_at,
+    };
   }
 
   async revokeApiKey(id: string): Promise<void> {

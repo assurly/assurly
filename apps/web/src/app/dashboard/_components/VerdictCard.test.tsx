@@ -32,6 +32,8 @@ function card(overrides: Partial<TargetCard> = {}): TargetCard {
     scoreDropped: false,
     badgeToken: null,
     scanCapability: 'browser',
+    lastScanFailed: false,
+    lastScanFailureReason: null,
     ...overrides,
   };
 }
@@ -254,6 +256,27 @@ describe('VerdictCard', () => {
     );
     expect(screen.queryByRole('button', { name: /Rescan/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /Scan now/i })).toBeNull();
+  });
+
+  it('shows Scan failed and Scan now after a fresh empty-scan failure', () => {
+    render(
+      <VerdictCard
+        card={card({
+          verdict: 'unknown',
+          shipScore: null,
+          topIssue: null,
+          lastCheckedAt: new Date().toISOString(),
+          lastScanFailed: true,
+          lastScanFailureReason: 'no_eligible_files',
+        })}
+        onOpen={vi.fn()}
+        onRescan={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Scan failed')).toBeTruthy();
+    expect(screen.getByText('—')).toBeTruthy();
+    expect(screen.getByText(/Scan failed ·/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Scan now acme\/api/i })).toBeTruthy();
   });
 
   it('keeps Scanning… disabled while rescanning and blocks sibling CTAs', () => {

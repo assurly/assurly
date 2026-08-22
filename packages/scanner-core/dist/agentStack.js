@@ -119,8 +119,11 @@ function looksLikeLiveSecret(value) {
     if (!trimmed || PLACEHOLDER_ENV_VALUE.test(trimmed))
         return false;
     // Planted Assurly canaries are intentional tripwires, not leaked credentials.
-    if ((0, canaryToken_1.isAssurlyCanaryToken)(trimmed) || (0, canaryToken_1.containsAssurlyCanaryToken)(trimmed))
+    if ((0, canaryToken_1.isAssurlyCanaryToken)(trimmed) ||
+        (0, canaryToken_1.containsAssurlyCanaryToken)(trimmed) ||
+        (0, canaryToken_1.containsAssurlyCanaryCallbackPath)(trimmed)) {
         return false;
+    }
     if (/^sk_live_[A-Za-z0-9]+/.test(trimmed))
         return true;
     if (/^sk-ant-[A-Za-z0-9_\-]+/.test(trimmed))
@@ -260,7 +263,7 @@ function scanAgentMcpConfig(content, file = '.cursor/mcp.json') {
         else if (argsPipeToShell(server.args)) {
             findings.push(finding('agent-mcp-shell-execution', 'error', 'high', file, lineNumberOfSubstring(content, server.name), `MCP server "${server.name}" pipes arguments into a shell, which can execute arbitrary code from the agent session.`, 'Remove shell pipes from MCP args; invoke the server binary directly.'));
         }
-        if (server.url) {
+        if (server.url && !(0, canaryToken_1.isAssurlyCanaryMcpUrl)(server.url)) {
             try {
                 const parsedUrl = new URL(server.url);
                 if (parsedUrl.protocol === 'http:' && !isLoopbackHost(parsedUrl.hostname)) {

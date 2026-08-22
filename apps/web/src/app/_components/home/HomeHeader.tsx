@@ -1,11 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, type ReactElement } from 'react';
+import { useCallback, useEffect, type ReactElement } from 'react';
 import { AuthButton } from './AuthButton';
 import { AssurlyMark } from '../AssurlyMark';
 import { AssurlyWordmark } from '../AssurlyWordmark';
+import { ThemeToggle } from '../ThemeToggle';
 import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
+
+/** Keep in sync with `.site-header` overlay in `globals.css`. */
+export const LANDING_NAV_OVERLAY_MQ = '(max-width: 1100px)';
 
 export interface SiteNavLink {
   href: string;
@@ -70,8 +74,18 @@ export function HomeHeader({
   const { menuRef, rememberTrigger } = useAccessibleMenu<HTMLElement>({
     open: menuOpen,
     onClose: closeMenu,
-    trapAt: '(max-width: 768px)',
+    trapAt: LANDING_NAV_OVERLAY_MQ,
   });
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia(LANDING_NAV_OVERLAY_MQ);
+    const onChange = (): void => {
+      if (!media.matches) closeMenu();
+    };
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, [closeMenu]);
 
   const handleMenuToggle = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>): void => {
@@ -89,7 +103,7 @@ export function HomeHeader({
   );
 
   return (
-    <header className={joinClasses(menuOpen && 'site-header-menu-open')}>
+    <header className={joinClasses('site-header', menuOpen && 'site-header-menu-open')}>
       <div className="container nav-container">
         {logoHref ? (
           <Link href={logoHref} className="logo" id="header-logo" aria-label="Assurly">
@@ -128,13 +142,16 @@ export function HomeHeader({
               {link.label}
             </a>
           ))}
-          <AuthButton
-            authenticated={authenticated}
-            variant="primary"
-            labels={HEADER_AUTH_LABELS}
-            loginUrl={loginUrl}
-            onNavigate={closeMenu}
-          />
+          <div className="header-toolbar">
+            <ThemeToggle />
+            <AuthButton
+              authenticated={authenticated}
+              variant="primary"
+              labels={HEADER_AUTH_LABELS}
+              loginUrl={loginUrl}
+              onNavigate={closeMenu}
+            />
+          </div>
         </nav>
       </div>
     </header>

@@ -1,11 +1,20 @@
 import { lookup } from 'node:dns/promises';
 import { Agent } from 'undici';
-import { containsAssurlyCanaryToken, isAssurlyCanaryToken } from '@assurly/scanner-core';
+import {
+  containsAssurlyCanaryCallbackPath,
+  containsAssurlyCanaryToken,
+  isAssurlyCanaryToken,
+} from '@assurly/scanner-core';
 import type { WebFinding } from './browserScanner';
 import type { ClaudeClientDeps } from './ai/claudeClient';
 import { extractHeuristicTableNames, planRedTeamProbes } from './ai/redTeamPlanner';
 import { readLimitedResponseText } from './githubApp';
 import { DEFAULT_SENSITIVE_SUPABASE_TABLES, executeProbePlan, type ProbePlanStep } from './probes';
+import {
+  SCANNER_IDENTITY_HEADER,
+  type BlockedScan,
+  type BlockedScanSource,
+} from './scannerBlocked';
 import { assertPublicIpAddress, assertScannableUrl } from './urlSafety';
 import { scanVisibility, type VisibilityInput, type VisibilityReport } from './visibilityScan';
 
@@ -22,6 +31,18 @@ export const VISIBILITY_AUDIT_BUDGET_MS = 4_000;
 
 const MUTATING_HTTP_METHODS = new Set(['POST', 'PATCH', 'DELETE', 'PUT']);
 const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
+
+/**
+ * Bot protection (Cloudflare, WAFs) challenges any request whose User-Agent is
+ * not a mainstream browser — measurably including honest ones that name the
+ * scanner, which turned live sites into false "unreachable" verdicts. A runtime
+ * probe is a read-only GET of a page the user asked us to open, so it presents
+ * as a browser and identifies itself out-of-band in SCANNER_IDENTITY_HEADER,
+ * which a host can allowlist. Never fold that identity into this string.
+ */
+const RUNTIME_SCANNER_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+const RUNTIME_SCANNER_IDENTITY = 'ship-gate/1.0 (+https://assurly.dev/scanner)';
 
 interface LookupRecord {
   address: string;
@@ -215,7 +236,11 @@ export function scanBundleForSecretsWithEvidence(bundleText: string): {
       const value = match[0];
       if (!value || seen.has(value)) continue;
       // Planted Assurly canaries are intentional tripwires, not leaks.
-      if (containsAssurlyCanaryToken(value) || isAssurlyCanaryToken(value)) {
+      if (
+        containsAssurlyCanaryToken(value) ||
+        isAssurlyCanaryToken(value) ||
+        containsAssurlyCanaryCallbackPath(value)
+      ) {
         continue;
       }
 
@@ -247,6 +272,27 @@ export function scanBundleForSecretsWithEvidence(bundleText: string): {
 
 export function scanBundleForSecrets(bundleText: string): WebFinding[] {
   return scanBundleForSecretsWithEvidence(bundleText).findings;
+}
+
+/**
+ * Canary token or `/api/canary/` path in public HTML/JS. Warning only — not a
+ * new blocker. Must never HTTP-fetch the callback (self-hit).
+ */
+export function scanBundleForCanaryInClient(bundleText: string): WebFinding[] {
+  if (!containsAssurlyCanaryToken(bundleText) && !containsAssurlyCanaryCallbackPath(bundleText)) {
+    return [];
+  }
+  return [
+    {
+      ruleId: 'assurly-canary-in-client',
+      severity: 'warning',
+      confidence: 'high',
+      file: 'Runtime bundle',
+      message: 'Assurly tripwire URL is in the public client bundle.',
+      suggestion:
+        'Tripwire is in public JS. Rotate real Stripe, Supabase, and GitHub secrets; take the canary off the client.',
+    },
+  ];
 }
 
 export function checkSecurityHeadersWithEvidence(headers: Headers): {
@@ -411,6 +457,8 @@ export async function runtimeFetch(
     redirect: 'manual',
     headers: {
       Accept: 'text/html,application/javascript,text/javascript,*/*',
+      'User-Agent': RUNTIME_SCANNER_USER_AGENT,
+      [SCANNER_IDENTITY_HEADER]: RUNTIME_SCANNER_IDENTITY,
       ...init.headers,
     },
   } as FetchInit);
@@ -493,6 +541,7 @@ function extractScriptUrls(html: string, pageUrl: URL): string[] {
   for (const match of html.matchAll(scriptSrcPattern)) {
     const src = match[1];
     if (!src || src.startsWith('data:')) continue;
+    if (containsAssurlyCanaryCallbackPath(src) || containsAssurlyCanaryToken(src)) continue;
     try {
       urls.add(new URL(src, pageUrl).toString());
     } catch {
@@ -699,6 +748,21 @@ export interface ScanLiveUrlResult {
    * Parallel to Ship Gate; never merged into `findings`.
    */
   visibility?: VisibilityReport;
+  /**
+   * Set when the target answered but refused the scanner. `findings` is then
+   * empty because we never saw the app — NOT because the app is clean, so
+   * callers must not derive a verdict, a Ship Score or a fix outcome from it.
+   */
+  blocked?: BlockedScan;
+}
+
+/** Attributes the refusal so the user gets a fix they can actually act on. */
+function detectBlockSource(status: number, headers: Headers): BlockedScanSource {
+  if (status === 429) return 'rate-limit';
+  const server = (headers.get('server') ?? '').toLowerCase();
+  if (headers.get('cf-mitigated') || server.includes('cloudflare')) return 'cloudflare';
+  if (detectDeployPlatform(headers) === 'vercel') return 'vercel';
+  return 'unknown';
 }
 
 function isDeploymentNotFoundBody(body: string): boolean {
@@ -729,13 +793,12 @@ export async function scanLiveUrlWithEvidence(
   // Dead deploys (404/410/5xx / Vercel DEPLOYMENT_NOT_FOUND) must never look READY.
   // Read a short body preview first so we can short-circuit before header/SEO noise.
   const html = await readRuntimeResponseText(pageResponse);
-  const unreachable =
-    !pageResponse.ok ||
+  const isDead =
     pageResponse.status === 404 ||
     pageResponse.status === 410 ||
     pageResponse.status >= 500 ||
     isDeploymentNotFoundBody(html);
-  if (unreachable) {
+  if (isDead) {
     findings.push({
       ruleId: 'runtime-target-unreachable',
       severity: 'error',
@@ -751,6 +814,21 @@ export async function scanLiveUrlWithEvidence(
       summary: `Target responded with HTTP ${pageResponse.status} and is unreachable.`,
     });
     return { findings, evidence, pageText: html, ...(planSource ? { planSource } : {}) };
+  }
+
+  // Everything else non-2xx means the target answered but would not let us in:
+  // deployment protection, a WAF bot challenge, a rate limit. Calling that a
+  // dead deploy punishes an app for being protected, so we report no verdict.
+  if (!pageResponse.ok) {
+    return {
+      findings: [],
+      evidence: [],
+      pageText: html,
+      blocked: {
+        status: pageResponse.status,
+        source: detectBlockSource(pageResponse.status, pageResponse.headers),
+      },
+    };
   }
 
   const headerResult = checkSecurityHeadersWithEvidence(pageResponse.headers);
@@ -776,6 +854,9 @@ export async function scanLiveUrlWithEvidence(
     findings.push(...bundleSecrets.findings);
     evidence.push(...bundleSecrets.evidence);
   }
+
+  const canaryInClient = scanBundleForCanaryInClient(bundleTextAccum);
+  findings.push(...canaryInClient);
 
   const supabaseConfig = extractSupabaseConfig(bundleTextAccum);
 

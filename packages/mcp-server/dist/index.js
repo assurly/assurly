@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 "use strict";
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -16,6 +18,14 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // src/index.ts
@@ -32,6 +42,9 @@ var import_stdio = require("@modelcontextprotocol/sdk/server/stdio.js");
 var import_zod = require("zod");
 
 // src/tools.ts
+var fs = __toESM(require("fs"));
+var path = __toESM(require("path"));
+var import_scanner_core = require("@assurly/scanner-core");
 var import_ruleExplainer = require("assurly/ruleExplainer");
 var import_scanProject = require("assurly/scanProject");
 var ASSURLY_MCP_TOOL_NAMES = [
@@ -39,7 +52,8 @@ var ASSURLY_MCP_TOOL_NAMES = [
   "assurly_scan_files",
   "assurly_explain_rule",
   "assurly_verdict",
-  "assurly_scan_agent"
+  "assurly_scan_agent",
+  "assurly_plant_canary"
 ];
 function formatFixOutcomesText(outcomes) {
   if (outcomes.length === 0) {
@@ -158,6 +172,68 @@ async function handleVerdict(input, config) {
     // Blocked status is the only ship-gate halt. See docstring for why fix
     // outcomes never widen isError.
     isError: status === "blocked"
+  };
+}
+async function handlePlantCanary(input, config) {
+  if (!config.apiKey) {
+    return errorResult(
+      "ASSURLY_API_KEY is not set. Create a key in the Assurly dashboard (Settings \u2192 API keys) and expose it to this MCP server as ASSURLY_API_KEY."
+    );
+  }
+  const repo = input.repo.trim();
+  if (!repo.includes("/")) {
+    return errorResult("Provide `repo` in owner/name form.");
+  }
+  const doFetch = config.fetchImpl ?? fetch;
+  const base = config.apiUrl.replace(/\/$/, "");
+  let response;
+  try {
+    response = await doFetch(`${base}/api/v1/canary`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify({ repo })
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return errorResult(`Could not reach the Assurly API: ${message}`);
+  }
+  if (response.status === 401) {
+    return errorResult("The Assurly API key is invalid or revoked (401). Issue a new key.");
+  }
+  if (!response.ok) {
+    return errorResult(`The Assurly API returned an error (${response.status}).`);
+  }
+  const payload = await response.json();
+  const snippet = payload.snippet?.trim() ?? "";
+  if (!snippet) {
+    return errorResult("The Assurly API did not return a plant snippet.");
+  }
+  const projectRoot = path.resolve(input.path);
+  const envPath = path.join(projectRoot, ".env.example");
+  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
+  const merged = (0, import_scanner_core.mergeCanaryPlantIntoEnvExample)(existing, snippet);
+  if (merged.changed) {
+    fs.writeFileSync(envPath, merged.content, "utf8");
+  }
+  const lines = [
+    merged.changed ? `Planted silent alarm in ${envPath}.` : `Silent alarm already present in ${envPath}.`,
+    payload.callbackUrl ? `Callback: ${payload.callbackUrl}` : "",
+    "Do not enable the decoy MCP server in Cursor \u2014 add assurly-cloud-auth to disabledMcpjsonServers.",
+    payload.mcpSnippet ? `MCP decoy snippet:
+${payload.mcpSnippet}` : ""
+  ].filter((line) => line.length > 0);
+  return {
+    content: [
+      { type: "text", text: lines.join("\n") },
+      {
+        type: "text",
+        text: JSON.stringify({ ...payload, wroteEnvExample: merged.changed }, null, 2)
+      }
+    ]
   };
 }
 function handleExplainRule(input) {
@@ -285,6 +361,24 @@ function createAssurlyMcpServer() {
       }
     },
     async ({ path: projectPath }) => handleScanAgent({ path: projectPath })
+  );
+  server.registerTool(
+    "assurly_plant_canary",
+    {
+      title: "Plant a silent alarm",
+      description: "Mint an Assurly ASSURLY_CANARY_URL tripwire via the hosted API and append it to local .env.example. Requires ASSURLY_API_KEY. Never uploads source. Do not enable the decoy MCP server (assurly-cloud-auth) in Cursor \u2014 add it to disabledMcpjsonServers.",
+      inputSchema: {
+        path: import_zod.z.string().describe("Absolute or relative path to the project root"),
+        repo: import_zod.z.string().describe("Connected Assurly repository in owner/name form")
+      }
+    },
+    async ({ path: projectPath, repo }) => handlePlantCanary(
+      { path: projectPath, repo },
+      {
+        apiUrl: process.env.ASSURLY_API_URL?.trim() || DEFAULT_ASSURLY_API_URL,
+        apiKey: process.env.ASSURLY_API_KEY?.trim() || void 0
+      }
+    )
   );
   return server;
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { proxy } from './proxy';
+import { THEME_BOOTSTRAP_CSP_HASH } from './utils/theme';
 
 // Mock Supabase Client
 const mockGetUser = vi.fn();
@@ -83,7 +84,10 @@ describe('Proxy Middleware', () => {
     delete process.env.SUPABASE_URL;
     const response = await proxy(mockNextRequest());
     const policy = response.headers.get('content-security-policy');
-    expect(policy).toMatch(/script-src 'self' 'nonce-[^']+' 'strict-dynamic'/);
+    expect(policy).toMatch(
+      /script-src 'self' 'nonce-[^']+' 'sha256-[A-Za-z0-9+/=]+' 'strict-dynamic'/,
+    );
+    expect(policy).toContain(`'${THEME_BOOTSTRAP_CSP_HASH}'`);
     expect(policy).not.toContain("script-src 'self' 'unsafe-inline'");
     expect(policy).toContain("frame-ancestors 'none'");
   });

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import DashboardClient from './_components/DashboardClient';
 import { installDashboardLocalStorageMock } from './testUtils/installDashboardLocalStorageMock';
 import * as clientApiModule from '../../utils/clientApi';
@@ -143,9 +143,10 @@ afterEach(() => {
 describe('Repository filter integration', () => {
   it('filters the repo list and selects a matching repository from the narrowed results', async () => {
     render(<DashboardClient initialSession={session} />);
+    fireEvent.click(screen.getByRole('button', { name: /^settings$/i }));
 
     await waitFor(() => expect(scansMock).toHaveBeenCalledWith(attestaRepo.id));
-    await screen.findByText('NOT READY TO SHIP');
+    await screen.findByTestId('repo-list-filter');
 
     fireEvent.change(screen.getByTestId('repo-list-filter'), {
       target: { value: 'leaks' },
@@ -157,12 +158,15 @@ describe('Repository filter integration', () => {
     fireEvent.click(screen.getByRole('button', { name: /select repository react-client-leaks/i }));
 
     await waitFor(() => expect(scansMock).toHaveBeenCalledWith(leaksRepo.id));
-    await within(screen.getByTestId('selected-repo-header')).findByRole('heading', {
-      name: leaksRepo.name,
-    });
-    expect(screen.queryByText(/organizations.*Row-Level Security/i)).toBeNull();
-    await waitFor(() => {
-      expect(screen.getAllByText(/Possible API key exposed/i).length).toBeGreaterThan(0);
-    });
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
+    expect(screen.getByTestId('repo-list-panel')).toBeTruthy();
+    expect(screen.queryByTestId('selected-repo-header')).toBeNull();
+    expect(window.location.search).toContain('view=settings');
+    expect(window.location.search).toContain(`repo=${leaksRepo.id}`);
+    expect(
+      screen
+        .getByRole('button', { name: /select repository react-client-leaks/i })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
   });
 });

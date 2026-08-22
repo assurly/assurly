@@ -2,11 +2,21 @@
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { buildShipGateReport } from '@assurly/scanner-core';
 import { isTooLargeScanError, ScanWorkspace } from './ScanWorkspace';
 
 afterEach(() => {
   cleanup();
 });
+
+const sampleRepo = {
+  id: 'repo-1',
+  name: 'acme/api',
+  organization_id: 'org-1',
+  github_repo_id: 1,
+  is_active: true,
+  created_at: '2026-01-01T00:00:00.000Z',
+};
 
 const baseProps = {
   selectedRepoScanCount: 0,
@@ -14,6 +24,7 @@ const baseProps = {
   onJumpToResults: vi.fn(),
   isScanning: false,
   onRunScan: vi.fn(),
+  onStopScan: vi.fn(),
   scanError: null,
   onDismissScanError: vi.fn(),
   scanProgress: 0,
@@ -52,24 +63,32 @@ describe('ScanWorkspace empty state', () => {
 
 describe('ScanWorkspace CTA hierarchy', () => {
   it('marks Run secure scan as the primary CTA', () => {
-    render(
-      <ScanWorkspace
-        {...baseProps}
-        selectedRepo={{
-          id: 'repo-1',
-          name: 'acme/api',
-          organization_id: 'org-1',
-          github_repo_id: 1,
-          is_active: true,
-          created_at: '2026-01-01T00:00:00.000Z',
-        }}
-        githubInstallationId="1"
-      />,
-    );
+    render(<ScanWorkspace {...baseProps} selectedRepo={sampleRepo} githubInstallationId="1" />);
 
     const runScan = screen.getByRole('button', { name: /run secure scan/i });
     expect(runScan.className).toContain('dashboard-scan-action-btn--primary');
     expect(runScan.getAttribute('data-cta')).toBe('primary');
+    expect(screen.queryByRole('button', { name: /stop scan/i })).toBeNull();
+  });
+
+  it('shows Stop scan as a secondary action while Instant Gate is running', () => {
+    const onStopScan = vi.fn();
+    render(
+      <ScanWorkspace
+        {...baseProps}
+        selectedRepo={sampleRepo}
+        githubInstallationId="1"
+        isScanning
+        onStopScan={onStopScan}
+      />,
+    );
+
+    const stop = screen.getByRole('button', { name: /stop scan/i });
+    expect(stop.getAttribute('data-testid')).toBe('stop-scan');
+    expect(stop.getAttribute('data-cta')).toBe('secondary');
+    expect(stop.className).toContain('dashboard-scan-action-btn--secondary');
+    fireEvent.click(stop);
+    expect(onStopScan).toHaveBeenCalledTimes(1);
   });
 
   it('shows Full Gate empty state for cli_only repositories', () => {
@@ -96,6 +115,7 @@ describe('ScanWorkspace CTA hierarchy', () => {
     );
     expect(screen.getAllByRole('button', { name: /copy full gate/i }).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /run secure scan/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /stop scan/i })).toBeNull();
   });
 
   it('embeds a copyable Full Gate command in the too-large scan error panel', async () => {
@@ -137,10 +157,90 @@ describe('ScanWorkspace CTA hierarchy', () => {
   });
 });
 
+describe('ScanWorkspace loading header', () => {
+  it('shows Loading scans instead of No scans while details load', () => {
+    render(
+      <ScanWorkspace
+        {...baseProps}
+        selectedRepo={sampleRepo}
+        githubInstallationId="1"
+        repoDetailStatus="loading"
+      />,
+    );
+
+    expect(screen.getByText('Loading scans…')).toBeTruthy();
+    expect(screen.queryByText('No scans')).toBeNull();
+  });
+});
+
 describe('isTooLargeScanError', () => {
   it('detects Instant Gate size-limit failures', () => {
     expect(isTooLargeScanError('too large for the in-browser scan')).toBe(true);
     expect(isTooLargeScanError('Too large for Instant Gate')).toBe(true);
     expect(isTooLargeScanError('Network timeout')).toBe(false);
+  });
+});
+
+describe('ScanWorkspace too-large vs empty Ship Gate', () => {
+  it('does not render the empty-files Ship Gate hint beside the Too large panel', () => {
+    render(
+      <ScanWorkspace
+        {...baseProps}
+        selectedRepo={{
+          ...sampleRepo,
+          scan_capability: 'cli_only',
+        }}
+        githubInstallationId="1"
+        scanError="This repository is too large for Instant Gate."
+        repoDetailStatus="ready"
+        selectedScan={{
+          id: 'scan-unknown',
+          repository_id: sampleRepo.id,
+          commit_sha: 'unknown',
+          branch: 'main',
+          status: 'failed',
+          error_count: 0,
+          warning_count: 0,
+          created_at: '2026-08-18T00:00:00.000Z',
+          failure_reason: 'too_large',
+        }}
+        displayedScans={[
+          {
+            id: 'scan-unknown',
+            repository_id: sampleRepo.id,
+            commit_sha: 'unknown',
+            branch: 'main',
+            status: 'failed',
+            error_count: 0,
+            warning_count: 0,
+            created_at: '2026-08-18T00:00:00.000Z',
+            failure_reason: 'too_large',
+          },
+        ]}
+        shipGateReport={buildShipGateReport([], { scannedFileCount: 0, cleanFileCount: 0 })}
+      />,
+    );
+
+    expect(screen.getByText('Too large for Instant Gate')).toBeTruthy();
+    expect(screen.queryByText(/No scannable application files/i)).toBeNull();
+    expect(screen.queryByText(/commit unknown/i)).toBeNull();
+    expect(screen.queryByTestId('scan-details-ship-gate')).toBeNull();
+  });
+
+  it('offers Scan main instead after an empty Instant Gate scan', () => {
+    const onScanAlternateBranch = vi.fn();
+    render(
+      <ScanWorkspace
+        {...baseProps}
+        selectedRepo={sampleRepo}
+        githubInstallationId="1"
+        scanError="No scannable application files (JS/TS/SQL) were found."
+        alternateScanBranches={['main', 'develop']}
+        onScanAlternateBranch={onScanAlternateBranch}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Scan main instead/i }));
+    expect(onScanAlternateBranch).toHaveBeenCalledWith('main');
   });
 });

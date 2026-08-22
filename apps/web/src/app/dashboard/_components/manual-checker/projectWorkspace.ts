@@ -1,12 +1,6 @@
 import {
-  collectTestOnlyEnvKeys,
   isScannableFile,
-  proposeEnvExamplePath,
-  scanColdStart,
-  scanEnvVariables,
-  scanRscDataLeaks,
-  scanSqlMigration,
-  scanStripeWebhook,
+  scanWorkspaceFiles,
   type ScanResult,
   type WebFinding,
 } from '../../../../utils/browserScanner';
@@ -45,44 +39,7 @@ export interface ProjectScanOverview {
 
 export function scanProject(files: ProjectFile[]): ScanResult {
   const scannable = files.filter((file) => isScannableFile(file.path));
-  const findings: WebFinding[] = [];
-  for (const file of scannable.filter((candidate) => candidate.path.endsWith('.sql'))) {
-    findings.push(...scanSqlMigration(file.content, file.path).findings);
-  }
-
-  const codeFiles = scannable.filter((file) => /\.(?:[jt]sx?)$/.test(file.path));
-  for (const file of codeFiles) {
-    const searchable = `${file.path}\n${file.content}`.toLowerCase();
-    if (searchable.includes('stripe') || searchable.includes('webhook')) {
-      findings.push(...scanStripeWebhook(file.content, file.path).findings);
-    }
-    findings.push(...scanRscDataLeaks(file.content, file.path).findings);
-    findings.push(...scanColdStart(file.content, file.path).findings);
-  }
-
-  const allExamples = scannable
-    .filter((file) => /(?:^|\/)\.env\.example$/.test(file.path))
-    .map((file) => ({ file: file.path, content: file.content }));
-  const codeSources = codeFiles.map((file) => ({ file: file.path, content: file.content }));
-  const testOnlyKeys = collectTestOnlyEnvKeys(codeSources);
-
-  for (const file of scannable.filter((candidate) => candidate.path.includes('.env'))) {
-    findings.push(...scanEnvVariables(file.content, '', file.path, 'code.ts').findings);
-  }
-  for (const file of codeFiles) {
-    const proposedExample = proposeEnvExamplePath(file.path);
-    const result = scanEnvVariables('', file.content, proposedExample, file.path, {
-      allExamples,
-      testOnlyKeys,
-    });
-    findings.push(...result.findings.filter((finding) => finding.file === file.path));
-  }
-
-  return {
-    errorCount: findings.filter((finding) => finding.severity === 'error').length,
-    warningCount: findings.filter((finding) => finding.severity === 'warning').length,
-    findings,
-  };
+  return scanWorkspaceFiles(scannable.map((file) => ({ file: file.path, content: file.content })));
 }
 
 function compareFileStats(a: ProjectFileStats, b: ProjectFileStats): number {

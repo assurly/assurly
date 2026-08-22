@@ -86,8 +86,8 @@ describe('ShipScoreTrendChart', () => {
     });
 
     expect(screen.getByText(/First scan · 88\/100/)).toBeTruthy();
-    expect(screen.getByText(/Trend unlocks after the next scan/i)).toBeTruthy();
-    expect(screen.getByText(/One data point is a score, not a trend/i)).toBeTruthy();
+    expect(screen.getByText(/Trend unlocks after a new commit/i)).toBeTruthy();
+    expect(screen.getByText(/Scanning the same commit keeps one point/i)).toBeTruthy();
     expect(screen.queryByRole('img', { name: /Ship Score trend from/i })).toBeNull();
     expect(document.querySelector('.ship-score-trend__line')).toBeNull();
   });
@@ -119,5 +119,40 @@ describe('ShipScoreTrendChart', () => {
       expect(screen.getByText(/Trend unavailable/i)).toBeTruthy();
     });
     expect(screen.queryByTestId('ship-score-trend-empty')).toBeNull();
+  });
+
+  it('refetches when refreshKey changes after a later scan', async () => {
+    const fetchTrend = vi
+      .fn()
+      .mockResolvedValueOnce({
+        points: [{ date: '2026-01-02T12:00:00.000Z', shipScore: 88 }],
+      })
+      .mockResolvedValueOnce({
+        points: [
+          { date: '2026-01-01T12:00:00.000Z', shipScore: 88 },
+          { date: '2026-01-03T12:00:00.000Z', shipScore: 90 },
+        ],
+      });
+
+    const { rerender } = render(
+      <ShipScoreTrendChart repositoryId="repo-1" fetchTrend={fetchTrend} refreshKey="scan-1" />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ship-score-trend-empty')).toBeTruthy();
+    });
+
+    rerender(
+      <ShipScoreTrendChart
+        repositoryId="repo-1"
+        fetchTrend={fetchTrend}
+        refreshKey="scan-1|scan-2"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Latest 90\/100/)).toBeTruthy();
+    });
+    expect(fetchTrend).toHaveBeenCalledTimes(2);
   });
 });

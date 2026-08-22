@@ -4,16 +4,22 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactEle
 import type { WebFinding } from '../../../utils/browserScanner';
 import { ClientApiError, clientApi } from '../../../utils/clientApi';
 import { formatCount } from '../../../utils/pluralize';
+import {
+  describeBlockedScan,
+  parseBlockedScan,
+  type BlockedScan,
+} from '../../../utils/scannerBlocked';
+import { scrollDashboardElement } from '../../../utils/scrollToScanDetails';
 import type { ShipGateReport } from '../../../utils/shipGate';
 import { isLikelyScannableUrl } from '../../../utils/urlValidation';
+import type { VisibilityCheck, VisibilityVerdict } from '../../../utils/visibilityScan';
 import { ShipGatePanel } from '../../_components/ship-gate/ShipGatePanel';
 import { DeepReviewPanel, type DeepReviewView } from './DeepReviewPanel';
 import { AlertPreferences } from './AlertPreferences';
-import { CanaryTokens } from './CanaryTokens';
+import { CanarySilentAlarm } from './CanarySilentAlarm';
 import { OwnershipVerify } from './OwnershipVerify';
 import { ProofEvidence, type ProofEvidenceItem } from './ProofEvidence';
 import { VisibilityAuditPanel, type VisibilityView } from './VisibilityAuditPanel';
-import type { VisibilityCheck, VisibilityVerdict } from '../../../utils/visibilityScan';
 
 export interface DeployedUrlScanProps {
   loginUrl?: string;
@@ -142,6 +148,8 @@ export interface DeployedUrlScanState {
   isScanning: boolean;
   scanError: string | null;
   scanResults: UrlScanResults | null;
+  /** The target refused the probe — an honest "unknown" instead of a verdict. */
+  scanBlocked: BlockedScan | null;
   handleSubmit: (event?: FormEvent) => Promise<void>;
   runScan: (targetUrl: string) => Promise<void>;
   /** Attach a newly created guarded target to the current results (no re-scan). */
@@ -169,6 +177,7 @@ export function useDeployedUrlScan(
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanResults, setScanResults] = useState<UrlScanResults | null>(null);
+  const [scanBlocked, setScanBlocked] = useState<BlockedScan | null>(null);
 
   // Keep the latest callbacks without making runScan change identity every render.
   const onActivateRef = useRef(onActivate);
@@ -191,6 +200,7 @@ export function useDeployedUrlScan(
     onActivateRef.current?.();
     setIsScanning(true);
     setScanError(null);
+    setScanBlocked(null);
 
     try {
       const response = await fetch('/api/scan-url', {
@@ -212,7 +222,16 @@ export function useDeployedUrlScan(
         deepReviewLocked?: unknown;
         visibility?: unknown;
         visibilityLocked?: unknown;
+        blocked?: unknown;
       };
+
+      const blocked = parseBlockedScan(data.blocked);
+      if (blocked) {
+        setScanBlocked(blocked);
+        setScanResults(null);
+        return;
+      }
+
       setScanResults({
         targetUrl,
         shipGate: data.report,
@@ -251,10 +270,11 @@ export function useDeployedUrlScan(
     isScanning,
     scanError,
     scanResults,
+    scanBlocked,
     handleSubmit,
     runScan,
     attachTarget,
-    hasActivity: isScanning || scanResults !== null || scanError !== null,
+    hasActivity: isScanning || scanResults !== null || scanError !== null || scanBlocked !== null,
   };
 }
 
@@ -305,6 +325,24 @@ export function DeployedUrlScanCard({ scan }: { scan: DeployedUrlScanState }): R
 }
 
 /**
+ * The honest-unknown state: the target answered but would not let the scanner
+ * in. It deliberately shows no Ship Score and no verdict — a WAF-protected app
+ * must not read as failing, and a page we never saw must not read as passing.
+ */
+function BlockedScanNotice({ blocked }: { blocked: BlockedScan }): ReactElement {
+  const copy = describeBlockedScan(blocked);
+  return (
+    <div data-testid="url-scan-blocked">
+      <h3 className="dashboard-empty-state__title">{copy.title}</h3>
+      <p className="dashboard-empty-state__copy">{copy.detail}</p>
+      <p className="dashboard-empty-state__copy">
+        No Ship Score is shown, because we would be guessing. {copy.nextStep}
+      </p>
+    </div>
+  );
+}
+
+/**
  * The wide results canvas — renders in the same right-hand slot as the repo scan
  * workspace, so a URL scan's live proof + ship gate + follow-ups get full width
  * instead of a tall, narrow column.
@@ -319,7 +357,7 @@ export function DeployedUrlScanResults({
   /** Fires after the user explicitly adds this URL to Your apps. */
   onGuarded?: () => void;
 }): ReactElement {
-  const { scanResults, isScanning, scanError, attachTarget } = scan;
+  const { scanResults, isScanning, scanError, scanBlocked, attachTarget } = scan;
   const resultsRef = useRef<HTMLElement>(null);
   const [isGuarding, setIsGuarding] = useState(false);
   const [guardError, setGuardError] = useState<string | null>(null);
@@ -328,10 +366,8 @@ export function DeployedUrlScanResults({
   // top of the results canvas — otherwise they're left scrolled down by the input
   // tools and have to scroll up to see what they just ran.
   useEffect(() => {
-    if (scanResults) {
-      // Optional-call: `scrollIntoView` is absent in jsdom (tests) but present in
-      // every real browser, so this scrolls in the app and no-ops under test.
-      resultsRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    if (scanResults && resultsRef.current) {
+      scrollDashboardElement(resultsRef.current);
     }
   }, [scanResults]);
 
@@ -368,6 +404,8 @@ export function DeployedUrlScanResults({
                 Running a safe, passive runtime probe. This takes a few seconds.
               </p>
             </>
+          ) : scanBlocked ? (
+            <BlockedScanNotice blocked={scanBlocked} />
           ) : scanError ? (
             <>
               <h3 className="dashboard-empty-state__title">URL scan failed</h3>
@@ -464,7 +502,7 @@ export function DeployedUrlScanResults({
         {scanResults.target?.ownershipVerified ? (
           <>
             <AlertPreferences targetId={scanResults.target.id} />
-            <CanaryTokens targetId={scanResults.target.id} />
+            <CanarySilentAlarm targetId={scanResults.target.id} />
           </>
         ) : null}
         <p className="dashboard-url-scan-hint">

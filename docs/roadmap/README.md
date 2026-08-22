@@ -69,6 +69,8 @@ trust, so it ships first.
 | 13  | [13-manual-checker-ship-loop.md](13-manual-checker-ship-loop.md)         | Manual Checker Ship Loop: What changed, Undo, agent handoff, Ship Receipt             |
 | 14  | [14-manual-checker-scan-parity.md](14-manual-checker-scan-parity.md)     | Manual Checker Project scan uses same noise filter + env resolution as CLI            |
 | 15  | [15-env-doc-path-correctness.md](15-env-doc-path-correctness.md)         | Monorepo-correct `.env.example` targets + silence Actions runtime env noise           |
+| 16  | [16-canary-url-tripwire.md](16-canary-url-tripwire.md)                   | HTTPS `ASSURLY_CANARY_URL` tripwire + silent-alarm Copy CTA + hit rotate copy         |
+| 17  | [17-canary-peak.md](17-canary-peak.md)                                   | Missing plant finding + GitHub/MCP/CLI plant + bundle leak + decoy MCP trap           |
 
 **Recommended build order: 0 → 1 → 2 → (6 messaging, ongoing) → 3 → 4 → 4b → 5.**
 Phase 4b has one human-only step (the actual `npm publish`) — see its "Scope / Non-goals" before starting.

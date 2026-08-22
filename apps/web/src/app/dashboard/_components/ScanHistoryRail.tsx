@@ -4,11 +4,15 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { Scan } from '../../../utils/dbAdapter';
 import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
 import {
-  buildDuplicateShaBadges,
   formatCommitShaShort,
-  formatDuplicateShaBadge,
   formatScanTime,
+  selectLatestScanPerCommit,
 } from '../../../utils/scanHistoryDisplay';
+import {
+  readRailOverflow,
+  SCAN_HISTORY_RAIL_EDGE_INSET,
+  type RailOverflow,
+} from './scanHistoryRailOverflow';
 
 export interface ScanHistoryRailProps {
   scans: Scan[];
@@ -18,6 +22,8 @@ export interface ScanHistoryRailProps {
   onDeleteScan?: (scan: Scan) => void;
 }
 
+const NO_RAIL_OVERFLOW: RailOverflow = { start: false, end: false };
+
 export function ScanHistoryRail({
   scans,
   selectedScanId,
@@ -26,7 +32,8 @@ export function ScanHistoryRail({
 }: ScanHistoryRailProps): ReactElement {
   const chipRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const railRef = useRef<HTMLDivElement>(null);
-  const duplicateBadges = useMemo(() => buildDuplicateShaBadges(scans), [scans]);
+  const visibleScans = useMemo(() => selectLatestScanPerCommit(scans), [scans]);
+  const [overflow, setOverflow] = useState<RailOverflow>(NO_RAIL_OVERFLOW);
 
   // The scan awaiting an explicit delete confirmation, or null when the dialog
   // is closed. Only ever one dialog open at a time, so a single piece of state
@@ -36,6 +43,28 @@ export function ScanHistoryRail({
     open: confirmScan !== null,
     onClose: () => setConfirmScan(null),
   });
+
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) {
+      return;
+    }
+
+    const updateOverflow = (): void => {
+      setOverflow(readRailOverflow(rail));
+    };
+
+    updateOverflow();
+    rail.addEventListener('scroll', updateOverflow, { passive: true });
+    const observer =
+      typeof ResizeObserver === 'function' ? new ResizeObserver(updateOverflow) : null;
+    observer?.observe(rail);
+
+    return () => {
+      rail.removeEventListener('scroll', updateOverflow);
+      observer?.disconnect();
+    };
+  }, [visibleScans]);
 
   useEffect(() => {
     if (!selectedScanId) {
@@ -51,17 +80,18 @@ export function ScanHistoryRail({
     // Reveal the active chip HORIZONTALLY inside the rail only. `scrollIntoView`
     // would also scroll the whole page vertically to the chip — jerking the user
     // down to the middle of the scan workspace. Scrolling the rail's own overflow
-    // keeps the page position untouched.
+    // keeps the page position untouched. The inset matches the edge fade so the
+    // chip lands in the unfaded region, not under the overlay.
     const railRect = rail.getBoundingClientRect();
     const chipRect = activeChip.getBoundingClientRect();
-    const overflowLeft = chipRect.left - railRect.left;
-    const overflowRight = chipRect.right - railRect.right;
+    const overflowLeft = chipRect.left - (railRect.left + SCAN_HISTORY_RAIL_EDGE_INSET);
+    const overflowRight = chipRect.right - (railRect.right - SCAN_HISTORY_RAIL_EDGE_INSET);
     if (overflowLeft < 0) {
-      rail.scrollBy({ left: overflowLeft - 8, behavior: 'smooth' });
+      rail.scrollBy({ left: overflowLeft, behavior: 'smooth' });
     } else if (overflowRight > 0) {
-      rail.scrollBy({ left: overflowRight + 8, behavior: 'smooth' });
+      rail.scrollBy({ left: overflowRight, behavior: 'smooth' });
     }
-  }, [selectedScanId, scans]);
+  }, [selectedScanId, visibleScans]);
 
   const openConfirm = (scan: Scan, trigger: HTMLButtonElement): void => {
     // Remember the "×" so focus returns to it when the dialog closes.
@@ -80,77 +110,77 @@ export function ScanHistoryRail({
     <section
       className="scan-history"
       data-testid="scan-history-rail"
-      aria-label={`Scan history, ${scans.length} scans`}
+      aria-label={`Scan history, ${visibleScans.length} scans`}
     >
-      <h3 className="scan-history__heading">Scan history ({scans.length})</h3>
+      <h3 className="scan-history__heading">Scan history ({visibleScans.length})</h3>
       <div
-        ref={railRef}
-        className="scan-history-rail"
-        // Not a tablist. `role="tablist"` may only own `tab` children, and each
-        // item here also carries a delete button — axe reports that as a
-        // critical violation. The rail never implemented the tab contract
-        // either: no arrow-key roving focus, no `aria-controls` to a tabpanel.
-        // A list of scans is what this actually is, and `aria-current` marks the
-        // selected one without promising keyboard behaviour that does not exist.
-        role="list"
-        aria-label="Select scan by commit"
+        className="scan-history-rail-viewport"
+        data-overflow-start={overflow.start ? 'true' : undefined}
+        data-overflow-end={overflow.end ? 'true' : undefined}
       >
-        {scans.map((scan) => {
-          const isSelected = selectedScanId === scan.id;
-          const duplicateBadge = duplicateBadges.get(scan.id);
+        <div
+          ref={railRef}
+          className="scan-history-rail"
+          // Not a tablist. `role="tablist"` may only own `tab` children, and each
+          // item here also carries a delete button — axe reports that as a
+          // critical violation. The rail never implemented the tab contract
+          // either: no arrow-key roving focus, no `aria-controls` to a tabpanel.
+          // A list of scans is what this actually is, and `aria-current` marks the
+          // selected one without promising keyboard behaviour that does not exist.
+          role="list"
+          aria-label="Select scan by commit"
+        >
+          {visibleScans.map((scan) => {
+            const isSelected = selectedScanId === scan.id;
 
-          return (
-            <div key={scan.id} className="scan-history-rail__item" role="listitem">
-              <button
-                ref={(element) => {
-                  if (element) {
-                    chipRefs.current.set(scan.id, element);
-                    return;
-                  }
-                  chipRefs.current.delete(scan.id);
-                }}
-                type="button"
-                aria-current={isSelected ? 'true' : undefined}
-                data-testid={`scan-history-chip-${scan.id}`}
-                className={[
-                  'scan-history-rail__chip',
-                  isSelected ? 'scan-history-rail__chip--active' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                onClick={() => onSelectScan(scan)}
-              >
-                <span
-                  className={`scan-history-rail__status scan-history-rail__status--${scan.status}`}
-                  aria-hidden="true"
-                />
-                <span className="scan-history-rail__label">
-                  commit {formatCommitShaShort(scan.commit_sha)} ·{' '}
-                  <time dateTime={scan.created_at}>{formatScanTime(scan.created_at)}</time>
-                </span>
-                {duplicateBadge ? (
-                  <span className="scan-history-rail__duplicate">
-                    {formatDuplicateShaBadge(duplicateBadge)}
-                  </span>
-                ) : null}
-              </button>
-
-              {onDeleteScan ? (
+            return (
+              <div key={scan.id} className="scan-history-rail__item" role="listitem">
                 <button
+                  ref={(element) => {
+                    if (element) {
+                      chipRefs.current.set(scan.id, element);
+                      return;
+                    }
+                    chipRefs.current.delete(scan.id);
+                  }}
                   type="button"
-                  className="scan-history-rail__delete"
-                  data-testid={`scan-history-delete-${scan.id}`}
-                  aria-label={`Delete the scan of commit ${formatCommitShaShort(
-                    scan.commit_sha,
-                  )} from ${formatScanTime(scan.created_at)}`}
-                  onClick={(event) => openConfirm(scan, event.currentTarget)}
+                  aria-current={isSelected ? 'true' : undefined}
+                  data-testid={`scan-history-chip-${scan.id}`}
+                  className={[
+                    'scan-history-rail__chip',
+                    isSelected ? 'scan-history-rail__chip--active' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  onClick={() => onSelectScan(scan)}
                 >
-                  <span aria-hidden="true">×</span>
+                  <span
+                    className={`scan-history-rail__status scan-history-rail__status--${scan.status}`}
+                    aria-hidden="true"
+                  />
+                  <span className="scan-history-rail__label">
+                    commit {formatCommitShaShort(scan.commit_sha)} ·{' '}
+                    <time dateTime={scan.created_at}>{formatScanTime(scan.created_at)}</time>
+                  </span>
                 </button>
-              ) : null}
-            </div>
-          );
-        })}
+
+                {onDeleteScan ? (
+                  <button
+                    type="button"
+                    className="scan-history-rail__delete"
+                    data-testid={`scan-history-delete-${scan.id}`}
+                    aria-label={`Delete the scan of commit ${formatCommitShaShort(
+                      scan.commit_sha,
+                    )} from ${formatScanTime(scan.created_at)}`}
+                    onClick={(event) => openConfirm(scan, event.currentTarget)}
+                  >
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {confirmScan ? (

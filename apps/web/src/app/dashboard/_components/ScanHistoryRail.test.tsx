@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Scan } from '../../../utils/dbAdapter';
 import { ScanHistoryRail } from './ScanHistoryRail';
+import { SCAN_HISTORY_RAIL_EDGE_INSET } from './scanHistoryRailOverflow';
 
 const sharedSha = '669c0392ea81119689959fdbe63b05c3c95ce544';
 
@@ -35,17 +36,24 @@ const scans: Scan[] = [
 describe('ScanHistoryRail', () => {
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn();
+    class FakeResizeObserver {
+      observe(): void {}
+      disconnect(): void {}
+      unobserve(): void {}
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
   });
 
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('renders a horizontally scrollable rail with scan count heading', () => {
-    render(<ScanHistoryRail scans={scans} selectedScanId="scan-1" onSelectScan={vi.fn()} />);
+    render(<ScanHistoryRail scans={scans} selectedScanId="scan-3" onSelectScan={vi.fn()} />);
 
-    expect(screen.getByRole('heading', { name: 'Scan history (4)' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Scan history (2)' })).toBeTruthy();
     expect(screen.getByTestId('scan-history-rail')).toBeTruthy();
 
     const rail = screen.getByRole('list', { name: 'Select scan by commit' });
@@ -53,26 +61,26 @@ describe('ScanHistoryRail', () => {
     expect(screen.getByTestId('scan-history-rail').className).toContain('scan-history');
   });
 
-  it('labels chips with commit SHA, time, and duplicate badges', () => {
-    render(<ScanHistoryRail scans={scans} selectedScanId="scan-2" onSelectScan={vi.fn()} />);
+  it('labels chips with commit SHA and time, one chip per commit', () => {
+    render(<ScanHistoryRail scans={scans} selectedScanId="scan-3" onSelectScan={vi.fn()} />);
 
-    expect(screen.getAllByRole('button', { name: /commit 669c039 ·/i }).length).toBe(3);
-    expect(screen.getAllByText('#1 of 3').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('#2 of 3').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('#3 of 3').length).toBeGreaterThan(0);
-    expect(screen.queryByText(/#1 of 1/i)).toBeNull();
+    expect(screen.getAllByRole('button', { name: /commit 669c039 ·/i }).length).toBe(1);
+    expect(screen.getAllByRole('button', { name: /commit deadbee ·/i }).length).toBe(1);
+    expect(screen.queryByText(/#1 of 3/i)).toBeNull();
+    expect(screen.queryByTestId('scan-history-chip-scan-1')).toBeNull();
+    expect(screen.getByTestId('scan-history-chip-scan-3')).toBeTruthy();
   });
 
   it('marks the selected scan and calls onSelectScan when a chip is clicked', () => {
     const onSelectScan = vi.fn();
 
-    render(<ScanHistoryRail scans={scans} selectedScanId="scan-1" onSelectScan={onSelectScan} />);
+    render(<ScanHistoryRail scans={scans} selectedScanId="scan-3" onSelectScan={onSelectScan} />);
 
     // The rail is a list, not a tablist, so the selected scan is marked with
     // `aria-current` — the unselected chips carry no attribute at all.
-    const selectedChip = screen.getByTestId('scan-history-chip-scan-1');
+    const selectedChip = screen.getByTestId('scan-history-chip-scan-3');
     expect(selectedChip.getAttribute('aria-current')).toBe('true');
-    expect(screen.getByTestId('scan-history-chip-scan-2').getAttribute('aria-current')).toBeNull();
+    expect(screen.getByTestId('scan-history-chip-scan-4').getAttribute('aria-current')).toBeNull();
 
     fireEvent.click(screen.getByTestId('scan-history-chip-scan-4'));
     expect(onSelectScan).toHaveBeenCalledWith(scans[3]);
@@ -84,7 +92,7 @@ describe('ScanHistoryRail', () => {
     Element.prototype.scrollBy = scrollBy;
 
     const { rerender } = render(
-      <ScanHistoryRail scans={scans} selectedScanId="scan-1" onSelectScan={vi.fn()} />,
+      <ScanHistoryRail scans={scans} selectedScanId="scan-3" onSelectScan={vi.fn()} />,
     );
 
     const rail = screen.getByRole('list', { name: 'Select scan by commit' });
@@ -99,7 +107,10 @@ describe('ScanHistoryRail', () => {
     // Only the rail scrolls horizontally; the page-scrolling scrollIntoView is
     // never used, so the workspace above the rail stays put.
     expect(scrollIntoView).not.toHaveBeenCalled();
-    expect(scrollBy).toHaveBeenCalledWith({ left: 320 - 200 + 8, behavior: 'smooth' });
+    expect(scrollBy).toHaveBeenCalledWith({
+      left: 320 - (200 - SCAN_HISTORY_RAIL_EDGE_INSET),
+      behavior: 'smooth',
+    });
     expect(scrollBy.mock.calls[0][0]).not.toHaveProperty('top');
   });
 
@@ -111,6 +122,50 @@ describe('ScanHistoryRail', () => {
 
     expect(wrapper.className).toContain('scan-history');
     expect(rail.className).toContain('scan-history-rail');
+    expect(rail.parentElement?.className).toContain('scan-history-rail-viewport');
+  });
+
+  it('does not mark edge overflow when the rail content fits', () => {
+    render(<ScanHistoryRail scans={scans} selectedScanId="scan-1" onSelectScan={vi.fn()} />);
+
+    const viewport = screen.getByRole('list', { name: 'Select scan by commit' }).parentElement;
+    expect(viewport?.getAttribute('data-overflow-start')).toBeNull();
+    expect(viewport?.getAttribute('data-overflow-end')).toBeNull();
+  });
+
+  it('marks overflow-end at the start of a scrollable rail and overflow-start after scrolling', () => {
+    render(<ScanHistoryRail scans={scans} selectedScanId="scan-1" onSelectScan={vi.fn()} />);
+
+    const rail = screen.getByRole('list', { name: 'Select scan by commit' });
+    const viewport = rail.parentElement;
+    const metrics = { scrollLeft: 0, scrollWidth: 400, clientWidth: 200 };
+
+    Object.defineProperty(rail, 'scrollWidth', {
+      configurable: true,
+      get: () => metrics.scrollWidth,
+    });
+    Object.defineProperty(rail, 'clientWidth', {
+      configurable: true,
+      get: () => metrics.clientWidth,
+    });
+    Object.defineProperty(rail, 'scrollLeft', {
+      configurable: true,
+      get: () => metrics.scrollLeft,
+    });
+
+    fireEvent.scroll(rail);
+    expect(viewport?.getAttribute('data-overflow-start')).toBeNull();
+    expect(viewport?.getAttribute('data-overflow-end')).toBe('true');
+
+    metrics.scrollLeft = 80;
+    fireEvent.scroll(rail);
+    expect(viewport?.getAttribute('data-overflow-start')).toBe('true');
+    expect(viewport?.getAttribute('data-overflow-end')).toBe('true');
+
+    metrics.scrollLeft = 200;
+    fireEvent.scroll(rail);
+    expect(viewport?.getAttribute('data-overflow-start')).toBe('true');
+    expect(viewport?.getAttribute('data-overflow-end')).toBeNull();
   });
 
   it('opens a confirm dialog from × without deleting until confirmed', () => {

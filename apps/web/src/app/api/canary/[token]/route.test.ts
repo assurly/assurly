@@ -99,6 +99,22 @@ describe('canary callback oracle safety', () => {
     expect(getRes.status).toBe(postRes.status);
   });
 
+  it('POST JSON-RPC still returns the identical oracle-safe body', async () => {
+    const getRes = await GET(new Request(`http://localhost/api/canary/${VALID}`), {
+      params: Promise.resolve({ token: VALID }),
+    });
+    const postRes = await POST(
+      new Request(`http://localhost/api/canary/${VALID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+      }),
+      { params: Promise.resolve({ token: VALID }) },
+    );
+    expect(postRes.status).toBe(200);
+    expect(await postRes.text()).toBe(await getRes.text());
+  });
+
   it('never includes owner metadata in any response body', async () => {
     db.getCanaryTokenByHash.mockResolvedValue({
       id: 'c1',

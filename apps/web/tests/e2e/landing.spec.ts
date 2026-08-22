@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { PRO_TRIAL_COPY } from '../../src/utils/pricing';
 
 test.describe('Landing page', () => {
   test('hero focuses on URL scan, fixing, and trust — not static analysis', async ({ page }) => {
@@ -38,6 +39,8 @@ test.describe('Landing page', () => {
       pricing.getByText('Continuous Guardian on every deploy', { exact: true }),
     ).toBeVisible();
     await expect(pricing.getByText('Keyed verdict API for your users')).toBeVisible();
+    await expect(pricing.getByText(PRO_TRIAL_COPY.featureBullet)).toBeVisible();
+    await expect(pricing.getByRole('link', { name: 'Start 3-day trial' })).toBeVisible();
     await expect(pricing.getByText(/scan rules/i)).toHaveCount(0);
   });
 
@@ -158,5 +161,44 @@ test.describe('Landing page', () => {
     expect(headMeta.twitterCard).toBe('summary_large_image');
     expect(headMeta.twitterTitle).toContain('Pre-deploy Ship Gate');
     expect(headMeta.canonical).toMatch(/\/$/);
+  });
+
+  test('footer Cookies link lands the cookies heading below the sticky header', async ({
+    page,
+  }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('contentinfo').getByRole('link', { name: 'Cookies' }).click();
+    await expect(page).toHaveURL(/\/privacy#cookies$/);
+
+    const heading = page.getByRole('heading', {
+      name: /10\. Cookies and similar technologies/i,
+    });
+    await expect(heading).toBeVisible();
+
+    await expect(async () => {
+      const gap = await page.evaluate(() => {
+        const header = document.querySelector('.legal-header');
+        const h2 = document.querySelector('#cookies h2');
+        if (!header || !h2) return null;
+        return h2.getBoundingClientRect().top - header.getBoundingClientRect().bottom;
+      });
+      expect(gap).toBeGreaterThanOrEqual(8);
+    }).toPass();
+  });
+
+  test('color theme toggle switches Light and Dark on the document', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    const theme = page.getByRole('group', { name: 'Color theme' });
+    await expect(theme).toBeVisible();
+
+    await theme.getByRole('button', { name: 'Light' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+
+    await theme.getByRole('button', { name: 'Dark' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+    await theme.getByRole('button', { name: 'System' }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme-preference', 'system');
   });
 });

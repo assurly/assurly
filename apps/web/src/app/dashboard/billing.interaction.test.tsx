@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import DashboardClient from './_components/DashboardClient';
 import * as clientApiModule from '../../utils/clientApi';
+import { proTrialCheckoutCta } from '../../utils/pricing';
 
 const { clientApi, ClientApiError } = clientApiModule;
 type SessionResult = clientApiModule.SessionResult;
@@ -28,6 +29,7 @@ vi.mock('../../utils/clientApi', async (importOriginal) => {
       ...actual.clientApi,
       targets: vi.fn(async () => ({ targets: [] })),
       portal: vi.fn(),
+      checkout: vi.fn(),
     },
   };
 });
@@ -47,6 +49,7 @@ const proSession: SessionResult = {
 };
 
 const portalMock = vi.mocked(clientApi.portal);
+const checkoutMock = vi.mocked(clientApi.checkout);
 const assignMock = vi.fn();
 const originalLocation = window.location;
 
@@ -59,6 +62,7 @@ function openManageBilling(): void {
 
 beforeEach(() => {
   portalMock.mockReset();
+  checkoutMock.mockReset();
   assignMock.mockReset();
 
   // jsdom's localStorage is not reliably initialized; a mount effect reads it.
@@ -148,5 +152,37 @@ describe('Manage Billing button (regression for silent router.push redirect)', (
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('Billing management is temporarily unavailable');
     expect(assignMock).not.toHaveBeenCalled();
+  });
+});
+
+const freeSession: SessionResult = {
+  user: { id: 'user-1', name: 'Free User', email: 'free@example.com', avatar_url: '' },
+  organization: {
+    id: 'org-1',
+    name: 'Acme',
+    billing_plan: 'free',
+    created_at: '2026-06-21T00:00:00Z',
+  },
+  repositories: [],
+};
+
+describe('Upgrade checkout when a subscription already exists', () => {
+  it('opens the billing portal instead of a second Checkout Session', async () => {
+    checkoutMock.mockRejectedValue(
+      new ClientApiError(
+        'This workspace already has a Pro subscription. Manage it from billing.',
+        409,
+        'already_subscribed',
+      ),
+    );
+    portalMock.mockResolvedValue({ url: PORTAL_URL });
+
+    render(<DashboardClient initialSession={freeSession} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open account menu for Free User' }));
+    fireEvent.click(screen.getByRole('button', { name: proTrialCheckoutCta('$', 'monthly') }));
+
+    await waitFor(() => expect(checkoutMock).toHaveBeenCalledWith('monthly'));
+    await waitFor(() => expect(portalMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith(PORTAL_URL));
   });
 });

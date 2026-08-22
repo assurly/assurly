@@ -139,6 +139,13 @@ describe('GitHub webhook security and idempotency', () => {
         shipScore: expect.any(Number),
         verdict: expect.stringMatching(/^(ready|review|blocked)$/),
         scannedFileCount: expect.any(Number),
+        scanScope: expect.objectContaining({
+          scanned: 0,
+          skipped: 0,
+          sourceTotal: 0,
+          roots: ['repository'],
+          gaps: { notAnalysed: 0, overLimit: 0, outsideAppRoots: 0 },
+        }),
       }),
     );
     expect(db.finishGitHubDelivery).toHaveBeenCalledWith('delivery-1', true);
@@ -147,6 +154,55 @@ describe('GitHub webhook security and idempotency', () => {
         ([, options]) => options.headers.Authorization === 'Bearer installation-token',
       ),
     ).toBe(true);
+  });
+
+  it('persists a source-file scanScope for mixed JS and Go trees', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/check-runs') && init?.method !== 'PATCH') {
+        return new Response(JSON.stringify({ id: 99 }), { status: 201 });
+      }
+      if (url.includes('/git/trees/')) {
+        return new Response(
+          JSON.stringify({
+            tree: [
+              { path: 'src/app.ts', type: 'blob' },
+              { path: 'internal/handler/http/stripe_handler.go', type: 'blob' },
+              { path: 'README.md', type: 'blob' },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/contents/')) {
+        return new Response('export const ok = true;\n', { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect((await POST(request())).status).toBe(202);
+    const work = mocks.after.mock.calls[0][0] as () => Promise<void>;
+    await work();
+
+    expect(db.saveScan).toHaveBeenCalledWith(
+      'repo-uuid',
+      'a'.repeat(40),
+      'feature/a',
+      expect.any(String),
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Array),
+      expect.objectContaining({
+        scanScope: expect.objectContaining({
+          scanned: 1,
+          skipped: 1,
+          sourceTotal: 2,
+          unanalyzed: [{ language: 'Go', fileCount: 1 }],
+          gaps: { notAnalysed: 1, overLimit: 0, outsideAppRoots: 0 },
+        }),
+      }),
+    );
   });
 
   it('fires a regression alert once when a previous scan exists', async () => {

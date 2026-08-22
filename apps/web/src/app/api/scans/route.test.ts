@@ -175,6 +175,39 @@ describe('/api/scans persistence contract', () => {
     expect(db.saveScan).toHaveBeenCalledTimes(1);
   });
 
+  it('stores a failed empty scan with a null ship score even if the client sends 0', async () => {
+    const response = await postScan({
+      repoId,
+      commitSha: 'abcdef1',
+      branch: 'src',
+      status: 'failed',
+      errors: 0,
+      warnings: 0,
+      findings: [],
+      scannedFileCount: 0,
+      cleanFileCount: 0,
+      shipScore: 0,
+      verdict: 'failed',
+      failureReason: 'no_eligible_files',
+    });
+
+    expect(response.status).toBe(201);
+    expect(db.saveScan).toHaveBeenCalledWith(
+      repoId,
+      'abcdef1',
+      'src',
+      'failed',
+      0,
+      0,
+      [],
+      expect.objectContaining({
+        shipScore: null,
+        verdict: 'failed',
+        failureReason: 'no_eligible_files',
+      }),
+    );
+  });
+
   it('rejects payloads exceeding the 100 findings limit without touching the database', async () => {
     const findings = Array.from({ length: 101 }, (_, i) => finding('error', i));
     const response = await postScan({

@@ -35,3 +35,34 @@ export const PRICES: Record<Currency, CurrencyPrices> = {
     guardMonthlyEquiv: 10.8,
   },
 };
+
+/**
+ * Pro trial length and the sentences that describe it.
+ *
+ * Checkout grants this many days. Marketing, FAQ, schema.org, and legal copy
+ * read the same number so a duration change cannot leave a surface claiming 7.
+ * Lives here — not next to Stripe — because client components must not import
+ * the checkout guard.
+ */
+export const PRO_TRIAL_PERIOD_DAYS = 3;
+
+export const PRO_TRIAL_COPY = {
+  featureBullet: `${PRO_TRIAL_PERIOD_DAYS}-day free trial — card required, cancel before day ${PRO_TRIAL_PERIOD_DAYS} and you pay nothing`,
+  cta: `Start ${PRO_TRIAL_PERIOD_DAYS}-day trial`,
+  sectionHint: `Pro includes a ${PRO_TRIAL_PERIOD_DAYS}-day free trial.`,
+  checkoutSuccess: `Assurly Pro is active. First-time checkouts include a ${PRO_TRIAL_PERIOD_DAYS}-day trial before any charge.`,
+} as const;
+
+export function proTrialCheckoutCta(currencySymbol: string, period: 'monthly' | 'yearly'): string {
+  const usd = PRICES.USD;
+  switch (period) {
+    case 'yearly':
+      return `${PRO_TRIAL_COPY.cta} (${currencySymbol}${usd.guardYearly}/yr after)`;
+    case 'monthly':
+      return `${PRO_TRIAL_COPY.cta} (${currencySymbol}${usd.guardMonthly}/mo after)`;
+    default: {
+      const exhaustive: never = period;
+      return exhaustive;
+    }
+  }
+}

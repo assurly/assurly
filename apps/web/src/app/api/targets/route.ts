@@ -8,6 +8,7 @@ import { assertScannableUrl, UrlSafetyError } from '../../../utils/urlSafety';
 import { resolveVerdictFromScanFindings, type Verdict } from '../../../utils/shipGate';
 import type {
   DbAdapter,
+  LatestScanSummary,
   Organization,
   Repository,
   RepositoryScanCapability,
@@ -17,6 +18,7 @@ import type {
 import { isGitHubRepositoryName } from '../../../utils/githubApp';
 import type { VerdictEvidenceShape } from '../../../utils/publicTrust';
 import {
+  clampShipScoreForBlockedVerdict,
   clampShipScoreForCoverage,
   indicatesIncompleteCoverage,
   resolveDisplayedShipScore,
@@ -51,6 +53,9 @@ export interface TargetCard {
   badgeToken: string | null;
   /** Repo-only capability for Unscanned hygiene / CLI-only cards. */
   scanCapability: RepositoryScanCapability;
+  /** True when the latest persisted scan failed before producing a verdict. */
+  lastScanFailed: boolean;
+  lastScanFailureReason: string | null;
 }
 
 function resolveRepoScanCapability(repo: Repository): RepositoryScanCapability {
@@ -70,11 +75,15 @@ function scoreDroppedFromEvidence(
   return currentScore < previous;
 }
 
+function isFailedLatestScan(latest: LatestScanSummary | null | undefined): boolean {
+  if (!latest) return false;
+  return latest.verdict === 'failed' || Boolean(latest.failure_reason);
+}
+
 function cardFromTargetRow(
   target: Target,
   repo: Repository,
-  latestScanId: string | null,
-  latestShipScore?: number | null,
+  latest: LatestScanSummary | null,
 ): TargetCard {
   const evidence = (target.verdict_evidence ?? {}) as VerdictEvidenceShape;
   const topIssue = evidence.topIssue ?? null;
@@ -82,9 +91,16 @@ function cardFromTargetRow(
     topIssueKey: topIssue?.key,
     topIssueLabel: topIssue?.label,
   });
-  const rawScore =
-    typeof latestShipScore === 'number' ? latestShipScore : target.current_ship_score;
-  const shipScore = clampShipScoreForCoverage(rawScore, incomplete);
+  const failed = isFailedLatestScan(latest);
+  const rawScore = failed
+    ? null
+    : typeof latest?.ship_score === 'number'
+      ? latest.ship_score
+      : target.current_ship_score;
+  const shipScore = clampShipScoreForBlockedVerdict(
+    clampShipScoreForCoverage(rawScore, incomplete),
+    target.current_verdict === 'blocked',
+  );
   return {
     id: target.id,
     kind: 'repo',
@@ -96,17 +112,23 @@ function cardFromTargetRow(
     shipScore,
     topIssue,
     lastCheckedAt: target.last_checked_at,
-    latestScanId,
+    latestScanId: latest?.id ?? null,
     ownershipVerified: target.ownership_verified,
     guardianEnabled: true,
     scoreDropped: scoreDroppedFromEvidence(evidence, shipScore),
     badgeToken: target.badge_token,
     scanCapability: resolveRepoScanCapability(repo),
+    lastScanFailed: failed,
+    lastScanFailureReason: latest?.failure_reason ?? null,
   };
 }
 
 function cardFromUrlTarget(target: Target): TargetCard {
   const evidence = (target.verdict_evidence ?? {}) as VerdictEvidenceShape;
+  const shipScore = clampShipScoreForBlockedVerdict(
+    target.current_ship_score,
+    target.current_verdict === 'blocked',
+  );
   return {
     id: target.id,
     kind: 'url',
@@ -115,15 +137,17 @@ function cardFromUrlTarget(target: Target): TargetCard {
     repositoryId: null,
     generatorFingerprint: target.generator_fingerprint,
     verdict: target.current_verdict ?? 'unknown',
-    shipScore: target.current_ship_score,
+    shipScore,
     topIssue: evidence.topIssue ?? null,
     lastCheckedAt: target.last_checked_at,
     latestScanId: null,
     ownershipVerified: target.ownership_verified,
     guardianEnabled: target.ownership_verified,
-    scoreDropped: scoreDroppedFromEvidence(evidence, target.current_ship_score),
+    scoreDropped: scoreDroppedFromEvidence(evidence, shipScore),
     badgeToken: target.badge_token,
     scanCapability: 'browser',
+    lastScanFailed: false,
+    lastScanFailureReason: null,
   };
 }
 
@@ -158,6 +182,8 @@ async function deriveCardFromLatestScan(
     scoreDropped: false,
     badgeToken: target?.badge_token ?? null,
     scanCapability: resolveRepoScanCapability(repo),
+    lastScanFailed: false,
+    lastScanFailureReason: null,
   };
   if (!latest) return base;
 
@@ -167,6 +193,8 @@ async function deriveCardFromLatestScan(
       ...base,
       lastCheckedAt: latest.created_at,
       latestScanId: latest.id,
+      lastScanFailed: true,
+      lastScanFailureReason: latest.failure_reason ?? null,
     };
   }
   if (typeof latest.ship_score === 'number' && latest.verdict) {
@@ -206,7 +234,7 @@ async function deriveCardFromLatestScan(
 
 /**
  * Enforces the plan's guarded-app entitlement before creating a NEW url target.
- * Re-guarding an existing origin is always allowed. Fails open on a DB count
+ * Re-guarding an existing origin is always allowed. Fails closed on a DB count
  * error; throws 402 on a confirmed over-limit.
  */
 async function assertWithinGuardedAppLimit(
@@ -230,7 +258,11 @@ async function assertWithinGuardedAppLimit(
     repositoryCount = repos.length;
     urlTargetCount = targets.filter((t) => t.kind === 'url').length;
   } catch {
-    return;
+    throw new ApiError(
+      503,
+      'plan_limit_unavailable',
+      'Could not verify your plan limit. Try again in a moment.',
+    );
   }
 
   const currentCount = countGuardedApps({ repositoryCount, urlTargetCount });
@@ -275,20 +307,16 @@ export const GET = secureRoute(
     // One-off probes never create rows; every url target here was explicitly Guarded.
     const urlTargets = targets.filter(isListedUrlTarget);
 
+    const latestByRepoId = await context.db.getLatestScanSummaries(repos.map((repo) => repo.id));
+
     // A synced target row is authoritative and cheap; only repos without one
     // pay for a latest-scan derivation. All cards are built in parallel.
     const repoCards = await Promise.all(
       repos.map(async (repo): Promise<TargetCard> => {
         const target = targetByRepoId.get(repo.id);
         if (target && target.current_verdict) {
-          const scans = await context.db.getRecentScans(repo.id);
-          const latest = scans[0];
-          return cardFromTargetRow(
-            target,
-            repo,
-            latest?.id ?? null,
-            typeof latest?.ship_score === 'number' ? latest.ship_score : null,
-          );
+          const latest = latestByRepoId.get(repo.id);
+          return cardFromTargetRow(target, repo, latest ?? null);
         }
         return deriveCardFromLatestScan(context.db, repo, target);
       }),

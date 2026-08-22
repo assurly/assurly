@@ -81,7 +81,7 @@ export function ScanDetailsPanel({
 
   const showFixSummary =
     fixSummary !== null &&
-    (fixSummary.issueCount > 0 ||
+    (fixSummary.blockerCount > 0 ||
       fixSummary.fixableCount > 0 ||
       fixSummary.remainingCount > 0 ||
       displayedFindings.some((finding) => finding.severity === 'error'));
@@ -156,7 +156,8 @@ export function ScanDetailsPanel({
           <div className="scan-fix-summary__metric">
             <span className="scan-fix-summary__label">Upstream code</span>
             <strong className="scan-fix-summary__value scan-fix-summary__value--issue">
-              {fixSummary.issueCount} {fixSummary.issueCount === 1 ? 'issue' : 'issues'} detected
+              {formatCount(fixSummary.blockerCount, 'blocker')} ·{' '}
+              {formatCount(fixSummary.findingCount, 'finding')}
             </strong>
             <p className="scan-fix-summary__hint">
               The scan reads the repository branch on GitHub. Issues remain until fixes are merged

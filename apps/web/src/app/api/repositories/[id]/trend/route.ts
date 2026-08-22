@@ -3,9 +3,9 @@ import { z } from 'zod';
 import { RATE_LIMITS, requireRouteUser, secureRoute } from '../../../../../utils/apiSecurity';
 import { requireRepositoryAccess } from '../../../../../utils/authorization';
 import type { Scan } from '../../../../../utils/dbAdapter';
+import { selectLatestScanPerCommit } from '../../../../../utils/scanHistoryDisplay';
 import {
-  INCOMPLETE_NO_BLOCKER_FLOOR,
-  INCOMPLETE_SCORE_CAP,
+  clampShipScoreForBlockedVerdict,
   resolveDisplayedShipScore,
 } from '../../../../../utils/shipScoreDisplay';
 
@@ -28,9 +28,13 @@ const trendPointSchema = z.object({
  * fall back to recomputation without inventing a non-zero file count.
  */
 export function resolveTrendShipScore(
-  scan: Pick<Scan, 'ship_score' | 'scanned_file_count' | 'clean_file_count'>,
+  scan: Pick<Scan, 'ship_score' | 'scanned_file_count' | 'clean_file_count' | 'verdict'>,
   findings: Parameters<typeof resolveDisplayedShipScore>[1],
 ): number {
+  if (typeof scan.ship_score === 'number') {
+    const blocked = scan.verdict === 'blocked';
+    return clampShipScoreForBlockedVerdict(scan.ship_score, blocked) ?? scan.ship_score;
+  }
   return resolveDisplayedShipScore(scan, findings);
 }
 
@@ -50,24 +54,28 @@ export const GET = secureRoute(
     const context = requireRouteUser(auth);
     await requireRepositoryAccess(context, params.id);
 
-    const scans = (await context.db.getRecentScans(params.id)).slice(0, TREND_SCAN_LIMIT);
-    const points = await Promise.all(
+    const scans = selectLatestScanPerCommit(await context.db.getRecentScans(params.id)).slice(
+      0,
+      TREND_SCAN_LIMIT,
+    );
+    const resolved = await Promise.all(
       scans.map(async (scan) => {
-        // Persisted scores inside the incomplete trust band skip findings fetch.
-        // Above the cap or below the no-blocker floor (or legacy null) load
-        // findings so incomplete Instant Gate can clamp / floor dishonest rows.
-        const needsFindings =
-          typeof scan.ship_score !== 'number' ||
-          scan.ship_score > INCOMPLETE_SCORE_CAP ||
-          scan.ship_score < INCOMPLETE_NO_BLOCKER_FLOOR;
-        const findings = needsFindings ? await context.db.getScanFindings(scan.id) : [];
-        return trendPointSchema.parse({
-          date: scan.created_at,
-          shipScore: resolveTrendShipScore(scan, findings),
-        });
+        try {
+          const findings =
+            typeof scan.ship_score === 'number' ? [] : await context.db.getScanFindings(scan.id);
+          return trendPointSchema.parse({
+            date: scan.created_at,
+            shipScore: Math.round(resolveTrendShipScore(scan, findings)),
+          });
+        } catch {
+          return null;
+        }
       }),
     );
 
+    const points = resolved.filter(
+      (point): point is { date: string; shipScore: number } => point !== null,
+    );
     points.reverse();
     return NextResponse.json({ points });
   },

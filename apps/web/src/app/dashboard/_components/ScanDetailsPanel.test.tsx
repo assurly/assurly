@@ -54,7 +54,8 @@ function buildProps(overrides: Partial<ScanDetailsPanelProps> = {}): ScanDetails
       cleanFileCount: 10,
     }),
     fixSummary: {
-      issueCount: 1,
+      blockerCount: 1,
+      findingCount: 1,
       fixableCount: 1,
       proposedCount: 0,
       remainingCount: 1,
@@ -84,6 +85,7 @@ describe('ScanDetailsPanel information architecture', () => {
       'fix-summary',
       'findings',
     ]);
+    expect(screen.getByText('1 blocker · 1 finding')).toBeTruthy();
   });
 
   it('places Ship Gate ahead of upstream/fix metrics in the DOM', () => {
@@ -134,7 +136,7 @@ describe('ScanDetailsPanel information architecture', () => {
   it('collapses detailed findings behind a Show details control', () => {
     render(<ScanDetailsPanel {...buildProps()} />);
 
-    expect(screen.getByText('Show details · 2 findings')).toBeTruthy();
+    expect(screen.getByText('2 findings')).toBeTruthy();
     expect((screen.getByTestId('scan-details-findings') as HTMLDetailsElement).open).toBe(false);
 
     fireEvent.click(screen.getByTestId('scan-findings-details-toggle'));
@@ -163,7 +165,8 @@ describe('ScanDetailsPanel information architecture', () => {
       <ScanDetailsPanel
         {...buildProps({
           fixSummary: {
-            issueCount: 0,
+            blockerCount: 0,
+            findingCount: 0,
             fixableCount: 0,
             proposedCount: 0,
             remainingCount: 0,

@@ -6,13 +6,18 @@ import { POST as portal } from './stripe/portal/route';
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
   checkoutCreate: vi.fn(),
+  checkoutList: vi.fn(),
+  checkoutExpire: vi.fn(),
   customerRetrieve: vi.fn(),
   customerCreate: vi.fn(),
   customerSearch: vi.fn(),
   customerList: vi.fn(),
   subscriptionSearch: vi.fn(),
+  subscriptionList: vi.fn(),
   portalCreate: vi.fn(),
   setOrganizationStripeCustomerId: vi.fn(),
+  getOrganization: vi.fn(),
+  processStripeBillingEvent: vi.fn(),
   getAdminDbAdapter: vi.fn(),
 }));
 
@@ -32,14 +37,20 @@ vi.mock('../../utils/stripe', async (importOriginal) => ({
   getStripePriceId: (plan: string) =>
     plan === 'yearly' ? 'price_yearly_server' : 'price_monthly_server',
   getStripeClient: () => ({
-    checkout: { sessions: { create: mocks.checkoutCreate } },
+    checkout: {
+      sessions: {
+        create: mocks.checkoutCreate,
+        list: mocks.checkoutList,
+        expire: mocks.checkoutExpire,
+      },
+    },
     customers: {
       retrieve: mocks.customerRetrieve,
       create: mocks.customerCreate,
       search: mocks.customerSearch,
       list: mocks.customerList,
     },
-    subscriptions: { search: mocks.subscriptionSearch },
+    subscriptions: { search: mocks.subscriptionSearch, list: mocks.subscriptionList },
     billingPortal: { sessions: { create: mocks.portalCreate } },
   }),
 }));
@@ -53,6 +64,8 @@ const db = {
 describe('billing API ownership and request safety', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.STRIPE_PRICE_MONTHLY = 'price_monthly_server';
+    process.env.STRIPE_PRICE_YEARLY = 'price_yearly_server';
     mocks.requireUser.mockResolvedValue({
       user: { id: 'user-a', name: 'A', email: 'a@example.com', avatar_url: '' },
       accessToken: 'verified',
@@ -69,17 +82,29 @@ describe('billing API ownership and request safety', () => {
       organization_id: 'org-a',
     });
     mocks.checkoutCreate.mockResolvedValue({ url: 'https://checkout.stripe.com/c/pay/test' });
+    mocks.checkoutList.mockResolvedValue({ data: [] });
+    mocks.checkoutExpire.mockResolvedValue({});
     mocks.portalCreate.mockResolvedValue({ url: 'https://billing.stripe.com/p/session/test' });
     mocks.getAdminDbAdapter.mockReturnValue({
       setOrganizationStripeCustomerId: mocks.setOrganizationStripeCustomerId,
+      getOrganization: mocks.getOrganization,
+      processStripeBillingEvent: mocks.processStripeBillingEvent,
     });
+    mocks.getOrganization.mockResolvedValue({ id: 'org-a', billing_plan: 'free' });
     mocks.customerSearch.mockResolvedValue({ data: [] });
     mocks.customerList.mockResolvedValue({ data: [] });
     mocks.subscriptionSearch.mockResolvedValue({ data: [] });
+    mocks.subscriptionList.mockResolvedValue({ data: [] });
     mocks.setOrganizationStripeCustomerId.mockResolvedValue(undefined);
+    mocks.processStripeBillingEvent.mockResolvedValue(true);
+    mocks.customerCreate.mockResolvedValue({
+      id: 'cus_new',
+      deleted: false,
+      metadata: { organizationId: 'org-a' },
+    });
   });
 
-  it('uses a server price and fixed APP_URL for Checkout', async () => {
+  it('uses a server price, existing customer, and a 3-day trial for Checkout', async () => {
     const response = await checkout(
       new Request('https://attacker.example/api/stripe/checkout', {
         method: 'POST',
@@ -91,13 +116,77 @@ describe('billing API ownership and request safety', () => {
     expect(response.status).toBe(200);
     expect(mocks.checkoutCreate).toHaveBeenCalledWith(
       expect.objectContaining({
+        customer: 'cus_new',
         mode: 'subscription',
+        payment_method_collection: 'always',
         success_url: 'https://app.assurly.example/dashboard?success=stripe_upgrade',
         cancel_url: 'https://app.assurly.example/dashboard?cancel=stripe_cancelled',
         client_reference_id: 'org-a',
         line_items: [{ price: 'price_yearly_server', quantity: 1 }],
+        subscription_data: expect.objectContaining({ trial_period_days: 3 }),
       }),
     );
+    expect(mocks.checkoutCreate).not.toHaveBeenCalledWith(
+      expect.objectContaining({ customer_email: expect.anything() }),
+    );
+  });
+
+  it('omits the trial when the Stripe customer already used one', async () => {
+    mocks.subscriptionList.mockResolvedValue({
+      data: [{ id: 'sub_old', status: 'canceled', trial_start: 1_700_000_000, created: 1 }],
+    });
+
+    const response = await checkout(
+      new Request('http://localhost/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: 'monthly' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const params = mocks.checkoutCreate.mock.calls[0][0] as { subscription_data: object };
+    expect(params.subscription_data).not.toHaveProperty('trial_period_days');
+  });
+
+  it('rejects Checkout when a live subscription already exists', async () => {
+    mocks.subscriptionList.mockResolvedValue({
+      data: [{ id: 'sub_live', status: 'active', created: 1 }],
+    });
+
+    const response = await checkout(
+      new Request('http://localhost/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: 'monthly' }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'already_subscribed' },
+    });
+    expect(mocks.checkoutCreate).not.toHaveBeenCalled();
+  });
+
+  it('refuses Checkout for an OEM workspace', async () => {
+    db.getOrganizationByUserId.mockResolvedValue({
+      id: 'org-a',
+      name: 'Acme',
+      billing_plan: 'oem',
+    });
+
+    const response = await checkout(
+      new Request('http://localhost/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: 'monthly' }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(mocks.checkoutCreate).not.toHaveBeenCalled();
+    expect(mocks.customerCreate).not.toHaveBeenCalled();
   });
 
   it('rejects an arbitrary client-side price or plan', async () => {
@@ -126,7 +215,7 @@ describe('billing API ownership and request safety', () => {
     expect(mocks.checkoutCreate).not.toHaveBeenCalled();
   });
 
-  it('verifies the stored customer and uses POST portal with fixed APP_URL', async () => {
+  it('verifies the stored customer and uses POST portal with a billing sync return URL', async () => {
     db.getOrganizationByUserId.mockResolvedValue({
       id: 'org-a',
       name: 'Acme',
@@ -146,7 +235,7 @@ describe('billing API ownership and request safety', () => {
     expect(response.status).toBe(200);
     expect(mocks.portalCreate).toHaveBeenCalledWith({
       customer: 'cus_org_a',
-      return_url: 'https://app.assurly.example/dashboard',
+      return_url: 'https://app.assurly.example/dashboard?billing=sync',
     });
     expect(mocks.customerCreate).not.toHaveBeenCalled();
   });
@@ -204,7 +293,7 @@ describe('billing API ownership and request safety', () => {
     expect(mocks.setOrganizationStripeCustomerId).toHaveBeenCalledWith('org-a', 'cus_reconciled');
     expect(mocks.portalCreate).toHaveBeenCalledWith({
       customer: 'cus_reconciled',
-      return_url: 'https://app.assurly.example/dashboard',
+      return_url: 'https://app.assurly.example/dashboard?billing=sync',
     });
   });
 
@@ -241,15 +330,15 @@ describe('billing API ownership and request safety', () => {
     expect(mocks.setOrganizationStripeCustomerId).toHaveBeenCalledWith('org-a', 'cus_live');
     expect(mocks.portalCreate).toHaveBeenCalledWith({
       customer: 'cus_live',
-      return_url: 'https://app.assurly.example/dashboard',
+      return_url: 'https://app.assurly.example/dashboard?billing=sync',
     });
   });
 
-  it('falls back to customer_email Checkout when the stored Stripe customer no longer exists', async () => {
+  it('creates a Stripe customer for Checkout when the stored id is stale instead of using customer_email', async () => {
     db.getOrganizationByUserId.mockResolvedValue({
       id: 'org-a',
       name: 'Acme',
-      billing_plan: 'pro',
+      billing_plan: 'free',
       stripe_customer_id: 'cus_missing',
     });
     mocks.customerRetrieve.mockRejectedValue(
@@ -269,13 +358,14 @@ describe('billing API ownership and request safety', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(mocks.customerCreate).toHaveBeenCalled();
     expect(mocks.checkoutCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        customer_email: 'a@example.com',
+        customer: 'cus_new',
       }),
     );
     expect(mocks.checkoutCreate).not.toHaveBeenCalledWith(
-      expect.objectContaining({ customer: 'cus_missing' }),
+      expect.objectContaining({ customer_email: expect.anything() }),
     );
   });
 });

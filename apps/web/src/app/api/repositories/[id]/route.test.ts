@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ requireUser: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  requireUser: vi.fn(),
+  adminDeleteRepository: vi.fn(),
+}));
 vi.mock('../../../../utils/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../utils/auth')>()),
   requireUser: mocks.requireUser,
@@ -8,6 +11,11 @@ vi.mock('../../../../utils/auth', async (importOriginal) => ({
 
 vi.mock('../../../../utils/authorization', () => ({
   requireRepositoryAccess: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../../../utils/dbAdapter', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../utils/dbAdapter')>()),
+  getAdminDbAdapter: () => ({ deleteRepository: mocks.adminDeleteRepository }),
 }));
 
 import { DELETE, PATCH } from './route';
@@ -26,6 +34,7 @@ describe('/api/repositories/[id]', () => {
       accessToken: 'verified',
       db,
     });
+    mocks.adminDeleteRepository.mockResolvedValue(undefined);
     db.getRepository.mockResolvedValue({
       id: '00000000-0000-4000-8000-000000000001',
       organization_id: 'org-1',
@@ -54,7 +63,7 @@ describe('/api/repositories/[id]', () => {
     );
   });
 
-  it('DELETE removes the repository', async () => {
+  it('DELETE hides the repository via the admin adapter', async () => {
     const response = await DELETE(
       new Request('http://localhost/api/repositories/00000000-0000-4000-8000-000000000001', {
         method: 'DELETE',
@@ -63,6 +72,9 @@ describe('/api/repositories/[id]', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(db.deleteRepository).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000001');
+    expect(mocks.adminDeleteRepository).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000001',
+    );
+    expect(db.deleteRepository).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ import {
   secureRoute,
 } from '../../../../utils/apiSecurity';
 import { requireRepositoryAccess } from '../../../../utils/authorization';
+import { getAdminDbAdapter } from '../../../../utils/dbAdapter';
 
 const repositoryParams = z
   .object({
@@ -48,7 +49,7 @@ export const PATCH = secureRoute(
   },
 );
 
-/** Remove a repository the user can no longer scan meaningfully (invalid name, etc.). */
+/** Hide a repository from Your apps. Scan history is kept; Connect & Scan restores it. */
 export const DELETE = secureRoute(
   {
     routeId: 'repositories:delete',
@@ -64,7 +65,12 @@ export const DELETE = secureRoute(
   async ({ auth, params }) => {
     const context = requireRouteUser(auth);
     await requireRepositoryAccess(context, params.id);
-    await context.db.deleteRepository(params.id);
+    try {
+      await getAdminDbAdapter().deleteRepository(params.id);
+    } catch (error) {
+      console.error('[Assurly] repositories:delete failed:', (error as Error).message);
+      throw new ApiError(500, 'delete_failed', 'Could not remove that repository. Try again.');
+    }
     return NextResponse.json({ deleted: true });
   },
 );

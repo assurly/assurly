@@ -9,6 +9,7 @@ import { printShipGateSummary } from './shipGateReporter';
 import { scanProjectDirectory } from './scanProject';
 import { applyFixesInteractive } from './fixer';
 import { setupGitHubAction } from './ci';
+import { plantCanaryLocally } from './canaryPlant';
 import { buildAssurlyScanReportJson } from './scanReportJson';
 import { submitScanReport } from './submitScan';
 
@@ -195,6 +196,54 @@ program
       process.exit(0);
     } else {
       spinner.fail(chalk.red(result.message));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('canary')
+  .description('Silent-alarm tripwire helpers')
+  .command('plant')
+  .description(
+    'Mint ASSURLY_CANARY_URL via Assurly and append it to local .env.example (never uploads source)',
+  )
+  .option('-p, --path <dir>', 'Root directory of the project', '.')
+  .option('--repo <owner/repo>', 'Connected Assurly repository (owner/repo)')
+  .option(
+    '--api-url <url>',
+    'Assurly API base URL',
+    process.env.ASSURLY_API_URL || 'https://assurly.dev',
+  )
+  .action(async (options) => {
+    const targetDir = path.resolve(options.path);
+    const spinner = ora(chalk.cyan('Planting silent alarm...')).start();
+    try {
+      const apiKey = process.env.ASSURLY_API_KEY;
+      const repo = typeof options.repo === 'string' ? options.repo.trim() : '';
+      if (!apiKey) {
+        throw new Error('ASSURLY_API_KEY is required to plant a silent alarm.');
+      }
+      if (!repo || !repo.includes('/')) {
+        throw new Error('--repo owner/repo is required.');
+      }
+      const planted = await plantCanaryLocally({
+        projectPath: targetDir,
+        repo,
+        apiKey,
+        apiBaseUrl: String(options.apiUrl),
+      });
+      spinner.succeed(
+        chalk.green(
+          planted.changed
+            ? `Planted silent alarm in ${planted.envPath}`
+            : `Silent alarm already present in ${planted.envPath}`,
+        ),
+      );
+      process.exit(0);
+    } catch (error: unknown) {
+      spinner.stop();
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(chalk.red(`\nPlant failed. ${message}\n`));
       process.exit(1);
     }
   });

@@ -4,8 +4,13 @@ import Image from 'next/image';
 import Link from 'next/link';
 import type { RefObject, ReactElement } from 'react';
 import type { Organization, User } from '../../../utils/dbAdapter';
+import { proTrialCheckoutCta } from '../../../utils/pricing';
+import { ThemeToggle } from '../../_components/ThemeToggle';
 import { AssurlyLogo } from './icons/AssurlyLogo';
 import { DashboardRocketIcon, DashboardSettingsIcon } from './icons/DashboardIcons';
+
+/** Keep in sync with LANDING_NAV_OVERLAY_MQ and dashboard overlay CSS in globals.css. */
+export const DASHBOARD_NAV_OVERLAY_MQ = '(max-width: 1100px)';
 
 export interface DashboardHeaderProps {
   user: User;
@@ -42,6 +47,7 @@ export function DashboardHeader({
       </div>
 
       <div className="dashboard-header-right" ref={profileRef}>
+        <ThemeToggle variant="header" />
         <button
           type="button"
           className={`profile-trigger-btn ${isProfileOpen ? 'active' : ''}`}
@@ -130,7 +136,7 @@ export function DashboardHeader({
                   >
                     <span className="profile-dropdown-item__label">
                       <DashboardRocketIcon />
-                      Upgrade to Pro ({currencySymbol}19/mo)
+                      {proTrialCheckoutCta(currencySymbol, 'monthly')}
                     </span>
                   </button>
                   <button
@@ -140,7 +146,7 @@ export function DashboardHeader({
                     onClick={() => onCheckout('yearly')}
                     className="profile-dropdown-item"
                   >
-                    <span>Save ~35%: {currencySymbol}149/yr</span>
+                    <span>{proTrialCheckoutCta(currencySymbol, 'yearly')} · Save ~35%</span>
                   </button>
                 </>
               )}
@@ -154,6 +160,10 @@ export function DashboardHeader({
                   Logout
                 </button>
               </form>
+            </div>
+
+            <div className="profile-dropdown-toolbar">
+              <ThemeToggle variant="header" />
             </div>
           </div>
         ) : null}

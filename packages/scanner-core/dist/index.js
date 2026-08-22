@@ -1,18 +1,24 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEP_LOW_DOWNLOADS = exports.DEP_DEFAULT_EVAL_CAP = exports.scanSupplyChain = exports.readIgnoreScriptsFromNpmrc = exports.parsePackageManagerNpmMajor = exports.packageNameFromLockKey = exports.isSupplyChainRuleId = exports.enginesNpmPermitsBelow12 = exports.classifyAllowScriptsKey = exports.SUPPLY_NPM_BELOW_V12 = exports.SUPPLY_NON_REGISTRY_DEPENDENCY = exports.SUPPLY_INSTALL_SCRIPTS_UNREVIEWED = exports.SUPPLY_CHAIN_RULE_IDS = exports.SUPPLY_ALLOWSCRIPTS_UNPINNED = exports.SUPPLY_ALLOWSCRIPTS_STALE = exports.SUPPLY_ALLOWSCRIPTS_INVALID = exports.SUPPLY_ALLOWSCRIPTS_IN_WORKSPACE = exports.scanAgentStack = exports.scanAgentMcpConfig = exports.scanAgentInstructionFile = exports.redactEnvKey = exports.isAgentStackFile = exports.isAgentMcpConfigFile = exports.isAgentInstructionFile = exports.isHighConfidenceBlockerRuleId = exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = exports.scanStripeWebhookIdempotency = exports.scanStripeMissingSubscriptionEvents = exports.scanStripeLiveKeyInDev = exports.scanStripeLifecycle = exports.scanSupabaseStorage = exports.scanSupabasePolicies = exports.scanSupabaseDeepPolicies = exports.scanAuthLinkedMigrationNoRls = exports.scanServiceRoleBypass = exports.scanServerActionAuth = exports.scanRouteHandlerAuth = exports.scanAuthBoundary = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.rankFilesByRelevance = exports.isScannableFile = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = void 0;
-exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.buildShipGateReport = exports.buildIssueGroups = exports.isAssurlyCanaryToken = exports.isAssurlyCanaryBody = exports.extractAssurlyCanaryToken = exports.containsAssurlyCanaryToken = exports.ASSURLY_CANARY_PREFIX = exports.ASSURLY_CANARY_IN_TEXT = exports.findNearestCorpusMatch = exports.damerauLevenshtein = exports.tokenizePackageName = exports.scopeOwnsBorrowedName = exports.parsePackageJsonDependencies = exports.isAbandonedShape = exports.getTopNpmPackageCorpus = exports.findBorrowedCorpusName = exports.evaluateNewDependencies = exports.evaluateDependencyProvenance = exports.diffAddedDependencies = exports.contiguousTokenRuns = exports.collectDependencyNames = exports.DEP_YOUNG_AGE_DAYS = exports.DEP_TYPOSQUAT_SUSPECT = exports.DEP_SLOPSQUAT_SUSPECT = exports.DEP_SCAN_CAPPED = exports.DEP_REGISTRY_UNAVAILABLE = exports.DEP_PROXIMITY_MAX_DISTANCE = exports.DEP_NONEXISTENT_PACKAGE = exports.DEP_NEW_UNVETTED = void 0;
+exports.redactEnvKey = exports.isAgentStackFile = exports.isAgentMcpConfigFile = exports.isAgentInstructionFile = exports.isHighConfidenceBlockerRuleId = exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = exports.scanStripeWebhookIdempotencyForProject = exports.scanStripeWebhookIdempotency = exports.scanStripeMissingSubscriptionEvents = exports.scanStripeLiveKeyInDev = exports.scanStripeLifecycle = exports.scanSupabaseStorage = exports.scanSupabasePolicies = exports.scanSupabaseDeepPolicies = exports.scanAuthLinkedMigrationNoRls = exports.scanServiceRoleBypass = exports.scanServerActionAuth = exports.scanRouteHandlerAuth = exports.scanAuthBoundary = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.selectPackageManifestPaths = exports.detectStackFromManifests = exports.describeDetectedStack = exports.MAX_PACKAGE_MANIFESTS = exports.unanalyzedSourceFinding = exports.unanalyzedLanguageForPath = exports.unanalyzedLanguageCounts = exports.summarizeUnanalyzedSource = exports.isSecuritySurfacePath = exports.isAnalyzedSourceFile = exports.isAnalyzedCodeFile = exports.formatUnanalyzedLogLine = exports.UNANALYZED_SOURCE_LANGUAGES = exports.SCAN_LANGUAGE_COVERAGE_RULE_ID = exports.rankFilesByRelevance = exports.isTextScanSurface = exports.isScannableFile = exports.instantGateSurfaceFiles = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = exports.INSTANT_GATE_MAX_FILES = exports.RLS_GENERIC_TABLE_LABEL = exports.RLS_SUPABASE_TABLE_LABEL = void 0;
+exports.isAssurlyCanaryEnvKey = exports.isAssurlyCanaryBody = exports.extractAssurlyCanaryToken = exports.containsAssurlyCanaryToken = exports.containsAssurlyCanaryCallbackPath = exports.ASSURLY_CANARY_PREFIX = exports.ASSURLY_CANARY_IN_TEXT = exports.ASSURLY_CANARY_ENV_KEY = exports.ASSURLY_CANARY_CALLBACK_PATH = exports.findNearestCorpusMatch = exports.damerauLevenshtein = exports.tokenizePackageName = exports.scopeOwnsBorrowedName = exports.parsePackageJsonDependencies = exports.isAbandonedShape = exports.getTopNpmPackageCorpus = exports.findBorrowedCorpusName = exports.evaluateNewDependencies = exports.evaluateDependencyProvenance = exports.diffAddedDependencies = exports.contiguousTokenRuns = exports.collectDependencyNames = exports.DEP_YOUNG_AGE_DAYS = exports.DEP_TYPOSQUAT_SUSPECT = exports.DEP_SLOPSQUAT_SUSPECT = exports.DEP_SCAN_CAPPED = exports.DEP_REGISTRY_UNAVAILABLE = exports.DEP_PROXIMITY_MAX_DISTANCE = exports.DEP_NONEXISTENT_PACKAGE = exports.DEP_NEW_UNVETTED = exports.DEP_LOW_DOWNLOADS = exports.DEP_DEFAULT_EVAL_CAP = exports.scanSupplyChain = exports.readIgnoreScriptsFromNpmrc = exports.parsePackageManagerNpmMajor = exports.packageNameFromLockKey = exports.isSupplyChainRuleId = exports.enginesNpmPermitsBelow12 = exports.classifyAllowScriptsKey = exports.SUPPLY_NPM_BELOW_V12 = exports.SUPPLY_NON_REGISTRY_DEPENDENCY = exports.SUPPLY_INSTALL_SCRIPTS_UNREVIEWED = exports.SUPPLY_CHAIN_RULE_IDS = exports.SUPPLY_ALLOWSCRIPTS_UNPINNED = exports.SUPPLY_ALLOWSCRIPTS_STALE = exports.SUPPLY_ALLOWSCRIPTS_INVALID = exports.SUPPLY_ALLOWSCRIPTS_IN_WORKSPACE = exports.scanAgentStack = exports.scanAgentMcpConfig = exports.scanAgentInstructionFile = void 0;
+exports.isPostgresSqlSource = exports.detectSqlDialect = exports.scanWorkspaceFiles = exports.scanTsconfigStrict = exports.scanHardcodedStripeSecrets = exports.scanGithubActionsIntegration = exports.githubActionsIntegrationMessage = exports.GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE = exports.GITHUB_ACTIONS_INIT_SUGGESTION = exports.GITHUB_ACTIONS_EXISTING_CI_MESSAGE = exports.parseGitIgnoreSources = exports.isGitIgnored = exports.isGitIgnorePath = exports.isAssurlyEnvExamplePath = exports.excludeGitIgnoredFiles = exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.countCleanScannedFiles = exports.buildShipGateReport = exports.buildIssueGroups = exports.RLS_SCORE_GROUP_CAP = exports.BLOCKED_SCORE_CAP = exports.mergeCanaryPlantIntoEnvExample = exports.isAssurlyCanaryToken = exports.isAssurlyCanaryPlantLine = exports.isAssurlyCanaryMcpUrl = void 0;
+exports.isSupabaseRlsMessage = isSupabaseRlsMessage;
 exports.subsumeRlsFindings = subsumeRlsFindings;
 exports.selectFiles = selectFiles;
 exports.incompleteScanFinding = incompleteScanFinding;
 exports.scanStripeWebhook = scanStripeWebhook;
 exports.scanRscDataLeaks = scanRscDataLeaks;
+exports.isServerlessApiRouteFile = isServerlessApiRouteFile;
+exports.scanDbConnectionPooling = scanDbConnectionPooling;
 exports.scanColdStart = scanColdStart;
 exports.scanEdgeRuntime = scanEdgeRuntime;
 exports.scanMaxDuration = scanMaxDuration;
 exports.scanSqlMigrations = scanSqlMigrations;
 exports.scanSqlMigration = scanSqlMigration;
 exports.scanSupabaseClientLeaks = scanSupabaseClientLeaks;
+exports.isAppEnvSourceFile = isAppEnvSourceFile;
+exports.collectProcessEnvKeysFromCode = collectProcessEnvKeysFromCode;
 exports.proposeEnvExamplePath = proposeEnvExamplePath;
 exports.resolveEnvExampleForPath = resolveEnvExampleForPath;
 exports.collectTestOnlyEnvKeys = collectTestOnlyEnvKeys;
@@ -20,13 +26,17 @@ exports.scanEnvVariables = scanEnvVariables;
 exports.runDeeperStackScans = runDeeperStackScans;
 const parser_1 = require("@babel/parser");
 const fileRelevance_1 = require("./fileRelevance");
+Object.defineProperty(exports, "INSTANT_GATE_MAX_FILES", { enumerable: true, get: function () { return fileRelevance_1.INSTANT_GATE_MAX_FILES; } });
 Object.defineProperty(exports, "buildScanScope", { enumerable: true, get: function () { return fileRelevance_1.buildScanScope; } });
 Object.defineProperty(exports, "formatScanScopeSummary", { enumerable: true, get: function () { return fileRelevance_1.formatScanScopeSummary; } });
 Object.defineProperty(exports, "getFileRelevanceScore", { enumerable: true, get: function () { return fileRelevance_1.getFileRelevanceScore; } });
 Object.defineProperty(exports, "inferScanRoots", { enumerable: true, get: function () { return fileRelevance_1.inferScanRoots; } });
+Object.defineProperty(exports, "instantGateSurfaceFiles", { enumerable: true, get: function () { return fileRelevance_1.instantGateSurfaceFiles; } });
 Object.defineProperty(exports, "isScannableFile", { enumerable: true, get: function () { return fileRelevance_1.isScannableFile; } });
+Object.defineProperty(exports, "isTextScanSurface", { enumerable: true, get: function () { return fileRelevance_1.isTextScanSurface; } });
 Object.defineProperty(exports, "rankFilesByRelevance", { enumerable: true, get: function () { return fileRelevance_1.rankFilesByRelevance; } });
 const authBoundary_1 = require("./authBoundary");
+const sqlDialect_1 = require("./sqlDialect");
 const supabasePolicies_1 = require("./supabasePolicies");
 const stripeLifecycle_1 = require("./stripeLifecycle");
 const canaryToken_1 = require("./canaryToken");
@@ -35,9 +45,15 @@ const result = (findings) => ({
     warningCount: findings.filter((finding) => finding.severity === 'warning').length,
     findings,
 });
+exports.RLS_SUPABASE_TABLE_LABEL = 'Supabase table';
+exports.RLS_GENERIC_TABLE_LABEL = 'Database table';
 function tableNameFromRlsMessage(message) {
     const match = message.match(/table '([^']+)'/i);
     return match?.[1] ?? null;
+}
+/** True when a `supabase-rls` message was emitted for a real Supabase stack. */
+function isSupabaseRlsMessage(message) {
+    return message.startsWith(`${exports.RLS_SUPABASE_TABLE_LABEL} '`);
 }
 /**
  * When both `supabase-rls` and `supabase-migration-auth-linked-no-rls` fire for
@@ -97,6 +113,25 @@ function walk(node, visit) {
             value.forEach((item) => walk(item, visit));
         else if (value && typeof value === 'object')
             walk(value, visit);
+    }
+}
+function walkWithAncestors(node, ancestors, visit) {
+    if (!node || typeof node !== 'object')
+        return;
+    const candidate = node;
+    const isAst = typeof candidate.type === 'string';
+    const nextAncestors = isAst ? [...ancestors, candidate] : ancestors;
+    if (isAst)
+        visit(candidate, ancestors);
+    for (const [key, value] of Object.entries(candidate)) {
+        if (key === 'loc' || key === 'start' || key === 'end' || key === 'extra')
+            continue;
+        if (Array.isArray(value)) {
+            value.forEach((item) => walkWithAncestors(item, nextAncestors, visit));
+        }
+        else if (value && typeof value === 'object') {
+            walkWithAncestors(value, nextAncestors, visit);
+        }
     }
 }
 const lineOf = (node) => node.loc?.start?.line;
@@ -250,6 +285,78 @@ const heavyImports = {
         'Use Intl, date-fns, dayjs, or Luxon.',
     ],
 };
+const DB_POOL_CLASSES = new Set(['PrismaClient', 'Pool', 'Client', 'MongoClient']);
+/** Next.js API route / Route Handler paths, including monorepo apps/<pkg>/src/app/api. */
+function isServerlessApiRouteFile(filePath) {
+    const normalized = filePath.replace(/\\/g, '/');
+    return (/(?:^|\/)(?:src\/)?(?:app|pages)\/api\//.test(normalized) &&
+        /\.(?:js|ts|jsx|tsx)$/.test(normalized));
+}
+function enclosingFunctionName(ancestors) {
+    for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+        const node = ancestors[index];
+        if (!node)
+            continue;
+        switch (node.type) {
+            case 'FunctionDeclaration': {
+                const id = node.id;
+                return id?.name ?? 'anonymous function';
+            }
+            case 'FunctionExpression':
+            case 'ArrowFunctionExpression': {
+                const parent = ancestors[index - 1];
+                if (parent?.type === 'VariableDeclarator') {
+                    const id = parent.id;
+                    if (id?.name)
+                        return id.name;
+                }
+                return 'anonymous function';
+            }
+            case 'ClassMethod':
+            case 'ClassPrivateMethod':
+            case 'ObjectMethod': {
+                const key = node.key;
+                return key?.name ?? (typeof key?.value === 'string' ? key.value : 'anonymous function');
+            }
+            default:
+                break;
+        }
+    }
+    return null;
+}
+function scanDbConnectionPooling(content, file = 'route.ts') {
+    if (!isServerlessApiRouteFile(file))
+        return result([]);
+    const findings = [];
+    let ast;
+    try {
+        ast = parseCode(content);
+    }
+    catch {
+        return result(findings);
+    }
+    walkWithAncestors(ast, [], (node, ancestors) => {
+        if (node.type !== 'NewExpression')
+            return;
+        const callee = node.callee;
+        const className = callee?.type === 'Identifier' ? String(callee.name) : null;
+        if (!className || !DB_POOL_CLASSES.has(className))
+            return;
+        const functionName = enclosingFunctionName(ancestors);
+        if (!functionName)
+            return;
+        findings.push({
+            ruleId: 'database-connection-pooling',
+            severity: 'error',
+            confidence: 'high',
+            file,
+            line: lineOf(node),
+            message: `Database client '${className}' is instantiated inside function '${functionName}' in a serverless API route. This will open a new database connection on every request and quickly exhaust your database connection pool.`,
+            suggestion: `Move 'new ${className}()' outside the function scope (as a global singleton) or import it from a shared database helper file.`,
+        });
+    });
+    return result(findings);
+}
 function scanColdStart(content, file = 'route.ts') {
     const findings = [];
     let ast;
@@ -408,11 +515,12 @@ function scanSqlMigrations(sources) {
     const findings = [];
     const created = new Map();
     const rls = new Set();
+    const postgresSources = sources.filter((source) => (0, sqlDialect_1.isPostgresSqlSource)(source));
     const normalize = (name) => name
         .replace(/['"`]/g, '')
         .replace(/^public\./i, '')
         .trim();
-    for (const source of sources) {
+    for (const source of postgresSources) {
         source.content.split(/\r?\n/).forEach((line, index) => {
             const code = line.replace(/--.*$/, '');
             const create = code.match(/create\s+table\s+(?:if\s+not\s+exists\s+)?([a-zA-Z0-9_."`'-]+)/i);
@@ -434,24 +542,25 @@ function scanSqlMigrations(sources) {
             }
         });
     }
-    const hasSupabaseSignal = sources.some((source) => /supabase/i.test(source.file) ||
+    const hasSupabaseSignal = postgresSources.some((source) => /supabase/i.test(source.file) ||
         /supabase/i.test(source.content) ||
         /auth\.uid\(\)/i.test(source.content) ||
         /auth\.users\b/i.test(source.content));
-    const tableLabel = hasSupabaseSignal ? 'Supabase table' : 'Database table';
+    const tableLabel = hasSupabaseSignal ? exports.RLS_SUPABASE_TABLE_LABEL : exports.RLS_GENERIC_TABLE_LABEL;
     for (const [table, location] of created) {
         if (!rls.has(table) &&
             !['spatial_ref_sys', 'geography_columns', 'geometry_columns'].includes(table))
             findings.push({
                 ruleId: 'supabase-rls',
-                severity: 'error',
+                severity: hasSupabaseSignal ? 'error' : 'warning',
+                confidence: hasSupabaseSignal ? 'high' : 'medium',
                 file: location.file,
                 line: location.line,
                 message: `${tableLabel} '${table}' is created but Row-Level Security (RLS) is not enabled.`,
                 suggestion: `Add SQL step: ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`,
             });
     }
-    findings.push(...(0, supabasePolicies_1.scanSupabaseDeepPolicies)(sources).findings);
+    findings.push(...(0, supabasePolicies_1.scanSupabaseDeepPolicies)(postgresSources).findings);
     return result(subsumeRlsFindings(findings));
 }
 function scanSqlMigration(content, file = 'schema.sql') {
@@ -522,6 +631,7 @@ const FRAMEWORK_ENV_KEYS = new Set([
     'RUNNER_ARCH',
     'RUNNER_TEMP',
     'RUNNER_TOOL_CACHE',
+    canaryToken_1.ASSURLY_CANARY_ENV_KEY,
 ]);
 /** Fallback names documented via their public NEXT_PUBLIC_* counterpart. */
 const DOCUMENTED_ENV_ALIASES = {
@@ -533,6 +643,66 @@ function isEnvKeyDocumented(key, keys) {
         return true;
     const aliases = DOCUMENTED_ENV_ALIASES[key];
     return aliases?.some((alias) => keys.has(alias)) ?? false;
+}
+/**
+ * CLI env-docs surface: application source, not tooling packages (`packages/cli`).
+ * Matches `packages/cli/src/rules/envRules.ts` path prefixes exactly.
+ */
+function isAppEnvSourceFile(filePath) {
+    const normalized = filePath.replace(/\\/g, '/');
+    if (!/\.(?:js|ts|jsx|tsx)$/.test(normalized))
+        return false;
+    return (normalized.startsWith('src/') ||
+        normalized.startsWith('app/') ||
+        normalized.startsWith('apps/') ||
+        normalized.startsWith('pages/') ||
+        normalized.startsWith('components/'));
+}
+function processEnvKeyFromNode(node) {
+    if (node.type !== 'MemberExpression' && node.type !== 'OptionalMemberExpression')
+        return null;
+    const object = node.object;
+    if (!object ||
+        (object.type !== 'MemberExpression' && object.type !== 'OptionalMemberExpression')) {
+        return null;
+    }
+    const processId = object.object;
+    if (processId?.type !== 'Identifier' || processId.name !== 'process')
+        return null;
+    if (memberName(object) !== 'env')
+        return null;
+    const key = memberName(node);
+    if (!key || !/^[A-Z0-9_]+$/.test(key))
+        return null;
+    return key;
+}
+function stripQuotedSpans(line) {
+    return line.replace(/(['"`])(?:\\.|(?!\1).)*\1/g, ' ');
+}
+/**
+ * `process.env.KEY` / `process.env['KEY']` from real code, never from string literals.
+ */
+function collectProcessEnvKeysFromCode(content) {
+    try {
+        const ast = parseCode(content);
+        const found = [];
+        walk(ast, (node) => {
+            const key = processEnvKeyFromNode(node);
+            if (key)
+                found.push({ key, line: lineOf(node) ?? 1 });
+        });
+        return found;
+    }
+    catch {
+        const found = [];
+        content.split(/\r?\n/).forEach((line, index) => {
+            const searchable = stripQuotedSpans(line);
+            for (const match of searchable.matchAll(/process\.env\.([A-Z0-9_]+)/g)) {
+                found.push({ key: match[1], line: index + 1 });
+            }
+        });
+        return found;
+    }
 }
 function isTestOrFixturePath(filePath) {
     if (!(0, fileRelevance_1.isScannableFile)(filePath))
@@ -597,8 +767,7 @@ function collectTestOnlyEnvKeys(sources) {
     const testKeys = new Set();
     for (const source of sources) {
         const isTestFile = isTestOrFixturePath(source.file);
-        for (const match of source.content.matchAll(/process\.env\.([A-Z0-9_]+)/g)) {
-            const key = match[1];
+        for (const { key } of collectProcessEnvKeysFromCode(source.content)) {
             if (isTestFile)
                 testKeys.add(key);
             else
@@ -619,7 +788,7 @@ function scanExampleFileSecrets(exampleContent, exampleFile, findings) {
             return;
         const key = line.split('=')[0]?.trim();
         // Planted Assurly canaries are intentional — informational, never a leak.
-        if ((0, canaryToken_1.containsAssurlyCanaryToken)(line)) {
+        if ((0, canaryToken_1.isAssurlyCanaryPlantLine)(line)) {
             findings.push({
                 ruleId: 'assurly-canary-planted',
                 severity: 'warning',
@@ -627,7 +796,7 @@ function scanExampleFileSecrets(exampleContent, exampleFile, findings) {
                 file: exampleFile,
                 line: index + 1,
                 message: 'Assurly canary token detected. This is an intentional tripwire, not a leaked credential.',
-                suggestion: 'Keep the canary planted. If Assurly alerts on canary use, treat it as a confirmed exposure and rotate real secrets.',
+                suggestion: 'Keep the canary planted. If Assurly alerts on a fetch of this URL, rotate the real Stripe, Supabase, and GitHub secrets on this app — not the canary URL.',
             });
             return;
         }
@@ -650,6 +819,34 @@ function scanExampleFileSecrets(exampleContent, exampleFile, findings) {
                 message: `CRITICAL KEY LEAK: Hardcoded Stripe secret key found (${secret[0].slice(0, 7)}...).`,
                 suggestion: 'Use an empty example value and rotate the exposed key.',
             });
+    });
+}
+function isEnvExamplePath(filePath) {
+    return filePath.replace(/\\/g, '/').endsWith('.env.example');
+}
+function exampleHasCanaryPlant(content) {
+    return content.split(/\r?\n/).some((line) => (0, canaryToken_1.isAssurlyCanaryPlantLine)(line));
+}
+/**
+ * One warning per scan when at least one `.env.example` exists and none of them
+ * plant a silent alarm. Never a blocker — the offline scanner cannot mint a
+ * live callback URL.
+ */
+function pushMissingCanaryFinding(examples, findings) {
+    const existing = examples.filter((example) => isEnvExamplePath(example.file) && example.content.trim().length > 0);
+    if (existing.length === 0)
+        return;
+    if (existing.some((example) => exampleHasCanaryPlant(example.content)))
+        return;
+    const target = existing.find((example) => example.file.replace(/\\/g, '/') === '.env.example') ?? existing[0];
+    findings.push({
+        ruleId: 'assurly-canary-missing',
+        severity: 'warning',
+        confidence: 'high',
+        file: target.file,
+        line: 1,
+        message: 'No Assurly silent alarm in .env.example. Plant ASSURLY_CANARY_URL so Assurly can alert if an attacker fetches stolen env.',
+        suggestion: 'Add a silent alarm in Assurly (dashboard / MCP plant).',
     });
 }
 function scanEnvVariables(exampleContent, codeContent, exampleFile = '.env.example', codeFile = 'code.ts', options = {}) {
@@ -675,35 +872,54 @@ function scanEnvVariables(exampleContent, codeContent, exampleFile = '.env.examp
             scannedExampleFiles.add(example.file);
             scanExampleFileSecrets(example.content, example.file, findings);
         }
+        if (options.emitMissingCanary !== false) {
+            pushMissingCanaryFinding(options.allExamples ?? [], findings);
+        }
     }
     else if (!hasAllExamples) {
         scanExampleFileSecrets(exampleContent, exampleFile, findings);
-    }
-    codeContent.split(/\r?\n/).forEach((line, index) => {
-        for (const match of line.matchAll(/process\.env\.([A-Z0-9_]+)/g)) {
-            const key = match[1];
-            if (FRAMEWORK_ENV_KEYS.has(key))
-                continue;
-            if (options.testOnlyKeys?.has(key))
-                continue;
-            if (!isEnvKeyDocumented(key, keys)) {
-                const docPath = activeExample.file;
-                findings.push({
-                    ruleId: 'undocumented-env',
-                    // Hygiene / DX — not a deploy-safety blocker. Missing `.env.example`
-                    // docs fail the Phase 0 "30-second defend" test for hard blockers.
-                    severity: 'warning',
-                    confidence: 'high',
-                    file: codeFile,
-                    line: index + 1,
-                    message: `Environment variable 'process.env.${key}' is used but not documented in '${docPath}'.`,
-                    suggestion: `Add ${key}= to ${docPath}.`,
-                });
-            }
+        if (options.emitMissingCanary !== false) {
+            pushMissingCanaryFinding([{ file: exampleFile, content: exampleContent }], findings);
         }
-    });
+    }
+    for (const { key, line } of collectProcessEnvKeysFromCode(codeContent)) {
+        if (FRAMEWORK_ENV_KEYS.has(key))
+            continue;
+        if (options.testOnlyKeys?.has(key))
+            continue;
+        if (!isEnvKeyDocumented(key, keys)) {
+            const docPath = activeExample.file;
+            findings.push({
+                ruleId: 'undocumented-env',
+                // Hygiene / DX — not a deploy-safety blocker. Missing `.env.example`
+                // docs fail the Phase 0 "30-second defend" test for hard blockers.
+                severity: 'warning',
+                confidence: 'high',
+                file: codeFile,
+                line,
+                message: `Environment variable 'process.env.${key}' is used but not documented in '${docPath}'.`,
+                suggestion: `Add ${key}= to ${docPath}.`,
+            });
+        }
+    }
     return result(findings);
 }
+var languageCoverage_1 = require("./languageCoverage");
+Object.defineProperty(exports, "SCAN_LANGUAGE_COVERAGE_RULE_ID", { enumerable: true, get: function () { return languageCoverage_1.SCAN_LANGUAGE_COVERAGE_RULE_ID; } });
+Object.defineProperty(exports, "UNANALYZED_SOURCE_LANGUAGES", { enumerable: true, get: function () { return languageCoverage_1.UNANALYZED_SOURCE_LANGUAGES; } });
+Object.defineProperty(exports, "formatUnanalyzedLogLine", { enumerable: true, get: function () { return languageCoverage_1.formatUnanalyzedLogLine; } });
+Object.defineProperty(exports, "isAnalyzedCodeFile", { enumerable: true, get: function () { return languageCoverage_1.isAnalyzedCodeFile; } });
+Object.defineProperty(exports, "isAnalyzedSourceFile", { enumerable: true, get: function () { return languageCoverage_1.isAnalyzedSourceFile; } });
+Object.defineProperty(exports, "isSecuritySurfacePath", { enumerable: true, get: function () { return languageCoverage_1.isSecuritySurfacePath; } });
+Object.defineProperty(exports, "summarizeUnanalyzedSource", { enumerable: true, get: function () { return languageCoverage_1.summarizeUnanalyzedSource; } });
+Object.defineProperty(exports, "unanalyzedLanguageCounts", { enumerable: true, get: function () { return languageCoverage_1.unanalyzedLanguageCounts; } });
+Object.defineProperty(exports, "unanalyzedLanguageForPath", { enumerable: true, get: function () { return languageCoverage_1.unanalyzedLanguageForPath; } });
+Object.defineProperty(exports, "unanalyzedSourceFinding", { enumerable: true, get: function () { return languageCoverage_1.unanalyzedSourceFinding; } });
+var stackDetect_1 = require("./stackDetect");
+Object.defineProperty(exports, "MAX_PACKAGE_MANIFESTS", { enumerable: true, get: function () { return stackDetect_1.MAX_PACKAGE_MANIFESTS; } });
+Object.defineProperty(exports, "describeDetectedStack", { enumerable: true, get: function () { return stackDetect_1.describeDetectedStack; } });
+Object.defineProperty(exports, "detectStackFromManifests", { enumerable: true, get: function () { return stackDetect_1.detectStackFromManifests; } });
+Object.defineProperty(exports, "selectPackageManifestPaths", { enumerable: true, get: function () { return stackDetect_1.selectPackageManifestPaths; } });
 var aiAppSecurity_1 = require("./aiAppSecurity");
 Object.defineProperty(exports, "scanAiAppSecurity", { enumerable: true, get: function () { return aiAppSecurity_1.scanAiAppSecurity; } });
 Object.defineProperty(exports, "scanAiLlmKeyLeak", { enumerable: true, get: function () { return aiAppSecurity_1.scanAiLlmKeyLeak; } });
@@ -726,6 +942,7 @@ Object.defineProperty(exports, "scanStripeLifecycle", { enumerable: true, get: f
 Object.defineProperty(exports, "scanStripeLiveKeyInDev", { enumerable: true, get: function () { return stripeLifecycle_2.scanStripeLiveKeyInDev; } });
 Object.defineProperty(exports, "scanStripeMissingSubscriptionEvents", { enumerable: true, get: function () { return stripeLifecycle_2.scanStripeMissingSubscriptionEvents; } });
 Object.defineProperty(exports, "scanStripeWebhookIdempotency", { enumerable: true, get: function () { return stripeLifecycle_2.scanStripeWebhookIdempotency; } });
+Object.defineProperty(exports, "scanStripeWebhookIdempotencyForProject", { enumerable: true, get: function () { return stripeLifecycle_2.scanStripeWebhookIdempotencyForProject; } });
 var blockerAllowlist_1 = require("./blockerAllowlist");
 Object.defineProperty(exports, "HIGH_CONFIDENCE_BLOCKER_RULE_IDS", { enumerable: true, get: function () { return blockerAllowlist_1.HIGH_CONFIDENCE_BLOCKER_RULE_IDS; } });
 Object.defineProperty(exports, "isHighConfidenceBlockerRuleId", { enumerable: true, get: function () { return blockerAllowlist_1.isHighConfidenceBlockerRuleId; } });
@@ -779,12 +996,19 @@ var editDistance_1 = require("./editDistance");
 Object.defineProperty(exports, "damerauLevenshtein", { enumerable: true, get: function () { return editDistance_1.damerauLevenshtein; } });
 Object.defineProperty(exports, "findNearestCorpusMatch", { enumerable: true, get: function () { return editDistance_1.findNearestCorpusMatch; } });
 var canaryToken_2 = require("./canaryToken");
+Object.defineProperty(exports, "ASSURLY_CANARY_CALLBACK_PATH", { enumerable: true, get: function () { return canaryToken_2.ASSURLY_CANARY_CALLBACK_PATH; } });
+Object.defineProperty(exports, "ASSURLY_CANARY_ENV_KEY", { enumerable: true, get: function () { return canaryToken_2.ASSURLY_CANARY_ENV_KEY; } });
 Object.defineProperty(exports, "ASSURLY_CANARY_IN_TEXT", { enumerable: true, get: function () { return canaryToken_2.ASSURLY_CANARY_IN_TEXT; } });
 Object.defineProperty(exports, "ASSURLY_CANARY_PREFIX", { enumerable: true, get: function () { return canaryToken_2.ASSURLY_CANARY_PREFIX; } });
+Object.defineProperty(exports, "containsAssurlyCanaryCallbackPath", { enumerable: true, get: function () { return canaryToken_2.containsAssurlyCanaryCallbackPath; } });
 Object.defineProperty(exports, "containsAssurlyCanaryToken", { enumerable: true, get: function () { return canaryToken_2.containsAssurlyCanaryToken; } });
 Object.defineProperty(exports, "extractAssurlyCanaryToken", { enumerable: true, get: function () { return canaryToken_2.extractAssurlyCanaryToken; } });
 Object.defineProperty(exports, "isAssurlyCanaryBody", { enumerable: true, get: function () { return canaryToken_2.isAssurlyCanaryBody; } });
+Object.defineProperty(exports, "isAssurlyCanaryEnvKey", { enumerable: true, get: function () { return canaryToken_2.isAssurlyCanaryEnvKey; } });
+Object.defineProperty(exports, "isAssurlyCanaryMcpUrl", { enumerable: true, get: function () { return canaryToken_2.isAssurlyCanaryMcpUrl; } });
+Object.defineProperty(exports, "isAssurlyCanaryPlantLine", { enumerable: true, get: function () { return canaryToken_2.isAssurlyCanaryPlantLine; } });
 Object.defineProperty(exports, "isAssurlyCanaryToken", { enumerable: true, get: function () { return canaryToken_2.isAssurlyCanaryToken; } });
+Object.defineProperty(exports, "mergeCanaryPlantIntoEnvExample", { enumerable: true, get: function () { return canaryToken_2.mergeCanaryPlantIntoEnvExample; } });
 /** Runs Phase 3 deeper-stack scanners over the supplied project sources. */
 function runDeeperStackScans(sources, options = {}) {
     const { includeEdgeRuntime = true } = options;
@@ -796,26 +1020,48 @@ function runDeeperStackScans(sources, options = {}) {
         findings.push(...(0, authBoundary_1.scanServerActionAuth)(source.content, source.file).findings);
         findings.push(...(0, authBoundary_1.scanRouteHandlerAuth)(source.content, source.file).findings);
         findings.push(...(0, authBoundary_1.scanServiceRoleBypass)(source.content, source.file).findings);
-        findings.push(...(0, stripeLifecycle_1.scanStripeWebhookIdempotency)(source.content, source.file).findings);
         findings.push(...(0, stripeLifecycle_1.scanStripeMissingSubscriptionEvents)(source.content, source.file).findings);
         if (includeEdgeRuntime) {
             findings.push(...scanEdgeRuntime(source.content, source.file).findings);
         }
         findings.push(...scanMaxDuration(source.content, source.file).findings);
     }
+    findings.push(...(0, stripeLifecycle_1.scanStripeWebhookIdempotencyForProject)(codeSources).findings);
     for (const source of envSources) {
         findings.push(...(0, stripeLifecycle_1.scanStripeLiveKeyInDev)(source.content, source.file).findings);
     }
-    if (sqlSources.length > 0) {
-        findings.push(...(0, supabasePolicies_1.scanSupabaseDeepPolicies)(sqlSources).findings);
+    const postgresSqlSources = sqlSources.filter((source) => (0, sqlDialect_1.isPostgresSqlSource)(source));
+    if (postgresSqlSources.length > 0) {
+        findings.push(...(0, supabasePolicies_1.scanSupabaseDeepPolicies)(postgresSqlSources).findings);
     }
     return result(findings);
 }
 var shipGate_1 = require("./shipGate");
+Object.defineProperty(exports, "BLOCKED_SCORE_CAP", { enumerable: true, get: function () { return shipGate_1.BLOCKED_SCORE_CAP; } });
+Object.defineProperty(exports, "RLS_SCORE_GROUP_CAP", { enumerable: true, get: function () { return shipGate_1.RLS_SCORE_GROUP_CAP; } });
 Object.defineProperty(exports, "buildIssueGroups", { enumerable: true, get: function () { return shipGate_1.buildIssueGroups; } });
 Object.defineProperty(exports, "buildShipGateReport", { enumerable: true, get: function () { return shipGate_1.buildShipGateReport; } });
+Object.defineProperty(exports, "countCleanScannedFiles", { enumerable: true, get: function () { return shipGate_1.countCleanScannedFiles; } });
 Object.defineProperty(exports, "formatShipGateMarkdown", { enumerable: true, get: function () { return shipGate_1.formatShipGateMarkdown; } });
 Object.defineProperty(exports, "formatShipGatePlainText", { enumerable: true, get: function () { return shipGate_1.formatShipGatePlainText; } });
 Object.defineProperty(exports, "getFindingGroupKey", { enumerable: true, get: function () { return shipGate_1.getFindingGroupKey; } });
 Object.defineProperty(exports, "isShipGateBlocked", { enumerable: true, get: function () { return shipGate_1.isShipGateBlocked; } });
 Object.defineProperty(exports, "resolveGroupAction", { enumerable: true, get: function () { return shipGate_1.resolveGroupAction; } });
+var gitIgnore_1 = require("./gitIgnore");
+Object.defineProperty(exports, "excludeGitIgnoredFiles", { enumerable: true, get: function () { return gitIgnore_1.excludeGitIgnoredFiles; } });
+Object.defineProperty(exports, "isAssurlyEnvExamplePath", { enumerable: true, get: function () { return gitIgnore_1.isAssurlyEnvExamplePath; } });
+Object.defineProperty(exports, "isGitIgnorePath", { enumerable: true, get: function () { return gitIgnore_1.isGitIgnorePath; } });
+Object.defineProperty(exports, "isGitIgnored", { enumerable: true, get: function () { return gitIgnore_1.isGitIgnored; } });
+Object.defineProperty(exports, "parseGitIgnoreSources", { enumerable: true, get: function () { return gitIgnore_1.parseGitIgnoreSources; } });
+var workspaceScan_1 = require("./workspaceScan");
+Object.defineProperty(exports, "GITHUB_ACTIONS_EXISTING_CI_MESSAGE", { enumerable: true, get: function () { return workspaceScan_1.GITHUB_ACTIONS_EXISTING_CI_MESSAGE; } });
+Object.defineProperty(exports, "GITHUB_ACTIONS_INIT_SUGGESTION", { enumerable: true, get: function () { return workspaceScan_1.GITHUB_ACTIONS_INIT_SUGGESTION; } });
+Object.defineProperty(exports, "GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE", { enumerable: true, get: function () { return workspaceScan_1.GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE; } });
+Object.defineProperty(exports, "githubActionsIntegrationMessage", { enumerable: true, get: function () { return workspaceScan_1.githubActionsIntegrationMessage; } });
+Object.defineProperty(exports, "scanGithubActionsIntegration", { enumerable: true, get: function () { return workspaceScan_1.scanGithubActionsIntegration; } });
+Object.defineProperty(exports, "scanHardcodedStripeSecrets", { enumerable: true, get: function () { return workspaceScan_1.scanHardcodedStripeSecrets; } });
+Object.defineProperty(exports, "scanTsconfigStrict", { enumerable: true, get: function () { return workspaceScan_1.scanTsconfigStrict; } });
+Object.defineProperty(exports, "scanWorkspaceFiles", { enumerable: true, get: function () { return workspaceScan_1.scanWorkspaceFiles; } });
+var sqlDialect_2 = require("./sqlDialect");
+Object.defineProperty(exports, "detectSqlDialect", { enumerable: true, get: function () { return sqlDialect_2.detectSqlDialect; } });
+Object.defineProperty(exports, "isPostgresSqlSource", { enumerable: true, get: function () { return sqlDialect_2.isPostgresSqlSource; } });

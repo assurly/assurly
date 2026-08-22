@@ -210,17 +210,21 @@ export const POST = secureRoute(
     // point — the UI cannot bypass it. The planner never runs around this gate.
     const gate = auth ? await resolveUrlTargetGate(auth, parsedUrl.toString()) : PASSIVE_GATE;
 
-    const { findings, evidence, planSource, pageText, visibility } = await scanLiveUrlWithEvidence(
-      parsedUrl.toString(),
-      fetch,
-      undefined,
-      {
+    const { findings, evidence, planSource, pageText, visibility, blocked } =
+      await scanLiveUrlWithEvidence(parsedUrl.toString(), fetch, undefined, {
         activeProbe: gate.activeProbe,
         organizationId: gate.organizationId ?? undefined,
         // Always run — free users get the headline (conversion); paid get checks.
         visibilityAudit: true,
-      },
-    );
+      });
+
+    // The target refused the probe, so we never saw the app. No Ship Gate, no
+    // persisted verdict, no fix outcomes — an honest "unknown" is the only
+    // defensible answer, and a stale card must not be overwritten by it.
+    if (blocked) {
+      return NextResponse.json({ blocked, target: gate.target });
+    }
+
     const report = buildShipGateFromWebFindings(findings, {
       scannedFileCount: 1,
       cleanFileCount: findings.length === 0 ? 1 : 0,

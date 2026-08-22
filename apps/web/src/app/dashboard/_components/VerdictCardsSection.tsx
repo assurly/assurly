@@ -24,7 +24,7 @@ export interface VerdictCardsSectionProps {
   onOpenRepo: (repositoryId: string) => void;
   /** Remove a guarded URL app from Your apps. */
   onRemoveUrl?: (targetId: string) => void | Promise<void>;
-  /** Remove an invalid / broken repository row from Your apps. */
+  /** Remove a connected repository from Your apps. */
   onRemoveRepo?: (repositoryId: string) => void | Promise<void>;
   /** Refresh a stale / never-scanned app from the card CTA. */
   onRescan?: (card: TargetCard) => void | Promise<void>;
@@ -83,6 +83,7 @@ export function VerdictCardsSection({
   const [verdictFilter, setVerdictFilter] = useState<AppsVerdictFilter>('all');
   const [sort, setSort] = useState<AppsSort>('urgency');
   const [density, setDensity] = useState<AppsDensity>('comfortable');
+  const [prefsReady, setPrefsReady] = useState(false);
   const [confirmCard, setConfirmCard] = useState<TargetCard | null>(null);
   const { menuRef: dialogRef, rememberTrigger } = useAccessibleMenu<HTMLDivElement>({
     open: confirmCard !== null,
@@ -91,13 +92,18 @@ export function VerdictCardsSection({
 
   useEffect(() => {
     const prefs = readVerdictCardsPrefs();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate view prefs after mount to avoid SSR mismatch
     setSort(prefs.sort);
     setDensity(prefs.density);
+    setKindFilter(prefs.kindFilter);
+    setVerdictFilter(prefs.verdictFilter);
+    setPrefsReady(true);
   }, []);
 
   useEffect(() => {
-    writeVerdictCardsPrefs({ sort, density });
-  }, [sort, density]);
+    if (!prefsReady) return;
+    writeVerdictCardsPrefs({ sort, density, kindFilter, verdictFilter });
+  }, [prefsReady, sort, density, kindFilter, verdictFilter]);
 
   const kindScopedCards = useMemo(
     () => (cards === null ? null : filterCardsByKind(cards, kindFilter)),
@@ -129,12 +135,7 @@ export function VerdictCardsSection({
       void onRemoveUrl(targetId);
       return;
     }
-    if (
-      confirmCard.kind === 'repo' &&
-      confirmCard.repositoryId &&
-      onRemoveRepo &&
-      confirmCard.scanCapability === 'invalid'
-    ) {
+    if (confirmCard.kind === 'repo' && confirmCard.repositoryId && onRemoveRepo) {
       const repositoryId = confirmCard.repositoryId;
       setConfirmCard(null);
       void onRemoveRepo(repositoryId);
@@ -348,10 +349,7 @@ export function VerdictCardsSection({
               rescanBlocked={rescanBlocked}
               onRemove={
                 (card.kind === 'url' && onRemoveUrl) ||
-                (card.kind === 'repo' &&
-                  card.scanCapability === 'invalid' &&
-                  card.repositoryId &&
-                  onRemoveRepo)
+                (card.kind === 'repo' && card.repositoryId && onRemoveRepo)
                   ? (trigger) => openRemoveConfirm(card, trigger)
                   : undefined
               }
@@ -386,8 +384,8 @@ export function VerdictCardsSection({
             <p id="remove-url-dialog-desc" className="scan-delete-dialog__desc">
               {confirmCard.kind === 'repo' ? (
                 <>
-                  Remove <strong>{confirmCard.displayName}</strong> from Your apps? Reconnect it
-                  later with a valid <code>owner/repo</code> name.
+                  Remove <strong>{confirmCard.displayName}</strong> from Your apps? You can add it
+                  again later with Connect &amp; Scan. Scan history is kept.
                 </>
               ) : (
                 <>

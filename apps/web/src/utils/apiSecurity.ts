@@ -36,7 +36,7 @@ export const RATE_LIMITS = {
 } as const satisfies Record<string, RateLimitPolicy>;
 
 /**
- * The enforced quota for a programmatic key, by the plan snapshotted on the key.
+ * The enforced quota for a programmatic key, by the organization's live billing plan.
  * Exhaustive over `BillingPlan` so a new plan cannot be added without giving it a
  * tier here (keeps the enum in sync with utils/entitlements.ts and the DB check).
  */

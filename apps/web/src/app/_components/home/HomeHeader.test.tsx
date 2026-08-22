@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { HomeHeader } from './HomeHeader';
+import { HomeHeader, LANDING_NAV_OVERLAY_MQ } from './HomeHeader';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
@@ -70,5 +70,12 @@ describe('HomeHeader — navbar sign-in target', () => {
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('hamburger-btn');
     expect(html).toContain('id="primary-navigation"');
+    expect(html).toContain('aria-label="Color theme"');
+    expect(html).toContain('header-toolbar');
+    expect(html).toContain('site-header');
+  });
+
+  it('keeps the overlay media query aligned with CSS (hamburger ≤1100px)', () => {
+    expect(LANDING_NAV_OVERLAY_MQ).toBe('(max-width: 1100px)');
   });
 });

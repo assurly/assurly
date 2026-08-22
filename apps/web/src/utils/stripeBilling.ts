@@ -1,6 +1,13 @@
 import type Stripe from 'stripe';
 import type { DbAdapter, StripeBillingEvent } from './dbAdapter';
 import { getAllowedStripePriceIds } from './stripe';
+import { applyTrialCardReuse } from './stripeTrialFingerprint';
+import {
+  isLiveSubscriptionStatus,
+  listLiveOrganizationSubscriptions,
+  oldestSubscription,
+  planForSubscriptionStatus,
+} from './stripeSubscriptions';
 
 export class StripeBillingValidationError extends Error {
   constructor(message: string) {
@@ -31,8 +38,10 @@ function verifiedPriceId(subscription: Stripe.Subscription): string {
   return priceIds[0];
 }
 
-function planForStatus(status: Stripe.Subscription.Status): 'free' | 'pro' {
-  return status === 'active' || status === 'trialing' ? 'pro' : 'free';
+function invoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
+  const raw = invoice.parent?.subscription_details?.subscription;
+  if (!raw) return null;
+  return typeof raw === 'string' ? raw : raw.id;
 }
 
 async function verifyCustomer(
@@ -50,22 +59,41 @@ async function verifyCustomer(
   }
 }
 
-async function verifyOrganization(
+async function loadOrganization(
   db: DbAdapter,
   organizationId: string,
   customerId: string,
-): Promise<void> {
+): Promise<NonNullable<Awaited<ReturnType<DbAdapter['getOrganization']>>>> {
   const organization = await db.getOrganization(organizationId);
   if (!organization) throw new StripeBillingValidationError('Unknown organization.');
   if (organization.stripe_customer_id && organization.stripe_customer_id !== customerId) {
     throw new StripeBillingValidationError('Stripe customer belongs to another organization.');
   }
+  return organization;
+}
+
+function billingEventFromSubscription(
+  event: Stripe.Event,
+  subscription: Stripe.Subscription,
+  organizationId: string,
+  customerId: string,
+  priceId: string,
+): StripeBillingEvent {
+  return {
+    eventId: event.id,
+    eventType: event.type,
+    organizationId,
+    plan: planForSubscriptionStatus(subscription.status),
+    stripeCustomerId: customerId,
+    stripeSubscriptionId: subscription.id,
+    stripePriceId: priceId,
+  };
 }
 
 async function checkoutBillingEvent(
   stripe: Stripe,
   event: Stripe.Event,
-): Promise<StripeBillingEvent> {
+): Promise<{ billingEvent: StripeBillingEvent; subscription: Stripe.Subscription }> {
   const eventSession = event.data.object as Stripe.Checkout.Session;
   const session = await stripe.checkout.sessions.retrieve(eventSession.id, {
     expand: ['subscription'],
@@ -90,7 +118,7 @@ async function checkoutBillingEvent(
       ? await stripe.subscriptions.retrieve(subscriptionId)
       : session.subscription;
 
-  if (!subscription || !['active', 'trialing'].includes(subscription.status)) {
+  if (!subscription || !isLiveSubscriptionStatus(subscription.status)) {
     throw new StripeBillingValidationError('Subscription is not active or trialing.');
   }
   if (requireId(subscription.customer, 'subscription customer') !== customerId) {
@@ -109,22 +137,26 @@ async function checkoutBillingEvent(
   await verifyCustomer(stripe, customerId, organizationId);
 
   return {
-    eventId: event.id,
-    eventType: event.type,
-    organizationId,
-    plan: 'pro',
-    stripeCustomerId: customerId,
-    stripeSubscriptionId: subscription.id,
-    stripePriceId: priceId,
+    subscription,
+    billingEvent: {
+      eventId: event.id,
+      eventType: event.type,
+      organizationId,
+      plan: 'pro',
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: subscription.id,
+      stripePriceId: priceId,
+    },
   };
 }
 
 async function subscriptionBillingEvent(
   stripe: Stripe,
   event: Stripe.Event,
-): Promise<StripeBillingEvent> {
-  const eventSubscription = event.data.object as Stripe.Subscription;
-  const subscription = await stripe.subscriptions.retrieve(eventSubscription.id);
+  retrieved?: Stripe.Subscription,
+): Promise<{ billingEvent: StripeBillingEvent; subscription: Stripe.Subscription }> {
+  const eventSubscription = retrieved ?? (event.data.object as Stripe.Subscription);
+  const subscription = retrieved ?? (await stripe.subscriptions.retrieve(eventSubscription.id));
   const organizationId = requireOrganizationId(subscription.metadata);
   const customerId = requireId(subscription.customer, 'Stripe customer');
   const priceId = verifiedPriceId(subscription);
@@ -140,14 +172,53 @@ async function subscriptionBillingEvent(
 
   await verifyCustomer(stripe, customerId, organizationId);
   return {
-    eventId: event.id,
-    eventType: event.type,
-    organizationId,
-    plan: planForStatus(subscription.status),
-    stripeCustomerId: customerId,
-    stripeSubscriptionId: subscription.id,
-    stripePriceId: priceId,
+    subscription,
+    billingEvent: billingEventFromSubscription(
+      event,
+      subscription,
+      organizationId,
+      customerId,
+      priceId,
+    ),
   };
+}
+
+async function invoiceBillingEvent(
+  stripe: Stripe,
+  event: Stripe.Event,
+): Promise<{ billingEvent: StripeBillingEvent; subscription: Stripe.Subscription } | null> {
+  const invoice = event.data.object as Stripe.Invoice;
+  const subscriptionId = invoiceSubscriptionId(invoice);
+  if (!subscriptionId) return null;
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  return subscriptionBillingEvent(stripe, event, subscription);
+}
+
+/**
+ * When a race creates two live subscriptions, keep the oldest and cancel the rest.
+ * Returns whether `incoming` is the one that should drive billing_plan.
+ */
+export async function cancelDuplicateLiveSubscriptions(
+  stripe: Stripe,
+  organizationId: string,
+  incoming: Stripe.Subscription,
+): Promise<'keep' | 'duplicate'> {
+  if (!isLiveSubscriptionStatus(incoming.status)) return 'keep';
+
+  const live = await listLiveOrganizationSubscriptions(stripe, organizationId);
+  const unique = new Map<string, Stripe.Subscription>();
+  unique.set(incoming.id, incoming);
+  for (const subscription of live) unique.set(subscription.id, subscription);
+  const all = [...unique.values()];
+  if (all.length <= 1) return 'keep';
+
+  const kept = oldestSubscription(all);
+  await Promise.all(
+    all
+      .filter((subscription) => subscription.id !== kept.id)
+      .map((subscription) => stripe.subscriptions.cancel(subscription.id)),
+  );
+  return incoming.id === kept.id ? 'keep' : 'duplicate';
 }
 
 export async function processStripeEvent(
@@ -155,19 +226,42 @@ export async function processStripeEvent(
   db: DbAdapter,
   event: Stripe.Event,
 ): Promise<'processed' | 'duplicate' | 'ignored'> {
-  let billingEvent: StripeBillingEvent;
+  let parsed: { billingEvent: StripeBillingEvent; subscription: Stripe.Subscription } | null;
 
   if (event.type === 'checkout.session.completed') {
-    billingEvent = await checkoutBillingEvent(stripe, event);
+    parsed = await checkoutBillingEvent(stripe, event);
   } else if (
     event.type === 'customer.subscription.updated' ||
     event.type === 'customer.subscription.deleted'
   ) {
-    billingEvent = await subscriptionBillingEvent(stripe, event);
+    parsed = await subscriptionBillingEvent(stripe, event);
+  } else if (event.type === 'invoice.payment_failed') {
+    parsed = await invoiceBillingEvent(stripe, event);
+    if (!parsed) return 'ignored';
   } else {
     return 'ignored';
   }
 
-  await verifyOrganization(db, billingEvent.organizationId, billingEvent.stripeCustomerId);
-  return (await db.processStripeBillingEvent(billingEvent)) ? 'processed' : 'duplicate';
+  const organization = await loadOrganization(
+    db,
+    parsed.billingEvent.organizationId,
+    parsed.billingEvent.stripeCustomerId,
+  );
+  if (organization.billing_plan === 'oem') return 'ignored';
+
+  parsed = await applyTrialCardReuse(stripe, db, parsed);
+
+  if (
+    event.type === 'checkout.session.completed' ||
+    event.type === 'customer.subscription.updated'
+  ) {
+    const uniqueness = await cancelDuplicateLiveSubscriptions(
+      stripe,
+      parsed.billingEvent.organizationId,
+      parsed.subscription,
+    );
+    if (uniqueness === 'duplicate') return 'ignored';
+  }
+
+  return (await db.processStripeBillingEvent(parsed.billingEvent)) ? 'processed' : 'duplicate';
 }

@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchGitHubFilesBatch, getGitHubServerPat, readLimitedResponseText } from './githubApp';
+import {
+  fetchGitHubFilesBatch,
+  getGitHubServerPat,
+  githubHeaders,
+  listGitHubBranchNames,
+  readLimitedResponseText,
+} from './githubApp';
 
 describe('readLimitedResponseText', () => {
   /**
@@ -118,5 +124,21 @@ describe('getGitHubServerPat', () => {
 
   it('returns undefined when no server token is configured', () => {
     expect(getGitHubServerPat()).toBeUndefined();
+  });
+});
+
+describe('listGitHubBranchNames', () => {
+  it('returns branch names from the first page', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify([{ name: 'src' }, { name: 'main' }]), { status: 200 }),
+      );
+    await expect(
+      listGitHubBranchNames('owner/repo', githubHeaders('tok'), fetchImpl),
+    ).resolves.toEqual(['src', 'main']);
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
+      'https://api.github.com/repos/owner/repo/branches?per_page=100',
+    );
   });
 });

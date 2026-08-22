@@ -27,6 +27,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 import McpPage from './page';
+import { PRO_TRIAL_COPY } from '../../utils/pricing';
 
 /**
  * The tool names the MCP server actually registers, read from the package source
@@ -173,5 +174,10 @@ describe('McpPage', () => {
     expect(html).toContain('mcp-agent-loop');
     expect(html).toContain('READY TO SHIP');
     expect(html).toContain('assurly_explain_rule');
+  });
+
+  it('states that Pro starts with a 3-day trial', async () => {
+    const html = await renderMcpPageHtml();
+    expect(html).toContain(PRO_TRIAL_COPY.sectionHint);
   });
 });

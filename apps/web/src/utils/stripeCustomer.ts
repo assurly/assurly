@@ -97,15 +97,21 @@ export async function resolveStripeCustomerForOrganization(
   return discoverStripeCustomerForOrganization(stripe, organizationId, userEmail);
 }
 
+function isUniqueCustomerConflict(error: unknown): boolean {
+  return error instanceof Error && /Supabase request failed \(409\)/.test(error.message);
+}
+
 /**
- * Guarantees a usable Stripe customer before opening the billing portal:
+ * Guarantees a usable Stripe customer for Checkout and the billing portal:
  * reuse a valid stored id, rediscover a live customer, or create a fresh one.
+ * Never fall back to `customer_email` — a new Stripe customer would mint a new trial.
  */
-export async function ensureStripeCustomerForPortal(
+export async function ensureStripeCustomer(
   stripe: Stripe,
   organization: Organization,
   userEmail: string,
   syncCustomerId: (organizationId: string, customerId: string) => Promise<void>,
+  reloadOrganization?: (organizationId: string) => Promise<Organization | null>,
 ): Promise<Stripe.Customer> {
   let customer = await resolveStripeCustomerForOrganization(
     stripe,
@@ -122,27 +128,19 @@ export async function ensureStripeCustomerForPortal(
     });
   }
 
-  if (organization.stripe_customer_id !== customer.id) {
+  if (organization.stripe_customer_id === customer.id) return customer;
+
+  try {
     await syncCustomerId(organization.id, customer.id);
+    return customer;
+  } catch (error) {
+    if (!isUniqueCustomerConflict(error) || !reloadOrganization) throw error;
+    const latest = await reloadOrganization(organization.id);
+    const storedId = latest?.stripe_customer_id;
+    if (!storedId || storedId === customer.id) throw error;
+    const winner = await retrieveStripeCustomer(stripe, storedId);
+    if (!winner) throw error;
+    assertOrganizationOwnsCustomer(winner, organization.id);
+    return winner;
   }
-
-  return customer;
-}
-
-/**
- * Returns a verified customer id for Checkout, or undefined when the stored id
- * is absent/stale so Checkout can fall back to customer_email.
- */
-export async function verifiedCheckoutCustomerId(
-  stripe: Stripe,
-  customerId: string | undefined,
-  organizationId: string,
-): Promise<string | undefined> {
-  if (!customerId) return undefined;
-
-  const customer = await retrieveStripeCustomer(stripe, customerId);
-  if (!customer) return undefined;
-
-  assertOrganizationOwnsCustomer(customer, organizationId);
-  return customer.id;
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BLOCKED_SCORE_CAP,
+  clampShipScoreForBlockedVerdict,
   clampShipScoreForCoverage,
   indicatesIncompleteCoverage,
   INCOMPLETE_NO_BLOCKER_FLOOR,
@@ -72,5 +74,31 @@ describe('resolveDisplayedShipScore', () => {
     expect(
       resolveDisplayedShipScore({ ship_score: 92, scanned_file_count: 250 }, [incompleteFinding]),
     ).toBeLessThanOrEqual(INCOMPLETE_SCORE_CAP);
+  });
+
+  it('caps a persisted blocked score so it never looks shippable', () => {
+    const blockerFinding = {
+      id: 'f-block',
+      scan_id: 's1',
+      rule_id: 'stripe-webhook-signature',
+      severity: 'error' as const,
+      confidence: 'high' as const,
+      file_path: 'app/api/webhook/route.ts',
+      line_number: 1,
+      message: 'Stripe webhook endpoint appears to lack signature verification.',
+      suggestion: '',
+      created_at: '2026-01-01T00:00:00.000Z',
+    };
+    expect(
+      resolveDisplayedShipScore({ ship_score: 88, scanned_file_count: 10 }, [blockerFinding]),
+    ).toBeLessThanOrEqual(BLOCKED_SCORE_CAP);
+  });
+});
+
+describe('clampShipScoreForBlockedVerdict', () => {
+  it('caps blocked scores and leaves unblocked scores alone', () => {
+    expect(clampShipScoreForBlockedVerdict(88, true)).toBe(BLOCKED_SCORE_CAP);
+    expect(clampShipScoreForBlockedVerdict(88, false)).toBe(88);
+    expect(clampShipScoreForBlockedVerdict(null, true)).toBeNull();
   });
 });

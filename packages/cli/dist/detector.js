@@ -87,56 +87,23 @@ function listFiles(dir, baseDir = dir) {
  * the function stays usable on its own (e.g. from tests).
  */
 function detectStack(projectPath, allFiles = listFiles(projectPath)) {
-    const stack = {
-        framework: 'unknown',
-        database: 'none',
-        payments: 'none',
-        deployment: 'unknown',
-    };
-    const packageJsonRelPaths = allFiles.filter((f) => path.basename(f) === 'package.json');
-    if (packageJsonRelPaths.length === 0) {
-        return stack;
-    }
-    const allDeps = {};
-    let sawVercelConfig = false;
+    const packageJsonRelPaths = allFiles.filter((file) => path.basename(file) === 'package.json');
+    const manifests = [];
     for (const relPath of packageJsonRelPaths) {
-        const absPath = path.join(projectPath, relPath);
-        let packageJson;
         try {
-            packageJson = JSON.parse(fs.readFileSync(absPath, 'utf8'));
+            manifests.push({
+                path: relPath.replace(/\\/g, '/'),
+                content: fs.readFileSync(path.join(projectPath, relPath), 'utf8'),
+            });
         }
         catch {
-            continue; // Malformed manifest in one workspace member shouldn't blank out the rest.
-        }
-        Object.assign(allDeps, packageJson.dependencies ?? {}, packageJson.devDependencies ?? {});
-        if (fs.existsSync(path.join(path.dirname(absPath), 'vercel.json'))) {
-            sawVercelConfig = true;
+            continue;
         }
     }
-    // Framework detection
-    if (allDeps['next']) {
-        stack.framework = 'nextjs';
-    }
-    // Database detection
-    if (allDeps['@supabase/supabase-js'] || allDeps['@supabase/ssr']) {
-        stack.database = 'supabase';
-    }
-    else if (allDeps['prisma'] || allDeps['@prisma/client']) {
-        stack.database = 'prisma';
-    }
-    // Payments detection
-    if (allDeps['stripe'] || allDeps['@stripe/stripe-js']) {
-        stack.payments = 'stripe';
-    }
-    // Deployment platform heuristic
-    if (sawVercelConfig || allDeps['@vercel/analytics']) {
-        stack.deployment = 'vercel';
-    }
-    else if (stack.framework === 'nextjs') {
-        // Default deployment platform for Next.js is Vercel
-        stack.deployment = 'vercel';
-    }
-    return stack;
+    return (0, scanner_core_1.detectStackFromManifests)({
+        manifests,
+        filePaths: allFiles.map((file) => file.replace(/\\/g, '/')),
+    });
 }
 /**
  * Builds the project context by scanning the target directory.
@@ -145,7 +112,7 @@ function buildContext(projectPath) {
     const allFiles = listFiles(projectPath);
     const detectedStack = detectStack(projectPath, allFiles);
     const files = allFiles.filter(scanner_core_1.isScannableFile);
-    const scanScope = (0, scanner_core_1.buildScanScope)(allFiles, files);
+    const scanScope = (0, scanner_core_1.buildScanScope)(allFiles, files, { treePaths: allFiles });
     return {
         projectPath,
         detectedStack,

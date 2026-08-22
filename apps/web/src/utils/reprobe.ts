@@ -73,10 +73,19 @@ export async function reprobeTargetAndRecord(context: ReprobeContext): Promise<R
   // The gate flag is passed straight into the scanner exactly as scan-url does:
   // when it is false the scanner never enters its active branch, so no Supabase
   // row-pull and no AI planner call can occur for an unverified target.
-  const { findings, evidence } = await scan(probeUrl, context.fetchImpl ?? fetch, undefined, {
-    activeProbe,
-    organizationId: target.organization_id,
-  });
+  const { findings, evidence, blocked } = await scan(
+    probeUrl,
+    context.fetchImpl ?? fetch,
+    undefined,
+    { activeProbe, organizationId: target.organization_id },
+  );
+
+  if (blocked) {
+    // The target refused the probe, so `findings` is empty for a reason that has
+    // nothing to do with the app. Recording it would flip every open finding to
+    // VERIFIED FIXED the first time a WAF or a rate limit turns the scanner away.
+    return { activeProbe, probed: false, probeUrl, outcomes: [], findings, evidence };
+  }
 
   if (!activeProbe) {
     // Gate closed. A passive scan may have run, but there is nothing verified to

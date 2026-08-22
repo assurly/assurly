@@ -25,20 +25,21 @@ export function ShipGateGroupAction({ action }: ShipGateGroupActionProps): React
           </div>
         </div>
       );
-    case 'link':
+    case 'link': {
       if (!action.href) return null;
+      const isInPage = action.href.startsWith('#');
       return (
         <div className="ship-gate-list-action">
           <a
             href={action.href}
             className="ship-gate-action-link"
-            target="_blank"
-            rel="noopener noreferrer"
+            {...(isInPage ? {} : { target: '_blank', rel: 'noopener noreferrer' })}
           >
             {action.label}
           </a>
         </div>
       );
+    }
     case 'hint': {
       const hintText = action.hint ?? action.label;
       return (

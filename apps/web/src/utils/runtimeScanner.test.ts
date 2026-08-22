@@ -17,8 +17,10 @@ import {
   VISIBILITY_AUDIT_BUDGET_MS,
   scanBundleForSecrets,
   scanBundleForSecretsWithEvidence,
+  scanBundleForCanaryInClient,
   type LookupImpl,
 } from './runtimeScanner';
+import { SCANNER_IDENTITY_HEADER } from './scannerBlocked';
 import { buildShipGateFromWebFindings } from './shipGate';
 
 function makeJwt(payload: Record<string, unknown>): string {
@@ -61,6 +63,20 @@ describe('runtimeScanner', () => {
     it('masks values using maskSecretValue', () => {
       expect(maskSecretValue('sk_live_abc123def456')).toBe('sk_live_****f456');
       expect(maskSecretValue('sk_test_abc123def456')).toBe('sk_test_****f456');
+    });
+  });
+
+  describe('scanBundleForCanaryInClient', () => {
+    it('warns when the tripwire is in public JS and does not treat it as a secret leak', () => {
+      const bundle = `const env = { ASSURLY_CANARY_URL: "https://assurly.dev/api/canary/ask_canary_${'a'.repeat(32)}" };`;
+      const findings = scanBundleForCanaryInClient(bundle);
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.ruleId).toBe('assurly-canary-in-client');
+      expect(findings[0]?.severity).toBe('warning');
+      expect(findings[0]?.suggestion).toMatch(/Rotate real/);
+      expect(
+        scanBundleForSecrets(bundle).some((f) => f.ruleId === 'runtime-secret-in-bundle'),
+      ).toBe(false);
     });
   });
 
@@ -217,6 +233,22 @@ describe('runtimeScanner', () => {
         return Promise.resolve(new Response('', { status: 200 }));
       }) as typeof fetch;
       await runtimeFetch('https://example.com', {}, fetchMock);
+    });
+
+    // Bot protection challenges any non-browser User-Agent, which made live,
+    // healthy sites look unreachable. We present as a browser and declare who we
+    // are in a separate header a host can allowlist.
+    it('sends a mainstream browser User-Agent plus the Assurly identity header', async () => {
+      const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        const headers = init?.headers as Record<string, string>;
+        expect(headers['User-Agent']).toContain('Mozilla/5.0');
+        expect(headers['User-Agent']).toContain('Chrome/');
+        expect(headers['User-Agent']).not.toMatch(/assurly/i);
+        expect(headers[SCANNER_IDENTITY_HEADER]).toContain('assurly.dev');
+        return Promise.resolve(new Response('', { status: 200 }));
+      }) as typeof fetch;
+      await runtimeFetch('https://example.com', {}, fetchMock);
+      expect(fetchMock).toHaveBeenCalledOnce();
     });
   });
 
@@ -435,6 +467,31 @@ describe('runtimeScanner', () => {
       expect(findings.some((f) => f.ruleId === 'runtime-supabase-key-exposed')).toBe(true);
     });
 
+    it('flags a canary in the live bundle without fetching the callback', async () => {
+      const canaryUrl = `https://assurly.dev/api/canary/ask_canary_${'a'.repeat(32)}`;
+      const fetched: string[] = [];
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        fetched.push(url);
+        if (url === 'https://myapp.example/') {
+          const html = `<html><body><script src="${canaryUrl}"></script><script>window.CANARY="${canaryUrl}"</script></body></html>`;
+          return new Response(html, { status: 200, headers: { 'content-type': 'text/html' } });
+        }
+        throw new Error(`unexpected fetch to ${url}`);
+      }) as typeof fetch;
+
+      const { findings } = await scanLiveUrlWithEvidence(
+        'https://myapp.example/',
+        fetchMock,
+        fakeLookup(),
+      );
+      expect(fetched).toEqual(['https://myapp.example/']);
+      expect(findings.some((f) => f.ruleId === 'assurly-canary-in-client')).toBe(true);
+      expect(findings.find((f) => f.ruleId === 'assurly-canary-in-client')?.severity).toBe(
+        'warning',
+      );
+    });
+
     it('suppresses the passive exposure hook when the active probe runs', async () => {
       vi.stubEnv('ANTHROPIC_API_KEY', ''); // planner falls back to the deterministic plan
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -480,6 +537,69 @@ describe('runtimeScanner', () => {
       expect(report.status).toBe('blocked');
       expect(report.headline).toBe('NOT READY TO SHIP');
       expect(report.shipScore).toBeLessThan(100);
+    });
+
+    // A WAF, deployment protection or a rate limit means the target refused US.
+    // Calling that a dead deploy blocked apps for being well protected.
+    describe('when the target refuses the scanner', () => {
+      function refusingFetch(status: number, headers: Record<string, string> = {}) {
+        return vi.fn(
+          async () => new Response('<html>Access denied</html>', { status, headers }),
+        ) as typeof fetch;
+      }
+
+      it('reports an honest unknown instead of a blocker, with no findings', async () => {
+        const result = await scanLiveUrlWithEvidence(
+          'https://protected.example/',
+          refusingFetch(403, { server: 'cloudflare', 'cf-mitigated': 'challenge' }),
+          fakeLookup(),
+        );
+
+        expect(result.blocked).toEqual({ status: 403, source: 'cloudflare' });
+        expect(result.findings).toHaveLength(0);
+        expect(result.evidence).toHaveLength(0);
+      });
+
+      it('attributes Vercel deployment protection so the fix is actionable', async () => {
+        const result = await scanLiveUrlWithEvidence(
+          'https://preview.example/',
+          refusingFetch(401, { server: 'Vercel' }),
+          fakeLookup(),
+        );
+        expect(result.blocked).toEqual({ status: 401, source: 'vercel' });
+      });
+
+      it('attributes a rate limit ahead of the host that issued it', async () => {
+        const result = await scanLiveUrlWithEvidence(
+          'https://busy.example/',
+          refusingFetch(429, { server: 'cloudflare' }),
+          fakeLookup(),
+        );
+        expect(result.blocked).toEqual({ status: 429, source: 'rate-limit' });
+      });
+
+      it('falls back to an unattributed refusal when nothing identifies the blocker', async () => {
+        const result = await scanLiveUrlWithEvidence(
+          'https://walled.example/',
+          refusingFetch(403),
+          fakeLookup(),
+        );
+        expect(result.blocked).toEqual({ status: 403, source: 'unknown' });
+      });
+
+      it('still treats a genuinely dead deploy as a blocker, not a refusal', async () => {
+        for (const status of [404, 410, 500, 503]) {
+          const result = await scanLiveUrlWithEvidence(
+            'https://dead.example/',
+            refusingFetch(status),
+            fakeLookup(),
+          );
+          expect(result.blocked).toBeUndefined();
+          expect(result.findings.map((finding) => finding.ruleId)).toContain(
+            'runtime-target-unreachable',
+          );
+        }
+      });
     });
   });
 

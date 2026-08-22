@@ -34,8 +34,8 @@ afterEach(() => {
 
 describe('ScanFindingsDetails', () => {
   it('formats the collapsed summary label', () => {
-    expect(formatFindingsDetailsSummary(1)).toBe('Show details · 1 finding');
-    expect(formatFindingsDetailsSummary(2)).toBe('Show details · 2 findings');
+    expect(formatFindingsDetailsSummary(1)).toBe('1 finding');
+    expect(formatFindingsDetailsSummary(2)).toBe('2 findings');
   });
 
   it('keeps detailed findings collapsed by default', () => {
@@ -51,7 +51,13 @@ describe('ScanFindingsDetails', () => {
 
     const details = screen.getByTestId('scan-details-findings') as HTMLDetailsElement;
     expect(details.open).toBe(false);
-    expect(screen.getByText('Show details · 2 findings')).toBeTruthy();
+    expect(screen.getByText('2 findings')).toBeTruthy();
+    expect(screen.getByText('View details')).toBeTruthy();
+    expect(
+      screen
+        .getByTestId('scan-findings-details-toggle')
+        .querySelector('.scan-findings-details__chevron'),
+    ).toBeTruthy();
   });
 
   it('reveals finding cards after expanding details', () => {
@@ -141,7 +147,7 @@ describe('ScanFindingsDetails', () => {
       />,
     );
 
-    expect(screen.getByText('Show details · 1 finding')).toBeTruthy();
+    expect(screen.getByText('3 findings')).toBeTruthy();
 
     fireEvent.click(screen.getByTestId('scan-findings-details-toggle'));
 

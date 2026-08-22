@@ -12,4 +12,4 @@
 export const RULE_AREA_COUNT = 13;
 
 /** Tools in packages/mcp-server/src/tools.ts (`ASSURLY_MCP_TOOL_NAMES`). */
-export const MCP_TOOL_COUNT = 5;
+export const MCP_TOOL_COUNT = 6;

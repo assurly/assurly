@@ -190,4 +190,27 @@ describe('reprobeTargetAndRecord (gate)', () => {
     ]);
     expect(db.insertFixOutcomes).toHaveBeenCalledTimes(1);
   });
+
+  it('records nothing when the target refused the probe', async () => {
+    // An empty finding set from a WAF refusal means "we never looked", not "it is
+    // fixed" — recording it would silently mark every open finding verified_fixed.
+    const db = makeDb([historyRow({ outcome: 'still_open' })]);
+    const scanImpl = vi.fn().mockResolvedValue({
+      findings: [],
+      evidence: [],
+      blocked: { status: 403, source: 'cloudflare' },
+    });
+
+    const result = await reprobeTargetAndRecord({
+      target: target(),
+      db,
+      scanImpl: scanImpl as never,
+    });
+
+    expect(result.activeProbe).toBe(true);
+    expect(result.probed).toBe(false);
+    expect(result.outcomes).toEqual([]);
+    expect(db.getFixOutcomesForTarget).not.toHaveBeenCalled();
+    expect(db.insertFixOutcomes).not.toHaveBeenCalled();
+  });
 });

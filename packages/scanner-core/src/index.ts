@@ -1,22 +1,28 @@
 import { parse } from '@babel/parser';
 import type { Node } from '@babel/types';
 import {
+  INSTANT_GATE_MAX_FILES,
   buildScanScope,
   formatScanScopeSummary,
   getFileRelevanceScore,
   inferScanRoots,
+  instantGateSurfaceFiles,
   isScannableFile,
+  isTextScanSurface,
   rankFilesByRelevance,
+  type BuildScanScopeOptions,
   type ScanScope,
+  type ScanScopeGaps,
 } from './fileRelevance';
 import { scanRouteHandlerAuth, scanServerActionAuth, scanServiceRoleBypass } from './authBoundary';
+import { isPostgresSqlSource } from './sqlDialect';
 import { scanSupabaseDeepPolicies } from './supabasePolicies';
 import {
   scanStripeLiveKeyInDev,
   scanStripeMissingSubscriptionEvents,
-  scanStripeWebhookIdempotency,
+  scanStripeWebhookIdempotencyForProject,
 } from './stripeLifecycle';
-import { containsAssurlyCanaryToken } from './canaryToken';
+import { ASSURLY_CANARY_ENV_KEY, isAssurlyCanaryPlantLine } from './canaryToken';
 
 export type Severity = 'error' | 'warning';
 
@@ -59,9 +65,17 @@ const result = (findings: ScannerFinding[]): ScanResult => ({
   findings,
 });
 
+export const RLS_SUPABASE_TABLE_LABEL = 'Supabase table';
+export const RLS_GENERIC_TABLE_LABEL = 'Database table';
+
 function tableNameFromRlsMessage(message: string): string | null {
   const match = message.match(/table '([^']+)'/i);
   return match?.[1] ?? null;
+}
+
+/** True when a `supabase-rls` message was emitted for a real Supabase stack. */
+export function isSupabaseRlsMessage(message: string): boolean {
+  return message.startsWith(`${RLS_SUPABASE_TABLE_LABEL} '`);
 }
 
 /**
@@ -122,6 +136,26 @@ function walk(node: unknown, visit: (node: AstNode) => void): void {
     if (key === 'loc' || key === 'start' || key === 'end' || key === 'extra') continue;
     if (Array.isArray(value)) value.forEach((item) => walk(item, visit));
     else if (value && typeof value === 'object') walk(value, visit);
+  }
+}
+
+function walkWithAncestors(
+  node: unknown,
+  ancestors: readonly AstNode[],
+  visit: (node: AstNode, ancestors: readonly AstNode[]) => void,
+): void {
+  if (!node || typeof node !== 'object') return;
+  const candidate = node as Record<string, unknown>;
+  const isAst = typeof candidate.type === 'string';
+  const nextAncestors = isAst ? [...ancestors, candidate as AstNode] : ancestors;
+  if (isAst) visit(candidate as AstNode, ancestors);
+  for (const [key, value] of Object.entries(candidate)) {
+    if (key === 'loc' || key === 'start' || key === 'end' || key === 'extra') continue;
+    if (Array.isArray(value)) {
+      value.forEach((item) => walkWithAncestors(item, nextAncestors, visit));
+    } else if (value && typeof value === 'object') {
+      walkWithAncestors(value, nextAncestors, visit);
+    }
   }
 }
 
@@ -282,6 +316,77 @@ const heavyImports: Record<string, [string, string]> = {
     'Use Intl, date-fns, dayjs, or Luxon.',
   ],
 };
+
+const DB_POOL_CLASSES = new Set(['PrismaClient', 'Pool', 'Client', 'MongoClient']);
+
+/** Next.js API route / Route Handler paths, including monorepo apps/<pkg>/src/app/api. */
+export function isServerlessApiRouteFile(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, '/');
+  return (
+    /(?:^|\/)(?:src\/)?(?:app|pages)\/api\//.test(normalized) &&
+    /\.(?:js|ts|jsx|tsx)$/.test(normalized)
+  );
+}
+
+function enclosingFunctionName(ancestors: readonly AstNode[]): string | null {
+  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+    const node = ancestors[index];
+    if (!node) continue;
+    switch (node.type) {
+      case 'FunctionDeclaration': {
+        const id = node.id as { name?: string } | undefined;
+        return id?.name ?? 'anonymous function';
+      }
+      case 'FunctionExpression':
+      case 'ArrowFunctionExpression': {
+        const parent = ancestors[index - 1];
+        if (parent?.type === 'VariableDeclarator') {
+          const id = parent.id as { name?: string } | undefined;
+          if (id?.name) return id.name;
+        }
+        return 'anonymous function';
+      }
+      case 'ClassMethod':
+      case 'ClassPrivateMethod':
+      case 'ObjectMethod': {
+        const key = node.key as { name?: string; value?: string } | undefined;
+        return key?.name ?? (typeof key?.value === 'string' ? key.value : 'anonymous function');
+      }
+      default:
+        break;
+    }
+  }
+  return null;
+}
+
+export function scanDbConnectionPooling(content: string, file = 'route.ts'): ScanResult {
+  if (!isServerlessApiRouteFile(file)) return result([]);
+  const findings: ScannerFinding[] = [];
+  let ast: AstNode;
+  try {
+    ast = parseCode(content);
+  } catch {
+    return result(findings);
+  }
+  walkWithAncestors(ast, [], (node, ancestors) => {
+    if (node.type !== 'NewExpression') return;
+    const callee = node.callee as AstNode | undefined;
+    const className = callee?.type === 'Identifier' ? String(callee.name) : null;
+    if (!className || !DB_POOL_CLASSES.has(className)) return;
+    const functionName = enclosingFunctionName(ancestors);
+    if (!functionName) return;
+    findings.push({
+      ruleId: 'database-connection-pooling',
+      severity: 'error',
+      confidence: 'high',
+      file,
+      line: lineOf(node),
+      message: `Database client '${className}' is instantiated inside function '${functionName}' in a serverless API route. This will open a new database connection on every request and quickly exhaust your database connection pool.`,
+      suggestion: `Move 'new ${className}()' outside the function scope (as a global singleton) or import it from a shared database helper file.`,
+    });
+  });
+  return result(findings);
+}
 
 export function scanColdStart(content: string, file = 'route.ts'): ScanResult {
   const findings: ScannerFinding[] = [];
@@ -453,12 +558,13 @@ export function scanSqlMigrations(sources: readonly SourceInput[]): ScanResult {
   const findings: ScannerFinding[] = [];
   const created = new Map<string, { file: string; line: number }>();
   const rls = new Set<string>();
+  const postgresSources = sources.filter((source) => isPostgresSqlSource(source));
   const normalize = (name: string) =>
     name
       .replace(/['"`]/g, '')
       .replace(/^public\./i, '')
       .trim();
-  for (const source of sources) {
+  for (const source of postgresSources) {
     source.content.split(/\r?\n/).forEach((line, index) => {
       const code = line.replace(/--.*$/, '');
       const create = code.match(/create\s+table\s+(?:if\s+not\s+exists\s+)?([a-zA-Z0-9_."`'-]+)/i);
@@ -484,14 +590,14 @@ export function scanSqlMigrations(sources: readonly SourceInput[]): ScanResult {
       }
     });
   }
-  const hasSupabaseSignal = sources.some(
+  const hasSupabaseSignal = postgresSources.some(
     (source) =>
       /supabase/i.test(source.file) ||
       /supabase/i.test(source.content) ||
       /auth\.uid\(\)/i.test(source.content) ||
       /auth\.users\b/i.test(source.content),
   );
-  const tableLabel = hasSupabaseSignal ? 'Supabase table' : 'Database table';
+  const tableLabel = hasSupabaseSignal ? RLS_SUPABASE_TABLE_LABEL : RLS_GENERIC_TABLE_LABEL;
   for (const [table, location] of created) {
     if (
       !rls.has(table) &&
@@ -499,7 +605,8 @@ export function scanSqlMigrations(sources: readonly SourceInput[]): ScanResult {
     )
       findings.push({
         ruleId: 'supabase-rls',
-        severity: 'error',
+        severity: hasSupabaseSignal ? 'error' : 'warning',
+        confidence: hasSupabaseSignal ? 'high' : 'medium',
         file: location.file,
         line: location.line,
         message: `${tableLabel} '${table}' is created but Row-Level Security (RLS) is not enabled.`,
@@ -507,7 +614,7 @@ export function scanSqlMigrations(sources: readonly SourceInput[]): ScanResult {
       });
   }
 
-  findings.push(...scanSupabaseDeepPolicies(sources).findings);
+  findings.push(...scanSupabaseDeepPolicies(postgresSources).findings);
   return result(subsumeRlsFindings(findings));
 }
 
@@ -582,6 +689,7 @@ const FRAMEWORK_ENV_KEYS = new Set([
   'RUNNER_ARCH',
   'RUNNER_TEMP',
   'RUNNER_TOOL_CACHE',
+  ASSURLY_CANARY_ENV_KEY,
 ]);
 
 /** Fallback names documented via their public NEXT_PUBLIC_* counterpart. */
@@ -594,6 +702,69 @@ function isEnvKeyDocumented(key: string, keys: Set<string>): boolean {
   if (keys.has(key)) return true;
   const aliases = DOCUMENTED_ENV_ALIASES[key];
   return aliases?.some((alias) => keys.has(alias)) ?? false;
+}
+
+/**
+ * CLI env-docs surface: application source, not tooling packages (`packages/cli`).
+ * Matches `packages/cli/src/rules/envRules.ts` path prefixes exactly.
+ */
+export function isAppEnvSourceFile(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, '/');
+  if (!/\.(?:js|ts|jsx|tsx)$/.test(normalized)) return false;
+  return (
+    normalized.startsWith('src/') ||
+    normalized.startsWith('app/') ||
+    normalized.startsWith('apps/') ||
+    normalized.startsWith('pages/') ||
+    normalized.startsWith('components/')
+  );
+}
+
+function processEnvKeyFromNode(node: AstNode): string | null {
+  if (node.type !== 'MemberExpression' && node.type !== 'OptionalMemberExpression') return null;
+  const object = node.object as AstNode | undefined;
+  if (
+    !object ||
+    (object.type !== 'MemberExpression' && object.type !== 'OptionalMemberExpression')
+  ) {
+    return null;
+  }
+  const processId = object.object as AstNode | undefined;
+  if (processId?.type !== 'Identifier' || processId.name !== 'process') return null;
+  if (memberName(object) !== 'env') return null;
+  const key = memberName(node);
+  if (!key || !/^[A-Z0-9_]+$/.test(key)) return null;
+  return key;
+}
+
+function stripQuotedSpans(line: string): string {
+  return line.replace(/(['"`])(?:\\.|(?!\1).)*\1/g, ' ');
+}
+
+/**
+ * `process.env.KEY` / `process.env['KEY']` from real code, never from string literals.
+ */
+export function collectProcessEnvKeysFromCode(
+  content: string,
+): Array<{ key: string; line: number }> {
+  try {
+    const ast = parseCode(content);
+    const found: Array<{ key: string; line: number }> = [];
+    walk(ast, (node) => {
+      const key = processEnvKeyFromNode(node);
+      if (key) found.push({ key, line: lineOf(node) ?? 1 });
+    });
+    return found;
+  } catch {
+    const found: Array<{ key: string; line: number }> = [];
+    content.split(/\r?\n/).forEach((line, index) => {
+      const searchable = stripQuotedSpans(line);
+      for (const match of searchable.matchAll(/process\.env\.([A-Z0-9_]+)/g)) {
+        found.push({ key: match[1], line: index + 1 });
+      }
+    });
+    return found;
+  }
 }
 
 function isTestOrFixturePath(filePath: string): boolean {
@@ -611,6 +782,11 @@ export interface ScanEnvOptions {
   allExamples?: readonly SourceInput[];
   /** Keys referenced only from test/fixture files — never flagged as undocumented. */
   testOnlyKeys?: ReadonlySet<string>;
+  /**
+   * When false, skip the one-per-scan `assurly-canary-missing` warning.
+   * Callers that invoke `scanEnvVariables` in a loop should emit it once.
+   */
+  emitMissingCanary?: boolean;
 }
 
 function parseExampleKeys(content: string): Set<string> {
@@ -679,8 +855,7 @@ export function collectTestOnlyEnvKeys(sources: readonly SourceInput[]): Set<str
 
   for (const source of sources) {
     const isTestFile = isTestOrFixturePath(source.file);
-    for (const match of source.content.matchAll(/process\.env\.([A-Z0-9_]+)/g)) {
-      const key = match[1];
+    for (const { key } of collectProcessEnvKeysFromCode(source.content)) {
       if (isTestFile) testKeys.add(key);
       else prodKeys.add(key);
     }
@@ -704,7 +879,7 @@ function scanExampleFileSecrets(
     const key = line.split('=')[0]?.trim();
 
     // Planted Assurly canaries are intentional — informational, never a leak.
-    if (containsAssurlyCanaryToken(line)) {
+    if (isAssurlyCanaryPlantLine(line)) {
       findings.push({
         ruleId: 'assurly-canary-planted',
         severity: 'warning',
@@ -714,7 +889,7 @@ function scanExampleFileSecrets(
         message:
           'Assurly canary token detected. This is an intentional tripwire, not a leaked credential.',
         suggestion:
-          'Keep the canary planted. If Assurly alerts on canary use, treat it as a confirmed exposure and rotate real secrets.',
+          'Keep the canary planted. If Assurly alerts on a fetch of this URL, rotate the real Stripe, Supabase, and GitHub secrets on this app — not the canary URL.',
       });
       return;
     }
@@ -738,6 +913,43 @@ function scanExampleFileSecrets(
         message: `CRITICAL KEY LEAK: Hardcoded Stripe secret key found (${secret[0].slice(0, 7)}...).`,
         suggestion: 'Use an empty example value and rotate the exposed key.',
       });
+  });
+}
+
+function isEnvExamplePath(filePath: string): boolean {
+  return filePath.replace(/\\/g, '/').endsWith('.env.example');
+}
+
+function exampleHasCanaryPlant(content: string): boolean {
+  return content.split(/\r?\n/).some((line) => isAssurlyCanaryPlantLine(line));
+}
+
+/**
+ * One warning per scan when at least one `.env.example` exists and none of them
+ * plant a silent alarm. Never a blocker — the offline scanner cannot mint a
+ * live callback URL.
+ */
+function pushMissingCanaryFinding(
+  examples: readonly SourceInput[],
+  findings: ScannerFinding[],
+): void {
+  const existing = examples.filter(
+    (example) => isEnvExamplePath(example.file) && example.content.trim().length > 0,
+  );
+  if (existing.length === 0) return;
+  if (existing.some((example) => exampleHasCanaryPlant(example.content))) return;
+
+  const target =
+    existing.find((example) => example.file.replace(/\\/g, '/') === '.env.example') ?? existing[0]!;
+  findings.push({
+    ruleId: 'assurly-canary-missing',
+    severity: 'warning',
+    confidence: 'high',
+    file: target.file,
+    line: 1,
+    message:
+      'No Assurly silent alarm in .env.example. Plant ASSURLY_CANARY_URL so Assurly can alert if an attacker fetches stolen env.',
+    suggestion: 'Add a silent alarm in Assurly (dashboard / MCP plant).',
   });
 }
 
@@ -772,43 +984,81 @@ export function scanEnvVariables(
       scannedExampleFiles.add(example.file);
       scanExampleFileSecrets(example.content, example.file, findings);
     }
+    if (options.emitMissingCanary !== false) {
+      pushMissingCanaryFinding(options.allExamples ?? [], findings);
+    }
   } else if (!hasAllExamples) {
     scanExampleFileSecrets(exampleContent, exampleFile, findings);
+    if (options.emitMissingCanary !== false) {
+      pushMissingCanaryFinding([{ file: exampleFile, content: exampleContent }], findings);
+    }
   }
 
-  codeContent.split(/\r?\n/).forEach((line, index) => {
-    for (const match of line.matchAll(/process\.env\.([A-Z0-9_]+)/g)) {
-      const key = match[1];
-      if (FRAMEWORK_ENV_KEYS.has(key)) continue;
-      if (options.testOnlyKeys?.has(key)) continue;
-      if (!isEnvKeyDocumented(key, keys)) {
-        const docPath = activeExample.file;
-        findings.push({
-          ruleId: 'undocumented-env',
-          // Hygiene / DX — not a deploy-safety blocker. Missing `.env.example`
-          // docs fail the Phase 0 "30-second defend" test for hard blockers.
-          severity: 'warning',
-          confidence: 'high',
-          file: codeFile,
-          line: index + 1,
-          message: `Environment variable 'process.env.${key}' is used but not documented in '${docPath}'.`,
-          suggestion: `Add ${key}= to ${docPath}.`,
-        });
-      }
+  for (const { key, line } of collectProcessEnvKeysFromCode(codeContent)) {
+    if (FRAMEWORK_ENV_KEYS.has(key)) continue;
+    if (options.testOnlyKeys?.has(key)) continue;
+    if (!isEnvKeyDocumented(key, keys)) {
+      const docPath = activeExample.file;
+      findings.push({
+        ruleId: 'undocumented-env',
+        // Hygiene / DX — not a deploy-safety blocker. Missing `.env.example`
+        // docs fail the Phase 0 "30-second defend" test for hard blockers.
+        severity: 'warning',
+        confidence: 'high',
+        file: codeFile,
+        line,
+        message: `Environment variable 'process.env.${key}' is used but not documented in '${docPath}'.`,
+        suggestion: `Add ${key}= to ${docPath}.`,
+      });
     }
-  });
+  }
   return result(findings);
 }
 
 export {
+  INSTANT_GATE_MAX_FILES,
   buildScanScope,
   formatScanScopeSummary,
   getFileRelevanceScore,
   inferScanRoots,
+  instantGateSurfaceFiles,
   isScannableFile,
+  isTextScanSurface,
   rankFilesByRelevance,
+  type BuildScanScopeOptions,
   type ScanScope,
+  type ScanScopeGaps,
 };
+
+export {
+  SCAN_LANGUAGE_COVERAGE_RULE_ID,
+  UNANALYZED_SOURCE_LANGUAGES,
+  formatUnanalyzedLogLine,
+  isAnalyzedCodeFile,
+  isAnalyzedSourceFile,
+  isSecuritySurfacePath,
+  summarizeUnanalyzedSource,
+  unanalyzedLanguageCounts,
+  unanalyzedLanguageForPath,
+  unanalyzedSourceFinding,
+  type UnanalyzedLanguageCount,
+  type UnanalyzedLanguageSummary,
+  type UnanalyzedSourceSummary,
+} from './languageCoverage';
+
+export {
+  MAX_PACKAGE_MANIFESTS,
+  describeDetectedStack,
+  detectStackFromManifests,
+  selectPackageManifestPaths,
+  type DetectedDatabase,
+  type DetectedDeployment,
+  type DetectedFramework,
+  type DetectedPayments,
+  type DetectedStack,
+  type DetectStackFromManifestsInput,
+  type PackageManifestInput,
+} from './stackDetect';
 
 export {
   scanAiAppSecurity,
@@ -838,6 +1088,7 @@ export {
   scanStripeLiveKeyInDev,
   scanStripeMissingSubscriptionEvents,
   scanStripeWebhookIdempotency,
+  scanStripeWebhookIdempotencyForProject,
 } from './stripeLifecycle';
 
 export {
@@ -913,12 +1164,19 @@ export {
 } from './editDistance';
 
 export {
+  ASSURLY_CANARY_CALLBACK_PATH,
+  ASSURLY_CANARY_ENV_KEY,
   ASSURLY_CANARY_IN_TEXT,
   ASSURLY_CANARY_PREFIX,
+  containsAssurlyCanaryCallbackPath,
   containsAssurlyCanaryToken,
   extractAssurlyCanaryToken,
   isAssurlyCanaryBody,
+  isAssurlyCanaryEnvKey,
+  isAssurlyCanaryMcpUrl,
+  isAssurlyCanaryPlantLine,
   isAssurlyCanaryToken,
+  mergeCanaryPlantIntoEnvExample,
 } from './canaryToken';
 
 export interface DeeperStackScanOptions {
@@ -951,7 +1209,6 @@ export function runDeeperStackScans(
     findings.push(...scanServerActionAuth(source.content, source.file).findings);
     findings.push(...scanRouteHandlerAuth(source.content, source.file).findings);
     findings.push(...scanServiceRoleBypass(source.content, source.file).findings);
-    findings.push(...scanStripeWebhookIdempotency(source.content, source.file).findings);
     findings.push(...scanStripeMissingSubscriptionEvents(source.content, source.file).findings);
     if (includeEdgeRuntime) {
       findings.push(...scanEdgeRuntime(source.content, source.file).findings);
@@ -959,20 +1216,26 @@ export function runDeeperStackScans(
     findings.push(...scanMaxDuration(source.content, source.file).findings);
   }
 
+  findings.push(...scanStripeWebhookIdempotencyForProject(codeSources).findings);
+
   for (const source of envSources) {
     findings.push(...scanStripeLiveKeyInDev(source.content, source.file).findings);
   }
 
-  if (sqlSources.length > 0) {
-    findings.push(...scanSupabaseDeepPolicies(sqlSources).findings);
+  const postgresSqlSources = sqlSources.filter((source) => isPostgresSqlSource(source));
+  if (postgresSqlSources.length > 0) {
+    findings.push(...scanSupabaseDeepPolicies(postgresSqlSources).findings);
   }
 
   return result(findings);
 }
 
 export {
+  BLOCKED_SCORE_CAP,
+  RLS_SCORE_GROUP_CAP,
   buildIssueGroups,
   buildShipGateReport,
+  countCleanScannedFiles,
   formatShipGateMarkdown,
   formatShipGatePlainText,
   getFindingGroupKey,
@@ -987,3 +1250,31 @@ export {
   type ShipGateReport,
   type ShipGateStatus,
 } from './shipGate';
+
+export {
+  excludeGitIgnoredFiles,
+  isAssurlyEnvExamplePath,
+  isGitIgnorePath,
+  isGitIgnored,
+  parseGitIgnoreSources,
+  type GitIgnoreFileInput,
+  type GitIgnoreSource,
+} from './gitIgnore';
+
+export {
+  GITHUB_ACTIONS_EXISTING_CI_MESSAGE,
+  GITHUB_ACTIONS_INIT_SUGGESTION,
+  GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE,
+  githubActionsIntegrationMessage,
+  scanGithubActionsIntegration,
+  scanHardcodedStripeSecrets,
+  scanTsconfigStrict,
+  scanWorkspaceFiles,
+} from './workspaceScan';
+
+export {
+  detectSqlDialect,
+  isPostgresSqlSource,
+  type SqlDialect,
+  type SqlDialectInput,
+} from './sqlDialect';

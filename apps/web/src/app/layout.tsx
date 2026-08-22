@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { CookieNotice } from './_components/CookieNotice';
+import { ThemeProvider } from './_components/ThemeProvider';
+import { THEME_BOOTSTRAP_SCRIPT, THEME_COLOR_HEX } from '../utils/theme';
 import './design-tokens.css';
 import './globals.css';
 
@@ -64,8 +66,10 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   viewportFit: 'cover',
-  // Colours the mobile browser chrome and the PWA splash background to the tile.
-  themeColor: '#0A0A0B',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: THEME_COLOR_HEX.light },
+    { media: '(prefers-color-scheme: dark)', color: THEME_COLOR_HEX.dark },
+  ],
 };
 
 export default function RootLayout({
@@ -81,9 +85,14 @@ export default function RootLayout({
       data-scroll-behavior="smooth"
       suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+      </head>
       <body suppressHydrationWarning>
-        {children}
-        <CookieNotice />
+        <ThemeProvider>
+          {children}
+          <CookieNotice />
+        </ThemeProvider>
       </body>
     </html>
   );

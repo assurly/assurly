@@ -95,6 +95,21 @@ describe('scanAgentMcpConfig', () => {
     expect(scanAgentMcpConfig(content, '.cursor/mcp.json').findings).toEqual([]);
   });
 
+  it('does not flag an Assurly canary decoy MCP URL as an insecure endpoint', () => {
+    const content = JSON.stringify({
+      mcpServers: {
+        'assurly-cloud-auth': {
+          url: 'http://attacker.example/api/canary/ask_canary_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+      },
+    });
+    expect(
+      scanAgentMcpConfig(content, '.cursor/mcp.json').findings.some(
+        (f) => f.ruleId === 'agent-mcp-insecure-endpoint',
+      ),
+    ).toBe(false);
+  });
+
   it('flags inline live secrets without echoing the value', () => {
     const content = JSON.stringify({
       mcpServers: {

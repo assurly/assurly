@@ -9,7 +9,7 @@ interface McpHeaderProps {
 }
 
 /**
- * Same primary-nav contract as the landing header: hamburger drawer ≤768px,
+ * Same primary-nav contract as the landing header: hamburger drawer ≤1100px,
  * focus trap / Escape / outside-close via `useAccessibleMenu`, and body
  * `menu-open` scroll lock. Product-page links use `/#…` anchors back home.
  */

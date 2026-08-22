@@ -2,9 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
 import {
   discoverStripeCustomerForOrganization,
-  ensureStripeCustomerForPortal,
+  ensureStripeCustomer,
   retrieveStripeCustomer,
-  verifiedCheckoutCustomerId,
 } from './stripeCustomer';
 
 const mocks = vi.hoisted(() => ({
@@ -77,7 +76,7 @@ describe('stripeCustomer reconciliation', () => {
     expect(customer?.id).toBe('cus_live');
   });
 
-  it('creates a fresh customer when discovery fails during portal ensure', async () => {
+  it('creates a fresh customer when discovery fails', async () => {
     mocks.customerRetrieve.mockRejectedValue(
       new Stripe.errors.StripeInvalidRequestError({
         message: 'No such customer',
@@ -92,7 +91,7 @@ describe('stripeCustomer reconciliation', () => {
     });
     const sync = vi.fn().mockResolvedValue(undefined);
 
-    const customer = await ensureStripeCustomerForPortal(
+    const customer = await ensureStripeCustomer(
       stripe,
       {
         id: 'org-a',
@@ -109,17 +108,36 @@ describe('stripeCustomer reconciliation', () => {
     expect(sync).toHaveBeenCalledWith('org-a', 'cus_new');
   });
 
-  it('ignores stale checkout customer ids so Checkout can use customer_email', async () => {
-    mocks.customerRetrieve.mockRejectedValue(
-      new Stripe.errors.StripeInvalidRequestError({
-        message: 'No such customer',
-        code: 'resource_missing',
-        type: 'invalid_request_error',
-      }),
+  it('reuses the winner when persisting a customer hits a unique conflict', async () => {
+    mocks.customerRetrieve.mockResolvedValue({
+      id: 'cus_winner',
+      deleted: false,
+      metadata: { organizationId: 'org-a' },
+    });
+    mocks.customerCreate.mockResolvedValue({
+      id: 'cus_loser',
+      deleted: false,
+      metadata: { organizationId: 'org-a' },
+    });
+    const sync = vi.fn().mockRejectedValue(new Error('Supabase request failed (409): duplicate'));
+    const reload = vi.fn().mockResolvedValue({
+      id: 'org-a',
+      stripe_customer_id: 'cus_winner',
+    });
+
+    const customer = await ensureStripeCustomer(
+      stripe,
+      {
+        id: 'org-a',
+        name: 'Acme',
+        billing_plan: 'free',
+        created_at: '2026-01-01T00:00:00Z',
+      },
+      'user@example.com',
+      sync,
+      reload,
     );
 
-    await expect(
-      verifiedCheckoutCustomerId(stripe, 'cus_mock_stale', 'org-a'),
-    ).resolves.toBeUndefined();
+    expect(customer.id).toBe('cus_winner');
   });
 });

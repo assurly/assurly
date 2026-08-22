@@ -3,7 +3,7 @@
 import { useState, useSyncExternalStore, type ReactElement } from 'react';
 import type { TargetCard } from '../../../utils/clientApi';
 import { consequenceForGroupKey } from '../../../utils/consequenceMap';
-import { canRescanVerdictCard, isScanStale, rescanActionLabel } from './staleScan';
+import { isScanStale, rescanActionLabel, shouldOfferRescan } from './staleScan';
 import { formatVerdictCardLabel } from './verdictCardLabel';
 import {
   coverageLabelForCard,
@@ -15,7 +15,7 @@ import {
 interface VerdictCardProps {
   card: TargetCard;
   onOpen: (card: TargetCard) => void;
-  /** Optional remove control (URL apps only). Receives the trigger for focus return. */
+  /** Optional remove control. Receives the trigger for focus return. */
   onRemove?: (trigger: HTMLButtonElement) => void;
   removing?: boolean;
   /** Start a fresh check for a stale / never-scanned app. */
@@ -104,7 +104,15 @@ const getServerMounted = (): boolean => false;
  * suppressHydrationWarning). useSyncExternalStore keeps SSR/hydration aligned
  * without a mount-time setState.
  */
-function CheckedAtFreshness({ iso, stale }: { iso: string | null; stale: boolean }): ReactElement {
+function CheckedAtFreshness({
+  iso,
+  stale,
+  failed,
+}: {
+  iso: string | null;
+  stale: boolean;
+  failed: boolean;
+}): ReactElement {
   const mounted = useSyncExternalStore(subscribeNoop, getClientMounted, getServerMounted);
   const className = stale
     ? 'verdict-card__freshness verdict-card__freshness--stale'
@@ -115,6 +123,10 @@ function CheckedAtFreshness({ iso, stale }: { iso: string | null; stale: boolean
   }
 
   const label = mounted ? formatCheckedAt(iso) : formatCheckedAtAbsolute(iso);
+  if (failed) {
+    const suffix = label.startsWith('Checked ') ? label.slice('Checked '.length) : label;
+    return <span className={className}>{`Scan failed · ${suffix}`}</span>;
+  }
   return <span className={className}>{label}</span>;
 }
 
@@ -131,7 +143,8 @@ export function VerdictCard({
   const [copiedCli, setCopiedCli] = useState(false);
   const capability = capabilityPresentation(card);
   const meta = VERDICT_META[card.verdict];
-  const verdictLabel = capability?.label ?? meta.label;
+  const lastScanFailed = Boolean(card.lastScanFailed);
+  const verdictLabel = capability?.label ?? (lastScanFailed ? 'Scan failed' : meta.label);
   const verdictEmoji = capability?.emoji ?? meta.emoji;
   const label = formatVerdictCardLabel(card.displayName, card.kind);
   const fingerprintLabel = card.generatorFingerprint
@@ -144,8 +157,8 @@ export function VerdictCard({
   // copy + history). Only block open when there is no linked repository row.
   const openable = card.kind === 'repo' && Boolean(card.repositoryId);
   const stale = isScanStale(card.lastCheckedAt);
-  const showRescan = Boolean(onRescan) && stale && canRescanVerdictCard(card);
-  const rescanLabel = rescanActionLabel(card.lastCheckedAt);
+  const showRescan = Boolean(onRescan) && shouldOfferRescan(card);
+  const rescanLabel = rescanActionLabel(card.lastCheckedAt, lastScanFailed);
   const compact = density === 'compact';
   const showGuardian = shouldShowGuardianChip(card);
   const chips = (
@@ -248,7 +261,7 @@ export function VerdictCard({
             {card.shipScore === null ? '—' : `${card.shipScore}`}
             <span className="verdict-card__score-max">/100</span>
           </span>
-          <CheckedAtFreshness iso={card.lastCheckedAt} stale={stale} />
+          <CheckedAtFreshness iso={card.lastCheckedAt} stale={stale} failed={lastScanFailed} />
         </span>
       </button>
 

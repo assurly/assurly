@@ -1,6 +1,7 @@
 import {
   Archive,
   Building2,
+  ChevronDown,
   Folder,
   Lock,
   Rocket,
@@ -47,4 +48,8 @@ export function DashboardRocketIcon({ className, ...props }: LucideProps): React
 
 export function DashboardLockIcon({ className, ...props }: LucideProps): ReactElement {
   return <Lock aria-hidden="true" className={mergeIconClass(className)} {...props} />;
+}
+
+export function DashboardChevronIcon({ className, ...props }: LucideProps): ReactElement {
+  return <ChevronDown aria-hidden="true" className={mergeIconClass(className)} {...props} />;
 }

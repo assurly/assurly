@@ -11,6 +11,7 @@ import type { WebFinding } from './browserScanner';
 
 export type { ShipGateReport, ShipGateGroup, ShipGateAction } from '@assurly/scanner-core';
 export {
+  countCleanScannedFiles,
   formatShipGateMarkdown,
   formatShipGatePlainText,
   isShipGateBlocked,
@@ -136,8 +137,12 @@ export function resolveVerdictFromScanFindings(
 
 export function getShipGateActionHint(
   report: ShipGateReport,
-  options?: { surface?: 'repo' | 'manual' },
+  options?: { surface?: 'repo' | 'manual'; reason?: 'too_large' },
 ): string {
+  if (options?.reason === 'too_large') {
+    return 'This repository exceeds Instant Gate limits. Run Full Gate locally or in CI.';
+  }
+
   if (report.scannedFileCount === 0 && report.status !== 'ready') {
     return options?.surface === 'manual'
       ? 'Select a folder or ZIP to start'

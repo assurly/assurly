@@ -1,11 +1,34 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment jsdom
+
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { TargetCard } from '../../../utils/clientApi';
 import {
   countByVerdict,
   coverageLabelForCard,
   filterCardsByVerdict,
   isBrowserUnscannedCard,
+  readVerdictCardsPrefs,
+  VERDICT_CARDS_PREFS_KEY,
+  writeVerdictCardsPrefs,
 } from './verdictCardsView';
+
+const memoryStore = new Map<string, string>();
+
+beforeEach(() => {
+  memoryStore.clear();
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string): string | null => memoryStore.get(key) ?? null,
+      setItem: (key: string, value: string): void => {
+        memoryStore.set(key, value);
+      },
+      removeItem: (key: string): void => {
+        memoryStore.delete(key);
+      },
+    },
+  });
+});
 
 function card(partial: Partial<TargetCard> & Pick<TargetCard, 'id' | 'verdict'>): TargetCard {
   return {
@@ -23,6 +46,8 @@ function card(partial: Partial<TargetCard> & Pick<TargetCard, 'id' | 'verdict'>)
     scoreDropped: false,
     badgeToken: null,
     scanCapability: partial.scanCapability ?? 'browser',
+    lastScanFailed: partial.lastScanFailed ?? false,
+    lastScanFailureReason: partial.lastScanFailureReason ?? null,
     ...partial,
   };
 }
@@ -64,5 +89,41 @@ describe('Unscanned hygiene', () => {
         card({ id: 'cli', verdict: 'blocked', shipScore: 64, scanCapability: 'cli_only' }),
       ),
     ).toBe('Full Gate');
+  });
+});
+
+describe('Verdict cards view prefs', () => {
+  it('round-trips density, sort, and filters', () => {
+    const prefs = {
+      density: 'compact' as const,
+      sort: 'name' as const,
+      kindFilter: 'repos' as const,
+      verdictFilter: 'blocked' as const,
+    };
+    writeVerdictCardsPrefs(prefs);
+    expect(readVerdictCardsPrefs()).toEqual(prefs);
+  });
+
+  it('returns defaults for invalid JSON', () => {
+    window.localStorage.setItem(VERDICT_CARDS_PREFS_KEY, '{not-json');
+    expect(readVerdictCardsPrefs()).toEqual({
+      density: 'comfortable',
+      sort: 'urgency',
+      kindFilter: 'all',
+      verdictFilter: 'all',
+    });
+  });
+
+  it('defaults missing filters to all', () => {
+    window.localStorage.setItem(
+      VERDICT_CARDS_PREFS_KEY,
+      JSON.stringify({ density: 'compact', sort: 'name' }),
+    );
+    expect(readVerdictCardsPrefs()).toEqual({
+      density: 'compact',
+      sort: 'name',
+      kindFilter: 'all',
+      verdictFilter: 'all',
+    });
   });
 });

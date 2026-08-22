@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRef } from 'react';
-import { DashboardHeader } from './DashboardHeader';
+import { DASHBOARD_NAV_OVERLAY_MQ, DashboardHeader } from './DashboardHeader';
 import type { Organization, User } from '../../../utils/dbAdapter';
 
 afterEach(() => cleanup());
@@ -43,6 +43,7 @@ describe('DashboardHeader brand a11y', () => {
     expect(screen.getByRole('img', { name: 'Assurly' })).toBeTruthy();
     expect(brand.querySelector('.assurly-logo')?.getAttribute('aria-label')).toBe('Assurly');
     expect(screen.queryByRole('link', { name: /Ass url y/i })).toBeNull();
+    expect(screen.getByRole('group', { name: 'Color theme' })).toBeTruthy();
   });
 
   it('gives the profile avatar a non-empty alt while keeping it presentational', () => {
@@ -88,5 +89,36 @@ describe('DashboardHeader brand a11y', () => {
     expect(badges).toHaveLength(1);
     const menu = screen.getByRole('dialog', { name: 'Account menu' });
     expect(menu.contains(badges[0]!)).toBe(true);
+  });
+
+  it('uses the icon Appearance pill in the overlay, not sheet labels', () => {
+    render(
+      <DashboardHeader
+        user={user}
+        org={org}
+        currencySymbol="$"
+        isProfileOpen
+        billingAction={null}
+        profileRef={createRef<HTMLDivElement>()}
+        profileMenuRef={createRef<HTMLDivElement>()}
+        onToggleProfile={vi.fn()}
+        onManageBilling={vi.fn()}
+        onCheckout={vi.fn()}
+      />,
+    );
+
+    const menu = screen.getByRole('dialog', { name: 'Account menu' });
+    expect(within(menu).getByRole('group', { name: 'Color theme' })).toBeTruthy();
+    expect(menu.querySelector('.theme-toggle--sheet')).toBeNull();
+    expect(menu.querySelector('.theme-toggle--header')).toBeTruthy();
+    const labels = menu.querySelectorAll('.theme-toggle__label');
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      expect(label.classList.contains('visually-hidden')).toBe(true);
+    }
+  });
+
+  it('keeps the overlay media query aligned with CSS (hamburger ≤1100px)', () => {
+    expect(DASHBOARD_NAV_OVERLAY_MQ).toBe('(max-width: 1100px)');
   });
 });

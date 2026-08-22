@@ -181,8 +181,18 @@ const SCANNER_RULE_EXPLANATIONS = {
     },
     'assurly-canary-planted': {
         title: 'Assurly canary token (intentional)',
-        explanation: 'An Assurly canary token (`ask_canary_…`) was found. This is an intentional tripwire you planted — not a leaked credential. Assurly alerts if the token is ever used.',
-        howToFix: 'Keep the canary planted. If you receive a canary-hit alert, treat nearby real secrets as compromised and rotate them.',
+        explanation: 'An Assurly canary (`ask_canary_…` or `ASSURLY_CANARY_URL`) was found. This is an intentional tripwire you planted — not a leaked credential. Assurly alerts if the callback URL is ever fetched.',
+        howToFix: 'Keep the canary planted. If Assurly alerts on a fetch of this URL, rotate the real Stripe, Supabase, and GitHub secrets on this app — not the canary URL.',
+    },
+    'assurly-canary-missing': {
+        title: 'No Assurly silent alarm planted',
+        explanation: '.env.example has no ASSURLY_CANARY_URL tripwire. Without it, Assurly cannot alert you if someone steals the env and probes leftover secrets.',
+        howToFix: 'Add a silent alarm in the Assurly dashboard, or run the MCP/CLI plant tool. The offline scanner cannot mint a live callback URL.',
+    },
+    'assurly-canary-in-client': {
+        title: 'Silent alarm exposed in the client bundle',
+        explanation: 'The Assurly tripwire URL or token is in public HTML or JavaScript, so anyone can fetch it and noise the alarm — and it usually means env leaked into NEXT_PUBLIC.',
+        howToFix: 'Tripwire is in public JS. Rotate real Stripe, Supabase, and GitHub secrets; take the canary off the client.',
     },
 };
 const blockerRuleIds = new Set(scanner_core_1.HIGH_CONFIDENCE_BLOCKER_RULE_IDS);

@@ -59,6 +59,46 @@ describe('ScanFindingCard', () => {
     expect(screen.getByText(finding.message)).toBeTruthy();
   });
 
+  it('leads with the safety-net copy when RLS is missing on a non-Supabase table', () => {
+    render(
+      <ScanFindingCard
+        finding={{
+          ...finding,
+          severity: 'warning',
+          message:
+            "Database table 'organizations' is created but Row-Level Security (RLS) is not enabled.",
+        }}
+        fixingFindingId={null}
+        isFixable={false}
+        onCreateFixPr={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText(/anyone on the internet can read/i)).toBeNull();
+    expect(screen.getByText(/missing safety net rather than a live leak/i)).toBeTruthy();
+  });
+
+  it('leads with the unread-backend copy for scan-language-coverage', () => {
+    render(
+      <ScanFindingCard
+        finding={{
+          ...finding,
+          rule_id: 'scan-language-coverage',
+          severity: 'warning',
+          file_path: 'internal/handler/http/stripe_handler.go',
+          message:
+            "53 Go files were not analysed — Assurly's rules cover JavaScript, TypeScript and SQL. They include payment and authentication code (internal/handler/http/stripe_handler.go).",
+        }}
+        fixingFindingId={null}
+        isFixable={false}
+        onCreateFixPr={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/files nobody checked/i)).toBeTruthy();
+    expect(screen.queryByText(/anyone on the internet can read/i)).toBeNull();
+  });
+
   it('shows a linked fix PR when one already exists', () => {
     render(
       <ScanFindingCard

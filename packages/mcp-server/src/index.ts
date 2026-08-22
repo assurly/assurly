@@ -7,6 +7,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import {
   handleExplainRule,
+  handlePlantCanary,
   handleScanAgent,
   handleScanFiles,
   handleScanPath,
@@ -134,6 +135,29 @@ export function createAssurlyMcpServer(): McpServer {
       },
     },
     async ({ path: projectPath }) => handleScanAgent({ path: projectPath }),
+  );
+
+  server.registerTool(
+    'assurly_plant_canary',
+    {
+      title: 'Plant a silent alarm',
+      description:
+        'Mint an Assurly ASSURLY_CANARY_URL tripwire via the hosted API and append it to local ' +
+        '.env.example. Requires ASSURLY_API_KEY. Never uploads source. Do not enable the decoy ' +
+        'MCP server (assurly-cloud-auth) in Cursor — add it to disabledMcpjsonServers.',
+      inputSchema: {
+        path: z.string().describe('Absolute or relative path to the project root'),
+        repo: z.string().describe('Connected Assurly repository in owner/name form'),
+      },
+    },
+    async ({ path: projectPath, repo }) =>
+      handlePlantCanary(
+        { path: projectPath, repo },
+        {
+          apiUrl: process.env.ASSURLY_API_URL?.trim() || DEFAULT_ASSURLY_API_URL,
+          apiKey: process.env.ASSURLY_API_KEY?.trim() || undefined,
+        },
+      ),
   );
 
   return server;

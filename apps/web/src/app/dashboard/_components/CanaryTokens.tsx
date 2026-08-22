@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
 import { ClientApiError, clientApi, type CanaryTokenSummary } from '../../../utils/clientApi';
+import { CANARY_HIT_ROTATE_COPY } from '../../../utils/canaryPlant';
 import { formatApiKeyDay, formatApiKeyMetadata } from '../../../utils/apiKeyDisplay';
 
 export interface CanaryTokensProps {
@@ -28,10 +29,18 @@ export interface CanaryTokensProps {
  * Callers pick the sentence; the shell stays here so the heading, framing and
  * classes cannot drift from the live panel below.
  */
-export function CanaryTokensNotice({ children }: { children: ReactNode }): ReactElement {
+export function CanaryTokensNotice({
+  children,
+  ariaLabel = 'Canary tokens',
+}: {
+  children: ReactNode;
+  ariaLabel?: string;
+}): ReactElement {
   return (
-    <section className="dashboard-public-connect api-keys canary-tokens" aria-label="Canary tokens">
-      <h4 className="dashboard-public-connect__title">Canary tokens</h4>
+    <section className="dashboard-public-connect api-keys canary-tokens" aria-label={ariaLabel}>
+      <h4 className="dashboard-public-connect__title">
+        {ariaLabel === 'Silent alarm' ? 'Add a silent alarm' : 'Canary tokens'}
+      </h4>
       <p className="dashboard-public-connect__copy">{children}</p>
     </section>
   );
@@ -52,7 +61,7 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
   const [label, setLabel] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [freshPlaintext, setFreshPlaintext] = useState<string | null>(null);
+  const [freshSnippet, setFreshSnippet] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState<CanaryTokenSummary | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<CanaryTokenSummary | null>(null);
@@ -101,11 +110,11 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
     event.preventDefault();
     setCreating(true);
     setError(null);
-    setFreshPlaintext(null);
+    setFreshSnippet(null);
     setCopied(false);
     try {
       const created = await clientApi.canary.issue(targetId, label.trim() || undefined);
-      setFreshPlaintext(created.token);
+      setFreshSnippet(created.snippet);
       setTokens((current) => [
         {
           id: created.id,
@@ -133,9 +142,9 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
   };
 
   const handleCopy = async (): Promise<void> => {
-    if (!freshPlaintext) return;
+    if (!freshSnippet) return;
     try {
-      await navigator.clipboard.writeText(freshPlaintext);
+      await navigator.clipboard.writeText(freshSnippet);
       setCopied(true);
     } catch {
       // Clipboard may be unavailable — the token stays visible to copy manually.
@@ -202,9 +211,10 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
     <section className="dashboard-public-connect api-keys canary-tokens" aria-label="Canary tokens">
       <h4 className="dashboard-public-connect__title">Canary tokens</h4>
       <p className="dashboard-public-connect__copy">
-        A canary is a fake credential you plant where a thief might look — an env example, a decoy
-        config, or internal docs. If anyone ever uses it, Assurly records a hit. That is evidence
-        the credential was exposed, not proof of who used it.
+        A canary is a tripwire URL you plant in .env.example as ASSURLY_CANARY_URL. If anyone
+        fetches it, Assurly records a hit. That is evidence the env was exposed, not proof of who
+        used it. Issue, revoke, and delete live here; the app workspace has a one-click silent
+        alarm.
       </p>
 
       <form
@@ -234,19 +244,20 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
         </button>
       </form>
 
-      {freshPlaintext ? (
+      {freshSnippet ? (
         <div className="api-keys__reveal" role="status">
           <p className="api-keys__reveal-title">
-            Copy this canary now — it will not be shown again. Plant it where an attacker might
-            look; our scanners recognise the prefix and will not treat it as a leaked secret.
+            Copy this into .env.example now — the tripwire URL will not be shown again.
           </p>
           <div className="api-keys__reveal-row">
-            <code className="api-keys__plaintext">{freshPlaintext}</code>
+            <pre className="canary-silent-alarm__snippet">
+              <code>{freshSnippet}</code>
+            </pre>
             <button
               type="button"
               className="api-keys__copy"
               onClick={() => void handleCopy()}
-              aria-label="Copy canary token to clipboard"
+              aria-label="Copy canary snippet to clipboard"
             >
               {copied ? 'Copied' : 'Copy'}
             </button>
@@ -262,12 +273,8 @@ export function CanaryTokens({ targetId }: CanaryTokensProps): ReactElement {
 
       {hitTokens.length > 0 ? (
         <div className="canary-tokens__hits" role="status">
-          <p className="canary-tokens__hits-title">Recorded hits</p>
-          <p className="canary-tokens__hits-copy">
-            A hit means someone presented a credential they should not have had. It is evidence of
-            exposure — not proof of who did it. Rotate nearby real secrets and investigate how the
-            canary was reached.
-          </p>
+          <p className="canary-tokens__hits-title">Tripwire fetched</p>
+          <p className="canary-tokens__hits-copy">{CANARY_HIT_ROTATE_COPY}</p>
           <ul className="canary-tokens__hits-list" aria-label="Canary hit history">
             {hitTokens.map((token) => (
               <li key={token.id} className="canary-tokens__hits-item">

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import DashboardClient from './_components/DashboardClient';
 import { installDashboardLocalStorageMock } from './testUtils/installDashboardLocalStorageMock';
+import { openDashboardAppView } from './testUtils/openDashboardAppView';
 import * as clientApiModule from '../../utils/clientApi';
 import type { Scan, ScanFinding } from '../../utils/dbAdapter';
 import { __resetScansQueryCacheForTests } from '../../utils/scansQueryCache';
@@ -12,7 +13,8 @@ type SessionResult = clientApiModule.SessionResult;
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () =>
+    new URLSearchParams({ view: 'app', repo: '11000000-0000-4000-8000-000000000010' }),
 }));
 
 vi.mock('./_components/manual-checker/ManualChecker', () => ({
@@ -128,6 +130,7 @@ afterEach(() => {
 describe('Show details reset', () => {
   it('collapses Show details when switching to another scan in history', async () => {
     render(<DashboardClient initialSession={session} />);
+    openDashboardAppView(attestaRepo.name);
 
     await waitFor(() => expect(findingsMock).toHaveBeenCalledWith(scanB.id));
     await screen.findByTestId('scan-details-findings');

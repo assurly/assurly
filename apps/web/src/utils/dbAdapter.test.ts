@@ -124,6 +124,78 @@ describe('user database adapter', () => {
         failure_reason: null,
       });
     });
+
+    it('lowercases a hex SHA and deletes older scans of the same commit', async () => {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
+      const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        const href = String(url);
+        const method = init?.method ?? 'GET';
+        if (href.endsWith('/rest/v1/scans') && method === 'POST') {
+          return new Response(
+            JSON.stringify([
+              {
+                id: 'scan-new',
+                repository_id: 'repo-1',
+                commit_sha: 'c8039c4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                created_at: '2026-08-17T12:00:00.000Z',
+              },
+            ]),
+            { status: 201 },
+          );
+        }
+        if (href.includes('/rest/v1/scans?select=id,created_at') && method === 'GET') {
+          return new Response(
+            JSON.stringify([
+              { id: 'scan-old', created_at: '2026-08-17T11:00:00.000Z' },
+              { id: 'scan-new', created_at: '2026-08-17T12:00:00.000Z' },
+            ]),
+            { status: 200 },
+          );
+        }
+        if (href.includes('/rest/v1/scans?id=eq.scan-old') && method === 'DELETE') {
+          return new Response(JSON.stringify([{ id: 'scan-old' }]), { status: 200 });
+        }
+        return new Response(JSON.stringify([]), { status: 200 });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await getUserDbAdapter('jwt').saveScan(
+        'repo-1',
+        'C8039C4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        'main',
+        'success',
+        0,
+        0,
+        [],
+      );
+
+      const insertCall = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          String(url).endsWith('/rest/v1/scans') && (init as RequestInit).method === 'POST',
+      );
+      expect(JSON.parse((insertCall![1] as RequestInit).body as string).commit_sha).toBe(
+        'c8039c4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      );
+      const deleteCall = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          String(url).includes('id=eq.scan-old') && (init as RequestInit).method === 'DELETE',
+      );
+      expect(deleteCall).toBeDefined();
+    });
+
+    it('does not prune sibling scans for an unknown placeholder SHA', async () => {
+      const fetchMock = stubSupabase();
+      await getUserDbAdapter('jwt').saveScan('repo-1', 'unknown', 'main', 'success', 0, 0, []);
+      const siblingList = fetchMock.mock.calls.filter(([url]) =>
+        String(url).includes('select=id,created_at'),
+      );
+      const deletes = fetchMock.mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'DELETE',
+      );
+      expect(siblingList).toHaveLength(0);
+      expect(deletes).toHaveLength(0);
+    });
   });
 
   describe('empty-body inserts (Prefer: return=minimal)', () => {
@@ -224,5 +296,72 @@ describe('user database adapter', () => {
       expect(init.method).toBe('DELETE');
       expect(JSON.stringify(init.headers)).toContain('return=representation');
     });
+  });
+
+  it('loads the organization in one memberships embed query', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
+    const org = { id: 'org-1', name: 'acme', billing_plan: 'pro' };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify([{ organizations: org }]), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getUserDbAdapter('jwt').getOrganizationByUserId('user-1');
+    expect(result).toEqual(org);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('memberships?select=organizations(*)');
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('/rest/v1/organizations?');
+  });
+
+  it('fetches latest scan summaries for many repos in one query', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            id: 'scan-new',
+            repository_id: 'repo-a',
+            ship_score: 59,
+            created_at: '2026-08-02T00:00:00.000Z',
+          },
+          {
+            id: 'scan-old',
+            repository_id: 'repo-a',
+            ship_score: 40,
+            created_at: '2026-08-01T00:00:00.000Z',
+          },
+          {
+            id: 'scan-b',
+            repository_id: 'repo-b',
+            ship_score: 80,
+            created_at: '2026-08-01T00:00:00.000Z',
+          },
+        ]),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const summaries = await getUserDbAdapter('jwt').getLatestScanSummaries(['repo-a', 'repo-b']);
+    expect(summaries.get('repo-a')?.id).toBe('scan-new');
+    expect(summaries.get('repo-b')?.id).toBe('scan-b');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('repository_id=in.(repo-a,repo-b)');
+    expect(url).toContain('select=id,repository_id,ship_score,created_at,verdict,failure_reason');
+  });
+
+  it('limits recent scans and does not select star', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getUserDbAdapter('jwt').getRecentScans('repo-a');
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('limit=50');
+    expect(url).not.toContain('select=*');
   });
 });

@@ -63,7 +63,8 @@ export const GET = secureRoute(
 /**
  * Issue a new key. The plaintext is generated server-side, returned exactly once
  * in this response, and NEVER persisted — only its sha256 hash is stored. The
- * plan is snapshotted from the org's billing plan (gates the rate limit).
+ * plan is snapshotted from the org's billing plan for display; the live org plan
+ * gates the programmatic rate limit.
  */
 export const POST = secureRoute(
   {

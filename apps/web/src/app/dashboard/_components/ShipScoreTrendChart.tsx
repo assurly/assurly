@@ -18,6 +18,8 @@ interface ShipScoreTrendChartProps {
    * ready during SSR/hydration so locale-sensitive labels are actually compared.
    */
   initialPoints?: ShipScoreTrendPoint[];
+  /** Refetch when scan history identity changes (new commit or replaced SHA). */
+  refreshKey?: string;
 }
 
 interface TrendState {
@@ -120,11 +122,11 @@ function InsufficientTrendState({ points }: { points: ShipScoreTrendPoint[] }): 
 
         <div className="ship-score-trend__empty-copy">
           <p className="ship-score-trend__empty-title">
-            {hasFirstScan ? 'Trend unlocks after the next scan' : 'No scans yet'}
+            {hasFirstScan ? 'Trend unlocks after a new commit' : 'No scans yet'}
           </p>
           <p className="ship-score-trend__empty-body">
             {hasFirstScan
-              ? 'One data point is a score, not a trend. Rescan after you change the app to see how Ship Score moves over time.'
+              ? 'Scanning the same commit keeps one point. Push a new commit, then scan, to see how Ship Score moves.'
               : 'Run a scan on this repository to start tracking Ship Score over time.'}
           </p>
         </div>
@@ -137,6 +139,7 @@ export function ShipScoreTrendChart({
   repositoryId,
   fetchTrend,
   initialPoints,
+  refreshKey,
 }: ShipScoreTrendChartProps): ReactElement | null {
   const seeded = initialPoints !== undefined && initialPoints.length > 0;
   const [trendState, setTrendState] = useState<TrendState>({
@@ -167,7 +170,7 @@ export function ShipScoreTrendChart({
     return () => {
       cancelled = true;
     };
-  }, [fetchTrend, repositoryId]);
+  }, [fetchTrend, repositoryId, refreshKey]);
 
   const isStale = trendState.repositoryId !== repositoryId;
   const status = isStale ? 'loading' : trendState.status;

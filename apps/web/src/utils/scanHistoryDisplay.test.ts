@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Scan } from './dbAdapter';
 import {
-  buildDuplicateShaBadges,
+  countVisibleScanHistory,
+  excludeTooLargeFailedScans,
   formatCommitShaShort,
-  formatDuplicateShaBadge,
   formatScanHistoryChipLabel,
   formatScanTime,
+  selectLatestScanPerCommit,
 } from './scanHistoryDisplay';
 
 function buildScan(overrides: Partial<Scan> & Pick<Scan, 'id'>): Scan {
@@ -57,25 +58,89 @@ describe('scanHistoryDisplay', () => {
     expect(formatScanHistoryChipLabel(scan)).toMatch(/^commit 669c039 · \d{2}:\d{2}$/);
   });
 
-  it('returns duplicate SHA badges only when a commit appears more than once', () => {
-    const sharedSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  it('keeps only the newest scan per hex commit SHA', () => {
+    const sharedSha = 'c8039c4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const scans = [
-      buildScan({ id: 'scan-1', commit_sha: sharedSha, created_at: '2026-06-26T08:00:00.000Z' }),
-      buildScan({ id: 'scan-2', commit_sha: sharedSha, created_at: '2026-06-26T09:00:00.000Z' }),
-      buildScan({ id: 'scan-3', commit_sha: sharedSha, created_at: '2026-06-26T10:00:00.000Z' }),
-      buildScan({ id: 'scan-4', commit_sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }),
+      buildScan({ id: 'scan-new', commit_sha: sharedSha, created_at: '2026-08-17T10:00:00.000Z' }),
+      buildScan({ id: 'scan-old', commit_sha: sharedSha, created_at: '2026-08-17T09:00:00.000Z' }),
+      buildScan({
+        id: 'scan-older',
+        commit_sha: sharedSha.toUpperCase(),
+        created_at: '2026-08-17T08:00:00.000Z',
+      }),
+      buildScan({
+        id: 'scan-other',
+        commit_sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        created_at: '2026-08-17T09:30:00.000Z',
+      }),
     ];
 
-    const badges = buildDuplicateShaBadges(scans);
-
-    expect(badges.size).toBe(3);
-    expect(badges.get('scan-1')).toEqual({ index: 1, total: 3 });
-    expect(badges.get('scan-2')).toEqual({ index: 2, total: 3 });
-    expect(badges.get('scan-3')).toEqual({ index: 3, total: 3 });
-    expect(badges.has('scan-4')).toBe(false);
+    expect(selectLatestScanPerCommit(scans).map((scan) => scan.id)).toEqual([
+      'scan-new',
+      'scan-other',
+    ]);
   });
 
-  it('formats duplicate SHA badges for chip copy', () => {
-    expect(formatDuplicateShaBadge({ index: 2, total: 6 })).toBe('#2 of 6');
+  it('collapses eight copies of the same SHA to one scan', () => {
+    const sha = 'c8039c4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const scans = Array.from({ length: 8 }, (_, index) =>
+      buildScan({
+        id: `scan-${index}`,
+        commit_sha: sha,
+        created_at: `2026-08-17T0${index}:00:00.000Z`,
+      }),
+    );
+
+    expect(selectLatestScanPerCommit(scans)).toHaveLength(1);
+    expect(selectLatestScanPerCommit(scans)[0]?.id).toBe('scan-7');
+  });
+
+  it('does not collapse unknown placeholder SHAs', () => {
+    const scans = [
+      buildScan({ id: 'u-1', commit_sha: 'unknown', created_at: '2026-08-17T10:00:00.000Z' }),
+      buildScan({ id: 'u-2', commit_sha: 'unknown', created_at: '2026-08-17T11:00:00.000Z' }),
+    ];
+    expect(selectLatestScanPerCommit(scans).map((scan) => scan.id)).toEqual(['u-1', 'u-2']);
+  });
+
+  it('counts the same commit once so the header matches the history rail', () => {
+    const sha = 'c8039c4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const scans = [
+      buildScan({ id: 'scan-a', commit_sha: sha, created_at: '2026-08-17T10:00:00.000Z' }),
+      buildScan({ id: 'scan-b', commit_sha: sha, created_at: '2026-08-17T11:00:00.000Z' }),
+      buildScan({ id: 'scan-c', commit_sha: sha, created_at: '2026-08-17T12:00:00.000Z' }),
+    ];
+    expect(countVisibleScanHistory(scans)).toBe(1);
+  });
+
+  it('does not count too-large Instant Gate failures in the visible history total', () => {
+    const scans = [
+      buildScan({
+        id: 'keep',
+        commit_sha: '669c0392ea81119689959fdbe63b05c3c95ce544',
+      }),
+      buildScan({
+        id: 'too-large',
+        commit_sha: 'unknown',
+        failure_reason: 'too_large',
+      }),
+    ];
+    expect(countVisibleScanHistory(scans)).toBe(1);
+  });
+
+  it('drops too-large Instant Gate failures from the history rail', () => {
+    const scans = [
+      buildScan({
+        id: 'keep',
+        commit_sha: '669c0392ea81119689959fdbe63b05c3c95ce544',
+        failure_reason: null,
+      }),
+      buildScan({
+        id: 'too-large',
+        commit_sha: 'unknown',
+        failure_reason: 'too_large',
+      }),
+    ];
+    expect(excludeTooLargeFailedScans(scans).map((scan) => scan.id)).toEqual(['keep']);
   });
 });

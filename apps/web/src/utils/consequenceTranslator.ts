@@ -9,6 +9,7 @@ import {
 import {
   CONSEQUENCE_MAP,
   getCuratedConsequence,
+  getCuratedConsequenceForFinding,
   type ConsequenceEntry,
   type ConsequenceFinding,
 } from './consequenceMap';
@@ -22,7 +23,7 @@ import {
  * map itself lives in `consequenceMap.ts` (pure, client-safe); this module adds
  * the server-only AI fallback.
  */
-export { CONSEQUENCE_MAP, getCuratedConsequence };
+export { CONSEQUENCE_MAP, getCuratedConsequence, getCuratedConsequenceForFinding };
 export type { ConsequenceEntry, ConsequenceFinding };
 
 export interface ConsequenceResult {
@@ -53,7 +54,7 @@ export async function getConsequence(
   finding: ConsequenceFinding,
   options: GetConsequenceOptions = {},
 ): Promise<ConsequenceResult> {
-  const curated = getCuratedConsequence(finding.ruleId);
+  const curated = getCuratedConsequenceForFinding(finding);
   if (curated) {
     return { text: curated.consequence, regulation: curated.regulation, source: 'curated' };
   }

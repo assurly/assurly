@@ -1,3 +1,4 @@
+import { PRICES, PRO_TRIAL_PERIOD_DAYS } from './pricing';
 import { MCP_TOOL_COUNT, RULE_AREA_COUNT } from './productFacts';
 
 export interface FaqEntry {
@@ -64,7 +65,7 @@ export const FAQ_ENTRIES: FaqEntry[] = [
     id: 'ship-score',
     question: 'What is a Ship Score?',
     answer:
-      'A Ship Score is a single number out of 100 summarising whether a project is ready for production, shown with one of three verdicts. Blockers are the findings that must be fixed before deploying and drive the verdict to NOT READY TO SHIP. Warnings are worth reviewing but do not block. The score exists so the decision to deploy is one answer rather than a list a non-specialist has to interpret.',
+      'A Ship Score is a single number out of 100 summarising whether a project is ready for production, shown with one of three verdicts. Blockers are the findings that must be fixed before deploying and drive the verdict to NOT READY TO SHIP. When the verdict is blocked the score is capped so the number never looks like READY. Warnings are worth reviewing but do not block. The score exists so the decision to deploy is one answer rather than a list a non-specialist has to interpret.',
   },
   {
     id: 'ci-integration',
@@ -76,7 +77,13 @@ export const FAQ_ENTRIES: FaqEntry[] = [
     id: 'free',
     question: 'Is Assurly free?',
     answer:
-      'The CLI is free and unlimited: `npx assurly scan` runs the full gate locally with no account. The free hosted plan adds the live URL proof-probe, one guarded app and MCP server access. The Pro plan, at $19 per month, adds unlimited guarded apps, continuous monitoring on every deploy, AI deep review, auto-fix pull requests and private repository scanning.',
+      'The CLI is free and unlimited: `npx assurly scan` runs the full gate locally with no account. The free hosted plan adds the live URL proof-probe, one guarded app and MCP server access. The Pro plan, at $' +
+      `${PRICES.USD.guardMonthly} per month, starts with a ${PRO_TRIAL_PERIOD_DAYS}-day free trial and adds unlimited guarded apps, continuous monitoring on every deploy, AI deep review, auto-fix pull requests and private repository scanning.`,
+  },
+  {
+    id: 'pro-trial',
+    question: 'Does Pro include a free trial?',
+    answer: `Yes. Pro includes a ${PRO_TRIAL_PERIOD_DAYS}-day free trial. You add a payment method at checkout; nothing is charged during the trial. Unless you cancel before it ends, the subscription converts to the plan you chose ($${PRICES.USD.guardMonthly} per month or $${PRICES.USD.guardYearly} per year) and billing starts. One trial per customer and payment method.`,
   },
   {
     id: 'seo-geo-audit',

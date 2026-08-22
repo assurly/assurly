@@ -64,4 +64,18 @@ describe('ShipGateGroupAction', () => {
     expect(await screen.findByText(/copied/i)).toBeTruthy();
     expect(button.className).toContain('ship-gate-action-copy--copied');
   });
+
+  it('scrolls in-page for hash CTAs instead of opening a new tab', () => {
+    const action: ShipGateAction = {
+      label: 'Add a silent alarm',
+      kind: 'link',
+      href: '#canary-silent-alarm',
+    };
+
+    render(<ShipGateGroupAction action={action} />);
+
+    const link = screen.getByRole('link', { name: 'Add a silent alarm' });
+    expect(link.getAttribute('href')).toBe('#canary-silent-alarm');
+    expect(link.getAttribute('target')).toBeNull();
+  });
 });

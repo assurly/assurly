@@ -39,6 +39,16 @@ export interface ShipGateOptions {
     cleanFileCount?: number;
     scanScope?: ScanScope;
 }
+/** Cannot-ship scores must not look like a passing grade. */
+export declare const BLOCKED_SCORE_CAP = 59;
+/** Extra missing-RLS tables stay listed but do not zero the score. */
+export declare const RLS_SCORE_GROUP_CAP = 3;
+/**
+ * Instant Gate "N of M had no issues" must only subtract findings whose path
+ * was in the scanned set. Pseudo-files (`Global Configs`) and config like
+ * `.env.example` are not among the analysed JS/TS/SQL files.
+ */
+export declare function countCleanScannedFiles(scannedFileCount: number, findingFiles: readonly (string | undefined)[], scannedFiles?: readonly string[]): number;
 export declare function getFindingGroupKey(finding: ShipGateFindingInput): string;
 /**
  * Build the group-level remediation hint. Env groups may span multiple packages

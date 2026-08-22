@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import * as authModule from '../../../../utils/auth';
 import { GET, POST } from './route';
+import { clearInstantGateTreeCacheForTests } from '../../../../utils/instantGateTree';
+import { INSTANT_GATE_MAX_FILES } from '@assurly/scanner-core';
 
 // Setup mock fetch
 const mockFetch = vi.fn();
@@ -21,7 +23,7 @@ function mockMetadata(branch = 'main', isPrivate = false) {
   };
 }
 
-function mockTreeResponse(tree = MOCK_TREE) {
+function mockTreeResponse(tree: { tree: unknown[] } = MOCK_TREE) {
   return new Response(JSON.stringify(tree), { status: 200 });
 }
 
@@ -32,6 +34,45 @@ function mockCommitResponse(sha = MOCK_COMMIT_SHA) {
   };
 }
 
+function hrefOf(input: RequestInfo | URL): string {
+  return String(input);
+}
+
+function mockPublicGitHub(
+  options: {
+    repo?: string;
+    branch?: string;
+    isPrivate?: boolean;
+    commitSha?: string | false;
+    tree?: { tree: unknown[] };
+    treeResponse?: (href: string) => Response | ReturnType<typeof mockMetadata>;
+    inspect?: (href: string, init?: RequestInit) => void;
+  } = {},
+): void {
+  const repo = options.repo ?? 'vercel/next.js';
+  const branch = options.branch ?? 'main';
+  mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    const href = hrefOf(input);
+    options.inspect?.(href, init);
+    if (href === `https://api.github.com/repos/${repo}`) {
+      return Promise.resolve(mockMetadata(branch, options.isPrivate ?? false));
+    }
+    if (href.includes('/commits/')) {
+      if (options.commitSha === false) {
+        return Promise.resolve(new Response(null, { status: 403 }));
+      }
+      return Promise.resolve(mockCommitResponse(options.commitSha || MOCK_COMMIT_SHA));
+    }
+    if (href.includes('/git/trees/')) {
+      if (options.treeResponse) {
+        return Promise.resolve(options.treeResponse(href));
+      }
+      return Promise.resolve(mockTreeResponse(options.tree ?? MOCK_TREE));
+    }
+    return Promise.resolve({ ok: false, status: 404 });
+  });
+}
+
 describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
   const originalEnv = process.env;
 
@@ -39,6 +80,7 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
     vi.clearAllMocks();
     mockFetch.mockReset();
     process.env = { ...originalEnv };
+    clearInstantGateTreeCacheForTests();
   });
 
   afterEach(() => {
@@ -54,21 +96,7 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
   });
 
   it('should resolve default branch and return tree data with real commit_sha', async () => {
-    mockFetch
-      .mockImplementationOnce((url: string) => {
-        expect(url).toBe('https://api.github.com/repos/vercel/next.js');
-        return Promise.resolve(mockMetadata('canary'));
-      })
-      .mockImplementationOnce((url: URL) => {
-        expect(String(url)).toBe(
-          'https://api.github.com/repos/vercel/next.js/git/trees/canary?recursive=1',
-        );
-        return Promise.resolve(mockTreeResponse());
-      })
-      .mockImplementationOnce((url: string) => {
-        expect(url).toBe('https://api.github.com/repos/vercel/next.js/commits/canary');
-        return Promise.resolve(mockCommitResponse());
-      });
+    mockPublicGitHub({ branch: 'canary' });
 
     const req = new Request(
       'http://localhost/api/github/public-scan?repo=vercel/next.js&type=tree',
@@ -78,17 +106,19 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
 
     const data = await res.json();
     expect(data.default_branch).toBe('canary');
-    expect(data.tree).toHaveLength(2);
-    expect(data.tree[0].path).toBe('package.json');
+    expect(data.tree.map((entry: { path: string }) => entry.path).sort()).toEqual([
+      'package.json',
+      'schema.sql',
+    ]);
+    expect(data.tree[0].sha).toBeUndefined();
+    expect(data.tree[0].url).toBeUndefined();
     expect(data.commit_sha).toBe(MOCK_COMMIT_SHA);
+    expect(res.headers.get('cache-control')).toContain('max-age=60');
   });
 
   it('should include commit_sha when an explicit branch is provided', async () => {
     const sha = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
-    mockFetch
-      .mockImplementationOnce(() => Promise.resolve(mockMetadata('main')))
-      .mockImplementationOnce(() => Promise.resolve(mockTreeResponse()))
-      .mockImplementationOnce(() => Promise.resolve(mockCommitResponse(sha)));
+    mockPublicGitHub({ commitSha: sha });
 
     const req = new Request(
       'http://localhost/api/github/public-scan?repo=vercel/next.js&type=tree&branch=stable',
@@ -101,11 +131,33 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
     expect(data.default_branch).toBe('stable');
   });
 
+  it('returns branch names for type=branches', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const href = hrefOf(input);
+      if (href === 'https://api.github.com/repos/vercel/next.js') {
+        return Promise.resolve(mockMetadata('canary'));
+      }
+      if (href.includes('/repos/vercel/next.js/branches')) {
+        return Promise.resolve(
+          new Response(JSON.stringify([{ name: 'canary' }, { name: 'main' }]), { status: 200 }),
+        );
+      }
+      return Promise.resolve({ ok: false, status: 404 });
+    });
+
+    const req = new Request(
+      'http://localhost/api/github/public-scan?repo=vercel/next.js&type=branches',
+    );
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      default_branch: 'canary',
+      branches: ['canary', 'main'],
+    });
+  });
+
   it('should omit commit_sha (undefined) when commit fetch fails — scan still succeeds', async () => {
-    mockFetch
-      .mockImplementationOnce(() => Promise.resolve(mockMetadata()))
-      .mockImplementationOnce(() => Promise.resolve(mockTreeResponse()))
-      .mockImplementationOnce(() => Promise.resolve(new Response(null, { status: 403 })));
+    mockPublicGitHub({ commitSha: false });
 
     const req = new Request(
       'http://localhost/api/github/public-scan?repo=vercel/next.js&type=tree',
@@ -119,15 +171,22 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
   });
 
   it('should omit commit_sha when commit response body is malformed — scan still succeeds', async () => {
-    mockFetch
-      .mockImplementationOnce(() => Promise.resolve(mockMetadata()))
-      .mockImplementationOnce(() => Promise.resolve(mockTreeResponse()))
-      .mockImplementationOnce(() =>
-        Promise.resolve({
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const href = String(input);
+      if (href === 'https://api.github.com/repos/vercel/next.js') {
+        return Promise.resolve(mockMetadata());
+      }
+      if (href.includes('/commits/')) {
+        return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({ not_sha: 'something_else' }),
-        }),
-      );
+        });
+      }
+      if (href.includes('/git/trees/')) {
+        return Promise.resolve(mockTreeResponse());
+      }
+      return Promise.resolve({ ok: false, status: 404 });
+    });
 
     const req = new Request(
       'http://localhost/api/github/public-scan?repo=vercel/next.js&type=tree',
@@ -170,26 +229,13 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
 
   it('should use GITHUB_PAT token in headers for both tree and commit requests', async () => {
     process.env.GITHUB_PAT = 'ghp_secretpat123';
-
-    mockFetch
-      .mockImplementationOnce((_url: string, options: RequestInit) => {
-        expect((options.headers as Record<string, string>).Authorization).toBe(
+    mockPublicGitHub({
+      inspect: (_href, init) => {
+        expect((init?.headers as Record<string, string>).Authorization).toBe(
           'Bearer ghp_secretpat123',
         );
-        return Promise.resolve(mockMetadata());
-      })
-      .mockImplementationOnce((_url: URL, options: RequestInit) => {
-        expect((options.headers as Record<string, string>).Authorization).toBe(
-          'Bearer ghp_secretpat123',
-        );
-        return Promise.resolve(mockTreeResponse());
-      })
-      .mockImplementationOnce((_url: string, options: RequestInit) => {
-        expect((options.headers as Record<string, string>).Authorization).toBe(
-          'Bearer ghp_secretpat123',
-        );
-        return Promise.resolve(mockCommitResponse());
-      });
+      },
+    });
 
     const req = new Request(
       'http://localhost/api/github/public-scan?repo=vercel/next.js&type=tree',
@@ -205,19 +251,11 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
     delete process.env.GITHUB_TOKEN;
     delete process.env.GITHUB_APP_ID;
 
-    mockFetch
-      .mockImplementationOnce((_url: string, options: RequestInit) => {
-        expect((options.headers as Record<string, string>).Authorization).toBeUndefined();
-        return Promise.resolve(mockMetadata());
-      })
-      .mockImplementationOnce((_url: URL, options: RequestInit) => {
-        expect((options.headers as Record<string, string>).Authorization).toBeUndefined();
-        return Promise.resolve(mockTreeResponse({ tree: [] }));
-      })
-      .mockImplementationOnce((_url: string, options: RequestInit) => {
-        expect((options.headers as Record<string, string>).Authorization).toBeUndefined();
-        return Promise.resolve(mockCommitResponse());
-      });
+    mockPublicGitHub({
+      inspect: (_href, init) => {
+        expect((init?.headers as Record<string, string>).Authorization).toBeUndefined();
+      },
+    });
 
     const req = new Request(
       'http://localhost/api/github/public-scan?repo=vercel/next.js&type=tree',
@@ -256,10 +294,10 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
   // a known limit behind an opaque failure.
   it('returns 413 repository_too_large when the tree body exceeds the size limit', async () => {
     const oversized = 'x'.repeat(2 * 1024 * 1024 + 1);
-    mockFetch
-      .mockResolvedValueOnce(mockMetadata())
-      .mockResolvedValueOnce(new Response(oversized, { status: 200 }))
-      .mockResolvedValueOnce(mockCommitResponse());
+    mockPublicGitHub({
+      repo: 'vercel/ai',
+      treeResponse: () => new Response(oversized, { status: 200 }),
+    });
 
     const req = new Request('http://localhost/api/github/public-scan?repo=vercel/ai&type=tree');
     const res = await GET(req);
@@ -277,10 +315,7 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
         type: 'blob',
       })),
     };
-    mockFetch
-      .mockResolvedValueOnce(mockMetadata())
-      .mockResolvedValueOnce(mockTreeResponse(tree))
-      .mockResolvedValueOnce(mockCommitResponse());
+    mockPublicGitHub({ repo: 'vercel/ai', tree });
 
     const req = new Request('http://localhost/api/github/public-scan?repo=vercel/ai&type=tree');
     const res = await GET(req);
@@ -333,11 +368,9 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
   });
 
   it('returns 429 when the tree fetch itself hits a rate limit', async () => {
-    mockFetch
-      .mockResolvedValueOnce(mockMetadata())
-      // tree and commit run in parallel; both need to resolve
-      .mockResolvedValueOnce(new Response(null, { status: 429 }))
-      .mockResolvedValueOnce(mockCommitResponse());
+    mockPublicGitHub({
+      treeResponse: () => new Response(null, { status: 429 }),
+    });
 
     const req = new Request(
       'http://localhost/api/github/public-scan?repo=vercel/next.js&type=tree',
@@ -356,25 +389,13 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
       db: {} as never,
     });
 
-    mockFetch
-      .mockImplementationOnce((_url: string, options: RequestInit) => {
-        expect((options.headers as Record<string, string>).Authorization).toBe(
+    mockPublicGitHub({
+      inspect: (_href, init) => {
+        expect((init?.headers as Record<string, string>).Authorization).toBe(
           'Bearer gho_user-token',
         );
-        return Promise.resolve(mockMetadata());
-      })
-      .mockImplementationOnce((_url: URL, options: RequestInit) => {
-        expect((options.headers as Record<string, string>).Authorization).toBe(
-          'Bearer gho_user-token',
-        );
-        return Promise.resolve(mockTreeResponse());
-      })
-      .mockImplementationOnce((_url: string, options: RequestInit) => {
-        expect((options.headers as Record<string, string>).Authorization).toBe(
-          'Bearer gho_user-token',
-        );
-        return Promise.resolve(mockCommitResponse());
-      });
+      },
+    });
 
     const req = new Request(
       'http://localhost/api/github/public-scan?repo=vercel/next.js&type=tree',
@@ -387,6 +408,66 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
     const res = await GET(req);
     expect(res.status).toBe(200);
     requireUserSpy.mockRestore();
+  });
+
+  it('does not recurse the whole repository when apps/ is at the root', async () => {
+    const recursiveUrls: string[] = [];
+    mockPublicGitHub({
+      treeResponse: (href) => {
+        if (href.includes('recursive=1')) {
+          recursiveUrls.push(href);
+          if (href.includes('apps-sha')) {
+            return mockTreeResponse({
+              tree: [
+                {
+                  path: 'web/src/app/page.tsx',
+                  type: 'blob',
+                  sha: 'x',
+                  url: 'https://api.github.com/repos/vercel/next.js/git/blobs/x',
+                },
+              ],
+            });
+          }
+          throw new Error(`unexpected recursive tree: ${href}`);
+        }
+        return mockTreeResponse({
+          tree: [{ path: 'apps', type: 'tree', sha: 'apps-sha' }],
+        });
+      },
+    });
+
+    const res = await GET(
+      new Request('http://localhost/api/github/public-scan?repo=vercel/next.js&type=tree'),
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.tree.map((entry: { path: string }) => entry.path)).toEqual([
+      'apps/web/src/app/page.tsx',
+    ]);
+    expect(data.tree[0].sha).toBeUndefined();
+    expect(recursiveUrls.some((url) => url.includes('/git/trees/main?recursive=1'))).toBe(false);
+    expect(recursiveUrls.some((url) => url.includes('apps-sha'))).toBe(true);
+  });
+
+  it('serves a repeated tree request from memory without a second GitHub tree fetch', async () => {
+    mockPublicGitHub({ branch: 'canary' });
+    const treeRequest = (): Request =>
+      new Request('http://localhost/api/github/public-scan?repo=vercel/next.js&type=tree');
+
+    const first = await GET(treeRequest());
+    expect(first.status).toBe(200);
+    const treeFetchesAfterFirst = mockFetch.mock.calls.filter((call) =>
+      String(call[0]).includes('/git/trees/'),
+    ).length;
+    expect(treeFetchesAfterFirst).toBeGreaterThan(0);
+
+    const second = await GET(treeRequest());
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual(await first.json());
+    const treeFetchesAfterSecond = mockFetch.mock.calls.filter((call) =>
+      String(call[0]).includes('/git/trees/'),
+    ).length;
+    expect(treeFetchesAfterSecond).toBe(treeFetchesAfterFirst);
   });
 });
 
@@ -481,5 +562,24 @@ describe('GitHub Public Scan batch read (POST /api/github/public-scan)', () => {
   it('rejects a malformed body', async () => {
     const res = await POST(batchRequest({ repo: 'owner/app' }));
     expect(res.status).toBe(400);
+  });
+
+  it('accepts Instant Gate file budgets up to INSTANT_GATE_MAX_FILES', async () => {
+    const paths = Array.from({ length: INSTANT_GATE_MAX_FILES }, (_, index) => `src/f-${index}.ts`);
+    mockFetch.mockImplementation((url: string | URL) => {
+      const href = String(url);
+      if (href === 'https://api.github.com/repos/owner/app') {
+        return Promise.resolve(mockMetadata('main'));
+      }
+      if (href.includes('/contents/')) {
+        return Promise.resolve({ ok: true, text: () => Promise.resolve('export {};') });
+      }
+      return Promise.resolve({ ok: false, status: 404 });
+    });
+
+    const res = await POST(batchRequest({ repo: 'owner/app', paths }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.files).toHaveLength(INSTANT_GATE_MAX_FILES);
   });
 });

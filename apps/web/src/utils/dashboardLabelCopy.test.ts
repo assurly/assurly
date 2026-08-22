@@ -2,11 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { formatFindingsDetailsSummary } from '../app/dashboard/_components/ScanFindingsDetails';
 import { formatRepositoryScanCount } from '../app/dashboard/_components/RepoListPanel';
 import { getShareReportButtonLabel } from '../app/_components/ship-gate/ShipGatePanel';
-import {
-  formatCommitShaShort,
-  formatDuplicateShaBadge,
-  formatScanHistoryChipLabel,
-} from './scanHistoryDisplay';
+import { formatCommitShaShort, formatScanHistoryChipLabel } from './scanHistoryDisplay';
 import type { Scan } from './dbAdapter';
 
 const scan: Scan = {
@@ -28,8 +24,8 @@ describe('dashboard label copy', () => {
   });
 
   it('formats findings detail summary labels', () => {
-    expect(formatFindingsDetailsSummary(1)).toBe('Show details · 1 finding');
-    expect(formatFindingsDetailsSummary(3)).toBe('Show details · 3 findings');
+    expect(formatFindingsDetailsSummary(1)).toBe('1 finding');
+    expect(formatFindingsDetailsSummary(3)).toBe('3 findings');
   });
 
   it('formats share report button labels by billing plan', () => {
@@ -38,9 +34,8 @@ describe('dashboard label copy', () => {
     expect(getShareReportButtonLabel('pro', true)).toBe('Creating link…');
   });
 
-  it('formats scan history chip and duplicate badge copy', () => {
+  it('formats scan history chip copy', () => {
     expect(formatCommitShaShort(scan.commit_sha)).toBe('669c039');
     expect(formatScanHistoryChipLabel(scan)).toMatch(/^commit 669c039 · \d{2}:\d{2}$/);
-    expect(formatDuplicateShaBadge({ index: 2, total: 6 })).toBe('#2 of 6');
   });
 });

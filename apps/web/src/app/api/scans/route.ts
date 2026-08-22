@@ -57,6 +57,24 @@ const saveScanBody = z
         scanned: z.number().int().nonnegative(),
         skipped: z.number().int().nonnegative().optional(),
         roots: z.array(z.string().max(255)).max(50).optional(),
+        unanalyzed: z
+          .array(
+            z.object({
+              language: z.string().min(1).max(40),
+              fileCount: z.number().int().nonnegative().max(100_000),
+            }),
+          )
+          .max(20)
+          .optional(),
+        sourceTotal: z.number().int().nonnegative().optional(),
+        limit: z.number().int().positive().optional(),
+        gaps: z
+          .object({
+            notAnalysed: z.number().int().nonnegative(),
+            overLimit: z.number().int().nonnegative(),
+            outsideAppRoots: z.number().int().nonnegative(),
+          })
+          .optional(),
       })
       .passthrough()
       .optional(),
@@ -113,10 +131,11 @@ export const POST = secureRoute(
     const computed = resolveVerdictFromScanFindings(body.findings as unknown as ScanFinding[], {
       scannedFileCount: body.scannedFileCount,
     });
+    const scanFailed = body.verdict === 'failed' || Boolean(body.failureReason);
 
     const meta: ScanShipGateMeta = {
-      shipScore: body.shipScore ?? computed.shipScore,
-      verdict: body.verdict ?? computed.status,
+      shipScore: scanFailed ? null : (body.shipScore ?? computed.shipScore),
+      verdict: scanFailed ? 'failed' : (body.verdict ?? computed.status),
       scannedFileCount: body.scannedFileCount ?? computed.scannedFileCount,
       cleanFileCount: body.cleanFileCount ?? computed.cleanFileCount,
       scanScope: body.scanScope ?? null,

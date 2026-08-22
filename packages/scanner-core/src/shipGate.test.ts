@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BLOCKED_SCORE_CAP,
   buildIssueGroups,
   buildShipGateReport,
+  countCleanScannedFiles,
   formatShipGateMarkdown,
   formatShipGatePlainText,
   getFindingGroupKey,
@@ -160,21 +162,113 @@ describe('shipGate', () => {
     expect(isShipGateBlocked(report)).toBe(false);
   });
 
+  it('treats a missing silent alarm as a warning CTA, never a blocker', () => {
+    const report = buildShipGateReport(
+      [
+        {
+          ruleId: 'assurly-canary-missing',
+          severity: 'warning',
+          confidence: 'high',
+          file: '.env.example',
+          line: 1,
+          message:
+            'No Assurly silent alarm in .env.example. Plant ASSURLY_CANARY_URL so Assurly can alert if an attacker fetches stolen env.',
+          suggestion: 'Add a silent alarm in Assurly (dashboard / MCP plant).',
+        },
+      ],
+      { scannedFileCount: 12, cleanFileCount: 11 },
+    );
+
+    expect(report.status).toBe('review');
+    expect(report.blockers).toHaveLength(0);
+    expect(isShipGateBlocked(report)).toBe(false);
+    expect(report.warnings[0]?.label).toBe('No silent alarm planted');
+    expect(report.warnings[0]?.action?.kind).toBe('link');
+    expect(report.warnings[0]?.action?.href).toBe('#canary-silent-alarm');
+    expect(report.warnings[0]?.action?.label).toBe('Add a silent alarm');
+  });
+
+  it('does not let a planted canary change the ship verdict', () => {
+    const report = buildShipGateReport(
+      [
+        {
+          ruleId: 'assurly-canary-planted',
+          severity: 'warning',
+          confidence: 'high',
+          file: '.env.example',
+          line: 1,
+          message:
+            'Assurly canary token detected. This is an intentional tripwire, not a leaked credential.',
+        },
+      ],
+      { scannedFileCount: 12, cleanFileCount: 11 },
+    );
+
+    expect(report.status).toBe('ready');
+    expect(report.warnings).toHaveLength(0);
+    expect(isShipGateBlocked(report)).toBe(false);
+  });
+
   it('builds a blocked report with score derived from unique groups', () => {
     const report = buildShipGateReport([...blockers, ...warnings], {
       scannedFileCount: 172,
       cleanFileCount: 168,
     });
 
-    // 2 real blockers × 12 + 3 warning groups × 4 = 24 + 12 = 36 → score 64
+    // 2 real blockers × 12 + 3 warning groups × 4 = 24 + 12 = 36 → 64, then blocked cap
     expect(report.status).toBe('blocked');
     expect(report.headline).toBe('NOT READY TO SHIP');
     expect(report.blockers).toHaveLength(2);
     expect(report.reviews).toHaveLength(0);
     expect(report.warnings).toHaveLength(3);
-    expect(report.shipScore).toBe(64);
+    expect(report.shipScore).toBe(BLOCKED_SCORE_CAP);
     expect(report.cleanFileCount).toBe(168);
     expect(isShipGateBlocked(report)).toBe(true);
+  });
+
+  it('caps a single-blocker score so blocked never looks shippable', () => {
+    const report = buildShipGateReport([blockers[1]!], {
+      scannedFileCount: 10,
+      cleanFileCount: 9,
+    });
+
+    expect(report.status).toBe('blocked');
+    expect(report.shipScore).toBeLessThanOrEqual(BLOCKED_SCORE_CAP);
+    expect(report.shipScore).toBe(BLOCKED_SCORE_CAP);
+  });
+
+  it('caps RLS family penalty so many tables do not zero the score', () => {
+    const rlsBlockers = Array.from({ length: 9 }, (_, index) => ({
+      ruleId: 'supabase-rls',
+      severity: 'error' as const,
+      confidence: 'high' as const,
+      file: `schema-${index}.sql`,
+      message: `Supabase table 'table-${index}' is created but Row-Level Security (RLS) is not enabled.`,
+    }));
+    const report = buildShipGateReport(rlsBlockers, {
+      scannedFileCount: 20,
+      cleanFileCount: 11,
+    });
+
+    expect(report.status).toBe('blocked');
+    expect(report.blockers).toHaveLength(9);
+    expect(report.shipScore).toBeLessThanOrEqual(BLOCKED_SCORE_CAP);
+    expect(report.shipScore).toBe(BLOCKED_SCORE_CAP);
+  });
+
+  it('caps RLS family penalty for warnings as well as blockers', () => {
+    const rlsWarnings = Array.from({ length: 5 }, (_, index) => ({
+      ruleId: 'supabase-rls',
+      severity: 'warning' as const,
+      confidence: 'medium' as const,
+      file: `schema-${index}.sql`,
+      message: `Database table 'table-${index}' is created but Row-Level Security (RLS) is not enabled.`,
+    }));
+    const report = buildShipGateReport(rlsWarnings);
+
+    expect(report.status).toBe('review');
+    expect(report.warnings).toHaveLength(5);
+    expect(report.shipScore).toBe(88);
   });
 
   it('classifies low-confidence errors as review, not blockers', () => {
@@ -233,7 +327,9 @@ describe('shipGate', () => {
     });
 
     expect(report.scanScope).toEqual({ scanned: 42, skipped: 18, roots: ['apps/web'] });
-    expect(formatShipGatePlainText(report)).toContain('Scanned apps/web, 42 files');
+    expect(formatShipGatePlainText(report)).toContain(
+      'Scanned apps/web · 42 source files analysed',
+    );
   });
 
   it('marks warning-only scans as review with high score', () => {
@@ -242,6 +338,27 @@ describe('shipGate', () => {
       cleanFileCount: 9,
     });
     expect(report.status).toBe('review');
+    expect(report.shipScore).toBe(96);
+    expect(isShipGateBlocked(report)).toBe(false);
+  });
+
+  it('turns a clean scan into review when unread backend code is on the security surface', () => {
+    const report = buildShipGateReport(
+      [
+        {
+          ruleId: 'scan-language-coverage',
+          severity: 'warning',
+          confidence: 'high',
+          file: 'internal/handler/http/stripe_handler.go',
+          message:
+            "53 Go files were not analysed — Assurly's rules cover JavaScript, TypeScript and SQL. They include payment and authentication code (internal/handler/http/stripe_handler.go, internal/middleware/auth.go), so this verdict says nothing about that layer.",
+        },
+      ],
+      { scannedFileCount: 71, cleanFileCount: 70 },
+    );
+    expect(report.status).toBe('review');
+    expect(report.headline).toBe('REVIEW RECOMMENDED');
+    expect(report.warnings[0]?.label).toBe('Backend code not analysed');
     expect(report.shipScore).toBe(96);
     expect(isShipGateBlocked(report)).toBe(false);
   });
@@ -290,10 +407,10 @@ describe('shipGate', () => {
 
   it('allows incomplete scans with blockers to score below the no-blocker floor', () => {
     const manyBlockers = Array.from({ length: 8 }, (_, index) => ({
-      ruleId: `supabase-rls-table-${index}`,
+      ruleId: `public-secret-${index}`,
       severity: 'error' as const,
-      file: `schema-${index}.sql`,
-      message: `Supabase table 't${index}' is created but Row-Level Security (RLS) is not enabled.`,
+      file: `app/secret-${index}.ts`,
+      message: `Hardcoded secret leaked in file secret-${index}.ts.`,
     }));
     const report = buildShipGateReport(
       [
@@ -362,7 +479,7 @@ describe('shipGate', () => {
     });
 
     expect(plain).toContain('NOT READY TO SHIP');
-    expect(plain).toContain('Ship Score: 64/100');
+    expect(plain).toContain('Ship Score: 59/100');
     expect(plain).toContain('Missing RLS on table: users');
     expect(plain).toContain('✓ 168 files clean');
     expect(plain).toContain('Run: npx assurly init');
@@ -371,5 +488,24 @@ describe('shipGate', () => {
     expect(markdown).toContain('Stripe webhook signature missing');
     expect(markdown).toContain('https://assurly.dev/report/abc123');
     expect(markdown).toContain('`npx assurly init`');
+  });
+
+  it('does not count Global Configs or .env.example against Instant Gate clean files', () => {
+    const scannedFiles = Array.from({ length: 71 }, (_, index) => `src/file-${index}.ts`);
+    const findingFiles = [
+      'src/file-0.ts',
+      'src/file-1.ts',
+      'src/file-2.ts',
+      'src/file-3.ts',
+      'src/file-4.ts',
+      'src/file-5.ts',
+      'src/file-6.ts',
+      'Global Configs',
+      '.env.example',
+    ];
+
+    expect(countCleanScannedFiles(71, findingFiles, scannedFiles)).toBe(64);
+    expect(countCleanScannedFiles(71, findingFiles)).toBe(64);
+    expect(countCleanScannedFiles(71, ['src/a.ts', 'Global Configs', '.env.example'])).toBe(70);
   });
 });

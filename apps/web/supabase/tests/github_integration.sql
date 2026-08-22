@@ -125,6 +125,27 @@ begin
   end if;
 
   perform public.finish_github_webhook_delivery('delivery-sql-1', true, null);
+
+  update public.repositories
+  set is_active = false
+  where github_repo_id = 9600000001;
+
+  select public.connect_github_installation(
+    '60000000-0000-0000-0000-000000000006',
+    6001,
+    '60001',
+    '[{"id":9600000001,"full_name":"tenant-a/private"}]'::jsonb
+  ) into connected;
+  if connected <> 1 then
+    raise exception 'tenant A GitHub installation remap failed';
+  end if;
+  if exists (
+    select 1 from public.repositories
+    where github_repo_id = 9600000001
+      and is_active
+  ) then
+    raise exception 'dismissed repository was resurrected by GitHub install sync';
+  end if;
 end
 $$;
 

@@ -28,9 +28,65 @@ describe('summarizeScanFixes', () => {
       5,
     );
 
-    expect(summary.issueCount).toBe(5);
+    expect(summary.blockerCount).toBe(5);
+    expect(summary.findingCount).toBe(2);
     expect(summary.fixableCount).toBe(2);
     expect(summary.proposedCount).toBe(1);
     expect(summary.remainingCount).toBe(1);
+  });
+
+  it('counts every displayed finding, not only errors', () => {
+    const summary = summarizeScanFixes(
+      [
+        finding({ id: 'f-1' }),
+        finding({
+          id: 'f-2',
+          severity: 'warning',
+          rule_id: 'undocumented-env',
+          file_path: 'src/lib.ts',
+          message:
+            "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
+        }),
+      ],
+      1,
+    );
+
+    expect(summary.blockerCount).toBe(1);
+    expect(summary.findingCount).toBe(2);
+  });
+
+  it('counts duplicate env findings individually so the summary matches persisted warning_count', () => {
+    const summary = summarizeScanFixes(
+      [
+        finding({
+          id: 'f-a',
+          severity: 'warning',
+          rule_id: 'undocumented-env',
+          file_path: 'src/a.ts',
+          message:
+            "Environment variable 'process.env.NEXT_PUBLIC_SENTRY_DSN' is used but not documented in '.env.example'.",
+        }),
+        finding({
+          id: 'f-b',
+          severity: 'warning',
+          rule_id: 'undocumented-env',
+          file_path: 'src/b.ts',
+          message:
+            "Environment variable 'process.env.NEXT_PUBLIC_SENTRY_DSN' is used but not documented in '.env.example'.",
+        }),
+        finding({
+          id: 'f-c',
+          severity: 'warning',
+          rule_id: 'undocumented-env',
+          file_path: 'src/c.ts',
+          message:
+            "Environment variable 'process.env.NEXT_PUBLIC_SENTRY_DSN' is used but not documented in '.env.example'.",
+        }),
+      ],
+      0,
+    );
+
+    expect(summary.blockerCount).toBe(0);
+    expect(summary.findingCount).toBe(3);
   });
 });

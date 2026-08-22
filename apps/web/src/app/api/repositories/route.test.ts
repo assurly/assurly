@@ -2,10 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthenticationError } from '../../../utils/auth';
 import { POST } from './route';
 
-const mocks = vi.hoisted(() => ({ requireUser: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  requireUser: vi.fn(),
+  setRepositoryActive: vi.fn(),
+}));
 vi.mock('../../../utils/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../utils/auth')>()),
   requireUser: mocks.requireUser,
+}));
+vi.mock('../../../utils/dbAdapter', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../utils/dbAdapter')>()),
+  getAdminDbAdapter: () => ({ setRepositoryActive: mocks.setRepositoryActive }),
 }));
 
 const db = {
@@ -13,6 +20,8 @@ const db = {
   getOrganization: vi.fn(),
   getMembership: vi.fn(),
   getRepositories: vi.fn(),
+  getRepository: vi.fn(),
+  getRepositoryByGithubRepoId: vi.fn(),
   addRepository: vi.fn(),
 };
 
@@ -32,6 +41,8 @@ describe('POST /api/repositories tenant boundary', () => {
       role: 'admin',
     });
     db.getRepositories.mockResolvedValue([]);
+    db.getRepositoryByGithubRepoId.mockResolvedValue(null);
+    db.getRepository.mockResolvedValue(null);
     db.addRepository.mockResolvedValue({
       id: 'repo-a',
       organization_id: 'org-a',
@@ -81,5 +92,62 @@ describe('POST /api/repositories tenant boundary', () => {
     );
     expect(response.status).toBe(201);
     expect(db.addRepository).toHaveBeenCalledWith('org-a', 'owner/repo', 123);
+  });
+
+  it('reactivates a dismissed repository instead of inserting a duplicate', async () => {
+    db.getRepositoryByGithubRepoId.mockResolvedValue({
+      id: 'repo-hidden',
+      organization_id: 'org-a',
+      name: 'owner/old-name',
+      github_repo_id: 123,
+      is_active: false,
+    });
+    db.getRepository.mockResolvedValue({
+      id: 'repo-hidden',
+      organization_id: 'org-a',
+      name: 'owner/repo',
+      github_repo_id: 123,
+      is_active: true,
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/repositories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'owner/repo',
+          githubRepoId: 123,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.setRepositoryActive).toHaveBeenCalledWith('repo-hidden', true, 'owner/repo');
+    expect(db.addRepository).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ id: 'repo-hidden', is_active: true });
+  });
+
+  it('rejects a GitHub repository already connected to another organization', async () => {
+    db.getRepositoryByGithubRepoId.mockResolvedValue({
+      id: 'repo-other',
+      organization_id: 'org-b',
+      name: 'victim/private',
+      github_repo_id: 999,
+      is_active: true,
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/repositories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'victim/private',
+          githubRepoId: 999,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(db.addRepository).not.toHaveBeenCalled();
   });
 });

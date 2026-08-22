@@ -25,8 +25,10 @@ import { POST as stripeCheckout } from './stripe/checkout/route';
 import { POST as stripePortal } from './stripe/portal/route';
 import { POST as stripeWebhook } from './stripe/webhook/route';
 import { POST as v1Scans } from './v1/scans/route';
-import { GET as canaryCallback } from './canary/[token]/route';
+import { POST as v1Canary } from './v1/canary/route';
+import { GET as canaryCallback, POST as canaryCallbackPost } from './canary/[token]/route';
 import { GET as canaryList, POST as canaryIssue } from './targets/[id]/canary/route';
+import { POST as canaryPlant } from './targets/[id]/canary/plant/route';
 import { DELETE as canaryDelete } from './targets/[id]/canary/[tokenId]/route';
 import { POST as canaryRevoke } from './targets/[id]/canary/[tokenId]/revoke/route';
 import { POST as dependencyProvenance } from './dependencies/provenance/route';
@@ -112,6 +114,13 @@ const routes: RouteContract[] = [
     handler: canaryCallback,
   },
   {
+    name: 'canary callback post',
+    method: 'POST',
+    auth: 'none',
+    csrf: false,
+    handler: canaryCallbackPost,
+  },
+  {
     name: 'canary list',
     method: 'GET',
     auth: 'required',
@@ -124,6 +133,13 @@ const routes: RouteContract[] = [
     auth: 'required',
     csrf: true,
     handler: canaryIssue,
+  },
+  {
+    name: 'canary plant',
+    method: 'POST',
+    auth: 'required',
+    csrf: true,
+    handler: canaryPlant,
   },
   {
     name: 'canary revoke',
@@ -153,6 +169,13 @@ const routes: RouteContract[] = [
     auth: 'apiKey',
     csrf: false,
     handler: v1Scans,
+  },
+  {
+    name: 'v1 canary issue',
+    method: 'POST',
+    auth: 'apiKey',
+    csrf: false,
+    handler: v1Canary,
   },
   { name: 'targets read', method: 'GET', auth: 'required', csrf: false, handler: targetsRead },
   { name: 'targets create', method: 'POST', auth: 'required', csrf: true, handler: targetsCreate },

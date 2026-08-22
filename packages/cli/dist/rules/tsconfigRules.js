@@ -36,11 +36,38 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.tsconfigRules = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-/**
- * Strips single-line and multi-line comments from JSON string.
- */
-function stripJsonComments(jsonString) {
-    return jsonString.replace(/("([^"\\]|\\.)*")|(\/\/.*|\/\*[\s\S]*?\*\/)/g, (m, g) => (g ? m : ''));
+const scanner_core_1 = require("@assurly/scanner-core");
+function posixPath(filePath) {
+    return filePath.replace(/\\/g, '/');
+}
+function isTsconfigScanPath(relativePath) {
+    const posix = posixPath(relativePath);
+    return posix === 'tsconfig.json' || /^(apps|packages)\/[^/]+\/tsconfig\.json$/.test(posix);
+}
+function readTsconfigSources(projectPath, files) {
+    const listed = files.filter(isTsconfigScanPath).map(posixPath);
+    if (!listed.includes('tsconfig.json')) {
+        const rootFull = path.join(projectPath, 'tsconfig.json');
+        if (fs.existsSync(rootFull))
+            listed.unshift('tsconfig.json');
+    }
+    const sources = [];
+    const seen = new Set();
+    for (const relative of listed) {
+        if (seen.has(relative))
+            continue;
+        seen.add(relative);
+        try {
+            sources.push({
+                file: relative,
+                content: fs.readFileSync(path.join(projectPath, relative), 'utf8'),
+            });
+        }
+        catch {
+            // Skip unreadable paths; scanTsconfigStrict treats an empty set as missing.
+        }
+    }
+    return sources;
 }
 /**
  * Rule to check if strict mode is enabled in tsconfig.json.
@@ -51,43 +78,6 @@ exports.tsconfigRules = {
     description: 'Ensures compilerOptions.strict is set to true in tsconfig.json to enforce maximum type safety.',
     severity: 'warning',
     async run(context) {
-        const findings = [];
-        const tsconfigPath = 'tsconfig.json';
-        const fullPath = path.join(context.projectPath, tsconfigPath);
-        const hasTsconfig = context.files.includes(tsconfigPath) || fs.existsSync(fullPath);
-        if (!hasTsconfig) {
-            findings.push({
-                ruleId: this.id,
-                severity: 'warning',
-                message: 'No tsconfig.json file found in project root. TypeScript configuration is missing.',
-                suggestion: 'Create a tsconfig.json in the project root and configure "strict": true in compilerOptions.',
-            });
-            return findings;
-        }
-        try {
-            const content = fs.readFileSync(fullPath, 'utf8');
-            const cleanContent = stripJsonComments(content);
-            const parsed = JSON.parse(cleanContent);
-            const strictEnabled = parsed?.compilerOptions?.strict === true;
-            if (!strictEnabled) {
-                findings.push({
-                    ruleId: this.id,
-                    severity: 'warning',
-                    file: tsconfigPath,
-                    message: 'TypeScript strict mode is disabled or not set. "strict": true is highly recommended for B2B SaaS applications to prevent runtime crashes.',
-                    suggestion: 'Set "strict": true inside the "compilerOptions" block of your tsconfig.json.',
-                });
-            }
-        }
-        catch (error) {
-            findings.push({
-                ruleId: this.id,
-                severity: 'warning',
-                file: tsconfigPath,
-                message: `Failed to parse tsconfig.json: ${error.message || error}.`,
-                suggestion: 'Verify that tsconfig.json is a valid JSON file (with or without comments).',
-            });
-        }
-        return findings;
+        return (0, scanner_core_1.scanTsconfigStrict)(readTsconfigSources(context.projectPath, context.files)).findings;
     },
 };

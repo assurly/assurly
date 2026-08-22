@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.scanStripeWebhookIdempotency = scanStripeWebhookIdempotency;
+exports.scanStripeWebhookIdempotencyForProject = scanStripeWebhookIdempotencyForProject;
 exports.scanStripeLiveKeyInDev = scanStripeLiveKeyInDev;
 exports.scanStripeMissingSubscriptionEvents = scanStripeMissingSubscriptionEvents;
 exports.scanStripeLifecycle = scanStripeLifecycle;
@@ -42,23 +43,129 @@ const SUBSCRIPTION_EVENT_PATTERNS = [
     /\bevent\.type\s*===\s*['"]customer\.subscription/,
 ];
 const DEV_ENV_FILE = /(?:^|[/\\])\.env(?:\.(?:local|development|dev|test|staging))?(?:$|[/\\])/i;
+const IMPORT_RESOLVE_EXTENSIONS = [
+    '',
+    '.ts',
+    '.tsx',
+    '.js',
+    '.jsx',
+    '/index.ts',
+    '/index.tsx',
+    '/index.js',
+    '/index.jsx',
+];
+const MAX_IMPORT_HOPS = 2;
+function hasIdempotencySignal(content) {
+    return IDEMPOTENCY_PATTERNS.some((pattern) => pattern.test(content));
+}
+function normalizeSourcePath(filePath) {
+    return filePath.replace(/\\/g, '/');
+}
+function sourceDirname(filePath) {
+    const normalized = normalizeSourcePath(filePath);
+    const slash = normalized.lastIndexOf('/');
+    return slash === -1 ? '' : normalized.slice(0, slash);
+}
+function joinSourcePath(fromDir, relative) {
+    const parts = [...(fromDir ? fromDir.split('/') : []), ...relative.split('/')];
+    const resolved = [];
+    for (const part of parts) {
+        if (!part || part === '.')
+            continue;
+        if (part === '..') {
+            resolved.pop();
+            continue;
+        }
+        resolved.push(part);
+    }
+    return resolved.join('/');
+}
+function stripResolvedExtension(spec) {
+    return spec.replace(/\.(?:js|jsx|ts|tsx)$/i, '');
+}
+function extractRelativeSpecifiers(content) {
+    const specs = [];
+    const pattern = /(?:from\s+|require\s*\(\s*|import\s*\(\s*)['"](\.[^'"]+)['"]/g;
+    for (const match of content.matchAll(pattern)) {
+        const spec = match[1];
+        if (spec)
+            specs.push(spec);
+    }
+    return specs;
+}
+function resolveRelativeImport(fromFile, spec, index) {
+    if (!spec.startsWith('.'))
+        return null;
+    const base = joinSourcePath(sourceDirname(fromFile), stripResolvedExtension(spec));
+    for (const extension of IMPORT_RESOLVE_EXTENSIONS) {
+        const candidate = normalizeSourcePath(`${base}${extension}`);
+        if (index.has(candidate))
+            return candidate;
+    }
+    return null;
+}
+function importedGraphContent(startFile, startContent, index) {
+    const visited = new Set([normalizeSourcePath(startFile)]);
+    const chunks = [startContent];
+    const queue = [
+        { file: startFile, content: startContent, depth: 0 },
+    ];
+    while (queue.length > 0) {
+        const current = queue.shift();
+        if (!current || current.depth >= MAX_IMPORT_HOPS)
+            continue;
+        for (const spec of extractRelativeSpecifiers(current.content)) {
+            const resolved = resolveRelativeImport(current.file, spec, index);
+            if (!resolved || visited.has(resolved))
+                continue;
+            const content = index.get(resolved);
+            if (content === undefined)
+                continue;
+            visited.add(resolved);
+            chunks.push(content);
+            queue.push({ file: resolved, content, depth: current.depth + 1 });
+        }
+    }
+    return chunks.join('\n');
+}
+function missingIdempotencyFinding(file) {
+    return {
+        ruleId: 'stripe-webhook-no-idempotency',
+        severity: 'warning',
+        confidence: 'medium',
+        file,
+        line: 1,
+        message: 'Stripe webhook handler has no obvious idempotency or replay protection.',
+        suggestion: 'Persist processed event IDs (event.id) and ignore duplicates before mutating subscription state.',
+    };
+}
 function scanStripeWebhookIdempotency(content, file = 'route.ts') {
-    const findings = [];
     if (!isWebhookHandler(content, file))
-        return result(findings);
-    if (IDEMPOTENCY_PATTERNS.some((pattern) => pattern.test(content)))
-        return result(findings);
-    return result([
-        {
-            ruleId: 'stripe-webhook-no-idempotency',
-            severity: 'warning',
-            confidence: 'medium',
-            file,
-            line: 1,
-            message: 'Stripe webhook handler has no obvious idempotency or replay protection.',
-            suggestion: 'Persist processed event IDs (event.id) and ignore duplicates before mutating subscription state.',
-        },
-    ]);
+        return result([]);
+    if (hasIdempotencySignal(content))
+        return result([]);
+    return result([missingIdempotencyFinding(file)]);
+}
+/**
+ * Same rule as `scanStripeWebhookIdempotency`, but a handler that delegates to a
+ * relative import (1–2 hops) inherits that module's idempotency signals.
+ * Package imports (`stripe`, `@/…`) are not followed.
+ */
+function scanStripeWebhookIdempotencyForProject(sources) {
+    const index = new Map();
+    for (const source of sources) {
+        index.set(normalizeSourcePath(source.file), source.content);
+    }
+    const findings = [];
+    for (const source of sources) {
+        if (!isWebhookHandler(source.content, source.file))
+            continue;
+        const combined = importedGraphContent(source.file, source.content, index);
+        if (hasIdempotencySignal(combined))
+            continue;
+        findings.push(missingIdempotencyFinding(source.file));
+    }
+    return result(findings);
 }
 function scanStripeLiveKeyInDev(content, file = '.env.development') {
     const findings = [];

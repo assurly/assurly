@@ -7,6 +7,7 @@
  */
 import crypto from 'node:crypto';
 import { ASSURLY_CANARY_PREFIX, isAssurlyCanaryToken } from '@assurly/scanner-core';
+import { CANARY_HIT_ROTATE_COPY } from './canaryPlant';
 import { getAdminDbAdapter, type CanaryTokenAuthRow, type DbAdapter } from './dbAdapter';
 import { getResendApiKey, getResendFromAddress } from './env';
 import { isAllowedIncomingWebhookUrl, type RegressionWebhookChannel } from './notify';
@@ -144,7 +145,7 @@ export async function sendCanaryAlertEmail(
       from: getResendFromAddress(),
       to: recipients,
       subject: `[Assurly] Canary token triggered for ${targetLabel}`,
-      html: `<h2>Canary token was used</h2><p>Someone used a planted Assurly canary (<code>${tokenPrefix}…</code>) for <strong>${escapeHtml(targetLabel)}</strong>.</p><p>Treat this as a confirmed exposure: rotate real credentials that share that location and review access logs.</p>`,
+      html: `<h2>Canary tripwire was fetched</h2><p>Someone fetched a planted Assurly canary (<code>${tokenPrefix}…</code>) for <strong>${escapeHtml(targetLabel)}</strong>.</p><p>${escapeHtml(CANARY_HIT_ROTATE_COPY)}</p>`,
     }),
   });
   if (!response.ok) {
@@ -163,9 +164,7 @@ export async function sendCanaryWebhookAlert(
     console.warn(`[Assurly] Rejected ${channel} webhook URL; canary alert skipped.`);
     return;
   }
-  const text =
-    `Assurly: canary token triggered for ${targetLabel}\n` +
-    `Planted canary (${tokenPrefix}…) was used. Rotate credentials that share that location.`;
+  const text = `Assurly: canary tripwire fetched for ${targetLabel}\n${CANARY_HIT_ROTATE_COPY} (${tokenPrefix}…)`;
   const body = channel === 'slack' ? { text } : { content: text.slice(0, 1900) };
   const response = await fetchImpl(webhookUrl, {
     method: 'POST',

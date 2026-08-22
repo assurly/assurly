@@ -35,7 +35,7 @@ export function RepoListPanel({
 
   return (
     <section className="repo-list-panel" data-testid="repo-list-panel">
-      <h3 className="repo-list-panel__title">GitHub Repositories</h3>
+      <h2 className="repo-list-panel__title">Connected repositories</h2>
 
       {repositories.length > 0 ? (
         <label className="repo-list-panel__filter">

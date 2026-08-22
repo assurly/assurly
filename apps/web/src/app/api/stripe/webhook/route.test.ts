@@ -15,6 +15,7 @@ vi.mock('../../../../utils/dbAdapter', async (importOriginal) => ({
 const db = {
   getOrganization: vi.fn(),
   processStripeBillingEvent: vi.fn(),
+  claimTrialCardFingerprint: vi.fn(),
 };
 
 function signedRequest(payload: string, timestamp?: number): Request {
@@ -81,6 +82,7 @@ describe('Stripe webhook security', () => {
     mocks.getAdminDbAdapter.mockReturnValue(db);
     db.getOrganization.mockReset().mockResolvedValue({ id: 'org-a', stripe_customer_id: null });
     db.processStripeBillingEvent.mockReset().mockResolvedValue(true);
+    db.claimTrialCardFingerprint.mockReset().mockResolvedValue(true);
 
     vi.spyOn(stripe.checkout.sessions, 'retrieve').mockResolvedValue({
       id: 'cs_test_1',
@@ -92,6 +94,7 @@ describe('Stripe webhook security', () => {
       subscription: {
         id: 'sub_org_a',
         status: 'trialing',
+        created: 100,
         customer: 'cus_org_a',
         metadata: { organizationId: 'org-a', priceId: 'price_monthly_server' },
         items: { data: [{ price: { id: 'price_monthly_server' } }] },
@@ -103,6 +106,8 @@ describe('Stripe webhook security', () => {
       deleted: false,
       metadata: { organizationId: 'org-a' },
     } as never);
+    vi.spyOn(stripe.subscriptions, 'search').mockResolvedValue({ data: [] } as never);
+    vi.spyOn(stripe.subscriptions, 'cancel').mockResolvedValue({} as never);
   });
 
   it('fails closed when STRIPE_WEBHOOK_SECRET is absent', async () => {
@@ -211,7 +216,7 @@ describe('Stripe webhook security', () => {
     expect(db.processStripeBillingEvent).not.toHaveBeenCalled();
   });
 
-  it('maps a verified past-due subscription to the free plan', async () => {
+  it('keeps Pro while Stripe is retrying a past-due subscription', async () => {
     vi.spyOn(stripe.subscriptions, 'retrieve').mockResolvedValue({
       id: 'sub_org_a',
       status: 'past_due',
@@ -224,7 +229,7 @@ describe('Stripe webhook security', () => {
     expect(response.status).toBe(200);
     expect(db.processStripeBillingEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        plan: 'free',
+        plan: 'pro',
         stripeCustomerId: 'cus_org_a',
         stripeSubscriptionId: 'sub_org_a',
       }),
@@ -243,5 +248,122 @@ describe('Stripe webhook security', () => {
     const response = await POST(signedRequest(subscriptionEvent('customer.subscription.deleted')));
     expect(response.status).toBe(400);
     expect(db.processStripeBillingEvent).not.toHaveBeenCalled();
+  });
+
+  it('ignores billing mutations for an OEM workspace', async () => {
+    db.getOrganization.mockResolvedValue({
+      id: 'org-a',
+      billing_plan: 'oem',
+      stripe_customer_id: 'cus_org_a',
+    });
+
+    const response = await POST(signedRequest(checkoutEvent()));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ received: true, result: 'ignored' });
+    expect(db.processStripeBillingEvent).not.toHaveBeenCalled();
+  });
+
+  it('cancels a newer duplicate subscription and does not apply it', async () => {
+    vi.mocked(stripe.subscriptions.search).mockResolvedValue({
+      data: [
+        {
+          id: 'sub_older',
+          status: 'trialing',
+          created: 1,
+          customer: 'cus_org_a',
+        },
+      ],
+    } as never);
+
+    const response = await POST(signedRequest(checkoutEvent()));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ received: true, result: 'ignored' });
+    expect(stripe.subscriptions.cancel).toHaveBeenCalledWith('sub_org_a');
+    expect(db.processStripeBillingEvent).not.toHaveBeenCalled();
+  });
+
+  it('maps invoice.payment_failed onto the subscription plan', async () => {
+    vi.spyOn(stripe.subscriptions, 'retrieve').mockResolvedValue({
+      id: 'sub_org_a',
+      status: 'past_due',
+      customer: 'cus_org_a',
+      metadata: { organizationId: 'org-a', priceId: 'price_monthly_server' },
+      items: { data: [{ price: { id: 'price_monthly_server' } }] },
+    } as never);
+
+    const payload = JSON.stringify({
+      id: 'evt_invoice_payment_failed',
+      object: 'event',
+      api_version: '2026-06-10.clover',
+      created: Math.floor(Date.now() / 1000),
+      livemode: false,
+      pending_webhooks: 1,
+      request: null,
+      type: 'invoice.payment_failed',
+      data: {
+        object: {
+          id: 'in_org_a',
+          object: 'invoice',
+          parent: {
+            type: 'subscription_details',
+            subscription_details: { subscription: 'sub_org_a' },
+            quote_details: null,
+          },
+        },
+      },
+    });
+
+    const response = await POST(signedRequest(payload));
+    expect(response.status).toBe(200);
+    expect(db.processStripeBillingEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'invoice.payment_failed',
+        plan: 'pro',
+        stripeSubscriptionId: 'sub_org_a',
+      }),
+    );
+  });
+
+  it('ends a trial immediately when the card fingerprint was already used', async () => {
+    db.claimTrialCardFingerprint.mockResolvedValue(false);
+    vi.spyOn(stripe.checkout.sessions, 'retrieve').mockResolvedValue({
+      id: 'cs_test_1',
+      mode: 'subscription',
+      status: 'complete',
+      payment_status: 'no_payment_required',
+      client_reference_id: 'org-a',
+      customer: 'cus_org_a',
+      subscription: {
+        id: 'sub_org_a',
+        status: 'trialing',
+        trial_start: 1,
+        created: 100,
+        customer: 'cus_org_a',
+        default_payment_method: 'pm_card',
+        metadata: { organizationId: 'org-a', priceId: 'price_monthly_server' },
+        items: { data: [{ price: { id: 'price_monthly_server' } }] },
+      },
+      metadata: { organizationId: 'org-a', priceId: 'price_monthly_server' },
+    } as never);
+    vi.spyOn(stripe.paymentMethods, 'retrieve').mockResolvedValue({
+      id: 'pm_card',
+      card: { fingerprint: 'Xt5EWLLDS7FJjR1c' },
+    } as never);
+    vi.spyOn(stripe.subscriptions, 'update').mockResolvedValue({
+      id: 'sub_org_a',
+      status: 'active',
+      trial_start: 1,
+      customer: 'cus_org_a',
+      metadata: { organizationId: 'org-a', priceId: 'price_monthly_server' },
+      items: { data: [{ price: { id: 'price_monthly_server' } }] },
+    } as never);
+
+    const response = await POST(signedRequest(checkoutEvent()));
+
+    expect(response.status).toBe(200);
+    expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_org_a', { trial_end: 'now' });
+    expect(db.processStripeBillingEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ plan: 'pro', stripeSubscriptionId: 'sub_org_a' }),
+    );
   });
 });

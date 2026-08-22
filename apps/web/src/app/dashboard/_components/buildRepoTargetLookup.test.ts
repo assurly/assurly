@@ -18,6 +18,8 @@ function card(partial: Partial<TargetCard> & Pick<TargetCard, 'id' | 'kind'>): T
     scoreDropped: partial.scoreDropped ?? false,
     badgeToken: partial.badgeToken ?? null,
     scanCapability: partial.scanCapability ?? 'browser',
+    lastScanFailed: partial.lastScanFailed ?? false,
+    lastScanFailureReason: partial.lastScanFailureReason ?? null,
     ...partial,
   };
 }

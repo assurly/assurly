@@ -101,21 +101,24 @@ test.describe('Dashboard full suite @1280px', () => {
     await waitForRepoHeader(page, dashboardFixture.attestaRepo.name);
   });
 
-  test('switches between Repositories and Manual Checker tabs', async ({ page }) => {
-    await expect(page.getByTestId('repo-list-panel')).toBeVisible();
+  test('switches between Apps, Manual Checker, and Settings', async ({ page }) => {
+    await expect(page.getByRole('button', { name: 'Back to Apps' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Manual Checker' }).click();
-    // NB: the `manual-checker` test id lives only in the unit-test mock, so the
-    // real component root has no E2E hook — assert on rendered content instead.
     await expect(page.getByRole('heading', { name: 'Interactive Config Checker' })).toBeVisible();
     await expect(page.getByRole('tab', { name: /Supabase Migration/ })).toBeVisible();
     await expect(page.getByTestId('repo-list-panel')).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Repositories' }).click();
+    await page.getByRole('button', { name: 'Settings' }).click();
     await expect(page.getByTestId('repo-list-panel')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Apps', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Your apps' })).toBeVisible();
+    await expect(page.getByTestId('repo-list-panel')).toHaveCount(0);
   });
 
   test('filters the repository list and shows a no-match state', async ({ page }) => {
+    await page.getByRole('button', { name: 'Settings' }).click();
     const filter = page.getByTestId('repo-list-filter');
 
     await filter.fill('leaks');
@@ -133,6 +136,41 @@ test.describe('Dashboard full suite @1280px', () => {
     await expect(
       page.getByRole('button', { name: /select repository tibco87\/Attesta/i }),
     ).toBeVisible();
+  });
+
+  test('selecting a repository in Settings stays on Settings and keeps it in the URL', async ({
+    page,
+  }) => {
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+
+    await page.getByRole('button', { name: /select repository react-client-leaks/i }).click();
+
+    await expect(page).toHaveURL(/view=settings/);
+    await expect(page).toHaveURL(new RegExp(`repo=${dashboardFixture.leaksRepo.id}`));
+    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    await expect(page.getByTestId('repo-list-panel')).toBeVisible();
+    await expect(page.getByTestId('selected-repo-header')).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: /select repository react-client-leaks/i }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('heading', { name: 'Canary tokens' })).toBeVisible();
+  });
+
+  test('opening Settings from the app workspace keeps the selected repository', async ({
+    page,
+  }) => {
+    await expect(page.getByRole('button', { name: 'Back to Apps' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Settings' }).click();
+
+    await expect(page).toHaveURL(/view=settings/);
+    await expect(page).toHaveURL(new RegExp(`repo=${dashboardFixture.attestaRepo.id}`));
+    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /select repository tibco87\/Attesta/i }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'Back to Apps' })).toHaveCount(0);
   });
 
   test('renders the NOT READY verdict with a ship score by default', async ({ page }) => {
@@ -243,14 +281,16 @@ test.describe('Dashboard full suite @1280px', () => {
     await expect(errorPanel).toHaveCount(0);
   });
 
-  test('discovers public repositories by owner name', async ({ page }) => {
+  test('public repo connect lives on Apps and requires owner/repo', async ({ page }) => {
+    await page.getByRole('button', { name: 'Apps', exact: true }).click();
     const input = page.getByPlaceholder('owner/repo (e.g. facebook/react)');
     await input.fill('octocat');
-    await page.getByRole('button', { name: /Connect & Scan/i }).click();
+    await expect(page.getByText(/Enter owner\/repo — for example facebook\/react/)).toBeVisible();
+    await expect(page.getByRole('button', { name: /Connect & Scan/i })).toBeDisabled();
 
-    await expect(page.getByText(/Select repository \(2\)/)).toBeVisible();
-    await expect(page.getByRole('button', { name: /awesome-lib/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /second-lib/ })).toBeVisible();
+    await input.fill('octocat/awesome-lib');
+    await expect(page.getByText(/Enter owner\/repo — for example facebook\/react/)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Connect & Scan/i })).toBeEnabled();
   });
 
   test('account menu toggles with correct ARIA state', async ({ page }) => {

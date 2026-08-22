@@ -1,6 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildScanScope, isScannableFile, type ScanScope } from '@assurly/scanner-core';
+import {
+  buildScanScope,
+  detectStackFromManifests,
+  isScannableFile,
+  type ScanScope,
+} from '@assurly/scanner-core';
 import { TechStack, ProjectContext } from './types';
 
 /**
@@ -42,11 +47,6 @@ export function listFiles(dir: string, baseDir: string = dir): string[] {
   return results;
 }
 
-interface PackageJsonShape {
-  dependencies?: Record<string, string>;
-  devDependencies?: Record<string, string>;
-}
-
 /**
  * Detects the technologies used in the project by reading package.json and file structure.
  *
@@ -66,61 +66,24 @@ export function detectStack(
   projectPath: string,
   allFiles: string[] = listFiles(projectPath),
 ): TechStack {
-  const stack: TechStack = {
-    framework: 'unknown',
-    database: 'none',
-    payments: 'none',
-    deployment: 'unknown',
-  };
-
-  const packageJsonRelPaths = allFiles.filter((f) => path.basename(f) === 'package.json');
-  if (packageJsonRelPaths.length === 0) {
-    return stack;
-  }
-
-  const allDeps: Record<string, string> = {};
-  let sawVercelConfig = false;
+  const packageJsonRelPaths = allFiles.filter((file) => path.basename(file) === 'package.json');
+  const manifests: Array<{ path: string; content: string }> = [];
 
   for (const relPath of packageJsonRelPaths) {
-    const absPath = path.join(projectPath, relPath);
-    let packageJson: PackageJsonShape;
     try {
-      packageJson = JSON.parse(fs.readFileSync(absPath, 'utf8'));
+      manifests.push({
+        path: relPath.replace(/\\/g, '/'),
+        content: fs.readFileSync(path.join(projectPath, relPath), 'utf8'),
+      });
     } catch {
-      continue; // Malformed manifest in one workspace member shouldn't blank out the rest.
-    }
-    Object.assign(allDeps, packageJson.dependencies ?? {}, packageJson.devDependencies ?? {});
-    if (fs.existsSync(path.join(path.dirname(absPath), 'vercel.json'))) {
-      sawVercelConfig = true;
+      continue;
     }
   }
 
-  // Framework detection
-  if (allDeps['next']) {
-    stack.framework = 'nextjs';
-  }
-
-  // Database detection
-  if (allDeps['@supabase/supabase-js'] || allDeps['@supabase/ssr']) {
-    stack.database = 'supabase';
-  } else if (allDeps['prisma'] || allDeps['@prisma/client']) {
-    stack.database = 'prisma';
-  }
-
-  // Payments detection
-  if (allDeps['stripe'] || allDeps['@stripe/stripe-js']) {
-    stack.payments = 'stripe';
-  }
-
-  // Deployment platform heuristic
-  if (sawVercelConfig || allDeps['@vercel/analytics']) {
-    stack.deployment = 'vercel';
-  } else if (stack.framework === 'nextjs') {
-    // Default deployment platform for Next.js is Vercel
-    stack.deployment = 'vercel';
-  }
-
-  return stack;
+  return detectStackFromManifests({
+    manifests,
+    filePaths: allFiles.map((file) => file.replace(/\\/g, '/')),
+  });
 }
 
 /**
@@ -130,7 +93,7 @@ export function buildContext(projectPath: string): ProjectContext {
   const allFiles = listFiles(projectPath);
   const detectedStack = detectStack(projectPath, allFiles);
   const files = allFiles.filter(isScannableFile);
-  const scanScope: ScanScope = buildScanScope(allFiles, files);
+  const scanScope: ScanScope = buildScanScope(allFiles, files, { treePaths: allFiles });
 
   return {
     projectPath,

@@ -7,12 +7,14 @@ import { getScanDetailsSectionOrder } from './_components/ScanDetailsPanel';
 import * as clientApiModule from '../../utils/clientApi';
 import type { Organization, Scan, ScanFinding } from '../../utils/dbAdapter';
 import { __resetScansQueryCacheForTests } from '../../utils/scansQueryCache';
+import { openDashboardAppView } from './testUtils/openDashboardAppView';
 
 type SessionResult = clientApiModule.SessionResult;
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () =>
+    new URLSearchParams({ view: 'app', repo: '11000000-0000-4000-8000-000000000001' }),
 }));
 
 vi.mock('./_components/manual-checker/ManualChecker', () => ({
@@ -31,6 +33,7 @@ vi.mock('../../utils/clientApi', async (importOriginal) => {
       scans: vi.fn(),
       saveScan: vi.fn(),
       findings: vi.fn(),
+      updateRepositoryScanCapability: vi.fn().mockResolvedValue({}),
     },
   };
 });
@@ -81,19 +84,78 @@ const session: SessionResult = {
   ],
 };
 
-const TABLE_WITHOUT_RLS = 'CREATE TABLE users (id uuid PRIMARY KEY);';
+const TABLE_WITHOUT_RLS = 'CREATE TABLE users (id uuid PRIMARY KEY);\nselect auth.uid();';
+
+function abortError(): DOMException {
+  return new DOMException('The operation was aborted.', 'AbortError');
+}
+
+/** Rejects when `signal` aborts; used so hanging stubs honour Stop scan. */
+function waitUntilAborted(signal: AbortSignal | null | undefined): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError());
+      return;
+    }
+    signal?.addEventListener(
+      'abort',
+      () => {
+        reject(abortError());
+      },
+      { once: true },
+    );
+  });
+}
+
+/** Tree fetch that never resolves unless the caller aborts (or `release` runs). */
+function stubHangingGitHubFetch(): { release: () => void } {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal ?? null;
+      return Promise.race([
+        gate.then(
+          () =>
+            new Response(JSON.stringify({ default_branch: 'main', tree: [] }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }),
+        ),
+        waitUntilAborted(signal),
+      ]);
+    }),
+  );
+  return { release };
+}
 
 /** Builds a fetch stub that serves a GitHub tree and per-file contents. */
 function stubGitHubFetch(
   tree: { path: string; type: string }[],
   files: Record<string, string>,
+  options: { defaultBranch?: string; branches?: string[] } = {},
 ): void {
+  const defaultBranch = options.defaultBranch ?? 'main';
+  const branches = options.branches ?? [defaultBranch];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal;
+      if (signal?.aborted) {
+        throw abortError();
+      }
       const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('type=branches')) {
+        return new Response(JSON.stringify({ default_branch: defaultBranch, branches }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
       if (url.includes('type=tree')) {
-        return new Response(JSON.stringify({ default_branch: 'main', tree }), {
+        return new Response(JSON.stringify({ default_branch: defaultBranch, tree }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
@@ -121,6 +183,9 @@ function stubGitHubFetch(
 }
 
 function runScan(): void {
+  if (!screen.queryByRole('button', { name: /run secure scan/i })) {
+    openDashboardAppView();
+  }
   fireEvent.click(screen.getByRole('button', { name: /run secure scan/i }));
 }
 
@@ -187,6 +252,41 @@ describe('Run Secure Scan results rendering', () => {
         /run secure scan/i,
       ),
     );
+  });
+
+  it('offers Scan main instead when the default branch has no scannable files', async () => {
+    stubGitHubFetch(
+      [{ path: 'LICENSE', type: 'blob' }],
+      { LICENSE: 'MIT' },
+      {
+        defaultBranch: 'src',
+        branches: ['src', 'main'],
+      },
+    );
+    saveScanMock.mockResolvedValue({
+      id: '22000000-0000-4000-8000-000000000099',
+      repository_id: session.repositories[0].id,
+      commit_sha: 'unknown',
+      branch: 'src',
+      status: 'failed',
+      error_count: 0,
+      warning_count: 0,
+      created_at: '2026-08-21T20:00:00.000Z',
+    });
+
+    render(<DashboardClient initialSession={session} />);
+    runScan();
+
+    await waitFor(() => expect(saveScanMock).toHaveBeenCalledTimes(1));
+    const payload = saveScanMock.mock.calls[0][0];
+    expect(payload).toMatchObject({
+      status: 'failed',
+      verdict: 'failed',
+      failureReason: 'no_eligible_files',
+      findings: [],
+    });
+    expect(payload.shipScore).toBeUndefined();
+    expect(await screen.findByRole('button', { name: /Scan main instead/i })).toBeTruthy();
   });
 
   it('does not poll /api/scans on an interval while the dashboard sits idle', async () => {
@@ -325,10 +425,97 @@ describe('Run Secure Scan results rendering', () => {
     });
   });
 
+  it('admits unread Go backend code, detects nested Next.js + Stripe, and will not claim READY', async () => {
+    const tree = [
+      { path: 'web/package.json', type: 'blob' },
+      { path: 'web/src/app/page.tsx', type: 'blob' },
+      { path: 'internal/handler/http/stripe_handler.go', type: 'blob' },
+      { path: 'internal/middleware/auth.go', type: 'blob' },
+      { path: 'internal/repository/postgres_apikey.go', type: 'blob' },
+      { path: '.github/workflows/assurly.yml', type: 'blob' },
+      { path: 'LICENSE', type: 'blob' },
+    ];
+    stubGitHubFetch(tree, {
+      'web/package.json': JSON.stringify({
+        dependencies: { next: '16.0.0', stripe: '^17.0.0' },
+      }),
+      'web/src/app/page.tsx': 'export default function Page() { return null; }\n',
+      '.github/workflows/assurly.yml': 'run: npx assurly scan\n',
+    });
+    saveScanMock.mockRejectedValue(
+      new ClientApiError('Service is unavailable.', 503, 'service_unavailable'),
+    );
+
+    render(<DashboardClient initialSession={session} />);
+    runScan();
+
+    await waitFor(() => expect(saveScanMock).toHaveBeenCalledTimes(1));
+    const payload = saveScanMock.mock.calls[0][0];
+    expect(payload.verdict).toBe('review');
+    expect(payload.scanScope).toMatchObject({
+      scanned: 1,
+      skipped: 3,
+      sourceTotal: 4,
+      unanalyzed: [{ language: 'Go', fileCount: 3 }],
+      gaps: { notAnalysed: 3, overLimit: 0, outsideAppRoots: 0 },
+    });
+    expect(payload.findings.some((finding) => finding.rule_id === 'scan-language-coverage')).toBe(
+      true,
+    );
+    expect(payload.generatorFingerprint).toBeDefined();
+
+    expect(await screen.findByText('REVIEW RECOMMENDED')).toBeTruthy();
+    expect(screen.getByText(/3 Go files not analysed/i)).toBeTruthy();
+    expect(screen.getByText('Backend code not analysed')).toBeTruthy();
+    expect(screen.queryByText('READY TO SHIP')).toBeNull();
+  });
+
+  it('scans .mjs files so they count in the source-file denominator', async () => {
+    const tree = [
+      { path: 'web/src/app/page.tsx', type: 'blob' },
+      { path: 'web/next.config.mjs', type: 'blob' },
+      { path: '.github/workflows/assurly.yml', type: 'blob' },
+    ];
+    stubGitHubFetch(tree, {
+      'web/src/app/page.tsx': 'export default function Page() { return null; }\n',
+      'web/next.config.mjs': 'export default { reactStrictMode: true };\n',
+      '.github/workflows/assurly.yml': 'run: npx assurly scan\n',
+    });
+    saveScanMock.mockRejectedValue(
+      new ClientApiError('Service is unavailable.', 503, 'service_unavailable'),
+    );
+
+    render(<DashboardClient initialSession={session} />);
+    runScan();
+
+    await waitFor(() => expect(saveScanMock).toHaveBeenCalledTimes(1));
+    const payload = saveScanMock.mock.calls[0][0];
+    expect(payload.scanScope).toMatchObject({
+      scanned: 2,
+      skipped: 0,
+      sourceTotal: 2,
+      gaps: { notAnalysed: 0, overLimit: 0, outsideAppRoots: 0 },
+    });
+    const batch = vi
+      .mocked(fetch)
+      .mock.calls.find(
+        ([input, init]) =>
+          String(input).includes('/api/github/public-scan') && init?.method === 'POST',
+      );
+    expect(batch).toBeDefined();
+    const requested = JSON.parse(String(batch?.[1]?.body ?? '{}')).paths as string[];
+    expect(requested).toContain('web/next.config.mjs');
+  });
+
   it('never sends more findings than the API allows and keeps counts consistent', async () => {
-    // 120 SQL files, each producing exactly one RLS error → 120 errors + 1 CI warning.
+    // 120 SQL files, each creating a distinct table without RLS → 120 errors + 1 CI warning.
     const tree = Array.from({ length: 120 }, (_, i) => ({ path: `db/m_${i}.sql`, type: 'blob' }));
-    const files = Object.fromEntries(tree.map((node) => [node.path, TABLE_WITHOUT_RLS]));
+    const files = Object.fromEntries(
+      tree.map((node, i) => [
+        node.path,
+        `CREATE TABLE t_${i} (id uuid PRIMARY KEY);\nselect auth.uid();`,
+      ]),
+    );
     stubGitHubFetch(tree, files);
     saveScanMock.mockResolvedValue({
       id: '22000000-0000-4000-8000-000000000002',
@@ -360,10 +547,10 @@ describe('Run Secure Scan results rendering', () => {
     // A single migration declaring 120 distinct tables without RLS yields 120
     // errors; the missing-CI-workflow warning brings the total to 121 findings —
     // more than the SAVE_FINDINGS_LIMIT of 100 the API persists.
-    const schema = Array.from(
+    const schema = `${Array.from(
       { length: 120 },
       (_, i) => `CREATE TABLE t_${i} (id uuid PRIMARY KEY);`,
-    ).join('\n');
+    ).join('\n')}\nselect auth.uid();`;
     stubGitHubFetch([{ path: 'db/schema.sql', type: 'blob' }], { 'db/schema.sql': schema });
 
     const savedScan: Scan = {
@@ -408,7 +595,7 @@ describe('Run Secure Scan results rendering', () => {
     await waitFor(() => expect(findingsMock).toHaveBeenCalledWith(savedScan.id));
 
     // The fix summary reports the TRUE error total, not the capped 100.
-    expect(await screen.findByText(/120 issues detected/i)).toBeTruthy();
+    expect(await screen.findByText(/120 blockers · 121 findings/i)).toBeTruthy();
 
     fireEvent.click(await screen.findByTestId('scan-findings-details-toggle'));
 
@@ -421,6 +608,85 @@ describe('Run Secure Scan results rendering', () => {
     // beyond the persisted cap — it must remain visible from the in-session set
     // instead of being silently dropped.
     expect(screen.getAllByText(CI_FINDING_TEXT).length).toBeGreaterThan(0);
+  });
+});
+
+describe('Stop scan', () => {
+  it('aborts an in-flight Instant Gate scan without persisting or reporting failure', async () => {
+    const hanging = stubHangingGitHubFetch();
+
+    render(<DashboardClient initialSession={session} />);
+    runScan();
+
+    fireEvent.click(await screen.findByRole('button', { name: /stop scan/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /run secure scan/i }).textContent).toMatch(
+        /run secure scan/i,
+      );
+    });
+    expect(screen.queryByRole('button', { name: /stop scan/i })).toBeNull();
+    expect(saveScanMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alert', { name: /scan failed/i })).toBeNull();
+    expect(screen.getByText(/scan stopped/i).closest('[role="status"]')).toBeTruthy();
+
+    hanging.release();
+    await Promise.resolve();
+    expect(saveScanMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the previous Ship Gate verdict when a later scan is stopped', async () => {
+    stubGitHubFetch([{ path: 'db/schema.sql', type: 'blob' }], {
+      'db/schema.sql': TABLE_WITHOUT_RLS,
+    });
+
+    const savedScan: Scan = {
+      id: '22000000-0000-4000-8000-000000000002',
+      repository_id: session.repositories[0].id,
+      commit_sha: 'deadbee',
+      branch: 'main',
+      status: 'failed',
+      error_count: 1,
+      warning_count: 1,
+      created_at: '2026-06-22T10:00:00.000Z',
+    };
+    saveScanMock.mockResolvedValue(savedScan);
+    findingsMock.mockResolvedValue({
+      findings: [
+        {
+          id: 'f-1',
+          scan_id: savedScan.id,
+          rule_id: 'rls-check',
+          severity: 'error',
+          file_path: 'db/schema.sql',
+          line_number: 1,
+          message: "Table 'users' is created without Row-Level Security enabled.",
+          suggestion: 'Enable RLS.',
+          created_at: savedScan.created_at,
+        },
+      ],
+    });
+
+    render(<DashboardClient initialSession={session} />);
+    runScan();
+
+    await waitFor(() => expect(saveScanMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByTestId('scan-findings-details-toggle'));
+    await expectRlsFindingInDetails();
+
+    stubHangingGitHubFetch();
+    runScan();
+    fireEvent.click(await screen.findByRole('button', { name: /stop scan/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /run secure scan/i }).textContent).toMatch(
+        /run secure scan/i,
+      );
+    });
+    expect(saveScanMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alert', { name: /scan failed/i })).toBeNull();
+    assertRlsFindingInDetails();
+    expect(screen.getByText(/scan stopped/i).closest('[role="status"]')).toBeTruthy();
   });
 });
 
@@ -541,6 +807,32 @@ describe('Run Secure Scan — installation proxy fallback & error reporting', ()
     expect(screen.getByText(/❌ ERROR:/i)).toBeTruthy();
 
     // No persistence is attempted when the tree can never be fetched.
+    expect(saveScanMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('does not persist a fake scan when Instant Gate rejects a too-large repository', async () => {
+    const fetchMock = stubRoutedFetch({
+      proxyTree: () =>
+        jsonError(
+          413,
+          'This repository is too large for the in-browser scan. Run Full Gate locally.',
+        ),
+      publicTree: () =>
+        jsonError(
+          413,
+          'This repository is too large for the in-browser scan. Run Full Gate locally.',
+        ),
+    });
+
+    render(<DashboardClient initialSession={installedSession} />);
+    runScan();
+
+    const panel = await screen.findByTestId('scan-error-panel');
+    expect(panel.textContent).toMatch(/Too large for Instant Gate/i);
+    expect(screen.getByTestId('scan-error-full-gate')).toBeTruthy();
+    expect(screen.queryByText(/No scannable application files/i)).toBeNull();
+    expect(screen.queryByText(/commit unknown/i)).toBeNull();
     expect(saveScanMock).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalled();
   });

@@ -2,8 +2,9 @@
 
 import { hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
+import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HomeHeader } from './HomeHeader';
+import { HomeHeader, LANDING_NAV_OVERLAY_MQ } from './HomeHeader';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
@@ -38,6 +39,7 @@ function collectHydrationErrors(run: () => void): string[] {
 
 describe('HomeHeader — hydration contract', () => {
   afterEach(() => {
+    cleanup();
     document.body.innerHTML = '';
   });
 
@@ -74,6 +76,7 @@ describe('HomeHeader — hydration contract', () => {
     const html = renderToString(<HomeHeader {...baseProps} />);
 
     expect(html).toContain('id="primary-navigation"');
+    expect(html).toContain('site-header');
     expect(html).not.toContain('class="open"');
     expect(html).not.toContain('class=""');
     expect(html).not.toMatch(/<nav[^>]*class=""/);
@@ -102,5 +105,39 @@ describe('HomeHeader — hydration contract', () => {
     expect(featuresIndex).toBeGreaterThan(-1);
     expect(pricingIndex).toBeGreaterThan(featuresIndex);
     expect(contactIndex).toBeGreaterThan(pricingIndex);
+  });
+
+  it('closes the overlay when the viewport leaves the hamburger band', () => {
+    const changeListeners: Array<() => void> = [];
+    const media = {
+      matches: true,
+      media: LANDING_NAV_OVERLAY_MQ,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: (_event: string, cb: () => void) => {
+        changeListeners.push(cb);
+      },
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    };
+    window.matchMedia = (): MediaQueryList => media as unknown as MediaQueryList;
+
+    const onMenuChange = vi.fn();
+    render(
+      <HomeHeader
+        authenticated={false}
+        loginUrl="http://localhost:3000/api/auth/login"
+        menuOpen
+        onMenuChange={onMenuChange}
+      />,
+    );
+
+    media.matches = false;
+    for (const listener of changeListeners) {
+      listener();
+    }
+
+    expect(onMenuChange).toHaveBeenCalledWith(false);
   });
 });

@@ -4,19 +4,20 @@ import {
   scanStripeLiveKeyInDev,
   scanStripeMissingSubscriptionEvents,
   scanStripeWebhookIdempotency,
+  scanStripeWebhookIdempotencyForProject,
 } from './stripeLifecycle';
+
+const NAKED_WEBHOOK = [
+  "import stripe from 'stripe';",
+  'export async function POST(req: Request) {',
+  '  const event = stripe.webhooks.constructEvent(await req.text(), sig, secret);',
+  '  await db.from("billing").update({ active: true });',
+  '}',
+].join('\n');
 
 describe('scanStripeWebhookIdempotency', () => {
   it('warns on webhook handlers without replay protection', () => {
-    const code = [
-      "import stripe from 'stripe';",
-      'export async function POST(req: Request) {',
-      '  const event = stripe.webhooks.constructEvent(await req.text(), sig, secret);',
-      '  await db.from("billing").update({ active: true });',
-      '}',
-    ].join('\n');
-
-    const result = scanStripeWebhookIdempotency(code, 'app/api/webhooks/route.ts');
+    const result = scanStripeWebhookIdempotency(NAKED_WEBHOOK, 'app/api/webhooks/route.ts');
     expect(result.findings[0]).toMatchObject({
       ruleId: 'stripe-webhook-no-idempotency',
       severity: 'warning',
@@ -34,6 +35,153 @@ describe('scanStripeWebhookIdempotency', () => {
     ].join('\n');
 
     expect(scanStripeWebhookIdempotency(code, 'app/api/webhooks/route.ts').findings).toEqual([]);
+  });
+});
+
+describe('scanStripeWebhookIdempotencyForProject', () => {
+  it('passes when the handler delegates to a relative helper that persists event.id', () => {
+    const findings = scanStripeWebhookIdempotencyForProject([
+      {
+        file: 'apps/web/src/app/api/stripe/webhook/route.ts',
+        content: [
+          "import stripe from 'stripe';",
+          "import { processStripeEvent } from '../../../../utils/stripeBilling';",
+          'export async function POST(req: Request) {',
+          '  const event = stripe.webhooks.constructEvent(await req.text(), sig, secret);',
+          '  await processStripeEvent(stripe, db, event);',
+          '}',
+        ].join('\n'),
+      },
+      {
+        file: 'apps/web/src/utils/stripeBilling.ts',
+        content: [
+          'export async function processStripeEvent(stripe, db, event) {',
+          '  return db.processStripeBillingEvent({ eventId: event.id });',
+          '}',
+        ].join('\n'),
+      },
+    ]).findings;
+
+    expect(findings).toEqual([]);
+  });
+
+  it('still warns when the imported helper has no replay protection', () => {
+    const findings = scanStripeWebhookIdempotencyForProject([
+      {
+        file: 'app/api/webhooks/route.ts',
+        content: [
+          "import stripe from 'stripe';",
+          "import { grantAccess } from '../../billing';",
+          'export async function POST(req: Request) {',
+          '  const event = stripe.webhooks.constructEvent(await req.text(), sig, secret);',
+          '  await grantAccess(event);',
+          '}',
+        ].join('\n'),
+      },
+      {
+        file: 'app/billing.ts',
+        content: 'export async function grantAccess(event) { await db.update({ active: true }); }',
+      },
+    ]).findings;
+
+    expect(findings).toEqual([
+      expect.objectContaining({
+        ruleId: 'stripe-webhook-no-idempotency',
+        file: 'app/api/webhooks/route.ts',
+      }),
+    ]);
+  });
+
+  it('flags only the unprotected handler when a sibling webhook is covered', () => {
+    const findings = scanStripeWebhookIdempotencyForProject([
+      {
+        file: 'app/api/webhooks/billing/route.ts',
+        content: [
+          "import stripe from 'stripe';",
+          "import { processStripeEvent } from '../../../lib/stripeBilling';",
+          'export async function POST(req: Request) {',
+          '  const event = stripe.webhooks.constructEvent(await req.text(), sig, secret);',
+          '  await processStripeEvent(event);',
+          '}',
+        ].join('\n'),
+      },
+      {
+        file: 'app/lib/stripeBilling.ts',
+        content: 'export async function processStripeEvent(event) { return event.id; }',
+      },
+      {
+        file: 'app/api/webhooks/legacy/route.ts',
+        content: NAKED_WEBHOOK,
+      },
+    ]).findings;
+
+    expect(findings.map((finding) => finding.file)).toEqual(['app/api/webhooks/legacy/route.ts']);
+  });
+
+  it('does not follow the stripe package even when that file is in the scan set', () => {
+    const findings = scanStripeWebhookIdempotencyForProject([
+      {
+        file: 'app/api/webhooks/route.ts',
+        content: NAKED_WEBHOOK,
+      },
+      {
+        file: 'node_modules/stripe/index.js',
+        content: 'export const alreadyProcessed = (id) => id; event.id; idempotency;',
+      },
+    ]).findings;
+
+    expect(findings).toEqual([
+      expect.objectContaining({
+        ruleId: 'stripe-webhook-no-idempotency',
+        file: 'app/api/webhooks/route.ts',
+      }),
+    ]);
+  });
+
+  it('does not treat an unimported ledger file as coverage for a naked webhook', () => {
+    const findings = scanStripeWebhookIdempotencyForProject([
+      {
+        file: 'app/api/webhooks/route.ts',
+        content: NAKED_WEBHOOK,
+      },
+      {
+        file: 'utils/ledger.ts',
+        content: 'export const COLUMN = "stripe_event_id";',
+      },
+    ]).findings;
+
+    expect(findings).toEqual([
+      expect.objectContaining({
+        ruleId: 'stripe-webhook-no-idempotency',
+        file: 'app/api/webhooks/route.ts',
+      }),
+    ]);
+  });
+
+  it('follows a second relative hop when the helper re-exports ledger code', () => {
+    const findings = scanStripeWebhookIdempotencyForProject([
+      {
+        file: 'app/api/webhooks/route.ts',
+        content: [
+          "import stripe from 'stripe';",
+          "import { processStripeEvent } from '../../billing';",
+          'export async function POST(req: Request) {',
+          '  const event = stripe.webhooks.constructEvent(await req.text(), sig, secret);',
+          '  await processStripeEvent(event);',
+          '}',
+        ].join('\n'),
+      },
+      {
+        file: 'app/billing.ts',
+        content: "export { processStripeEvent } from './ledger';",
+      },
+      {
+        file: 'app/ledger.ts',
+        content: 'export async function processStripeEvent(event) { return event.id; }',
+      },
+    ]).findings;
+
+    expect(findings).toEqual([]);
   });
 });
 

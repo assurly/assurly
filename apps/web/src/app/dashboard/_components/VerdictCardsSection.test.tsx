@@ -1,9 +1,28 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TargetCard } from '../../../utils/clientApi';
 import { VerdictCardsSection } from './VerdictCardsSection';
+import { VERDICT_CARDS_PREFS_KEY } from './verdictCardsView';
+
+const memoryStore = new Map<string, string>();
+
+beforeEach(() => {
+  memoryStore.clear();
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string): string | null => memoryStore.get(key) ?? null,
+      setItem: (key: string, value: string): void => {
+        memoryStore.set(key, value);
+      },
+      removeItem: (key: string): void => {
+        memoryStore.delete(key);
+      },
+    },
+  });
+});
 
 afterEach(() => {
   cleanup();
@@ -26,6 +45,8 @@ function card(
     scoreDropped: partial.scoreDropped ?? false,
     badgeToken: partial.badgeToken ?? null,
     scanCapability: partial.scanCapability ?? 'browser',
+    lastScanFailed: partial.lastScanFailed ?? false,
+    lastScanFailureReason: partial.lastScanFailureReason ?? null,
     ...partial,
   };
 }
@@ -160,6 +181,104 @@ describe('VerdictCardsSection', () => {
     expect(screen.getByTestId('apps-density-compact').getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('restores Compact and Blocked from localStorage after remount', async () => {
+    const cards = [
+      card({
+        id: 'blocked',
+        kind: 'repo',
+        verdict: 'blocked',
+        displayName: 'acme/blocked',
+        repositoryId: 'repo-blocked',
+        shipScore: 40,
+      }),
+      card({
+        id: 'ready',
+        kind: 'repo',
+        verdict: 'ready',
+        displayName: 'acme/ready',
+        repositoryId: 'repo-ready',
+        shipScore: 96,
+      }),
+    ];
+
+    const { unmount } = render(
+      <VerdictCardsSection onOpenRepo={vi.fn()} cards={cards} error={null} />,
+    );
+
+    fireEvent.click(screen.getByTestId('apps-density-compact'));
+    fireEvent.click(screen.getByRole('button', { name: /Blocked \(1\)/i }));
+    expect(screen.getByTestId('apps-density-compact').getAttribute('aria-pressed')).toBe('true');
+    expect(
+      screen.getByRole('button', { name: /Blocked \(1\)/i }).getAttribute('aria-pressed'),
+    ).toBe('true');
+
+    unmount();
+
+    render(<VerdictCardsSection onOpenRepo={vi.fn()} cards={cards} error={null} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('apps-density-compact').getAttribute('aria-pressed')).toBe('true');
+      expect(
+        screen.getByRole('button', { name: /Blocked \(1\)/i }).getAttribute('aria-pressed'),
+      ).toBe('true');
+    });
+  });
+
+  it('does not write default comfortable density before restoring prefs', async () => {
+    window.localStorage.setItem(
+      VERDICT_CARDS_PREFS_KEY,
+      JSON.stringify({
+        density: 'compact',
+        sort: 'urgency',
+        kindFilter: 'all',
+        verdictFilter: 'blocked',
+      }),
+    );
+    const writes: string[] = [];
+    const originalSetItem = window.localStorage.setItem.bind(window.localStorage);
+    window.localStorage.setItem = (key: string, value: string) => {
+      if (key === VERDICT_CARDS_PREFS_KEY) writes.push(value);
+      originalSetItem(key, value);
+    };
+
+    try {
+      render(
+        <VerdictCardsSection
+          onOpenRepo={vi.fn()}
+          cards={[
+            card({
+              id: 'blocked',
+              kind: 'repo',
+              verdict: 'blocked',
+              displayName: 'acme/blocked',
+              repositoryId: 'repo-blocked',
+              shipScore: 40,
+            }),
+          ]}
+          error={null}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('apps-density-compact').getAttribute('aria-pressed')).toBe(
+          'true',
+        );
+        expect(
+          screen.getByRole('button', { name: /Blocked \(1\)/i }).getAttribute('aria-pressed'),
+        ).toBe('true');
+      });
+
+      expect(writes.length).toBeGreaterThan(0);
+      for (const write of writes) {
+        const parsed = JSON.parse(write) as { density: string; verdictFilter: string };
+        expect(parsed.density).toBe('compact');
+        expect(parsed.verdictFilter).toBe('blocked');
+      }
+    } finally {
+      window.localStorage.setItem = originalSetItem;
+    }
+  });
+
   it('forwards Rescan from a stale card to onRescan', () => {
     const onRescan = vi.fn();
     const stale = card({
@@ -209,5 +328,39 @@ describe('VerdictCardsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: /Remove https:\/\/ok\.app/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Remove URL' }));
     expect(onRemoveUrl).toHaveBeenCalledWith('u1');
+  });
+
+  it('asks for confirmation before removing a connected repository card', () => {
+    const onRemoveRepo = vi.fn();
+    render(
+      <VerdictCardsSection
+        onOpenRepo={vi.fn()}
+        onRemoveRepo={onRemoveRepo}
+        cards={[
+          card({
+            id: 'r1',
+            kind: 'repo',
+            verdict: 'ready',
+            displayName: 'facebook/stylex',
+            repositoryId: 'repo-1',
+            scanCapability: 'browser',
+          }),
+        ]}
+        error={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Remove facebook\/stylex/i }));
+    expect(onRemoveRepo).not.toHaveBeenCalled();
+    expect(screen.getByTestId('remove-url-dialog')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /Remove repository/i })).toBeTruthy();
+    expect(screen.getByText(/Connect & Scan/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onRemoveRepo).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Remove facebook\/stylex/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove repository' }));
+    expect(onRemoveRepo).toHaveBeenCalledWith('repo-1');
   });
 });

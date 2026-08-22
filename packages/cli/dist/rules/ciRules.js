@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ciRules = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const scanner_core_1 = require("@assurly/scanner-core");
 const WORKFLOW_PATTERN = /^\.github\/workflows\/.*\.(ya?ml)$/i;
 const SCAN_STEP_PATTERN = /assurly|npm\s+run\s+scan(?::self)?|npx\s+assurly\s+scan/i;
 function workflowRunsScanStep(content) {
@@ -66,8 +67,8 @@ exports.ciRules = {
             {
                 ruleId: this.id,
                 severity: 'warning',
-                message: 'GitHub Actions workflow for Assurly is missing.',
-                suggestion: 'Run "npx assurly init" to automatically generate the .github/workflows/assurly.yml workflow file.',
+                message: (0, scanner_core_1.githubActionsIntegrationMessage)(workflowFiles.length),
+                suggestion: scanner_core_1.GITHUB_ACTIONS_INIT_SUGGESTION,
             },
         ];
     },

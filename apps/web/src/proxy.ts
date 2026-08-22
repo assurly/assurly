@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { serializeSessionCookiePayload } from './utils/sessionCookie';
+import { THEME_BOOTSTRAP_CSP_HASH } from './utils/theme';
 
 const COOKIE_NAME = 'assurly-session';
 
@@ -140,7 +141,12 @@ function readOptimisticSession(cookieValue: string | undefined): OptimisticSessi
 }
 
 function contentSecurityPolicy(nonce: string): string {
-  const scriptSources = ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'"];
+  const scriptSources = [
+    "'self'",
+    `'nonce-${nonce}'`,
+    `'${THEME_BOOTSTRAP_CSP_HASH}'`,
+    "'strict-dynamic'",
+  ];
   if (process.env.NODE_ENV === 'development') scriptSources.push("'unsafe-eval'");
   const directives = [
     "default-src 'self'",

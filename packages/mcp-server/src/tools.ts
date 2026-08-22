@@ -1,4 +1,7 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import { mergeCanaryPlantIntoEnvExample } from '@assurly/scanner-core';
 import { explainRule } from 'assurly/ruleExplainer';
 import {
   scanProjectDirectory,
@@ -13,6 +16,7 @@ export const ASSURLY_MCP_TOOL_NAMES = [
   'assurly_explain_rule',
   'assurly_verdict',
   'assurly_scan_agent',
+  'assurly_plant_canary',
 ] as const;
 
 export type AssurlyMcpToolName = (typeof ASSURLY_MCP_TOOL_NAMES)[number];
@@ -32,6 +36,11 @@ export interface ExplainRuleInput {
 export interface VerdictInput {
   url?: string;
   repo?: string;
+}
+
+export interface PlantCanaryInput {
+  path: string;
+  repo: string;
 }
 
 /**
@@ -246,6 +255,91 @@ export async function handleVerdict(
     // Blocked status is the only ship-gate halt. See docstring for why fix
     // outcomes never widen isError.
     isError: status === 'blocked',
+  };
+}
+
+interface HostedCanaryPlant {
+  snippet?: string;
+  mcpSnippet?: string;
+  callbackUrl?: string;
+  plantHint?: string;
+}
+
+/**
+ * Mint a silent-alarm URL via the hosted API and write it to local
+ * `.env.example`. Never uploads source.
+ */
+export async function handlePlantCanary(
+  input: PlantCanaryInput,
+  config: VerdictToolConfig,
+): Promise<CallToolResult> {
+  if (!config.apiKey) {
+    return errorResult(
+      'ASSURLY_API_KEY is not set. Create a key in the Assurly dashboard (Settings → API keys) ' +
+        'and expose it to this MCP server as ASSURLY_API_KEY.',
+    );
+  }
+  const repo = input.repo.trim();
+  if (!repo.includes('/')) {
+    return errorResult('Provide `repo` in owner/name form.');
+  }
+
+  const doFetch = config.fetchImpl ?? fetch;
+  const base = config.apiUrl.replace(/\/$/, '');
+  let response: Response;
+  try {
+    response = await doFetch(`${base}/api/v1/canary`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({ repo }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return errorResult(`Could not reach the Assurly API: ${message}`);
+  }
+
+  if (response.status === 401) {
+    return errorResult('The Assurly API key is invalid or revoked (401). Issue a new key.');
+  }
+  if (!response.ok) {
+    return errorResult(`The Assurly API returned an error (${response.status}).`);
+  }
+
+  const payload = (await response.json()) as HostedCanaryPlant;
+  const snippet = payload.snippet?.trim() ?? '';
+  if (!snippet) {
+    return errorResult('The Assurly API did not return a plant snippet.');
+  }
+
+  const projectRoot = path.resolve(input.path);
+  const envPath = path.join(projectRoot, '.env.example');
+  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+  const merged = mergeCanaryPlantIntoEnvExample(existing, snippet);
+  if (merged.changed) {
+    fs.writeFileSync(envPath, merged.content, 'utf8');
+  }
+
+  const lines = [
+    merged.changed
+      ? `Planted silent alarm in ${envPath}.`
+      : `Silent alarm already present in ${envPath}.`,
+    payload.callbackUrl ? `Callback: ${payload.callbackUrl}` : '',
+    'Do not enable the decoy MCP server in Cursor — add assurly-cloud-auth to disabledMcpjsonServers.',
+    payload.mcpSnippet ? `MCP decoy snippet:\n${payload.mcpSnippet}` : '',
+  ].filter((line) => line.length > 0);
+
+  return {
+    content: [
+      { type: 'text', text: lines.join('\n') },
+      {
+        type: 'text',
+        text: JSON.stringify({ ...payload, wroteEnvExample: merged.changed }, null, 2),
+      },
+    ],
   };
 }
 

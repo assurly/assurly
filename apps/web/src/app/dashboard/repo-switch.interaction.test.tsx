@@ -6,12 +6,14 @@ import DashboardClient from './_components/DashboardClient';
 import * as clientApiModule from '../../utils/clientApi';
 import type { Scan, ScanFinding } from '../../utils/dbAdapter';
 import { __resetScansQueryCacheForTests } from '../../utils/scansQueryCache';
+import { openDashboardAppView } from './testUtils/openDashboardAppView';
 
 type SessionResult = clientApiModule.SessionResult;
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () =>
+    new URLSearchParams({ view: 'app', repo: '11000000-0000-4000-8000-000000000010' }),
 }));
 
 vi.mock('./_components/manual-checker/ManualChecker', () => ({
@@ -174,6 +176,7 @@ afterEach(() => {
 describe('Repository selection state machine', () => {
   it('clears stale scan panel immediately when switching repositories', async () => {
     render(<DashboardClient initialSession={session} />);
+    openDashboardAppView(attestaRepo.name);
 
     await waitFor(() => expect(scansMock).toHaveBeenCalledWith(attestaRepo.id));
     expect(await screen.findByText('NOT READY TO SHIP')).toBeTruthy();
@@ -192,6 +195,7 @@ describe('Repository selection state machine', () => {
 
   it('collapses Show details when switching to another repository scan', async () => {
     render(<DashboardClient initialSession={session} />);
+    openDashboardAppView(attestaRepo.name);
 
     await waitFor(() => expect(scansMock).toHaveBeenCalledWith(attestaRepo.id));
     expect(await screen.findByTestId('scan-details-findings')).toBeTruthy();

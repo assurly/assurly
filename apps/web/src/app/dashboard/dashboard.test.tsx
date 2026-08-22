@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import DashboardClient from './_components/DashboardClient';
 import type { SessionResult } from '../../utils/clientApi';
+import { SESSION_EXPIRED_MESSAGE } from '../../utils/unauthorizedSession';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -38,6 +39,7 @@ describe('DashboardClient', () => {
     const html = renderToStaticMarkup(<DashboardClient initialSession={anonymous} />);
     expect(html).toContain('class="unauth-grid"');
     expect(html).toContain('Sign in with GitHub');
+    expect(html).not.toContain(SESSION_EXPIRED_MESSAGE);
   });
 
   it('uses the configured canonical origin at the dashboard sign-in boundary', () => {
@@ -52,7 +54,7 @@ describe('DashboardClient', () => {
 
   it('renders only the repositories supplied by the tenant-scoped server loader', () => {
     const html = renderToStaticMarkup(<DashboardClient initialSession={authenticated} />);
-    expect(html).toContain('acme/app');
+    expect(html).toContain('Acme');
     expect(html).toContain('Tibor Dev');
     expect(html).not.toContain('other-tenant');
   });

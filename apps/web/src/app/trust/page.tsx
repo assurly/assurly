@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AssurlyMark } from '../_components/AssurlyMark';
 import { AssurlyWordmark } from '../_components/AssurlyWordmark';
 import { SiteFooter } from '../_components/SiteFooter';
+import { ThemeToggle } from '../_components/ThemeToggle';
 import { DISCLOSURE_CONTACT_PATH } from '../../utils/disclosureContact';
 
 const TRUST_DESCRIPTION =
@@ -45,9 +46,12 @@ export default function TrustPage() {
         <Link href="/" className="back-link">
           ← Back to Home
         </Link>
-        <div className="logo" role="img" aria-label="Assurly">
-          <AssurlyMark className="site-logo-mark" />
-          <AssurlyWordmark accentClassName="site-logo-accent" />
+        <div className="legal-header-end">
+          <ThemeToggle />
+          <div className="logo" role="img" aria-label="Assurly">
+            <AssurlyMark className="site-logo-mark" />
+            <AssurlyWordmark accentClassName="site-logo-accent" />
+          </div>
         </div>
       </header>
 

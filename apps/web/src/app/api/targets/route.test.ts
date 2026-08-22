@@ -14,6 +14,7 @@ const db = {
   getRepositories: vi.fn(),
   getTargets: vi.fn(),
   getRecentScans: vi.fn(),
+  getLatestScanSummaries: vi.fn(),
   getScanFindings: vi.fn(),
   getTargetByIdentifier: vi.fn(),
   upsertTarget: vi.fn(),
@@ -51,6 +52,7 @@ describe('GET /api/targets', () => {
       name: 'acme',
       billing_plan: 'pro',
     });
+    db.getLatestScanSummaries.mockResolvedValue(new Map());
   });
 
   it('returns an empty list when the user has no organization', async () => {
@@ -80,20 +82,34 @@ describe('GET /api/targets', () => {
         badge_token: null,
       },
     ]);
-    db.getRecentScans.mockResolvedValue([{ id: 'scan-9', created_at: '2026-07-13T10:00:00.000Z' }]);
+    db.getLatestScanSummaries.mockResolvedValue(
+      new Map([
+        [
+          'repo-1',
+          {
+            id: 'scan-9',
+            repository_id: 'repo-1',
+            ship_score: null,
+            created_at: '2026-07-13T10:00:00.000Z',
+          },
+        ],
+      ]),
+    );
 
     const { targets } = await callGet();
     expect(targets).toHaveLength(1);
     expect(targets[0]).toMatchObject({
       id: 'target-1',
       verdict: 'blocked',
-      shipScore: 76,
+      shipScore: 59,
       generatorFingerprint: 'lovable',
       latestScanId: 'scan-9',
       guardianEnabled: true,
       scoreDropped: false,
     });
     expect(db.getScanFindings).not.toHaveBeenCalled();
+    expect(db.getRecentScans).not.toHaveBeenCalled();
+    expect(db.getLatestScanSummaries).toHaveBeenCalledTimes(1);
   });
 
   it('clamps incomplete target projections and prefers latest scan ship_score', async () => {
@@ -123,14 +139,19 @@ describe('GET /api/targets', () => {
         badge_token: null,
       },
     ]);
-    db.getRecentScans.mockResolvedValue([
-      {
-        id: 'scan-eve',
-        created_at: '2026-07-31T10:00:00.000Z',
-        ship_score: 79,
-        verdict: 'review',
-      },
-    ]);
+    db.getLatestScanSummaries.mockResolvedValue(
+      new Map([
+        [
+          'repo-2',
+          {
+            id: 'scan-eve',
+            repository_id: 'repo-2',
+            ship_score: 79,
+            created_at: '2026-07-31T10:00:00.000Z',
+          },
+        ],
+      ]),
+    );
 
     const { targets } = await callGet();
     expect(targets[0]).toMatchObject({
@@ -178,6 +199,9 @@ describe('GET /api/targets', () => {
 
     const { targets } = await callGet();
     expect(targets).toHaveLength(2);
+    const fastshare = targets.find((target) => target.id === 'pending-1');
+    expect(fastshare?.verdict).toBe('blocked');
+    expect(fastshare?.shipScore).toBeLessThanOrEqual(59);
     expect(targets).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -231,6 +255,54 @@ describe('GET /api/targets', () => {
     });
   });
 
+  it('does not show a 0 score for a synced target whose latest scan failed empty', async () => {
+    db.getRepositories.mockResolvedValue([
+      { id: 'repo-empty', organization_id: 'org-1', name: 'tibco87/SentinelLog' },
+    ]);
+    db.getTargets.mockResolvedValue([
+      {
+        id: 'target-empty',
+        organization_id: 'org-1',
+        repository_id: 'repo-empty',
+        kind: 'repo',
+        identifier: 'tibco87/SentinelLog',
+        display_name: 'tibco87/SentinelLog',
+        generator_fingerprint: null,
+        ownership_verified: false,
+        current_verdict: 'unknown',
+        current_ship_score: null,
+        verdict_evidence: {},
+        last_checked_at: '2026-08-21T20:00:00.000Z',
+        badge_token: null,
+      },
+    ]);
+    db.getLatestScanSummaries.mockResolvedValue(
+      new Map([
+        [
+          'repo-empty',
+          {
+            id: 'scan-empty',
+            repository_id: 'repo-empty',
+            ship_score: 0,
+            created_at: '2026-08-21T20:00:00.000Z',
+            verdict: 'failed',
+            failure_reason: 'no_eligible_files',
+          },
+        ],
+      ]),
+    );
+
+    const { targets } = await callGet();
+    expect(targets[0]).toMatchObject({
+      verdict: 'unknown',
+      shipScore: null,
+      lastScanFailed: true,
+      lastScanFailureReason: 'no_eligible_files',
+      lastCheckedAt: '2026-08-21T20:00:00.000Z',
+      latestScanId: 'scan-empty',
+    });
+  });
+
   it('sorts the most urgent apps first (blocked → review → ready → unknown)', async () => {
     db.getRepositories.mockResolvedValue([
       { id: 'repo-ready', organization_id: 'org-1', name: 'a/ready' },
@@ -248,6 +320,49 @@ describe('GET /api/targets', () => {
 
     const { targets } = await callGet();
     expect(targets.map((t) => t.verdict)).toEqual(['blocked', 'ready', 'unknown']);
+  });
+
+  it('loads latest scans in one batch instead of per repository', async () => {
+    db.getRepositories.mockResolvedValue([
+      { id: 'repo-a', organization_id: 'org-1', name: 'acme/a' },
+      { id: 'repo-b', organization_id: 'org-1', name: 'acme/b' },
+      { id: 'repo-c', organization_id: 'org-1', name: 'acme/c' },
+    ]);
+    db.getTargets.mockResolvedValue(
+      ['repo-a', 'repo-b', 'repo-c'].map((id) => ({
+        id: `target-${id}`,
+        organization_id: 'org-1',
+        repository_id: id,
+        kind: 'repo',
+        identifier: `acme/${id}`,
+        display_name: `acme/${id}`,
+        generator_fingerprint: null,
+        ownership_verified: false,
+        current_verdict: 'review',
+        current_ship_score: 70,
+        verdict_evidence: {},
+        last_checked_at: '2026-07-13T10:00:00.000Z',
+        badge_token: null,
+      })),
+    );
+    db.getLatestScanSummaries.mockResolvedValue(
+      new Map(
+        ['repo-a', 'repo-b', 'repo-c'].map((id) => [
+          id,
+          {
+            id: `scan-${id}`,
+            repository_id: id,
+            ship_score: 70,
+            created_at: '2026-07-13T10:00:00.000Z',
+          },
+        ]),
+      ),
+    );
+
+    const { targets } = await callGet();
+    expect(targets).toHaveLength(3);
+    expect(db.getLatestScanSummaries).toHaveBeenCalledTimes(1);
+    expect(db.getRecentScans).not.toHaveBeenCalled();
   });
 });
 
@@ -313,6 +428,21 @@ describe('POST /api/targets', () => {
     );
     expect(res.status).toBe(402);
     expect((await res.json()).error.code).toBe('plan_required');
+    expect(db.upsertTarget).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the guarded-app count cannot be loaded', async () => {
+    db.getTargets.mockRejectedValue(new Error('db unavailable'));
+
+    const res = await POST(
+      new Request('http://localhost/api/targets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://second.lovable.app' }),
+      }),
+    );
+    expect(res.status).toBe(503);
+    expect((await res.json()).error.code).toBe('plan_limit_unavailable');
     expect(db.upsertTarget).not.toHaveBeenCalled();
   });
 });

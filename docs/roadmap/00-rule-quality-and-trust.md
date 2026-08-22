@@ -93,7 +93,7 @@ nothing regresses). Then change Ship Gate classification to:
 6. **Relax the CI rule** (`github-actions-integration`): if a workflow exists that runs an Assurly/scan step,
    pass; otherwise emit an onboarding **hint (warning)**, never a blocker.
 7. **Scan-scope summary:** extend the report with `scanScope: { scanned: number; skipped: number; roots: string[] }`
-   and surface a one-line summary ("Scanned apps/web, 312 files, skipped tests & fixtures") in CLI output and the
+   and surface a one-line summary ("Scanned apps/web · 312 of 400 source files") in CLI output and the
    `ShipGatePanel`.
 8. **Dogfood gate:** add an npm script `scan:self` (root) that runs the CLI against this repo and fails CI if
    blockers > 2. Wire it into the existing GitHub Actions workflow.

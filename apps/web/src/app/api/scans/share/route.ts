@@ -9,6 +9,7 @@ import {
 } from '../../../../utils/apiSecurity';
 import { requireScanAccess } from '../../../../utils/authorization';
 import { getApplicationUrl } from '../../../../utils/env';
+import { planAllowsShareableReports } from '../../../../utils/entitlements';
 
 const shareBody = z
   .object({
@@ -31,11 +32,11 @@ export const POST = secureRoute(
   async ({ auth, body }) => {
     const context = requireRouteUser(auth);
     const organization = await context.db.getOrganizationByUserId(context.user.id);
-    if (!organization || organization.billing_plan !== 'pro') {
+    if (!organization || !planAllowsShareableReports(organization.billing_plan)) {
       throw new ApiError(
         403,
         'plan_required',
-        'Shareable Ship Gate reports are available on the Pro plan.',
+        'Shareable Ship Gate reports are available on Pro and OEM plans.',
       );
     }
 

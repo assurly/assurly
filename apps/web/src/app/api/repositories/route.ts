@@ -8,6 +8,7 @@ import {
   secureRoute,
 } from '../../../utils/apiSecurity';
 import { requireOrganizationMember } from '../../../utils/authorization';
+import { getAdminDbAdapter } from '../../../utils/dbAdapter';
 
 const repositoryBody = z
   .object({
@@ -39,13 +40,25 @@ export const POST = secureRoute(
     if (!organization) throw new ApiError(404, 'not_found', 'Workspace not found.');
     await requireOrganizationMember(context, organization.id);
 
+    const existingByGithub = await context.db.getRepositoryByGithubRepoId(body.githubRepoId);
+    if (existingByGithub && existingByGithub.organization_id !== organization.id) {
+      throw new ApiError(409, 'conflict', 'That GitHub repository is already connected elsewhere.');
+    }
+    if (existingByGithub && existingByGithub.organization_id === organization.id) {
+      if (!existingByGithub.is_active) {
+        await getAdminDbAdapter().setRepositoryActive(existingByGithub.id, true, body.name);
+        const restored = await context.db.getRepository(existingByGithub.id);
+        if (!restored) throw new ApiError(404, 'not_found', 'Repository not found.');
+        return NextResponse.json(restored);
+      }
+      return NextResponse.json(existingByGithub);
+    }
+
     const existing = await context.db.getRepositories(organization.id);
-    const duplicate = existing.find(
-      (repository) =>
-        repository.github_repo_id === body.githubRepoId ||
-        repository.name.toLowerCase() === body.name.toLowerCase(),
+    const duplicateName = existing.find(
+      (repository) => repository.name.toLowerCase() === body.name.toLowerCase(),
     );
-    if (duplicate) return NextResponse.json(duplicate);
+    if (duplicateName) return NextResponse.json(duplicateName);
 
     const repository = await context.db.addRepository(
       organization.id,

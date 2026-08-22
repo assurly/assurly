@@ -4,14 +4,14 @@
 
 The agent that wrote your app can now check it: **write code → `assurly_scan_path` → fix blockers → re-scan until READY TO SHIP.**
 
-**Your source code never leaves your machine.** The scanning tools run entirely locally over stdio and mirror the `assurly scan` pipeline exactly (`allRules` + detector + Ship Gate report), so an agent scan matches the CLI on the same project. The one tool that talks to the network, `assurly_verdict`, is opt-in and sends only the URL or repo name you ask about — never source.
+**Your source code never leaves your machine.** The scanning tools run entirely locally over stdio and mirror the `assurly scan` pipeline exactly (`allRules` + detector + Ship Gate report), so an agent scan matches the CLI on the same project. Hosted tools (`assurly_verdict`, `assurly_plant_canary`) are opt-in and send only the URL or repo name you ask about — never source.
 
 ## In short
 
 `@assurly/mcp-server` is a local stdio MCP server that gives an AI coding agent a
-pre-deploy ship gate. It exposes five tools: scan a project directory, scan in-memory
-files, explain a rule id, read a hosted verdict for a deployed URL or repository, and
-audit the agent's own stack. A blocked verdict is returned with `isError: true`, so the
+pre-deploy ship gate. It exposes six tools: scan a project directory, scan in-memory
+files, explain a rule id, read a hosted verdict for a deployed URL or repository, audit
+the agent's own stack, and plant a silent-alarm canary. A blocked verdict is returned with `isError: true`, so the
 agent stops instead of shipping. Install it with `npx -y @assurly/mcp-server`; it works
 with Cursor, Claude Code, VS Code and Windsurf.
 
@@ -42,6 +42,7 @@ deployed, so they never block a ship verdict.
 | `assurly_explain_rule` | Explain a rule id and how to fix it                           | Local   |
 | `assurly_verdict`      | Read the hosted ship verdict for a deployed URL or repository | Hosted  |
 | `assurly_scan_agent`   | Advisory audit of MCP configs and agent instruction files     | Local   |
+| `assurly_plant_canary` | Mint ASSURLY_CANARY_URL and write local `.env.example`        | Hosted  |
 
 `assurly_verdict` returns the status, Ship Score, and top issue, and sets `isError: true` when the verdict is **blocked** — so the agent stops instead of shipping. It requires `ASSURLY_API_KEY` (see [Connect the hosted verdict](#connect-the-hosted-verdict)).
 
@@ -71,10 +72,10 @@ asked.
 ## Does my source code leave my machine?
 
 No, for the four local tools. `assurly_scan_path` and `assurly_scan_files` run the rules in
-this process over stdio, and `assurly_explain_rule` is a lookup. The fifth tool,
-`assurly_verdict`, is the only one that reaches the network, and it sends only the URL or
-repository name you ask about — never file contents. It is opt-in: without
-`ASSURLY_API_KEY` it does nothing.
+this process over stdio, and `assurly_explain_rule` is a lookup. Two tools reach the
+network: `assurly_verdict` (reads a hosted verdict) and `assurly_plant_canary` (mints a
+tripwire URL, then writes `.env.example` on disk). Neither sends file contents. They are
+opt-in: without `ASSURLY_API_KEY` they do nothing.
 
 ## Which MCP clients does this work with?
 
@@ -110,7 +111,7 @@ Add this server next to your other MCP entries:
 }
 ```
 
-After saving, restart Cursor (or reload MCP) and confirm the five `assurly_*` tools appear.
+After saving, restart Cursor (or reload MCP) and confirm the six `assurly_*` tools appear.
 
 ## Claude Code
 
@@ -192,7 +193,7 @@ Point the client at `npx` with these arguments:
 
 | Symptom                           | Fix                                                                                                                |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Tools do not appear               | Restart the client or reload MCP, then confirm the five `assurly_*` tools are listed.                              |
+| Tools do not appear               | Restart the client or reload MCP, then confirm the six `assurly_*` tools are listed.                               |
 | `ASSURLY_API_KEY is not set`      | Create a key in the Assurly dashboard (Settings → API keys) and expose it to this MCP server as `ASSURLY_API_KEY`. |
 | `invalid or revoked (401)`        | The key is no longer valid. Issue a new one.                                                                       |
 | `Provide exactly one of url/repo` | `assurly_verdict` takes one target, not both and not neither.                                                      |

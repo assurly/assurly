@@ -1,3 +1,5 @@
+import { detectSqlDialect } from '@assurly/scanner-core';
+
 export interface GitHubAutoFix {
   statement: string;
   description: string;
@@ -5,8 +7,10 @@ export interface GitHubAutoFix {
   /** When set, the fix commit targets this repository path instead of the finding path. */
   targetFilePath?: string;
   /** How to merge the statement into the target file. Defaults to append. */
-  applyMode?: 'append' | 'replace' | 'create';
+  applyMode?: GitHubAutoFixApplyMode;
 }
+
+export type GitHubAutoFixApplyMode = 'append' | 'replace' | 'create' | 'upsert-env';
 
 const POSTGRES_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_$]{0,62}$/;
 const ENVIRONMENT_VARIABLE = /^[A-Z_][A-Z0-9_]{0,127}$/;
@@ -111,23 +115,63 @@ export function resolveAutoFixTargetPath(
   return fix?.targetFilePath ?? findingFilePath;
 }
 
-export function applyAutoFixToFileContent(original: string, fix: GitHubAutoFix): string {
-  if (fix.applyMode === 'replace' || fix.applyMode === 'create') {
-    const next = fix.statement.endsWith('\n') ? fix.statement : `${fix.statement}\n`;
-    if (original === next || original.trim() === next.trim()) return original;
-    if (original === fix.statement || original.trim() === fix.statement.trim()) return original;
-    return next;
-  }
+function envStatementKey(statement: string): string | undefined {
+  return statement.match(/^([A-Z_][A-Z0-9_]*)=/)?.[1];
+}
 
-  const envKey = fix.statement.match(/^([A-Z_][A-Z0-9_]*)=/)?.[1];
+/** True when `.env.example` (or similar) already documents this KEY, any value. */
+export function fileHasEnvStatementKey(content: string, statement: string): boolean {
+  const envKey = envStatementKey(statement);
+  if (!envKey) return false;
+  return new RegExp(`^\\s*${envKey}\\s*=`, 'm').test(content);
+}
+
+function applyReplaceOrCreate(original: string, statement: string): string {
+  const next = statement.endsWith('\n') ? statement : `${statement}\n`;
+  if (original === next || original.trim() === next.trim()) return original;
+  if (original === statement || original.trim() === statement.trim()) return original;
+  return next;
+}
+
+function applyAppend(original: string, statement: string): string {
+  const envKey = envStatementKey(statement);
   if (envKey) {
     const envPattern = new RegExp(`^\\s*${envKey}\\s*=`, 'm');
-    if (envPattern.test(original) || original.includes(fix.statement)) return original;
+    if (envPattern.test(original) || original.includes(statement)) return original;
   }
 
-  if (original.includes(fix.statement)) return original;
+  if (original.includes(statement)) return original;
 
-  return `${original}${original && !original.endsWith('\n') ? '\n' : ''}${fix.statement}\n`;
+  return `${original}${original && !original.endsWith('\n') ? '\n' : ''}${statement}\n`;
+}
+
+function applyUpsertEnv(original: string, statement: string): string {
+  const envKey = envStatementKey(statement);
+  const line = statement.endsWith('\n') ? statement.slice(0, -1) : statement;
+  if (!envKey) return applyAppend(original, statement);
+
+  const envPattern = new RegExp(`^\\s*${envKey}\\s*=.*$`, 'm');
+  if (envPattern.test(original)) {
+    return original.replace(envPattern, line);
+  }
+  return applyAppend(original, statement);
+}
+
+export function applyAutoFixToFileContent(original: string, fix: GitHubAutoFix): string {
+  const applyMode: GitHubAutoFixApplyMode = fix.applyMode ?? 'append';
+  switch (applyMode) {
+    case 'replace':
+    case 'create':
+      return applyReplaceOrCreate(original, fix.statement);
+    case 'upsert-env':
+      return applyUpsertEnv(original, fix.statement);
+    case 'append':
+      return applyAppend(original, fix.statement);
+    default: {
+      const _exhaustive: never = applyMode;
+      return _exhaustive;
+    }
+  }
 }
 
 function isUndocumentedEnvMessage(message: string): boolean {
@@ -151,7 +195,11 @@ export function buildGitHubAutoFix(
   const lowerPath = filePath.toLowerCase();
   const lowerMessage = message.toLowerCase();
 
-  if (lowerPath.endsWith('.sql') && lowerMessage.includes('row-level security')) {
+  if (
+    lowerPath.endsWith('.sql') &&
+    lowerMessage.includes('row-level security') &&
+    detectSqlDialect({ file: filePath, content: '' }) !== 'clickhouse'
+  ) {
     const tableName =
       message.match(/table\s+'([^']+)'/i)?.[1] ?? message.match(/supabase table\s+'([^']+)'/i)?.[1];
     if (!tableName) throw new Error('The finding does not contain a PostgreSQL table name.');
@@ -339,5 +387,9 @@ export function isAutoFixableFinding(finding: {
 
   if (finding.severity !== 'error') return false;
 
-  return filePath.endsWith('.sql') && message.includes('row-level security');
+  return (
+    filePath.endsWith('.sql') &&
+    message.includes('row-level security') &&
+    detectSqlDialect({ file: finding.file_path, content: '' }) !== 'clickhouse'
+  );
 }

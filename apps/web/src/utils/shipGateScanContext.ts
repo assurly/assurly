@@ -8,6 +8,14 @@ export interface ShipGateScanScope {
   scanned: number;
   skipped: number;
   roots: string[];
+  unanalyzed?: Array<{ language: string; fileCount: number }>;
+  sourceTotal?: number;
+  limit?: number;
+  gaps?: {
+    notAnalysed: number;
+    overLimit: number;
+    outsideAppRoots: number;
+  };
 }
 
 export interface ShipGateScanContextSession {
@@ -25,16 +33,50 @@ export interface ResolvedShipGateScanContext {
   scannedFileCount: number | null;
 }
 
+function parseUnanalyzed(raw: unknown): ShipGateScanScope['unanalyzed'] {
+  if (!Array.isArray(raw)) return undefined;
+  const items = raw.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const record = entry as Record<string, unknown>;
+    if (typeof record.language !== 'string' || typeof record.fileCount !== 'number') return [];
+    return [{ language: record.language, fileCount: record.fileCount }];
+  });
+  return items.length > 0 ? items : undefined;
+}
+
+function parseGaps(raw: unknown): ShipGateScanScope['gaps'] {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const record = raw as Record<string, unknown>;
+  if (
+    typeof record.notAnalysed !== 'number' ||
+    typeof record.overLimit !== 'number' ||
+    typeof record.outsideAppRoots !== 'number'
+  ) {
+    return undefined;
+  }
+  return {
+    notAnalysed: record.notAnalysed,
+    overLimit: record.overLimit,
+    outsideAppRoots: record.outsideAppRoots,
+  };
+}
+
 function parseScanScope(raw: unknown): ShipGateScanScope | null {
   if (!raw || typeof raw !== 'object') return null;
   const record = raw as Record<string, unknown>;
   if (typeof record.scanned !== 'number') return null;
+  const unanalyzed = parseUnanalyzed(record.unanalyzed);
+  const gaps = parseGaps(record.gaps);
   return {
     scanned: record.scanned,
     skipped: typeof record.skipped === 'number' ? record.skipped : 0,
     roots: Array.isArray(record.roots)
       ? record.roots.filter((root): root is string => typeof root === 'string')
       : ['repository'],
+    ...(unanalyzed ? { unanalyzed } : {}),
+    ...(typeof record.sourceTotal === 'number' ? { sourceTotal: record.sourceTotal } : {}),
+    ...(typeof record.limit === 'number' ? { limit: record.limit } : {}),
+    ...(gaps ? { gaps } : {}),
   };
 }
 

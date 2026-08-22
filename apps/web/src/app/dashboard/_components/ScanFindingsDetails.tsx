@@ -3,6 +3,7 @@
 import { useMemo, type ReactElement } from 'react';
 import type { ScanFinding } from '../../../utils/dbAdapter';
 import { dedupeScanFindingsForDisplay } from '../../../utils/scanFindingsDisplay';
+import { DashboardChevronIcon } from './icons/DashboardIcons';
 import { ScanFindingCard } from './ScanFindingCard';
 
 interface ScanFindingsDetailsProps {
@@ -14,7 +15,7 @@ interface ScanFindingsDetailsProps {
 }
 
 export function formatFindingsDetailsSummary(count: number): string {
-  return count === 1 ? 'Show details · 1 finding' : `Show details · ${count} findings`;
+  return count === 1 ? '1 finding' : `${count} findings`;
 }
 
 export function ScanFindingsDetails({
@@ -36,11 +37,18 @@ export function ScanFindingsDetails({
         className="scan-findings-details__summary"
         data-testid="scan-findings-details-toggle"
       >
-        <span className="scan-findings-details__summary-label">
-          {formatFindingsDetailsSummary(displayFindings.length)}
+        <span className="scan-findings-details__copy">
+          <span className="scan-findings-details__summary-label">
+            {formatFindingsDetailsSummary(findings.length)}
+          </span>
+          <span className="scan-findings-details__summary-hint">
+            File-level messages, suggestions, and auto-fix actions
+          </span>
         </span>
-        <span className="scan-findings-details__summary-hint">
-          File-level messages, suggestions, and auto-fix actions
+        <span className="scan-findings-details__action">
+          <span className="scan-findings-details__action-show">View details</span>
+          <span className="scan-findings-details__action-hide">Hide details</span>
+          <DashboardChevronIcon className="scan-findings-details__chevron" />
         </span>
       </summary>
 

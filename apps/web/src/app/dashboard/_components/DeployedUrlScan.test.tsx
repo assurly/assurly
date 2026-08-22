@@ -228,6 +228,30 @@ describe('DeployedUrlScan deep review surface', () => {
   });
 });
 
+describe('DeployedUrlScan blocked target', () => {
+  it('shows an honest unknown — never a Ship Gate — when the host refused the probe', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ blocked: { status: 403, source: 'cloudflare' } })),
+    );
+
+    render(<DeployedUrlScan />);
+    typeUrl('https://openai.com');
+    fireEvent.click(scanButton());
+
+    await waitFor(() => {
+      expect(screen.getByTestId('url-scan-blocked')).toBeTruthy();
+    });
+    expect(screen.getByText('Cloudflare blocked the scan')).toBeTruthy();
+    expect(screen.getByText(/No Ship Score is shown/)).toBeTruthy();
+    expect(screen.getByText(/X-Assurly-Scanner/)).toBeTruthy();
+    // The refusal must not be dressed up as a verdict or a scan failure.
+    expect(screen.queryByText(/Ship Gate for/)).toBeNull();
+    expect(screen.queryByText(/NOT READY TO SHIP/)).toBeNull();
+    expect(screen.queryByText('URL scan failed')).toBeNull();
+  });
+});
+
 describe('useDeployedUrlScan onScanComplete', () => {
   function Harness({ onComplete }: { onComplete: () => void }): ReactElement {
     const scan = useDeployedUrlScan(undefined, onComplete);

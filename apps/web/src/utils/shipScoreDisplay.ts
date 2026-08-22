@@ -1,5 +1,8 @@
+import { BLOCKED_SCORE_CAP } from '@assurly/scanner-core';
 import type { Scan } from './dbAdapter';
 import { buildShipGateFromScanFindings } from './shipGate';
+
+export { BLOCKED_SCORE_CAP };
 
 /** Matches scanner-core incomplete coverage cap (trust: never claim READY above this). */
 export const INCOMPLETE_SCORE_CAP = 79;
@@ -38,6 +41,15 @@ export function clampShipScoreForCoverage(
   return next;
 }
 
+export function clampShipScoreForBlockedVerdict(
+  score: number | null,
+  blocked: boolean,
+): number | null {
+  if (score == null) return null;
+  if (!blocked) return score;
+  return Math.min(score, BLOCKED_SCORE_CAP);
+}
+
 type TrendFinding = Parameters<typeof buildShipGateFromScanFindings>[0];
 
 function findingsSuggestBlockers(findings: TrendFinding): boolean {
@@ -50,7 +62,8 @@ function findingsSuggestBlockers(findings: TrendFinding): boolean {
  * Single Ship Score resolver for trend, cards, and detail.
  * Prefer persisted `ship_score`; legacy rows recompute. Incomplete coverage never
  * displays above {@link INCOMPLETE_SCORE_CAP}, and incomplete + no blockers never
- * displays a dumpster-fire 0 ({@link INCOMPLETE_NO_BLOCKER_FLOOR}).
+ * displays a dumpster-fire 0 ({@link INCOMPLETE_NO_BLOCKER_FLOOR}). Blocked
+ * verdicts never display above {@link BLOCKED_SCORE_CAP}.
  */
 export function resolveDisplayedShipScore(
   scan: Pick<Scan, 'ship_score' | 'scanned_file_count' | 'clean_file_count'>,
@@ -59,6 +72,7 @@ export function resolveDisplayedShipScore(
   const incomplete = indicatesIncompleteCoverage({
     findingRuleIds: findings.map((finding) => finding.rule_id),
   });
+  const blocked = findingsSuggestBlockers(findings);
 
   // Incomplete Instant Gate: recompute through the engine so cap + floor match
   // scanner-core (persisted pre-floor rows would otherwise keep showing 0).
@@ -77,11 +91,11 @@ export function resolveDisplayedShipScore(
   }
 
   if (typeof scan.ship_score === 'number') {
-    return (
+    const coverageClamped =
       clampShipScoreForCoverage(scan.ship_score, incomplete, {
-        hasBlockers: findingsSuggestBlockers(findings),
-      }) ?? scan.ship_score
-    );
+        hasBlockers: blocked,
+      }) ?? scan.ship_score;
+    return clampShipScoreForBlockedVerdict(coverageClamped, blocked) ?? coverageClamped;
   }
 
   const scannedFileCount =

@@ -86,13 +86,22 @@ describe('POST /api/scans/share', () => {
     expect(db.setScanShareToken).not.toHaveBeenCalled();
   });
 
-  it('rejects a non-pro organization', async () => {
+  it('rejects a free organization', async () => {
     db.getOrganizationByUserId.mockResolvedValue({ id: 'org-a', billing_plan: 'free' });
 
     const response = await share();
 
     expect(response.status).toBe(403);
     expect(db.setScanShareToken).not.toHaveBeenCalled();
+  });
+
+  it('mints a token for an OEM organization', async () => {
+    db.getOrganizationByUserId.mockResolvedValue({ id: 'org-a', billing_plan: 'oem' });
+
+    const response = await share();
+
+    expect(response.status).toBe(200);
+    expect(db.setScanShareToken).toHaveBeenCalledTimes(1);
   });
 
   it('blocks a scan belonging to another tenant', async () => {

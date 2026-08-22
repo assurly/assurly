@@ -1,4 +1,4 @@
-export type DashboardMainTab = 'repositories' | 'checker';
+export type DashboardView = 'apps' | 'app' | 'settings' | 'checker';
 
 export interface PublicRepoConnectSession {
   lastConnectedRepoId: string | null;
@@ -11,14 +11,13 @@ export const INITIAL_PUBLIC_REPO_CONNECT_SESSION: PublicRepoConnectSession = {
 };
 
 /**
- * Public repository input reset policy for the dashboard Repositories tab.
+ * Public repository input reset policy for the dashboard Apps / Settings views.
  *
  * 1. Selecting a connected repository does not clear draft text in the public
  *    repo field, so users can keep typing `owner/repo` while browsing scans.
  * 2. After a successful public connect, selecting a different connected
- *    repository clears the public input and any discovered repo suggestions.
- * 3. Leaving Repositories for Manual Checker always clears the public input
- *    and discovered suggestions.
+ *    repository clears the public input.
+ * 3. Leaving Apps, App, or Settings for Manual Checker always clears the public input.
  */
 export function shouldClearPublicRepoInputOnRepoSelect(
   nextRepoId: string,
@@ -36,11 +35,11 @@ export function shouldClearPublicRepoInputOnRepoSelect(
   );
 }
 
-export function shouldClearPublicRepoInputOnTabChange(
-  previousTab: DashboardMainTab,
-  nextTab: DashboardMainTab,
+export function shouldClearPublicRepoInputOnViewChange(
+  previousView: DashboardView,
+  nextView: DashboardView,
 ): boolean {
-  return previousTab === 'repositories' && nextTab === 'checker';
+  return previousView !== 'checker' && nextView === 'checker';
 }
 
 export function createPublicRepoConnectSession(connectedRepoId: string): PublicRepoConnectSession {

@@ -8,9 +8,16 @@ import {
   GITHUB_FETCH_TIMEOUT_MS,
   githubHeaders,
   githubRepositoryApiUrl,
-  readLimitedResponseText,
+  GitHubApiError,
+  listGitHubBranchNames,
   resolveGitHubReadToken,
 } from '../../../../utils/githubApp';
+import {
+  InstantGateTreeError,
+  loadInstantGateTree,
+  REPOSITORY_TOO_LARGE_MESSAGE,
+} from '../../../../utils/instantGateTree';
+import { INSTANT_GATE_MAX_FILES } from '@assurly/scanner-core';
 
 const repositoryName = z
   .string()
@@ -44,6 +51,9 @@ const publicQuery = z.discriminatedUnion('type', [
       path: filePath,
     })
     .strict(),
+  z
+    .object({ repo: repositoryName, type: z.literal('branches'), branch: branchName.optional() })
+    .strict(),
 ]);
 const metadataSchema = z
   .object({
@@ -51,27 +61,6 @@ const metadataSchema = z
     private: z.boolean(),
   })
   .passthrough();
-const treeSchema = z
-  .object({
-    tree: z
-      .array(
-        z
-          .object({
-            path: z.string().min(1).max(1024),
-            type: z.enum(['blob', 'tree', 'commit']),
-          })
-          .passthrough(),
-      )
-      .max(5000),
-    truncated: z.boolean().optional(),
-  })
-  .passthrough();
-const commitSchema = z.object({ sha: z.string().min(1).max(64) }).passthrough();
-
-/** Byte ceiling for GitHub's recursive tree response, matching `treeSchema`'s entry cap. */
-const TREE_MAX_BYTES = 2 * 1024 * 1024;
-const REPOSITORY_TOO_LARGE_MESSAGE =
-  'This repository is too large for the in-browser scan. Run `npx assurly scan` locally for a complete scan of a repository this size.';
 
 function rateLimitMessage(authenticated: boolean): string {
   if (authenticated) {
@@ -119,49 +108,44 @@ export const GET = secureRoute(
       throw new ApiError(403, 'private_repository', 'Private repository is not available.');
     const branch = query.branch || metadata.default_branch;
 
-    if (query.type === 'tree') {
-      const treeUrl = new URL(githubRepositoryApiUrl(query.repo, 'git', 'trees', branch));
-      treeUrl.searchParams.set('recursive', '1');
-      const commitUrl = githubRepositoryApiUrl(query.repo, 'commits', branch);
-
-      const [treeResponse, commitResponse] = await Promise.all([
-        fetch(treeUrl, { headers, signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS) }),
-        fetch(commitUrl, { headers, signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS) }),
-      ]);
-
-      if (!treeResponse.ok) {
-        if (treeResponse.status === 403 || treeResponse.status === 429) {
-          throw new ApiError(429, 'rate_limit_exceeded', rateLimitMessage(authenticated));
-        }
-        throw new ApiError(502, 'github_unavailable', 'GitHub is temporarily unavailable.');
-      }
-
-      // A repository larger than the browser scan can ingest is an expected outcome,
-      // not a server fault: both the byte cap and the entry cap are deliberate limits.
-      // Reporting them as a 500 left the user with "Internal server error" and no idea
-      // that the repository size was the reason.
-      let tree: z.infer<typeof treeSchema>;
+    if (query.type === 'branches') {
       try {
-        tree = treeSchema.parse(
-          JSON.parse(await readLimitedResponseText(treeResponse, TREE_MAX_BYTES)),
-        );
-      } catch {
-        throw new ApiError(413, 'repository_too_large', REPOSITORY_TOO_LARGE_MESSAGE);
-      }
-
-      // Best-effort: if the commit lookup fails (e.g. edge-case permissions), omit the SHA
-      // rather than failing the entire scan.
-      let commitSha: string | undefined;
-      if (commitResponse.ok) {
-        try {
-          const commitData = commitSchema.parse(await commitResponse.json());
-          commitSha = commitData.sha;
-        } catch {
-          // Non-critical – scan proceeds without a commit SHA
+        const branches = await listGitHubBranchNames(query.repo, headers);
+        return NextResponse.json({ default_branch: metadata.default_branch, branches });
+      } catch (error) {
+        if (error instanceof GitHubApiError) {
+          if (error.status === 403 || error.status === 429) {
+            throw new ApiError(429, 'rate_limit_exceeded', rateLimitMessage(authenticated));
+          }
+          throw new ApiError(502, 'github_unavailable', 'GitHub is temporarily unavailable.');
         }
+        throw error;
       }
+    }
 
-      return NextResponse.json({ ...tree, default_branch: branch, commit_sha: commitSha });
+    if (query.type === 'tree') {
+      try {
+        const tree = await loadInstantGateTree({
+          repo: query.repo,
+          branch,
+          headers,
+          cacheKey: `public:${query.repo}`,
+        });
+        return NextResponse.json(tree, {
+          headers: { 'Cache-Control': 'private, max-age=60' },
+        });
+      } catch (error) {
+        if (error instanceof InstantGateTreeError) {
+          if (error.kind === 'too_large') {
+            throw new ApiError(413, 'repository_too_large', REPOSITORY_TOO_LARGE_MESSAGE);
+          }
+          if (error.kind === 'rate_limit') {
+            throw new ApiError(429, 'rate_limit_exceeded', rateLimitMessage(authenticated));
+          }
+          throw new ApiError(502, 'github_unavailable', 'GitHub is temporarily unavailable.');
+        }
+        throw error;
+      }
     }
 
     const content = await fetchGitHubFile(token || '', query.repo, query.path, branch, 1024 * 1024);
@@ -173,7 +157,7 @@ const batchBody = z
   .object({
     repo: repositoryName,
     branch: branchName.optional(),
-    paths: z.array(filePath).min(1).max(300),
+    paths: z.array(filePath).min(1).max(INSTANT_GATE_MAX_FILES),
   })
   .strict();
 

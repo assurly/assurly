@@ -1,9 +1,7 @@
 import type { Scan } from './dbAdapter';
 
-export interface DuplicateShaBadge {
-  index: number;
-  total: number;
-}
+/** Git commit SHAs we collapse on. Placeholders like `unknown` stay unique. */
+const HEX_COMMIT_SHA = /^[0-9a-f]{7,40}$/i;
 
 export function formatCommitShaShort(commitSha: string): string {
   if (commitSha.length > 8 && /^[0-9a-f]+$/i.test(commitSha)) {
@@ -27,34 +25,36 @@ export function formatScanTime(isoTimestamp: string): string {
   });
 }
 
-export function buildDuplicateShaBadges(scans: Scan[]): Map<string, DuplicateShaBadge> {
-  const bySha = new Map<string, Scan[]>();
-
-  for (const scan of scans) {
-    const key = scan.commit_sha.toLowerCase();
-    const group = bySha.get(key) ?? [];
-    group.push(scan);
-    bySha.set(key, group);
-  }
-
-  const badges = new Map<string, DuplicateShaBadge>();
-
-  for (const group of bySha.values()) {
-    if (group.length <= 1) {
-      continue;
-    }
-
-    const sorted = [...group].sort((a, b) => a.created_at.localeCompare(b.created_at));
-    sorted.forEach((scan, index) => {
-      badges.set(scan.id, { index: index + 1, total: group.length });
-    });
-  }
-
-  return badges;
+function commitIdentityKey(scan: Scan): string {
+  const sha = scan.commit_sha ?? '';
+  return HEX_COMMIT_SHA.test(sha) ? sha.toLowerCase() : `id:${scan.id}`;
 }
 
-export function formatDuplicateShaBadge(badge: DuplicateShaBadge): string {
-  return `#${badge.index} of ${badge.total}`;
+/** Failed Instant Gate size checks are not real scans — hide them from the history rail. */
+export function excludeTooLargeFailedScans(scans: readonly Scan[]): Scan[] {
+  return scans.filter((scan) => scan.failure_reason !== 'too_large');
+}
+
+/**
+ * One chip per commit: keep the newest scan for each hex SHA.
+ * Non-hex placeholders (`unknown`) are not collapsed — each row stays visible.
+ */
+export function selectLatestScanPerCommit(scans: readonly Scan[]): Scan[] {
+  const latestByKey = new Map<string, Scan>();
+  for (const scan of scans) {
+    const key = commitIdentityKey(scan);
+    const existing = latestByKey.get(key);
+    if (!existing || existing.created_at < scan.created_at) {
+      latestByKey.set(key, scan);
+    }
+  }
+  const kept = new Set(latestByKey.values());
+  return scans.filter((scan) => kept.has(scan));
+}
+
+/** Header / list counts must match the history rail (one chip per commit). */
+export function countVisibleScanHistory(scans: readonly Scan[]): number {
+  return excludeTooLargeFailedScans(selectLatestScanPerCommit(scans)).length;
 }
 
 export function formatScanHistoryChipLabel(scan: Scan): string {

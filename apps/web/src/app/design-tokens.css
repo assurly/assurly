@@ -15,12 +15,18 @@
   --color-accent: hsl(160 84% 48%);
   --color-accent-hover: hsl(160 84% 58%);
   --color-accent-soft: hsl(160 84% 48% / 0.15);
+  --color-on-accent: hsl(240 10% 4%);
   --color-success: hsl(142 72% 45%);
+  --color-success-text: hsl(142 70% 72%);
   --color-warning: hsl(38 92% 50%);
+  --color-warning-text: hsl(38 92% 72%);
   --color-danger: hsl(0 84% 60%);
   --color-danger-text: hsl(0 100% 78%);
   --color-info: hsl(199 89% 60%);
   --color-focus: var(--color-accent);
+  --color-scrim: hsl(240 10% 4% / 0.85);
+  --color-header-bg: color-mix(in srgb, var(--color-canvas) 90%, transparent);
+  --color-overlay-soft: hsl(0 0% 100% / 0.06);
 
   /* Spacing and sizing */
   --space-1: 4px;
@@ -56,12 +62,15 @@
   --border-color: var(--color-border);
   --text-primary: var(--color-text);
   --text-main: var(--color-text);
+  --color-text-primary: var(--color-text);
   --text-secondary: var(--color-text-secondary);
   --text-muted: var(--color-text-muted);
   --accent-color: var(--color-accent);
   --accent-hover: var(--color-accent-hover);
   --accent-glow: var(--color-accent-soft);
   --color-error: var(--color-danger);
+  --color-bg: var(--color-canvas);
+  --color-bg-elevated: var(--color-surface-raised);
   --font-family:
     var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
     sans-serif;
@@ -75,4 +84,35 @@
     box-shadow var(--duration-normal) var(--ease-standard),
     opacity var(--duration-normal) var(--ease-standard),
     transform var(--duration-normal) var(--ease-standard);
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+
+  --color-canvas: hsl(240 20% 98%);
+  --color-canvas-deep: hsl(240 16% 95%);
+  --color-surface: hsl(0 0% 100%);
+  --color-surface-raised: hsl(240 20% 96%);
+  --color-surface-subtle: hsl(240 14% 94%);
+  --color-border: hsl(240 10% 88%);
+  --color-border-strong: hsl(240 10% 78%);
+  --color-text: hsl(240 15% 10%);
+  --color-text-secondary: hsl(240 8% 36%);
+  --color-text-muted: hsl(240 8% 36%);
+  --color-accent: hsl(160 90% 22%);
+  --color-accent-hover: hsl(160 90% 16%);
+  --color-accent-soft: hsl(160 90% 22% / 0.12);
+  --color-on-accent: hsl(0 0% 100%);
+  --color-success: hsl(142 72% 24%);
+  --color-success-text: hsl(142 72% 20%);
+  --color-warning: hsl(38 92% 42%);
+  --color-warning-text: hsl(32 90% 32%);
+  --color-danger: hsl(0 72% 48%);
+  --color-danger-text: hsl(0 72% 40%);
+  --color-info: hsl(199 89% 38%);
+  --color-scrim: hsl(240 10% 10% / 0.45);
+  --color-header-bg: color-mix(in srgb, var(--color-canvas) 90%, transparent);
+  --color-overlay-soft: hsl(240 10% 10% / 0.05);
+  --shadow-card: 0 10px 30px hsl(240 10% 20% / 0.08);
+  --shadow-menu: 0 18px 48px hsl(240 10% 20% / 0.14);
 }

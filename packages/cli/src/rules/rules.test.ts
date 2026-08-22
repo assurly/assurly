@@ -78,9 +78,13 @@ describe('Assurly Verification Rules', () => {
 
       const findings = await envRules.run(context);
       // Hygiene warning — missing from .env.example must not hard-block ship.
-      expect(findings.length).toBe(1);
-      expect(findings[0].severity).toBe('warning');
-      expect(findings[0].message).toContain('STRIPE_SECRET_KEY');
+      const undocumented = findings.filter((finding) =>
+        finding.message.includes('STRIPE_SECRET_KEY'),
+      );
+      expect(undocumented).toHaveLength(1);
+      expect(undocumented[0]?.severity).toBe('warning');
+      expect(findings.some((finding) => finding.ruleId === 'assurly-canary-missing')).toBe(true);
+      expect(findings.every((finding) => finding.severity === 'warning')).toBe(true);
     });
   });
 
@@ -267,6 +271,36 @@ describe('Assurly Verification Rules', () => {
       // Clean up the created files so it does not pollute other tests
       fs.rmSync(githubDir, { recursive: true, force: true });
     });
+
+    it('should say existing CI is unwired when other workflows exist without Assurly', async () => {
+      const githubDir = path.join(FIXTURE_DIR, '.github');
+      const workflowsDir = path.join(githubDir, 'workflows');
+      const workflowFile = path.join(workflowsDir, 'ci.yml');
+
+      fs.mkdirSync(workflowsDir, { recursive: true });
+      fs.writeFileSync(
+        workflowFile,
+        'name: CI\njobs:\n  test:\n    steps:\n      - run: npm test\n',
+        'utf8',
+      );
+
+      const context: ProjectContext = {
+        projectPath: FIXTURE_DIR,
+        detectedStack: {
+          framework: 'nextjs',
+          database: 'none',
+          payments: 'none',
+          deployment: 'vercel',
+        },
+        files: ['.github/workflows/ci.yml'],
+      };
+
+      const findings = await ciRules.run(context);
+      expect(findings.length).toBe(1);
+      expect(findings[0].message).toContain('workflows exist, but none runs the Assurly scan');
+
+      fs.rmSync(githubDir, { recursive: true, force: true });
+    });
   });
 
   describe('TypeScript Strict Mode (tsconfigRules)', () => {
@@ -359,6 +393,33 @@ describe('Assurly Verification Rules', () => {
       expect(findings.length).toBe(0);
 
       fs.rmSync(tsconfigPath, { force: true });
+    });
+
+    it('should pass when a workspace tsconfig has strict true and root is missing', async () => {
+      const webDir = path.join(FIXTURE_DIR, 'apps/web');
+      ensureDir(webDir);
+      const workspaceTsconfig = path.join(webDir, 'tsconfig.json');
+      fs.writeFileSync(
+        workspaceTsconfig,
+        JSON.stringify({ compilerOptions: { strict: true } }),
+        'utf8',
+      );
+
+      const context: ProjectContext = {
+        projectPath: FIXTURE_DIR,
+        detectedStack: {
+          framework: 'nextjs',
+          database: 'none',
+          payments: 'none',
+          deployment: 'vercel',
+        },
+        files: ['apps/web/tsconfig.json'],
+      };
+
+      const findings = await tsconfigRules.run(context);
+      expect(findings.length).toBe(0);
+
+      fs.rmSync(path.join(FIXTURE_DIR, 'apps'), { recursive: true, force: true });
     });
   });
 

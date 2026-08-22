@@ -6,12 +6,14 @@ import DashboardClient from './_components/DashboardClient';
 import * as clientApiModule from '../../utils/clientApi';
 import type { Scan, ScanFinding } from '../../utils/dbAdapter';
 import { __resetScansQueryCacheForTests } from '../../utils/scansQueryCache';
+import { openDashboardAppView } from './testUtils/openDashboardAppView';
 
 type SessionResult = clientApiModule.SessionResult;
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () =>
+    new URLSearchParams({ view: 'app', repo: '11000000-0000-4000-8000-000000000001' }),
 }));
 
 vi.mock('./_components/manual-checker/ManualChecker', () => ({
@@ -105,6 +107,7 @@ async function renderWithFixableFinding(): Promise<void> {
   scansMock.mockResolvedValue({ scans: [PERSISTED_SCAN] });
   findingsMock.mockResolvedValue({ findings: [RLS_FINDING] });
   render(<DashboardClient initialSession={SESSION} />);
+  openDashboardAppView();
   await revealDetailedFindings();
   await screen.findByRole('button', { name: /fix it/i });
 }
@@ -253,6 +256,7 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
     createFixMock.mockImplementation(() => new Promise(() => {}));
 
     render(<DashboardClient initialSession={SESSION} />);
+    openDashboardAppView();
 
     const buttons = await screen.findAllByRole('button', { name: /fix it/i });
     expect(buttons).toHaveLength(2);
@@ -287,6 +291,7 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
     findingsMock.mockResolvedValue({ findings: [warnFinding] });
 
     render(<DashboardClient initialSession={SESSION} />);
+    openDashboardAppView();
 
     await revealDetailedFindings();
     await expectRlsFindingInDetails();
@@ -305,6 +310,7 @@ describe('Auto-fix PR — handleCreateFixPr', () => {
     findingsMock.mockResolvedValue({ findings: [overflowFinding] });
 
     render(<DashboardClient initialSession={SESSION} />);
+    openDashboardAppView();
 
     await revealDetailedFindings();
     await expectRlsFindingInDetails();

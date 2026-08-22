@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   collectTestOnlyEnvKeys,
   incompleteScanFinding,
+  isAppEnvSourceFile,
+  isSupabaseRlsMessage,
   proposeEnvExamplePath,
   resolveEnvExampleForPath,
+  RLS_GENERIC_TABLE_LABEL,
+  RLS_SUPABASE_TABLE_LABEL,
   scanEdgeRuntime,
   scanEnvVariables,
   scanMaxDuration,
@@ -88,7 +92,18 @@ describe('shared scanner core', () => {
     const scan = scanSqlMigrations([
       { file: 'schema.sql', content: 'create table public.orders(id uuid);' },
     ]);
-    expect(scan.findings[0]?.message).toMatch(/^Database table 'orders'/);
+    expect(scan.findings[0]?.message).toMatch(new RegExp(`^${RLS_GENERIC_TABLE_LABEL} 'orders'`));
+    expect(isSupabaseRlsMessage(scan.findings[0]?.message ?? '')).toBe(false);
+  });
+
+  it('emits supabase-rls as a medium warning without a Supabase signal', () => {
+    const scan = scanSqlMigrations([
+      { file: 'prisma/migrations/0.sql', content: 'CREATE TABLE "User" (id uuid PRIMARY KEY);' },
+    ]);
+    expect(scan.findings[0]?.ruleId).toBe('supabase-rls');
+    expect(scan.findings[0]?.severity).toBe('warning');
+    expect(scan.findings[0]?.confidence).toBe('medium');
+    expect(scan.findings[0]?.message).toMatch(new RegExp(`^${RLS_GENERIC_TABLE_LABEL} 'User'`));
   });
 
   it('keeps Supabase table wording when migrations mention Supabase', () => {
@@ -98,7 +113,34 @@ describe('shared scanner core', () => {
         content: 'create table public.orders(id uuid);',
       },
     ]);
-    expect(scan.findings[0]?.message).toMatch(/^Supabase table 'orders'/);
+    expect(scan.findings[0]?.message).toMatch(new RegExp(`^${RLS_SUPABASE_TABLE_LABEL} 'orders'`));
+    expect(isSupabaseRlsMessage(scan.findings[0]?.message ?? '')).toBe(true);
+  });
+
+  it('keeps supabase-rls as a high-confidence error with a Supabase signal', () => {
+    const scan = scanSqlMigrations([
+      {
+        file: 'supabase/migrations/1.sql',
+        content: 'create table public.orders(id uuid);\nselect auth.uid();',
+      },
+    ]);
+    const rls = scan.findings.find((finding) => finding.ruleId === 'supabase-rls');
+    expect(rls?.severity).toBe('error');
+    expect(rls?.confidence).toBe('high');
+  });
+
+  it('applies a Supabase signal from one migration to tables in another', () => {
+    const scan = scanSqlMigrations([
+      { file: 'db/001.sql', content: 'create table public.orders(id uuid);' },
+      {
+        file: 'supabase/migrations/002.sql',
+        content: 'create table public.items(id uuid);',
+      },
+    ]);
+    const rls = scan.findings.filter((finding) => finding.ruleId === 'supabase-rls');
+    expect(rls).toHaveLength(2);
+    expect(rls.every((finding) => finding.severity === 'error')).toBe(true);
+    expect(rls.every((finding) => isSupabaseRlsMessage(finding.message))).toBe(true);
   });
 
   it('subsumes generic supabase-rls when auth-linked RLS finding exists for the same table', () => {
@@ -130,6 +172,37 @@ describe('shared scanner core', () => {
     ]);
     expect(scan.findings).toHaveLength(1);
     expect(scan.findings[0]?.ruleId).toBe('supabase-rls');
+  });
+
+  it('does not emit RLS or migration-safety findings for ClickHouse SQL', () => {
+    const clickhouse = [
+      'CREATE TABLE IF NOT EXISTS ai_logs (',
+      '  id UInt64,',
+      '  created_at DateTime64(3),',
+      '  payload Nullable(String)',
+      ')',
+      'ENGINE = MergeTree',
+      'PARTITION BY toYYYYMM(created_at)',
+      'ORDER BY (created_at, id);',
+      'ALTER TABLE ai_logs ADD COLUMN source String NOT NULL;',
+    ].join('\n');
+    const scan = scanSqlMigrations([
+      { file: 'configs/clickhouse/migrations/001_create_ai_logs.sql', content: clickhouse },
+    ]);
+    expect(scan.findings).toEqual([]);
+  });
+
+  it('still flags Postgres tables when a batch also contains ClickHouse SQL', () => {
+    const scan = scanSqlMigrations([
+      {
+        file: 'configs/clickhouse/migrations/001_create_ai_logs.sql',
+        content: 'CREATE TABLE ai_logs (id UInt64) ENGINE = MergeTree ORDER BY id;',
+      },
+      { file: 'db/schema.sql', content: 'create table public.orders(id uuid);' },
+    ]);
+    expect(scan.findings).toHaveLength(1);
+    expect(scan.findings[0]?.ruleId).toBe('supabase-rls');
+    expect(scan.findings[0]?.message).toMatch(/'orders'/);
   });
 
   it('detects service-role access only inside a client boundary', () => {
@@ -179,9 +252,10 @@ describe('scanEnvVariables monorepo matching', () => {
       },
     );
     expect(missing.errorCount).toBe(0);
-    expect(missing.warningCount).toBe(1);
-    expect(missing.findings[0]?.severity).toBe('warning');
-    expect(missing.findings[0]?.message).toContain('apps/web/.env.example');
+    const undocumented = missing.findings.filter((f) => f.ruleId === 'undocumented-env');
+    expect(undocumented).toHaveLength(1);
+    expect(undocumented[0]?.severity).toBe('warning');
+    expect(undocumented[0]?.message).toContain('apps/web/.env.example');
   });
 
   it('resolves nearest example path helper', () => {
@@ -212,10 +286,40 @@ describe('scanEnvVariables monorepo matching', () => {
       { allExamples: webOnlyExamples },
     );
 
-    expect(result.warningCount).toBe(1);
-    expect(result.findings[0]?.message).toContain('packages/cli/.env.example');
-    expect(result.findings[0]?.message).not.toContain('apps/web/.env.example');
-    expect(result.findings[0]?.suggestion).toContain('packages/cli/.env.example');
+    const undocumented = result.findings.filter((finding) => finding.ruleId === 'undocumented-env');
+    expect(undocumented).toHaveLength(1);
+    expect(undocumented[0]?.message).toContain('packages/cli/.env.example');
+    expect(undocumented[0]?.message).not.toContain('apps/web/.env.example');
+    expect(undocumented[0]?.suggestion).toContain('packages/cli/.env.example');
+  });
+
+  it('does not treat process.env.KEY inside a string literal as usage', () => {
+    const result = scanEnvVariables(
+      'PORT=3000\n',
+      "const hint = 'Rotate the key and replace it with process.env.STRIPE_SECRET_KEY.';",
+      '.env.example',
+      'src/rules/stripeRules.ts',
+    );
+    expect(result.findings.filter((finding) => finding.ruleId === 'undocumented-env')).toEqual([]);
+  });
+
+  it('still flags a real process.env.KEY identifier', () => {
+    const result = scanEnvVariables(
+      'PORT=3000\n',
+      'const key = process.env.STRIPE_SECRET_KEY;',
+      '.env.example',
+      'src/route.ts',
+    );
+    const undocumented = result.findings.filter((finding) => finding.ruleId === 'undocumented-env');
+    expect(undocumented).toHaveLength(1);
+    expect(undocumented[0]?.message).toContain('STRIPE_SECRET_KEY');
+  });
+
+  it('treats only application source as the CLI env-docs surface', () => {
+    expect(isAppEnvSourceFile('apps/web/src/lib/env.ts')).toBe(true);
+    expect(isAppEnvSourceFile('src/route.ts')).toBe(true);
+    expect(isAppEnvSourceFile('packages/cli/src/rules/stripeRules.ts')).toBe(false);
+    expect(isAppEnvSourceFile('README.md')).toBe(false);
   });
 
   it('ignores framework, CI, Actions runtime, and test-only env keys', () => {

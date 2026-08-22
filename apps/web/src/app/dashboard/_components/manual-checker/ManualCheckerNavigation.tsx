@@ -41,7 +41,7 @@ export function ManualCheckerNavigation({
   return (
     <>
       <div className="manual-checker-header">
-        <h3>Interactive Config Checker</h3>
+        <h1>Interactive Config Checker</h1>
         <p>
           Paste configuration snippets or drag &amp; drop files to scan for security vulnerabilities
           instantly.

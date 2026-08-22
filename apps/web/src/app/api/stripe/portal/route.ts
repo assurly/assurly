@@ -11,7 +11,7 @@ import {
 import { requireOrganizationMember } from '../../../../utils/authorization';
 import { getAdminDbAdapter } from '../../../../utils/dbAdapter';
 import { getAppUrl, getStripeClient } from '../../../../utils/stripe';
-import { ensureStripeCustomerForPortal } from '../../../../utils/stripeCustomer';
+import { ensureStripeCustomer } from '../../../../utils/stripeCustomer';
 
 export const POST = secureRoute(
   {
@@ -34,17 +34,19 @@ export const POST = secureRoute(
     await requireOrganizationMember(context, organization.id);
 
     const stripe = getStripeClient();
-    const customer = await ensureStripeCustomerForPortal(
+    const adminDb = getAdminDbAdapter();
+    const customer = await ensureStripeCustomer(
       stripe,
       organization,
       context.user.email,
       (organizationId, stripeCustomerId) =>
-        getAdminDbAdapter().setOrganizationStripeCustomerId(organizationId, stripeCustomerId),
+        adminDb.setOrganizationStripeCustomerId(organizationId, stripeCustomerId),
+      (organizationId) => adminDb.getOrganization(organizationId),
     );
 
     const session = await stripe.billingPortal.sessions.create({
       customer: customer.id,
-      return_url: `${getAppUrl()}/dashboard`,
+      return_url: `${getAppUrl()}/dashboard?billing=sync`,
     });
     return NextResponse.json({
       url: assertTrustedRedirect(session.url, ['https://billing.stripe.com']),

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET, POST } from './route';
 import { GitHubApiError } from '../../../../utils/githubApp';
+import { clearInstantGateTreeCacheForTests } from '../../../../utils/instantGateTree';
 
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
@@ -34,6 +35,7 @@ function treeRequest(): Request {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.unstubAllGlobals();
+  clearInstantGateTreeCacheForTests();
 
   mocks.requireUser.mockResolvedValue({
     user: { id: 'user-1', name: 'Tester', email: '', avatar_url: '' },
@@ -156,7 +158,42 @@ describe('GitHub installation proxy error classification (GET /api/github/proxy)
     const data = await res.json();
     expect(data.default_branch).toBe('main');
     expect(data.tree).toHaveLength(1);
+    expect(data.tree[0].path).toBe('package.json');
+    expect(data.tree[0].sha).toBeUndefined();
     expect(data.commit_sha).toBe(sha);
+    expect(res.headers.get('cache-control')).toContain('max-age=60');
+  });
+
+  it('returns branch names for type=branches', async () => {
+    mocks.getInstallationAccessToken.mockResolvedValue('installation-token');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.endsWith('/repos/owner/repo')) {
+          return new Response(JSON.stringify({ default_branch: 'src' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (url.includes('/branches?per_page=100')) {
+          return new Response(JSON.stringify([{ name: 'src' }, { name: 'main' }]), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response('not found', { status: 404 });
+      }),
+    );
+
+    const res = await GET(
+      new Request(`http://localhost/api/github/proxy?repoId=${REPO_ID}&type=branches`),
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      default_branch: 'src',
+      branches: ['src', 'main'],
+    });
   });
 });
 

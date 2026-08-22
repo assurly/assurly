@@ -11,8 +11,11 @@ import { renderCanaryPanel } from './DashboardClient';
 
 const REPO = 'repo-1';
 
-function textFor(lookup: Parameters<typeof renderCanaryPanel>[0]): string {
-  return renderToStaticMarkup(renderCanaryPanel(lookup, REPO)).replace(/<[^>]+>/g, ' ');
+function textFor(
+  lookup: Parameters<typeof renderCanaryPanel>[0],
+  variant: Parameters<typeof renderCanaryPanel>[2] = 'settings',
+): string {
+  return renderToStaticMarkup(renderCanaryPanel(lookup, REPO, variant)).replace(/<[^>]+>/g, ' ');
 }
 
 describe('canary panel state', () => {
@@ -39,7 +42,7 @@ describe('canary panel state', () => {
     expect(text).not.toMatch(/loading/i);
   });
 
-  it('renders the live panel as soon as a target is known, whatever the status', () => {
+  it('renders the settings panel as soon as a target is known, whatever the status', () => {
     // A known target beats the status: a refetch triggered by a finished scan
     // flips status back to loading, and the panel must not collapse to a notice
     // under someone who was mid-interaction.
@@ -52,13 +55,25 @@ describe('canary panel state', () => {
     }
   });
 
-  it('keeps every state under one accessible name so the panel never looks absent', () => {
+  it('renders the silent-alarm CTA in the app workspace when a target is known', () => {
+    const text = textFor(
+      {
+        status: 'ready',
+        byRepoId: { [REPO]: 'a3f1c2d4-0000-4000-8000-000000000000' },
+      },
+      'alarm',
+    );
+    expect(text).toMatch(/add a silent alarm/i);
+    expect(text).not.toMatch(/issue canary/i);
+  });
+
+  it('keeps every settings state under one accessible name so the panel never looks absent', () => {
     for (const lookup of [
       { status: 'loading' as const, byRepoId: {} },
       { status: 'ready' as const, byRepoId: {} },
       { status: 'error' as const, byRepoId: {} },
     ]) {
-      const html = renderToStaticMarkup(renderCanaryPanel(lookup, REPO));
+      const html = renderToStaticMarkup(renderCanaryPanel(lookup, REPO, 'settings'));
       expect(html).toContain('aria-label="Canary tokens"');
     }
   });

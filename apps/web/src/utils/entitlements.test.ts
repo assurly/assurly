@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { entitlementsForPlan, type BillingPlan } from './entitlements';
+import { entitlementsForPlan, planAllowsShareableReports, type BillingPlan } from './entitlements';
 
 describe('entitlementsForPlan', () => {
   it('free = one guarded app, free key tier, no deep review, no visibility detail, not OEM', () => {
@@ -57,6 +57,14 @@ describe('entitlementsForPlan', () => {
     for (const plan of plans) {
       expect(entitlementsForPlan(plan).apiKeyTier).toBe(plan);
     }
+  });
+
+  it.each([
+    ['free', false],
+    ['pro', true],
+    ['oem', true],
+  ] as const)('planAllowsShareableReports for %s is %s', (plan, allowed) => {
+    expect(planAllowsShareableReports(plan)).toBe(allowed);
   });
 
   it('only the OEM plan is an OEM tenant', () => {

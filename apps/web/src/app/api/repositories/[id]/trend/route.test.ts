@@ -17,6 +17,23 @@ const db = {
   getScanFindings: vi.fn(),
 };
 
+const sharedSha = 'c8039c4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const otherSha = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
+function scanRow(
+  overrides: Record<string, unknown> & { id: string; created_at: string },
+): Record<string, unknown> {
+  return {
+    repository_id: '00000000-0000-4000-8000-000000000001',
+    commit_sha: otherSha,
+    branch: 'main',
+    status: 'success',
+    ship_score: 72,
+    scanned_file_count: 12,
+    ...overrides,
+  };
+}
+
 describe('GET /api/repositories/[id]/trend', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -26,18 +43,20 @@ describe('GET /api/repositories/[id]/trend', () => {
       db,
     });
     db.getRecentScans.mockResolvedValue([
-      {
+      scanRow({
         id: 'scan-2',
         created_at: '2026-01-02T00:00:00.000Z',
         ship_score: 72,
         scanned_file_count: 12,
-      },
-      {
+        commit_sha: otherSha,
+      }),
+      scanRow({
         id: 'scan-1',
         created_at: '2026-01-01T00:00:00.000Z',
         ship_score: 96,
         scanned_file_count: 10,
-      },
+        commit_sha: sharedSha,
+      }),
     ]);
     db.getScanFindings.mockResolvedValue([]);
   });
@@ -57,33 +76,25 @@ describe('GET /api/repositories/[id]/trend', () => {
     expect(payload.points[1].date).toBe('2026-01-02T00:00:00.000Z');
     expect(payload.points[0].shipScore).toBe(96);
     expect(payload.points[1].shipScore).toBe(72);
-    // Scores ≤ incomplete cap skip findings; 96 needs a completeness check.
-    expect(db.getScanFindings).toHaveBeenCalledTimes(1);
-    expect(db.getScanFindings).toHaveBeenCalledWith('scan-1');
+    expect(db.getScanFindings).not.toHaveBeenCalled();
   });
 
-  it('clamps dishonest incomplete scores above the Instant Gate cap', async () => {
+  it('collapses duplicate commit SHAs and skips findings when scores are persisted', async () => {
     db.getRecentScans.mockResolvedValue([
-      {
-        id: 'scan-incomplete',
-        created_at: '2026-01-04T00:00:00.000Z',
-        ship_score: 92,
-        scanned_file_count: 250,
-      },
-    ]);
-    db.getScanFindings.mockResolvedValue([
-      {
-        id: 'f1',
-        scan_id: 'scan-incomplete',
-        rule_id: 'scan-completeness',
-        severity: 'warning',
-        confidence: 'high',
-        file_path: 'unknown',
-        line_number: 1,
-        message: 'incomplete',
-        suggestion: '',
-        created_at: '2026-01-04T00:00:00.000Z',
-      },
+      scanRow({
+        id: 'other',
+        created_at: '2026-01-02T00:00:00.000Z',
+        ship_score: 80,
+        commit_sha: otherSha,
+      }),
+      ...Array.from({ length: 8 }, (_, index) =>
+        scanRow({
+          id: `dup-${7 - index}`,
+          created_at: `2026-01-01T0${7 - index}:00:00.000Z`,
+          ship_score: 59,
+          commit_sha: sharedSha,
+        }),
+      ),
     ]);
 
     const response = await GET(
@@ -95,12 +106,45 @@ describe('GET /api/repositories/[id]/trend', () => {
     const payload = (await response.json()) as {
       points: Array<{ date: string; shipScore: number }>;
     };
-    expect(payload.points[0]?.shipScore).toBe(79);
+    expect(payload.points).toHaveLength(2);
+    expect(payload.points[0].shipScore).toBe(59);
+    expect(payload.points[1].shipScore).toBe(80);
+    expect(db.getScanFindings).not.toHaveBeenCalled();
+  });
+
+  it('clamps a blocked persisted score without fetching findings', async () => {
+    db.getRecentScans.mockResolvedValue([
+      scanRow({
+        id: 'scan-blocked',
+        created_at: '2026-01-04T00:00:00.000Z',
+        ship_score: 84,
+        verdict: 'blocked',
+        commit_sha: sharedSha,
+      }),
+    ]);
+
+    const response = await GET(
+      new Request('http://localhost/api/repositories/00000000-0000-4000-8000-000000000001/trend'),
+      { params: Promise.resolve({ id: '00000000-0000-4000-8000-000000000001' }) },
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      points: Array<{ date: string; shipScore: number }>;
+    };
+    expect(payload.points[0]?.shipScore).toBe(59);
+    expect(db.getScanFindings).not.toHaveBeenCalled();
   });
 
   it('falls back to recomputation for legacy rows without ship_score', async () => {
     db.getRecentScans.mockResolvedValue([
-      { id: 'scan-legacy', created_at: '2026-01-03T00:00:00.000Z', scanned_file_count: 0 },
+      scanRow({
+        id: 'scan-legacy',
+        created_at: '2026-01-03T00:00:00.000Z',
+        scanned_file_count: 0,
+        ship_score: null,
+        commit_sha: sharedSha,
+      }),
     ]);
     db.getScanFindings.mockResolvedValue([]);
 
@@ -114,8 +158,36 @@ describe('GET /api/repositories/[id]/trend', () => {
       points: Array<{ date: string; shipScore: number }>;
     };
     expect(payload.points).toHaveLength(1);
-    // Empty eligible-file scans must not invent a high score via 0→1 coercion.
     expect(payload.points[0].shipScore).toBe(0);
     expect(db.getScanFindings).toHaveBeenCalledWith('scan-legacy');
+  });
+
+  it('omits a legacy point when findings fetch throws instead of failing the series', async () => {
+    db.getRecentScans.mockResolvedValue([
+      scanRow({
+        id: 'scan-ok',
+        created_at: '2026-01-02T00:00:00.000Z',
+        ship_score: 80,
+        commit_sha: otherSha,
+      }),
+      scanRow({
+        id: 'scan-legacy',
+        created_at: '2026-01-01T00:00:00.000Z',
+        ship_score: null,
+        commit_sha: sharedSha,
+      }),
+    ]);
+    db.getScanFindings.mockRejectedValue(new Error('timeout'));
+
+    const response = await GET(
+      new Request('http://localhost/api/repositories/00000000-0000-4000-8000-000000000001/trend'),
+      { params: Promise.resolve({ id: '00000000-0000-4000-8000-000000000001' }) },
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      points: Array<{ date: string; shipScore: number }>;
+    };
+    expect(payload.points).toEqual([{ date: '2026-01-02T00:00:00.000Z', shipScore: 80 }]);
   });
 });

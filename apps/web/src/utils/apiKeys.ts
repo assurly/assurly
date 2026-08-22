@@ -94,11 +94,22 @@ export async function authenticateApiKey(
   const db = deps.getDb?.() ?? getAdminDbAdapter();
   const row: ApiKeyAuthContext | null = await db.getApiKeyByHash(hashApiKey(plaintext));
   if (!row || row.revoked_at) return null;
+  if (
+    row.organization_billing_plan !== 'free' &&
+    row.organization_billing_plan !== 'pro' &&
+    row.organization_billing_plan !== 'oem'
+  ) {
+    return null;
+  }
 
   // Fire-and-forget: usage telemetry must never slow down or fail auth.
   void Promise.resolve(db.touchApiKey(row.id)).catch(() => undefined);
 
-  return { id: row.id, organizationId: row.organization_id, plan: row.plan };
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    plan: row.organization_billing_plan,
+  };
 }
 
 export { KEY_BODY_PATTERN };

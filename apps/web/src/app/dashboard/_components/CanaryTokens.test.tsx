@@ -97,13 +97,16 @@ describe('CanaryTokens', () => {
     expect(panel.scrollWidth).toBeLessThanOrEqual(panel.clientWidth);
   });
 
-  it('shows the plaintext once after issue and never in the list', async () => {
+  it('shows the snippet once after issue and never in the list', async () => {
     const plaintext = 'ask_canary_' + 'x'.repeat(32);
+    const snippet = `ASSURLY_CANARY_URL=https://assurly.dev/api/canary/${plaintext}`;
     issueMock.mockResolvedValue({
       id: 'new-1',
       label: 'Staging decoy',
       tokenPrefix: 'ask_canary_bbbbbb',
       token: plaintext,
+      callbackUrl: `https://assurly.dev/api/canary/${plaintext}`,
+      snippet,
       plantHint: 'Plant this…',
       createdAt: '2026-07-20T00:00:00.000Z',
     });
@@ -116,12 +119,11 @@ describe('CanaryTokens', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Issue canary' }));
     await waitFor(() => {
-      expect(screen.getByText(plaintext)).toBeTruthy();
+      expect(screen.getByText(/ASSURLY_CANARY_URL=/)).toBeTruthy();
     });
     expect(screen.getByText(/will not be shown again/i)).toBeTruthy();
-    // List rows show prefix only — never the full plaintext again as a second copy in the list.
     const active = screen.getByLabelText('Active canary tokens');
-    expect(within(active).queryByText(plaintext)).toBeNull();
+    expect(within(active).queryByText(/ASSURLY_CANARY_URL=/)).toBeNull();
   });
 
   it('confirms before revoke and calls the revoke API', async () => {
@@ -252,7 +254,7 @@ describe('CanaryTokens', () => {
     expect(screen.getByText('Dead decoy')).toBeTruthy();
   });
 
-  it('explains hits as exposure evidence, not attribution', async () => {
+  it('explains hits as rotate-real-secrets, not attribution', async () => {
     listMock.mockResolvedValue({
       targetId: TARGET_ID,
       prefix: 'ask_canary_',
@@ -267,9 +269,9 @@ describe('CanaryTokens', () => {
     });
     render(<CanaryTokens targetId={TARGET_ID} />);
     await waitFor(() => {
-      expect(screen.getByText('Recorded hits')).toBeTruthy();
+      expect(screen.getByText('Tripwire fetched')).toBeTruthy();
     });
-    expect(screen.getByText(/evidence of exposure/i)).toBeTruthy();
-    expect(screen.getAllByText(/not proof of who/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Rotate the real Stripe, Supabase, and GitHub secrets/i)).toBeTruthy();
+    expect(screen.getByText(/not the canary URL/i)).toBeTruthy();
   });
 });

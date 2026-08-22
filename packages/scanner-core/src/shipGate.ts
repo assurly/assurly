@@ -1,6 +1,7 @@
 import type { FindingConfidence, ScannerFinding, Severity } from './index';
 import type { ScanScope } from './fileRelevance';
 import { formatScanScopeSummary } from './fileRelevance';
+import { isAnalyzedCodeFile } from './languageCoverage';
 
 export type ShipGateFindingInput = Pick<
   ScannerFinding,
@@ -54,6 +55,17 @@ export interface ShipGateOptions {
 const BLOCKER_PENALTY = 12;
 const WARNING_PENALTY = 4;
 
+/** Cannot-ship scores must not look like a passing grade. */
+export const BLOCKED_SCORE_CAP = 59;
+
+/** Extra missing-RLS tables stay listed but do not zero the score. */
+export const RLS_SCORE_GROUP_CAP = 3;
+
+function cappedRlsGroupCount(groups: readonly ShipGateGroup[]): number {
+  const rlsCount = groups.filter((group) => group.id.startsWith('rls:')).length;
+  return groups.length - rlsCount + Math.min(rlsCount, RLS_SCORE_GROUP_CAP);
+}
+
 function effectiveConfidence(confidence: FindingConfidence | undefined): FindingConfidence {
   return confidence ?? 'high';
 }
@@ -81,8 +93,15 @@ function isNonBlockingAdvisoryRuleId(ruleId: string | undefined): boolean {
   return isAgentStackRuleId(ruleId) || isSupplyChainRuleId(ruleId);
 }
 
+function isInformationalCanaryRuleId(ruleId: string | undefined): boolean {
+  // Intentional tripwire — visible on the finding, never a Ship Gate warning.
+  // Missing plant (`assurly-canary-missing`) stays a real warning with a CTA.
+  return ruleId === 'assurly-canary-planted';
+}
+
 function isBlockerFinding(finding: ShipGateFindingInput): boolean {
   if (isNonBlockingAdvisoryRuleId(finding.ruleId)) return false;
+  if (isInformationalCanaryRuleId(finding.ruleId)) return false;
   return finding.severity === 'error' && effectiveConfidence(finding.confidence) === 'high';
 }
 
@@ -93,7 +112,43 @@ function isReviewFinding(finding: ShipGateFindingInput): boolean {
 }
 
 function isWarningFinding(finding: ShipGateFindingInput): boolean {
-  return finding.severity === 'warning';
+  if (finding.severity !== 'warning') return false;
+  if (isInformationalCanaryRuleId(finding.ruleId)) return false;
+  return true;
+}
+
+function normalizeScanPath(filePath: string): string {
+  return filePath.replace(/\\/g, '/');
+}
+
+/**
+ * Instant Gate "N of M had no issues" must only subtract findings whose path
+ * was in the scanned set. Pseudo-files (`Global Configs`) and config like
+ * `.env.example` are not among the analysed JS/TS/SQL files.
+ */
+export function countCleanScannedFiles(
+  scannedFileCount: number,
+  findingFiles: readonly (string | undefined)[],
+  scannedFiles?: readonly string[],
+): number {
+  const scannedSet = scannedFiles ? new Set(scannedFiles.map(normalizeScanPath)) : null;
+  const affected = new Set<string>();
+
+  for (const file of findingFiles) {
+    if (!file) continue;
+    const normalized = normalizeScanPath(file);
+    if (scannedSet) {
+      if (scannedSet.has(normalized)) {
+        affected.add(normalized);
+      }
+      continue;
+    }
+    if (isAnalyzedCodeFile(normalized)) {
+      affected.add(normalized);
+    }
+  }
+
+  return Math.max(0, scannedFileCount - affected.size);
 }
 
 export function getFindingGroupKey(finding: ShipGateFindingInput): string {
@@ -127,6 +182,9 @@ function issueGroupLabel(key: string, sampleMessage: string): string {
   if (key.startsWith('env:')) {
     return `Undocumented env: ${key.slice(4)}`;
   }
+  if (key === 'rule:assurly-canary-missing') {
+    return 'No silent alarm planted';
+  }
   if (key.startsWith('rls:')) {
     return `Missing RLS on table: ${key.slice(4)}`;
   }
@@ -134,6 +192,7 @@ function issueGroupLabel(key: string, sampleMessage: string): string {
   if (key === 'rsc:client-import') return 'Client component imports server module';
   if (key === 'perf:cold-start') return 'Heavy serverless / cold-start risk';
   if (key === 'edge:runtime') return 'Edge runtime compatibility';
+  if (key === 'rule:scan-language-coverage') return 'Backend code not analysed';
   return sampleMessage.length > 72 ? `${sampleMessage.slice(0, 69)}…` : sampleMessage;
 }
 
@@ -184,6 +243,15 @@ export function resolveGroupAction(
       kind: 'command',
       command: 'npx assurly init',
       hint: suggestion,
+    };
+  }
+
+  if (key === 'rule:assurly-canary-missing' || ruleId === 'assurly-canary-missing') {
+    return {
+      label: 'Add a silent alarm',
+      kind: 'link',
+      href: '#canary-silent-alarm',
+      hint: suggestion ?? 'Add a silent alarm in Assurly (dashboard / MCP plant).',
     };
   }
 
@@ -352,14 +420,15 @@ function resolveFileCounts(
   findings: ShipGateFindingInput[],
   options: ShipGateOptions,
 ): { scannedFileCount: number; cleanFileCount: number } {
-  const affectedPaths = new Set(
-    findings.map((finding) => finding.file).filter((file): file is string => Boolean(file)),
-  );
+  const findingFiles = findings.map((finding) => finding.file);
+  const affectedAnalyzedCount = findingFiles.filter(
+    (file): file is string => typeof file === 'string' && isAnalyzedCodeFile(file),
+  ).length;
 
   const scannedFileCount =
-    options.scannedFileCount ?? Math.max(affectedPaths.size, findings.length > 0 ? 1 : 0);
+    options.scannedFileCount ?? Math.max(affectedAnalyzedCount, findings.length > 0 ? 1 : 0);
   const cleanFileCount =
-    options.cleanFileCount ?? Math.max(0, scannedFileCount - affectedPaths.size);
+    options.cleanFileCount ?? countCleanScannedFiles(scannedFileCount, findingFiles);
 
   return { scannedFileCount, cleanFileCount };
 }
@@ -393,9 +462,9 @@ export function buildShipGateReport(
     Math.min(
       100,
       100 -
-        blockers.length * BLOCKER_PENALTY -
-        reviews.length * WARNING_PENALTY -
-        warnings.length * WARNING_PENALTY,
+        cappedRlsGroupCount(blockers) * BLOCKER_PENALTY -
+        cappedRlsGroupCount(reviews) * WARNING_PENALTY -
+        cappedRlsGroupCount(warnings) * WARNING_PENALTY,
     ),
   );
 
@@ -428,6 +497,10 @@ export function buildShipGateReport(
     if (blockers.length === 0) {
       shipScore = Math.max(shipScore, INCOMPLETE_NO_BLOCKER_FLOOR);
     }
+  }
+
+  if (status === 'blocked') {
+    shipScore = Math.min(shipScore, BLOCKED_SCORE_CAP);
   }
 
   const resolvedShipScore = options.scannedFileCount === 0 && status !== 'blocked' ? 0 : shipScore;

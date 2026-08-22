@@ -42,6 +42,7 @@ describe('getCuratedConsequence', () => {
       'runtime-supabase-anon-write-implied',
       'runtime-supabase-rls-open',
       'scan-completeness',
+      'scan-language-coverage',
       'stripe-live-key-in-dev',
       'stripe-missing-subscription-events',
       'stripe-secret-leak',
@@ -80,6 +81,7 @@ describe('getConsequence', () => {
       { deps: { fetchImpl } },
     );
     expect(result.source).toBe('curated');
+    expect(result.text).toMatch(/missing safety net/i);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 

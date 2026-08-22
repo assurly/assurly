@@ -8,6 +8,8 @@ export type AppsDensity = 'comfortable' | 'compact';
 export interface VerdictCardsViewPrefs {
   density: AppsDensity;
   sort: AppsSort;
+  kindFilter: AppsKindFilter;
+  verdictFilter: AppsVerdictFilter;
 }
 
 export const VERDICT_CARDS_PREFS_KEY = 'assurly.yourApps.view';
@@ -22,6 +24,8 @@ const VERDICT_URGENCY: Record<TargetCard['verdict'], number> = {
 const DEFAULT_PREFS: VerdictCardsViewPrefs = {
   density: 'comfortable',
   sort: 'urgency',
+  kindFilter: 'all',
+  verdictFilter: 'all',
 };
 
 function isAppsDensity(value: unknown): value is AppsDensity {
@@ -38,6 +42,20 @@ function isAppsSort(value: unknown): value is AppsSort {
   );
 }
 
+function isAppsKindFilter(value: unknown): value is AppsKindFilter {
+  return value === 'all' || value === 'repos' || value === 'urls';
+}
+
+function isAppsVerdictFilter(value: unknown): value is AppsVerdictFilter {
+  return (
+    value === 'all' ||
+    value === 'blocked' ||
+    value === 'review' ||
+    value === 'ready' ||
+    value === 'unknown'
+  );
+}
+
 export function readVerdictCardsPrefs(): VerdictCardsViewPrefs {
   if (typeof window === 'undefined') return { ...DEFAULT_PREFS };
   try {
@@ -49,6 +67,12 @@ export function readVerdictCardsPrefs(): VerdictCardsViewPrefs {
     return {
       density: isAppsDensity(record.density) ? record.density : DEFAULT_PREFS.density,
       sort: isAppsSort(record.sort) ? record.sort : DEFAULT_PREFS.sort,
+      kindFilter: isAppsKindFilter(record.kindFilter)
+        ? record.kindFilter
+        : DEFAULT_PREFS.kindFilter,
+      verdictFilter: isAppsVerdictFilter(record.verdictFilter)
+        ? record.verdictFilter
+        : DEFAULT_PREFS.verdictFilter,
     };
   } catch {
     return { ...DEFAULT_PREFS };

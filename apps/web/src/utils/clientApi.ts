@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Organization, Repository, Scan, ScanFinding, User } from './dbAdapter';
+import { notifyUnauthorizedSession } from './unauthorizedSession';
 
 const userSchema = z.object({
   id: z.string(),
@@ -32,6 +33,24 @@ const scanScopeSchema = z
     scanned: z.number().int().nonnegative(),
     skipped: z.number().int().nonnegative().optional(),
     roots: z.array(z.string()).optional(),
+    unanalyzed: z
+      .array(
+        z.object({
+          language: z.string().min(1).max(40),
+          fileCount: z.number().int().nonnegative().max(100_000),
+        }),
+      )
+      .max(20)
+      .optional(),
+    sourceTotal: z.number().int().nonnegative().optional(),
+    limit: z.number().int().positive().optional(),
+    gaps: z
+      .object({
+        notAnalysed: z.number().int().nonnegative(),
+        overLimit: z.number().int().nonnegative(),
+        outsideAppRoots: z.number().int().nonnegative(),
+      })
+      .optional(),
   })
   .passthrough();
 const scanSchema = z.object({
@@ -151,6 +170,8 @@ const targetCardSchema = z.object({
   badgeToken: z.string().nullable().default(null),
   /** Repo-only: whether the in-browser scanner can run this target. */
   scanCapability: scanCapabilitySchema.default('browser'),
+  lastScanFailed: z.boolean().default(false),
+  lastScanFailureReason: z.string().nullable().default(null),
 });
 const targetsSchema = z.object({ targets: z.array(targetCardSchema) });
 export type TargetCard = z.infer<typeof targetCardSchema>;
@@ -189,8 +210,24 @@ const canaryIssuedSchema = z.object({
   label: z.string(),
   tokenPrefix: z.string(),
   token: z.string(),
+  callbackUrl: z.string().url(),
+  snippet: z.string().min(1),
+  mcpSnippet: z.string().min(1).optional(),
   plantHint: z.string(),
   createdAt: z.string(),
+});
+const canaryPlantedSchema = z.object({
+  id: z.string().optional(),
+  label: z.string().optional(),
+  tokenPrefix: z.string().optional(),
+  token: z.string().optional(),
+  callbackUrl: z.string().url().optional(),
+  snippet: z.string().min(1),
+  mcpSnippet: z.string().min(1).optional(),
+  plantHint: z.string().optional(),
+  prUrl: z.string().url().nullable().optional(),
+  alreadyPlanted: z.boolean().optional(),
+  createdAt: z.string().optional(),
 });
 const canaryRevokedSchema = z.object({ revoked: z.boolean() });
 const canaryDeletedSchema = z.object({ deleted: z.boolean() });
@@ -251,30 +288,63 @@ export class ClientApiError extends Error {
   }
 }
 
+function requestPathname(input: string): string {
+  try {
+    const path =
+      input.startsWith('http://') || input.startsWith('https://')
+        ? new URL(input).pathname
+        : (input.split('?')[0] ?? input);
+    return path;
+  } catch {
+    return input.split('?')[0] ?? input;
+  }
+}
+
+function isAuthApiPath(input: string): boolean {
+  return requestPathname(input).startsWith('/api/auth/');
+}
+
+function clientApiErrorFromResponse(response: Response, payload: unknown): ClientApiError {
+  const parsedError = apiErrorEnvelopeSchema.safeParse(payload);
+  const error = parsedError.success ? parsedError.data.error : null;
+  const message =
+    typeof error === 'string' ? error : error?.message || 'The request could not be completed.';
+  return new ClientApiError(
+    message,
+    response.status,
+    typeof error === 'string' ? undefined : error?.code,
+    (typeof error === 'string' ? undefined : error?.requestId) ||
+      response.headers.get('x-request-id') ||
+      undefined,
+  );
+}
+
 async function requestJson<TSchema extends z.ZodType>(
   input: string,
   schema: TSchema,
   init?: RequestInit,
 ): Promise<z.infer<TSchema>> {
-  const response = await fetch(input, {
+  const requestInit: RequestInit = {
     credentials: 'same-origin',
     ...init,
     headers: { Accept: 'application/json', ...init?.headers },
-  });
-  const payload: unknown = await response.json().catch(() => null);
+  };
+
+  let response = await fetch(input, requestInit);
+  let payload: unknown = await response.json().catch(() => null);
+
+  // One retry covers the proxy refresh race: a sibling request rotated the
+  // cookie (`outcome.reused`) while this call still held the stale JWT.
+  if (response.status === 401 && !isAuthApiPath(input)) {
+    response = await fetch(input, requestInit);
+    payload = await response.json().catch(() => null);
+  }
+
   if (!response.ok) {
-    const parsedError = apiErrorEnvelopeSchema.safeParse(payload);
-    const error = parsedError.success ? parsedError.data.error : null;
-    const message =
-      typeof error === 'string' ? error : error?.message || 'The request could not be completed.';
-    throw new ClientApiError(
-      message,
-      response.status,
-      typeof error === 'string' ? undefined : error?.code,
-      (typeof error === 'string' ? undefined : error?.requestId) ||
-        response.headers.get('x-request-id') ||
-        undefined,
-    );
+    if (response.status === 401 && !isAuthApiPath(input)) {
+      notifyUnauthorizedSession();
+    }
+    throw clientApiErrorFromResponse(response, payload);
   }
   return schema.parse(payload);
 }
@@ -404,6 +474,9 @@ export const clientApi = {
       label: string;
       tokenPrefix: string;
       token: string;
+      callbackUrl: string;
+      snippet: string;
+      mcpSnippet?: string;
       plantHint: string;
       createdAt: string;
     }> =>
@@ -411,6 +484,26 @@ export const clientApi = {
         `/api/targets/${encodeURIComponent(targetId)}/canary`,
         canaryIssuedSchema,
         jsonRequest('POST', label ? { label } : {}),
+      ),
+    plant: (
+      targetId: string,
+    ): Promise<{
+      id?: string;
+      label?: string;
+      tokenPrefix?: string;
+      token?: string;
+      snippet: string;
+      mcpSnippet?: string;
+      callbackUrl?: string;
+      prUrl?: string | null;
+      alreadyPlanted?: boolean;
+      plantHint?: string;
+      createdAt?: string;
+    }> =>
+      requestJson(
+        `/api/targets/${encodeURIComponent(targetId)}/canary/plant`,
+        canaryPlantedSchema,
+        jsonRequest('POST', {}),
       ),
     revoke: (targetId: string, tokenId: string): Promise<{ revoked: boolean }> =>
       requestJson(

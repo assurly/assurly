@@ -21,17 +21,29 @@ import {
   readLimitedResponseText,
   verifyGitHubWebhookSignature,
 } from '../../../../utils/githubApp';
-import { buildShipGateReport, formatShipGateMarkdown } from '@assurly/scanner-core';
+import {
+  buildScanScope,
+  buildShipGateReport,
+  countCleanScannedFiles,
+  formatShipGateMarkdown,
+  type ScanScope,
+} from '@assurly/scanner-core';
 import { notifyIfRegressionBlockers } from '../../../../utils/scanRegression';
 import {
   incompleteScanFinding,
+  instantGateSurfaceFiles,
+  isAnalyzedCodeFile,
+  isScannableFile,
   scanColdStart,
   scanEnvVariables,
   scanRscDataLeaks,
-  scanSqlMigration,
+  scanSqlMigrations,
   scanStripeWebhook,
   scanSupabaseClientLeaks,
   selectFiles,
+  summarizeUnanalyzedSource,
+  unanalyzedLanguageCounts,
+  unanalyzedSourceFinding,
   type WebFinding,
 } from '../../../../utils/browserScanner';
 import { scanPrNewDependencies } from '../../../../utils/prDependencyScan';
@@ -151,13 +163,12 @@ async function completeCheckRun(
   repository: string,
   checkRunId: number,
   findings: Array<WebFinding & { path?: string }>,
-  options: { scannedFileCount: number; repositoryName: string },
+  options: {
+    scannedFileCount: number;
+    repositoryName: string;
+    scanScope?: ScanScope;
+  },
 ): Promise<void> {
-  const affectedPaths = new Set(
-    findings
-      .map((finding) => finding.path || finding.file)
-      .filter((path): path is string => Boolean(path)),
-  );
   const shipGate = buildShipGateReport(
     findings.map((finding) => ({
       severity: finding.severity,
@@ -169,7 +180,11 @@ async function completeCheckRun(
     })),
     {
       scannedFileCount: options.scannedFileCount,
-      cleanFileCount: Math.max(0, options.scannedFileCount - affectedPaths.size),
+      cleanFileCount: countCleanScannedFiles(
+        options.scannedFileCount,
+        findings.map((finding) => finding.path || finding.file),
+      ),
+      scanScope: options.scanScope,
     },
   );
   const summary = formatShipGateMarkdown(shipGate, { repositoryName: options.repositoryName });
@@ -242,7 +257,7 @@ export async function scanPullRequest(
     const lower = node.path.toLowerCase();
     if (lower.endsWith('.sql')) sqlFiles.push(node.path);
     else if (lower.endsWith('.env.example') || lower === '.env') envFiles.push(node.path);
-    else if (/\.(js|ts|jsx|tsx)$/.test(lower) && !lower.includes('node_modules/')) {
+    else if (isAnalyzedCodeFile(node.path) && !lower.includes('node_modules/')) {
       codeFiles.push(node.path);
     }
   }
@@ -250,10 +265,24 @@ export async function scanPullRequest(
   const findings: Array<WebFinding & { path?: string }> = [];
   const stripeFiles = codeFiles.filter((path) => /stripe|webhook/i.test(path));
   const candidates = [...new Set([...sqlFiles, ...stripeFiles, ...codeFiles])];
-  const selection = selectFiles(candidates, getScannerFileLimit());
+  const fileLimit = getScannerFileLimit();
+  const selection = selectFiles(candidates, fileLimit);
   const selected = new Set(selection.files);
   const incomplete = incompleteScanFinding(selection);
   if (incomplete) findings.push(incomplete);
+  const treePaths = tree.filter((node) => node.type === 'blob').map((node) => node.path);
+  const coveragePaths = instantGateSurfaceFiles(
+    treePaths.filter((path) => isScannableFile(path)),
+    (path) => path,
+  );
+  const unanalyzedSummary = summarizeUnanalyzedSource(coveragePaths);
+  const coverageFinding = unanalyzedSourceFinding(unanalyzedSummary);
+  if (coverageFinding) findings.push(coverageFinding);
+  const scanScope = buildScanScope(candidates, selection.files, {
+    treePaths,
+    unanalyzed: unanalyzedLanguageCounts(unanalyzedSummary),
+    limit: fileLimit,
+  });
   const fileCache = new Map<string, string>();
   const getFile = async (path: string): Promise<string> => {
     const cached = fileCache.get(path);
@@ -262,9 +291,18 @@ export async function scanPullRequest(
     fileCache.set(path, content);
     return content;
   };
+  const sqlSources: Array<{ file: string; content: string }> = [];
   for (const path of sqlFiles.filter((file) => selected.has(file))) {
-    const result = scanSqlMigration(await getFile(path), path);
-    findings.push(...result.findings.map((finding) => ({ ...finding, path })));
+    sqlSources.push({ file: path, content: await getFile(path) });
+  }
+  if (sqlSources.length > 0) {
+    const result = scanSqlMigrations(sqlSources);
+    findings.push(
+      ...result.findings.map((finding) => ({
+        ...finding,
+        path: finding.file,
+      })),
+    );
   }
   for (const path of stripeFiles.filter((file) => selected.has(file))) {
     const result = scanStripeWebhook(await getFile(path), path);
@@ -361,11 +399,6 @@ export async function scanPullRequest(
     message: finding.message,
     suggestion: finding.suggestion || '',
   }));
-  const affectedPaths = new Set(
-    findings
-      .map((finding) => finding.path || finding.file)
-      .filter((path): path is string => Boolean(path)),
-  );
   const shipGate = buildShipGateReport(
     findings.map((finding) => ({
       severity: finding.severity,
@@ -378,7 +411,12 @@ export async function scanPullRequest(
     })),
     {
       scannedFileCount: selection.files.length,
-      cleanFileCount: Math.max(0, selection.files.length - affectedPaths.size),
+      cleanFileCount: countCleanScannedFiles(
+        selection.files.length,
+        findings.map((finding) => finding.path || finding.file),
+        selection.files,
+      ),
+      scanScope,
     },
   );
   const savedScan = await db.saveScan(
@@ -394,6 +432,7 @@ export async function scanPullRequest(
       verdict: shipGate.status,
       scannedFileCount: selection.files.length,
       cleanFileCount: shipGate.cleanFileCount,
+      scanScope: { ...scanScope },
     },
   );
 
@@ -413,6 +452,7 @@ export async function scanPullRequest(
   await completeCheckRun(token, repositoryName, checkRunId, findings, {
     scannedFileCount: selection.files.length,
     repositoryName,
+    scanScope,
   });
 }
 

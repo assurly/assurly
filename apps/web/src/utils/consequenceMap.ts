@@ -6,6 +6,8 @@
  * `consequenceTranslator.ts`, which is server-only.
  */
 
+import { isSupabaseRlsMessage, GITHUB_ACTIONS_EXISTING_CI_MESSAGE } from '@assurly/scanner-core';
+
 export interface ConsequenceEntry {
   consequence: string;
   regulation?: string;
@@ -103,6 +105,14 @@ export const CONSEQUENCE_MAP: Record<string, ConsequenceEntry> = {
   'assurly-canary-planted': {
     consequence:
       'This is a canary you planted on purpose — Assurly will alert if anyone ever uses it. It is not a leaked secret.',
+  },
+  'assurly-canary-missing': {
+    consequence:
+      'There is no silent alarm in .env.example, so Assurly cannot tell you if someone steals this env and starts probing.',
+  },
+  'assurly-canary-in-client': {
+    consequence:
+      'Your tripwire is in public JavaScript. Anyone can fetch it — and it usually means a server env value leaked into the browser bundle. Rotate real secrets and take the canary off the client.',
   },
 
   // --- Agent stack (MCP configs & instruction files) --------------------------
@@ -270,15 +280,51 @@ export const CONSEQUENCE_MAP: Record<string, ConsequenceEntry> = {
     consequence:
       "The scan couldn't cover your whole app, so some risks may be hidden. Run a full scan before you trust a clean result.",
   },
+  'scan-language-coverage': {
+    consequence:
+      'Assurly could not read this part of your backend, so the verdict covers only the JavaScript, TypeScript and SQL side. Your payment and login code lives in files nobody checked — a clean result here is not a clean result for them.',
+  },
   general: {
     consequence:
       'This issue can affect how safely or reliably your app runs for real users — review it before you ship.',
   },
 };
 
+/**
+ * Self-hosted Postgres (and other non-Supabase SQL) is not reachable from the
+ * internet just because RLS is off. Keep the same rule id so stored scans,
+ * auto-fix, and MCP explain stay compatible — vary the copy off the engine's
+ * table-label prefix instead.
+ */
+const SUPABASE_RLS_GENERIC: ConsequenceEntry = {
+  consequence:
+    'Nothing in the database itself limits who can read these rows — protection depends entirely on your backend getting every query right. That is a missing safety net rather than a live leak, but if a connection string or database password ever escapes, the whole table goes with it.',
+};
+
+const GITHUB_ACTIONS_EXISTING_CI: ConsequenceEntry = {
+  consequence:
+    'Your CI runs, but no step checks this app before deploy — a risky change passes your existing checks and still ships unscanned.',
+};
+
 /** Curated lookup only — synchronous and pure. Returns undefined for unknown rules. */
 export function getCuratedConsequence(ruleId: string): ConsequenceEntry | undefined {
   return CONSEQUENCE_MAP[ruleId];
+}
+
+/** Curated lookup that degrades RLS copy when the engine found no Supabase stack. */
+export function getCuratedConsequenceForFinding(
+  finding: ConsequenceFinding,
+): ConsequenceEntry | undefined {
+  if (finding.ruleId === 'supabase-rls' && !isSupabaseRlsMessage(finding.message)) {
+    return SUPABASE_RLS_GENERIC;
+  }
+  if (
+    finding.ruleId === 'github-actions-integration' &&
+    finding.message === GITHUB_ACTIONS_EXISTING_CI_MESSAGE
+  ) {
+    return GITHUB_ACTIONS_EXISTING_CI;
+  }
+  return getCuratedConsequence(finding.ruleId);
 }
 
 /** ShipGate groups key rule-based issues as "rule:<ruleId>". Extracts the rule id. */

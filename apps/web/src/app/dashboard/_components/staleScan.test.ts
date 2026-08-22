@@ -6,6 +6,7 @@ import {
   isScanStale,
   isUuidTargetId,
   rescanActionLabel,
+  shouldOfferRescan,
 } from './staleScan';
 
 const now = new Date('2026-07-31T12:00:00.000Z').getTime();
@@ -28,6 +29,8 @@ function card(overrides: Partial<TargetCard> = {}): TargetCard {
     scoreDropped: false,
     badgeToken: null,
     scanCapability: 'browser',
+    lastScanFailed: false,
+    lastScanFailureReason: null,
     ...overrides,
   };
 }
@@ -101,5 +104,23 @@ describe('helpers', () => {
   it('labels first scan vs rescan', () => {
     expect(rescanActionLabel(null)).toBe('Scan now');
     expect(rescanActionLabel('2026-06-01T00:00:00.000Z')).toBe('Rescan');
+    expect(rescanActionLabel('2026-06-01T00:00:00.000Z', true)).toBe('Scan now');
+  });
+});
+
+describe('shouldOfferRescan', () => {
+  it('offers Scan now after a failed empty scan even when the check is fresh', () => {
+    expect(
+      shouldOfferRescan(
+        card({
+          lastCheckedAt: '2026-07-30T12:00:00.000Z',
+          lastScanFailed: true,
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('hides Rescan for a fresh successful check', () => {
+    expect(shouldOfferRescan(card({ lastCheckedAt: new Date().toISOString() }))).toBe(false);
   });
 });

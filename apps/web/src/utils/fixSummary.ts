@@ -2,8 +2,10 @@ import type { ScanFinding } from './dbAdapter';
 import { isAutoFixableFinding } from './githubAutoFix';
 
 export interface ScanFixSummary {
-  /** Errors reported by the static scan against upstream code. */
-  issueCount: number;
+  /** High-severity findings (errors) reported against upstream code. */
+  blockerCount: number;
+  /** Raw finding count as persisted (`error_count` + `warning_count`). */
+  findingCount: number;
   /** Findings that Assurly can auto-fix with a PR. */
   fixableCount: number;
   /** Fixable findings that already have a linked pull request. */
@@ -23,7 +25,8 @@ export function summarizeScanFixes(
   const prUrls = new Set(proposed.map((finding) => finding.fix_pr_url).filter(Boolean));
 
   return {
-    issueCount: errorCount,
+    blockerCount: errorCount,
+    findingCount: findings.length,
     fixableCount: fixable.length,
     proposedCount: proposed.length,
     remainingCount: fixable.length - proposed.length,

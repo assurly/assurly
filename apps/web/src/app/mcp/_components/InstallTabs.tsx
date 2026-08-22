@@ -57,7 +57,7 @@ function InstallPanel({ client }: { client: InstallClientId }): ReactElement {
           </p>
           <CodeBlock code={CURSOR_MCP_JSON} label="Cursor MCP configuration" />
           <p>
-            After saving, restart Cursor (or reload MCP) and confirm the five <code>assurly_*</code>{' '}
+            After saving, restart Cursor (or reload MCP) and confirm the six <code>assurly_*</code>{' '}
             tools appear.
           </p>
         </>
@@ -68,7 +68,7 @@ function InstallPanel({ client }: { client: InstallClientId }): ReactElement {
           <p>From your project directory:</p>
           <CodeBlock code={CLAUDE_MCP_COMMAND} label="Claude Code install command" />
           <p>
-            Restart the session (or reload MCP) and confirm the five <code>assurly_*</code> tools
+            Restart the session (or reload MCP) and confirm the six <code>assurly_*</code> tools
             appear.
           </p>
         </>
@@ -82,7 +82,7 @@ function InstallPanel({ client }: { client: InstallClientId }): ReactElement {
           </p>
           <CodeBlock code={VSCODE_MCP_JSON} label="VS Code MCP configuration" />
           <p>
-            After saving, reload MCP and confirm the five <code>assurly_*</code> tools appear.
+            After saving, reload MCP and confirm the six <code>assurly_*</code> tools appear.
           </p>
         </>
       );
@@ -94,7 +94,7 @@ function InstallPanel({ client }: { client: InstallClientId }): ReactElement {
           </p>
           <CodeBlock code={WINDSURF_MCP_JSON} label="Windsurf MCP configuration" />
           <p>
-            After saving, restart Windsurf (or reload MCP) and confirm the five{' '}
+            After saving, restart Windsurf (or reload MCP) and confirm the six{' '}
             <code>assurly_*</code> tools appear.
           </p>
         </>
@@ -108,7 +108,7 @@ function InstallPanel({ client }: { client: InstallClientId }): ReactElement {
           <CodeBlock code={OTHER_MCP_JSON} label="Generic stdio MCP configuration" />
           <p>
             Run via <code>npx -y @assurly/mcp-server</code> (bin <code>assurly-mcp</code>). Confirm
-            the five <code>assurly_*</code> tools appear after the client reloads MCP.
+            the six <code>assurly_*</code> tools appear after the client reloads MCP.
           </p>
         </>
       );

@@ -15,6 +15,7 @@ import {
   DashboardZapIcon,
 } from './icons/DashboardIcons';
 import type { RepoDetailStatus } from './repoSelection';
+import { excludeTooLargeFailedScans } from '../../../utils/scanHistoryDisplay';
 import { fullGateCliCommand } from './verdictCardsView';
 
 export interface ScanWorkspaceProps {
@@ -26,10 +27,16 @@ export interface ScanWorkspaceProps {
   onJumpToResults: () => void;
   isScanning: boolean;
   onRunScan: () => void;
+  onStopScan: () => void;
   scanError: string | null;
   onDismissScanError: () => void;
   scanProgress: number;
   scanLogs: string[];
+  scanBranch?: string | null;
+  repoBranches?: string[];
+  onScanBranchChange?: (branch: string) => void;
+  alternateScanBranches?: string[];
+  onScanAlternateBranch?: (branch: string) => void;
   repoDetailStatus: RepoDetailStatus;
   displayedScans: Scan[];
   selectedScan: Scan | null;
@@ -86,10 +93,16 @@ export function ScanWorkspace({
   onJumpToResults,
   isScanning,
   onRunScan,
+  onStopScan,
   scanError,
   onDismissScanError,
   scanProgress,
   scanLogs,
+  scanBranch = null,
+  repoBranches = [],
+  onScanBranchChange,
+  alternateScanBranches = [],
+  onScanAlternateBranch,
   repoDetailStatus,
   displayedScans,
   selectedScan,
@@ -116,6 +129,10 @@ export function ScanWorkspace({
   const isCliOnly = selectedRepo?.scan_capability === 'cli_only';
   const cliCommand = fullGateCliCommand(selectedRepo?.name);
   const isTooLargeError = isTooLargeScanError(scanError);
+  const hideEmptyTooLargeGate =
+    (isCliOnly || isTooLargeError) &&
+    (shipGateReport === null || shipGateReport.scannedFileCount === 0);
+  const historyScans = excludeTooLargeFailedScans(displayedScans);
 
   const copyFullGateCommand = async (): Promise<void> => {
     try {
@@ -150,15 +167,21 @@ export function ScanWorkspace({
         scanCount={selectedRepoScanCount}
         canJumpToResults={canJumpToScanResults}
         onJumpToResults={onJumpToResults}
+        scanBranch={scanBranch}
+        repoBranches={repoBranches}
+        onScanBranchChange={onScanBranchChange}
+        branchSelectDisabled={isScanning}
+        repoDetailStatus={repoDetailStatus}
       />
 
       <ShipScoreTrendChart
         repositoryId={selectedRepo.id}
         fetchTrend={fetchTrend}
         initialPoints={initialTrendPoints}
+        refreshKey={displayedScans.map((scan) => scan.id).join('|')}
       />
 
-      <div className="repo-scan-card">
+      <div id="repo-scan-card" className="repo-scan-card">
         <div className="repo-scan-header">
           <div className="dashboard-scan-workspace__repo-info">
             <h3 className="dashboard-repo-heading">
@@ -181,18 +204,32 @@ export function ScanWorkspace({
               {copiedCli ? 'Copied' : 'Copy Full Gate command'}
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={onRunScan}
-              disabled={isScanning}
-              className="dashboard-scan-action-btn dashboard-scan-action-btn--primary"
-              data-cta="primary"
-              aria-label={isScanning ? 'Scanning repository' : 'Run secure scan'}
-              aria-busy={isScanning}
-            >
-              {!isScanning ? <DashboardZapIcon /> : null}
-              {isScanning ? 'Scanning...' : 'Run Secure Scan'}
-            </button>
+            <div className="repo-scan-header__actions">
+              <button
+                type="button"
+                onClick={onRunScan}
+                disabled={isScanning}
+                className="dashboard-scan-action-btn dashboard-scan-action-btn--primary"
+                data-cta="primary"
+                aria-label={isScanning ? 'Scanning repository' : 'Run secure scan'}
+                aria-busy={isScanning}
+              >
+                {!isScanning ? <DashboardZapIcon /> : null}
+                {isScanning ? 'Scanning...' : 'Run Secure Scan'}
+              </button>
+              {isScanning ? (
+                <button
+                  type="button"
+                  className="dashboard-scan-action-btn dashboard-scan-action-btn--secondary"
+                  data-cta="secondary"
+                  data-testid="stop-scan"
+                  aria-label="Stop scan"
+                  onClick={onStopScan}
+                >
+                  Stop scan
+                </button>
+              ) : null}
+            </div>
           )}
         </div>
 
@@ -234,6 +271,21 @@ export function ScanWorkspace({
                   <>
                     <p className="dashboard-scan-error__title">Scan failed</p>
                     <p className="dashboard-scan-error__message">{scanError}</p>
+                    {alternateScanBranches.length > 0 && onScanAlternateBranch ? (
+                      <div className="dashboard-scan-error__alternates">
+                        {alternateScanBranches.slice(0, 3).map((branch) => (
+                          <button
+                            key={branch}
+                            type="button"
+                            className="dashboard-scan-action-btn dashboard-scan-action-btn--primary"
+                            data-testid={`scan-alternate-branch-${branch}`}
+                            onClick={() => onScanAlternateBranch(branch)}
+                          >
+                            Scan {branch} instead
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                     <p className="dashboard-scan-error__hint">
                       Fix the issue above, then run the scan again. This message stays here until
                       you retry or switch repositories.
@@ -280,7 +332,7 @@ export function ScanWorkspace({
 
         {repoDetailStatus === 'loading' ? (
           <ScanDetailsSkeleton />
-        ) : displayedScans.length > 0 ? (
+        ) : historyScans.length > 0 ? (
           <div className="dashboard-scan-workspace__results">
             {deleteScanError ? (
               <p className="scan-history__error" role="alert">
@@ -288,13 +340,16 @@ export function ScanWorkspace({
               </p>
             ) : null}
             <ScanHistoryRail
-              scans={displayedScans}
+              scans={historyScans}
               selectedScanId={selectedScan?.id ?? null}
               onSelectScan={onSelectScan}
               onDeleteScan={onDeleteScan}
             />
 
-            {repoDetailStatus === 'ready' && selectedScan && shipGateReport ? (
+            {repoDetailStatus === 'ready' &&
+            selectedScan &&
+            shipGateReport &&
+            !hideEmptyTooLargeGate ? (
               <ScanDetailsPanel
                 selectedScan={selectedScan}
                 shipGateReport={shipGateReport}

@@ -116,6 +116,8 @@ describe('accessibility and responsive UI contracts', () => {
     expect(tokensCss).toContain('--touch-target: 44px');
     expect(tokensCss).toContain('--color-focus: var(--color-accent)');
     expect(tokensCss).toContain('--focus-ring:');
+    expect(tokensCss).toContain('--color-on-accent:');
+    expect(tokensCss).toContain("html[data-theme='light']");
     expect(globalsCss).toContain('.cookie-notice');
     expect(tokensCss).toContain('--space-4:');
     expect(globalsCss).toContain(':focus-visible');
@@ -154,7 +156,7 @@ describe('accessibility and responsive UI contracts', () => {
   it('unifies /mcp hover fills without collapsing copied, selected, or current states', () => {
     // Accent fill without a dark label is the same failure mode as above:
     // --text-primary on --color-accent measures 1.64:1. Every filled hover /
-    // focus-visible block must flip to --color-canvas in the same declaration.
+    // focus-visible block must flip to --color-on-accent in the same declaration.
     const declarationBlocks = [...globalsCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({
       selectors: match[1].replace(/\/\*[\s\S]*?\*\//g, '').trim(),
       body: match[2],
@@ -169,8 +171,8 @@ describe('accessibility and responsive UI contracts', () => {
     expect(filledBlocks.length).toBeGreaterThan(0);
     for (const { selectors, body } of filledBlocks) {
       expect(
-        /color:\s*var\(--color-canvas\)/.test(body),
-        `Accent fill on \`${selectors}\` is missing color: var(--color-canvas)`,
+        /color:\s*var\(--color-on-accent\)/.test(body),
+        `Accent fill on \`${selectors}\` is missing color: var(--color-on-accent)`,
       ).toBe(true);
       expect(
         /color:\s*var\(--text-primary\)/.test(body),
@@ -202,10 +204,24 @@ describe('accessibility and responsive UI contracts', () => {
     );
     expect(globalsCss).toMatch(/\.mcp-install-tab:hover:not\(\.mcp-install-tab--active\)/);
 
-    // /mcp reuses the landing primary nav — text links, hamburger ≤768px, no chip fills.
+    // /mcp reuses the landing primary nav — text links, hamburger ≤1100px, no chip fills.
     expect(globalsCss).toMatch(/\.hamburger-btn\s*\{/);
+    expect(globalsCss).toMatch(/\.site-header \.hamburger-btn\s*\{/);
+    expect(globalsCss).toMatch(/@media \(max-width: 1100px\)/);
+    // Dashboard hamburger overlay matches landing (≤1100px), not the old 768px card stretch.
+    expect(globalsCss).toMatch(/DASHBOARD_NAV_OVERLAY_MQ/);
+    expect(globalsCss).toMatch(/body\.dashboard-menu-open \.profile-dropdown-toolbar/);
+    expect(globalsCss).toMatch(
+      /\.site-header nav a[\s\S]{0,180}overflow-wrap:\s*normal[\s\S]{0,40}white-space:\s*nowrap/,
+    );
     expect(globalsCss).toMatch(/#primary-navigation a\s*\{[^}]*min-width:\s*var\(--touch-target\)/);
     expect(globalsCss).toMatch(/header nav a\s*\{[^}]*min-height:\s*var\(--touch-target\)/);
+    expect(globalsCss).toMatch(
+      /\.site-header nav a:not\(\.btn\)\s*\{[^}]*color:\s*var\(--text-secondary\)/,
+    );
+    expect(globalsCss).toMatch(
+      /\.site-header nav \.btn-primary(?:,\s*\.site-header nav \.btn-primary:hover)?[\s\S]{0,120}color:\s*var\(--color-on-accent\)/,
+    );
     const primaryNavHoverFill = declarationBlocks.some(
       ({ selectors, body }) =>
         (selectors.includes('#primary-navigation') || selectors.includes('header nav a')) &&
@@ -235,6 +251,90 @@ describe('accessibility and responsive UI contracts', () => {
         ),
       );
     }
+  });
+
+  it('lets the document scroll and keeps dashboard content in an inner max-width', () => {
+    const pageRule = globalsCss.match(/^\.dashboard-page\s*\{([^}]+)\}/m);
+    expect(pageRule?.[1] ?? '').toMatch(/min-height:\s*100dvh/);
+    expect(pageRule?.[1] ?? '').toMatch(/overflow:\s*visible/);
+    expect(pageRule?.[1] ?? '').not.toMatch(/overflow:\s*hidden/);
+
+    const mainRule = globalsCss.match(/^\.dashboard-main\s*\{([^}]+)\}/m);
+    expect(mainRule?.[1] ?? '').not.toMatch(/overflow-y:\s*auto/);
+    expect(mainRule?.[1] ?? '').toMatch(/max-width:\s*none/);
+
+    const innerRule = globalsCss.match(/^\.dashboard-main__inner\s*\{([^}]+)\}/m);
+    expect(innerRule?.[1] ?? '').toMatch(/max-width:\s*1200px/);
+
+    const listRule = globalsCss.match(/^\.verdict-card-list\s*\{([^}]+)\}/m);
+    expect(listRule?.[1] ?? '').not.toMatch(/max-height:/);
+    expect(listRule?.[1] ?? '').not.toMatch(/overflow-y:\s*auto/);
+  });
+
+  it('clears the sticky legal header when jumping to /privacy#cookies', () => {
+    expect(globalsCss).toMatch(/html:has\(\.legal-container\)\s*\{[^}]*--legal-sticky-offset:/);
+    expect(globalsCss).toMatch(
+      /\.legal-section\[id\]\s*\{[^}]*scroll-margin-top:\s*calc\(var\(--legal-sticky-offset/,
+    );
+    expect(globalsCss).not.toMatch(/html:has\(\.legal-container\)\s*\{[^}]*scroll-padding-top:/);
+  });
+
+  it('keeps Apps/Settings clickable under the sticky dashboard header', () => {
+    const tabsRule = globalsCss.match(/^\.dashboard-tabs\s*\{([^}]+)\}/m);
+    expect(tabsRule?.[1] ?? '').toMatch(/position:\s*sticky/);
+    expect(tabsRule?.[1] ?? '').toMatch(/z-index:\s*25/);
+    expect(tabsRule?.[1] ?? '').toMatch(/pointer-events:\s*none/);
+    expect(globalsCss).toMatch(/^\.dashboard-tab\s*\{[^}]*pointer-events:\s*auto/m);
+    const headerRule = globalsCss.match(/^\.dashboard-header\s*\{([^}]+)\}/m);
+    expect(headerRule?.[1] ?? '').toMatch(/pointer-events:\s*none/);
+    expect(globalsCss).toMatch(/^\.dashboard-header > \*\s*\{[^}]*pointer-events:\s*auto/m);
+    const scanHeaderRule = globalsCss.match(/^\.repo-scan-header\s*\{([^}]+)\}/m);
+    expect(scanHeaderRule?.[1] ?? '').toMatch(/position:\s*sticky/);
+    expect(scanHeaderRule?.[1] ?? '').toMatch(/top:\s*var\(--dashboard-sticky-offset/);
+    expect(globalsCss).toMatch(
+      /html:has\(\.dashboard-page\)\s*\{[^}]*scroll-padding-top:\s*calc\(var\(--dashboard-sticky-offset/,
+    );
+    expect(globalsCss).not.toMatch(
+      /@media \(max-width: 992px\)[\s\S]*?\.selected-repo-header\s*\{[^}]*position:\s*sticky/,
+    );
+  });
+
+  it('keeps warning Ship Gate bullets inline with the label', () => {
+    expect(globalsCss).toMatch(/\.ship-gate-list--warnings \.ship-gate-list-label::before\s*\{/);
+    expect(globalsCss).not.toMatch(/\.ship-gate-list--warnings \.ship-gate-list-item::before/);
+  });
+
+  it('uses the shared button radius for dashboard repo and jump controls', () => {
+    const switcherRule = globalsCss.match(/^\.dashboard-app-switcher__item\s*\{([^}]+)\}/m);
+    const jumpRule = globalsCss.match(/^\.selected-repo-header__jump\s*\{([^}]+)\}/m);
+    const branchRule = globalsCss.match(/^\.selected-repo-header__branch select\s*\{([^}]+)\}/m);
+
+    expect(switcherRule?.[1] ?? '').toMatch(/border-radius:\s*var\(--border-radius\)/);
+    expect(switcherRule?.[1] ?? '').not.toMatch(/999px|--radius-pill/);
+    expect(jumpRule?.[1] ?? '').toMatch(/border-radius:\s*var\(--border-radius\)/);
+    expect(jumpRule?.[1] ?? '').not.toMatch(/999px|--radius-pill/);
+    expect(branchRule?.[1] ?? '').toMatch(/border-radius:\s*var\(--border-radius\)/);
+    expect(branchRule?.[1] ?? '').toMatch(/cursor:\s*pointer/);
+    expect(branchRule?.[1] ?? '').not.toMatch(/999px|--radius-pill/);
+  });
+
+  it('makes findings details look like an expandable control', () => {
+    expect(globalsCss).not.toMatch(/\.scan-findings-details__summary::before/);
+    const actionRule = globalsCss.match(/^\.scan-findings-details__action\s*\{([^}]+)\}/m);
+    expect(actionRule?.[1] ?? '').toMatch(/border:\s*1px solid/);
+    expect(actionRule?.[1] ?? '').toMatch(/border-radius:\s*var\(--border-radius\)/);
+    expect(globalsCss).toContain('.scan-findings-details__action-show');
+    expect(globalsCss).toContain('.scan-findings-details__chevron');
+  });
+
+  it('does not mask scan-history rail chips', () => {
+    // A mask on the scroll container fades the chips' own borders and radii,
+    // which reads as broken edges. Overflow hinting belongs on the viewport overlay.
+    const railRule = globalsCss.match(/^\.scan-history-rail\s*\{([^}]+)\}/m);
+    expect(railRule?.[1] ?? '').not.toMatch(/mask-image/);
+    expect(globalsCss).toContain('.scan-history-rail-viewport');
+    expect(globalsCss).toContain("data-overflow-start='true'");
+    expect(globalsCss).toContain("data-overflow-end='true'");
   });
 
   it('states the server transit boundary consistently on both legal pages', () => {

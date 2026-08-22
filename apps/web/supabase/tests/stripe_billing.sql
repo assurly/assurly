@@ -16,6 +16,18 @@ begin
       'service_role',
       'public.process_stripe_billing_event(text,text,uuid,text,text,text,text)',
       'EXECUTE'
+    ) or has_function_privilege(
+      'anon',
+      'public.claim_trial_card_fingerprint(text,text,uuid,text)',
+      'EXECUTE'
+    ) or has_function_privilege(
+      'authenticated',
+      'public.claim_trial_card_fingerprint(text,text,uuid,text)',
+      'EXECUTE'
+    ) or not has_function_privilege(
+      'service_role',
+      'public.claim_trial_card_fingerprint(text,text,uuid,text)',
+      'EXECUTE'
     ) then
     raise exception 'Stripe billing RPC privileges are not least privilege';
   end if;
@@ -26,12 +38,29 @@ insert into public.organizations (id, name) values
   ('30000000-0000-0000-0000-000000000003', 'Stripe tenant A'),
   ('40000000-0000-0000-0000-000000000004', 'Stripe tenant B');
 
+insert into public.api_keys (organization_id, label, key_prefix, key_hash, plan) values
+  (
+    '30000000-0000-0000-0000-000000000003',
+    'promoted',
+    'ask_live_ab12cd',
+    repeat('a', 64),
+    'free'
+  ),
+  (
+    '30000000-0000-0000-0000-000000000003',
+    'oem-keep',
+    'ask_live_oemkey',
+    repeat('b', 64),
+    'oem'
+  );
+
 set local role service_role;
 
 do $$
 declare
   applied boolean;
   blocked boolean;
+  claimed boolean;
 begin
   select public.process_stripe_billing_event(
     'evt_sql_1',
@@ -48,7 +77,8 @@ begin
     where id = '30000000-0000-0000-0000-000000000003'
       and billing_plan = 'pro'
       and stripe_customer_id = 'cus_tenant_a'
-  ) then
+  ) or (select plan from public.api_keys where key_prefix = 'ask_live_ab12cd') <> 'pro'
+    or (select plan from public.api_keys where key_prefix = 'ask_live_oemkey') <> 'oem' then
     raise exception 'valid Stripe event was not applied atomically';
   end if;
 
@@ -106,6 +136,36 @@ begin
   end;
   if not blocked then
     raise exception 'unknown organization Stripe event was accepted';
+  end if;
+
+  select public.claim_trial_card_fingerprint(
+    repeat('c', 64),
+    'cus_tenant_a',
+    '30000000-0000-0000-0000-000000000003',
+    'sub_tenant_a'
+  ) into claimed;
+  if not claimed then
+    raise exception 'first fingerprint claim should win';
+  end if;
+
+  select public.claim_trial_card_fingerprint(
+    repeat('c', 64),
+    'cus_tenant_a',
+    '30000000-0000-0000-0000-000000000003',
+    'sub_tenant_a'
+  ) into claimed;
+  if not claimed then
+    raise exception 'same-subscription fingerprint retry should keep the trial';
+  end if;
+
+  select public.claim_trial_card_fingerprint(
+    repeat('c', 64),
+    'cus_tenant_b',
+    '40000000-0000-0000-0000-000000000004',
+    'sub_tenant_b'
+  ) into claimed;
+  if claimed then
+    raise exception 'reused fingerprint was allowed a second trial';
   end if;
 
   if (select count(*) from private.stripe_webhook_events) <> 1 then

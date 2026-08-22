@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
 import { ShipGatePanel } from '../../_components/ship-gate/ShipGatePanel';
+import { ThemeToggle } from '../../_components/ThemeToggle';
 import { buildShipGateFromScanFindings } from '../../../utils/shipGate';
 import { getAdminDbAdapter } from '../../../utils/dbAdapter';
 import { toPublicTrustProjection } from '../../../utils/publicTrust';
@@ -60,6 +61,9 @@ export default async function ReportPage({ params }: ReportPageProps): Promise<R
     return (
       <main className="report-page trust-page">
         <div className="report-page-inner">
+          <div className="report-page-toolbar">
+            <ThemeToggle />
+          </div>
           <header className="report-page-header">
             <p className="report-page-eyebrow">Verified by Assurly</p>
             <h1>{trust.displayName}</h1>
@@ -130,6 +134,9 @@ export default async function ReportPage({ params }: ReportPageProps): Promise<R
   return (
     <main className="report-page">
       <div className="report-page-inner">
+        <div className="report-page-toolbar">
+          <ThemeToggle />
+        </div>
         <header className="report-page-header">
           <p className="report-page-eyebrow">Assurly Ship Gate Report</p>
           <h1>{repositoryName ?? 'Repository scan'}</h1>

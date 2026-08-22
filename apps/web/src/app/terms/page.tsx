@@ -7,7 +7,9 @@ import Link from 'next/link';
 import { AssurlyMark } from '../_components/AssurlyMark';
 import { AssurlyWordmark } from '../_components/AssurlyWordmark';
 import { SiteFooter } from '../_components/SiteFooter';
+import { ThemeToggle } from '../_components/ThemeToggle';
 import { CONTACT_SUBJECT_PARAM } from '../../utils/contactSubjects';
+import { PRO_TRIAL_PERIOD_DAYS } from '../../utils/pricing';
 
 /**
  * Deep link to the contact form with the Terms subject preselected. The query
@@ -51,15 +53,18 @@ export default function TermsPage() {
         <Link href="/" className="back-link">
           ← Back to Home
         </Link>
-        <div className="logo" role="img" aria-label="Assurly">
-          <AssurlyMark className="site-logo-mark" />
-          <AssurlyWordmark accentClassName="site-logo-accent" />
+        <div className="legal-header-end">
+          <ThemeToggle />
+          <div className="logo" role="img" aria-label="Assurly">
+            <AssurlyMark className="site-logo-mark" />
+            <AssurlyWordmark accentClassName="site-logo-accent" />
+          </div>
         </div>
       </header>
 
       <main className="legal-content">
         <h1>Terms of Service</h1>
-        <p className="last-updated">Last updated: July 24, 2026</p>
+        <p className="last-updated">Last updated: August 17, 2026</p>
 
         <section className="legal-section">
           <h2>1. These Terms and who you are contracting with</h2>
@@ -241,9 +246,9 @@ export default function TermsPage() {
                   <td>Pro</td>
                   <td>€17 / month or €130 / year</td>
                   <td>
-                    Unlimited guarded apps, continuous Guardian on every deploy, AI deep review,
-                    verified badge and trust page, auto-fix pull requests, private repository
-                    scanning
+                    Includes a {PRO_TRIAL_PERIOD_DAYS}-day free trial. Unlimited guarded apps,
+                    continuous Guardian on every deploy, AI deep review, verified badge and trust
+                    page, auto-fix pull requests, private repository scanning
                   </td>
                 </tr>
                 <tr>
@@ -280,11 +285,12 @@ export default function TermsPage() {
 
           <h3>6.2 Free trial</h3>
           <p>
-            Pro includes a <strong>7-day free trial</strong>. You provide a payment method at
-            checkout, but no payment is taken during the trial. Unless you cancel before the trial
-            ends, the subscription <strong>converts automatically</strong> into a paid subscription
-            and we charge the plan price to your payment method. One trial per customer. We may
-            withdraw or shorten a trial where it is being abused.
+            Pro includes a <strong>{PRO_TRIAL_PERIOD_DAYS}-day free trial</strong>. You provide a
+            payment method at checkout, but no payment is taken during the trial. Unless you cancel
+            before the trial ends, the subscription <strong>converts automatically</strong> into a
+            paid subscription and we charge the plan price to your payment method. One trial per
+            customer and payment method. We may withdraw or shorten a trial where it is being
+            abused.
           </p>
 
           <h3>6.3 Automatic renewal</h3>
@@ -316,6 +322,8 @@ export default function TermsPage() {
           <p>
             You can cancel at any time from <strong>Manage billing</strong> in the dashboard, which
             opens the Stripe billing portal. No reason is required and no cancellation fee applies.
+            If you cancel during the free trial, no payment is taken and the workspace returns to
+            the Free plan immediately.
           </p>
           <p>
             Cancelling stops future renewals. Your Pro access continues until the end of the period
@@ -380,8 +388,9 @@ export default function TermsPage() {
           </p>
           <p>
             We do <strong>not</strong> apply a proportionate deduction for the period during which
-            the Service was already supplied to you. If you withdraw during the free trial, no
-            payment has been taken, so no refund arises — access simply ends.
+            the Service was already supplied to you. If you withdraw during the{' '}
+            {PRO_TRIAL_PERIOD_DAYS}-day free trial, no payment has been taken, so no refund arises —
+            access simply ends.
           </p>
           <p>
             After withdrawal you must stop using the paid features, and we may restrict your

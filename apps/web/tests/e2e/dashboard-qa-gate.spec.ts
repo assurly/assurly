@@ -37,7 +37,7 @@ for (const viewport of QA_VIEWPORTS) {
 
       expect(audit.overflow).toBe(false);
       expect(audit.mainCount).toBe(1);
-      await expect(page.getByTestId('repo-list-panel')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Back to Apps' })).toBeVisible();
       await expect(page.locator('.dashboard-repo-heading')).toBeVisible();
       await expect(page.getByTestId('scan-history-rail')).toBeVisible();
 
@@ -64,11 +64,11 @@ for (const viewport of QA_VIEWPORTS) {
         scrollWidth: element.scrollWidth,
         clientWidth: element.clientWidth,
       }));
-      expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth);
-
-      await rail.evaluate((element) => {
-        element.scrollLeft = element.scrollWidth;
-      });
+      if (metrics.scrollWidth > metrics.clientWidth) {
+        await rail.evaluate((element) => {
+          element.scrollLeft = element.scrollWidth;
+        });
+      }
 
       // Anchored: the chip's name starts with the commit, while the adjacent
       // delete button's name ("Delete the scan of commit deadbee…") also

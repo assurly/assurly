@@ -34,6 +34,12 @@ export function canRescanVerdictCard(card: TargetCard): boolean {
   return _exhaustive;
 }
 
+export function shouldOfferRescan(card: TargetCard): boolean {
+  return (
+    canRescanVerdictCard(card) && (isScanStale(card.lastCheckedAt) || Boolean(card.lastScanFailed))
+  );
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function isUuidTargetId(id: string): boolean {
@@ -41,6 +47,6 @@ export function isUuidTargetId(id: string): boolean {
 }
 
 /** Button copy: first check vs refresh of a stale verdict. */
-export function rescanActionLabel(lastCheckedAt: string | null): string {
-  return lastCheckedAt ? 'Rescan' : 'Scan now';
+export function rescanActionLabel(lastCheckedAt: string | null, lastScanFailed = false): string {
+  return lastCheckedAt && !lastScanFailed ? 'Rescan' : 'Scan now';
 }
