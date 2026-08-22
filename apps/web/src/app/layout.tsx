@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { CookieNotice } from './_components/CookieNotice';
 import { ThemeProvider } from './_components/ThemeProvider';
+import { getApplicationUrl } from '../utils/env';
 import { THEME_BOOTSTRAP_SCRIPT, THEME_COLOR_HEX } from '../utils/theme';
 import './design-tokens.css';
 import './globals.css';
@@ -21,6 +22,10 @@ const SITE_DESCRIPTION =
   'Scan your deployed URL in 60 seconds, get a Ship Score, fix blockers with one click, and monitor every deploy — before you ship to Vercel, Supabase, and Stripe.';
 
 export const metadata: Metadata = {
+  // Resolves the relative `canonical` and `openGraph.url` of this layout and of
+  // every page that overrides them. Without it Next emits them verbatim, and a
+  // relative og:url breaks link previews on crawlers that never resolve it.
+  metadataBase: new URL(getApplicationUrl()),
   title: SITE_TITLE,
   description: SITE_DESCRIPTION,
   // Icons. `app/favicon.ico` is auto-linked by the file convention; these add the
