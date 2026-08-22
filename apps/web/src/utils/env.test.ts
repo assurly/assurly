@@ -6,6 +6,7 @@ import {
   ConfigurationError,
   getApplicationUrl,
   getLocalDevHostnames,
+  isBillingConfigured,
   resolveApplicationUrl,
 } from './env';
 
@@ -222,13 +223,24 @@ describe('assertProductionStripeConfig – production gate', () => {
     expect(() => assertProductionStripeConfig()).not.toThrow();
   });
 
-  it('throws in production when Stripe variables are missing', () => {
+  it('boots a free-only production deployment that omits Stripe entirely', () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('STRIPE_SECRET_KEY', '');
     vi.stubEnv('STRIPE_WEBHOOK_SECRET', '');
     vi.stubEnv('STRIPE_PRICE_MONTHLY', '');
     vi.stubEnv('STRIPE_PRICE_YEARLY', '');
+    expect(() => assertProductionStripeConfig()).not.toThrow();
+    expect(isBillingConfigured()).toBe(false);
+  });
+
+  it('throws in production on a half-configured Stripe setup', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('STRIPE_SECRET_KEY', `sk_${'live'}_valid_production_key`);
+    vi.stubEnv('STRIPE_WEBHOOK_SECRET', '');
+    vi.stubEnv('STRIPE_PRICE_MONTHLY', '');
+    vi.stubEnv('STRIPE_PRICE_YEARLY', '');
     expect(() => assertProductionStripeConfig()).toThrow(ConfigurationError);
+    expect(isBillingConfigured()).toBe(false);
   });
 
   it('passes in production with a complete configuration', () => {
@@ -238,6 +250,14 @@ describe('assertProductionStripeConfig – production gate', () => {
     vi.stubEnv('STRIPE_PRICE_MONTHLY', 'price_monthly_prod');
     vi.stubEnv('STRIPE_PRICE_YEARLY', 'price_yearly_prod');
     expect(() => assertProductionStripeConfig()).not.toThrow();
+    expect(isBillingConfigured()).toBe(true);
+  });
+
+  it('treats whitespace-only Stripe values as absent', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    for (const key of Object.keys(VALID_STRIPE_ENV)) vi.stubEnv(key, '   ');
+    expect(() => assertProductionStripeConfig()).not.toThrow();
+    expect(isBillingConfigured()).toBe(false);
   });
 });
 

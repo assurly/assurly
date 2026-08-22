@@ -45,3 +45,4 @@ lerna-debug.log*
 /apps/web/.next/
 /apps/web/out/
 .public-mirror/
+.vercel

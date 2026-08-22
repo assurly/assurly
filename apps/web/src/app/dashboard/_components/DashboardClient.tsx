@@ -285,12 +285,15 @@ interface DashboardContentProps {
   loginUrl?: string;
   /** Optional SSR seed for the Ship Score trend chart (E2E hydration coverage). */
   initialTrendPoints?: Array<{ date: string; shipScore: number }>;
+  /** False on deployments without Stripe credentials: every upgrade surface hides. */
+  billingEnabled?: boolean;
 }
 
 function DashboardContent({
   initialSession,
   loginUrl = '/api/auth/login',
   initialTrendPoints,
+  billingEnabled = true,
 }: DashboardContentProps): React.ReactElement {
   const searchParams = useSearchParams();
 
@@ -2482,6 +2485,7 @@ function DashboardContent({
         user={user}
         org={org}
         currencySymbol={currencySymbol}
+        billingEnabled={billingEnabled}
         isProfileOpen={isProfileOpen}
         billingAction={billingAction}
         profileRef={profileRef}
@@ -2519,6 +2523,7 @@ export default function DashboardClient({
   initialSession,
   loginUrl,
   initialTrendPoints,
+  billingEnabled,
 }: DashboardContentProps): React.ReactElement {
   return (
     <Suspense fallback={<div className="dashboard-page__loading">Loading Dashboard...</div>}>
@@ -2526,6 +2531,7 @@ export default function DashboardClient({
         initialSession={initialSession}
         loginUrl={loginUrl}
         initialTrendPoints={initialTrendPoints}
+        billingEnabled={billingEnabled}
       />
     </Suspense>
   );

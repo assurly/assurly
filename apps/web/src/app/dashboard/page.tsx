@@ -4,7 +4,7 @@ import DashboardClient from './_components/DashboardClient';
 import type { SessionResult } from '../../utils/clientApi';
 import { AuthenticationError, requireUser } from '../../utils/auth';
 import { getAdminDbAdapter } from '../../utils/dbAdapter';
-import { resolveApplicationUrlFromHost } from '../../utils/env';
+import { isBillingConfigured, resolveApplicationUrlFromHost } from '../../utils/env';
 import { getStripeClient } from '../../utils/stripe';
 import { reconcileOrganizationBilling } from '../../utils/stripeReconcile';
 import { getE2eDashboardSession, resolveE2eTrendPoints } from '../../testing/e2eDashboardFixture';
@@ -85,6 +85,7 @@ export default async function DashboardPage({
       initialSession={initialSession}
       loginUrl={new URL('/api/auth/login', appUrl).toString()}
       initialTrendPoints={initialTrendPoints}
+      billingEnabled={isBillingConfigured()}
     />
   );
 }

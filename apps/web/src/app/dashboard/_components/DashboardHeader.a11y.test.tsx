@@ -29,6 +29,7 @@ describe('DashboardHeader brand a11y', () => {
         user={user}
         org={org}
         currencySymbol="$"
+        billingEnabled
         isProfileOpen={false}
         billingAction={null}
         profileRef={createRef<HTMLDivElement>()}
@@ -52,6 +53,7 @@ describe('DashboardHeader brand a11y', () => {
         user={user}
         org={org}
         currencySymbol="$"
+        billingEnabled
         isProfileOpen={false}
         billingAction={null}
         profileRef={createRef<HTMLDivElement>()}
@@ -75,6 +77,7 @@ describe('DashboardHeader brand a11y', () => {
         user={user}
         org={org}
         currencySymbol="$"
+        billingEnabled
         isProfileOpen
         billingAction={null}
         profileRef={createRef<HTMLDivElement>()}
@@ -91,12 +94,42 @@ describe('DashboardHeader brand a11y', () => {
     expect(menu.contains(badges[0]!)).toBe(true);
   });
 
+  it('hides every billing control when the deployment has no Stripe credentials', () => {
+    for (const plan of ['pro', 'free'] as const) {
+      render(
+        <DashboardHeader
+          user={user}
+          org={{ ...org, billing_plan: plan }}
+          currencySymbol="$"
+          billingEnabled={false}
+          isProfileOpen
+          billingAction={null}
+          profileRef={createRef<HTMLDivElement>()}
+          profileMenuRef={createRef<HTMLDivElement>()}
+          onToggleProfile={vi.fn()}
+          onManageBilling={vi.fn()}
+          onCheckout={vi.fn()}
+        />,
+      );
+
+      const menu = screen.getByRole('dialog', { name: 'Account menu' });
+      expect(within(menu).queryByRole('button', { name: /Manage Billing/i })).toBeNull();
+      expect(within(menu).queryByRole('button', { name: /trial|upgrade|month|year/i })).toBeNull();
+      expect(menu.querySelector('.profile-dropdown-body')).toBeNull();
+      // The plan badge and sign-out stay: only the paid upgrade path disappears.
+      expect(within(menu).getByText(plan === 'pro' ? 'Pro Plan' : 'Free Plan')).toBeTruthy();
+      expect(within(menu).getByRole('button', { name: 'Logout' })).toBeTruthy();
+      cleanup();
+    }
+  });
+
   it('uses the icon Appearance pill in the overlay, not sheet labels', () => {
     render(
       <DashboardHeader
         user={user}
         org={org}
         currencySymbol="$"
+        billingEnabled
         isProfileOpen
         billingAction={null}
         profileRef={createRef<HTMLDivElement>()}

@@ -16,6 +16,8 @@ export interface DashboardHeaderProps {
   user: User;
   org: Organization | null;
   currencySymbol: string;
+  /** False on deployments without Stripe credentials: every upgrade surface hides. */
+  billingEnabled: boolean;
   isProfileOpen: boolean;
   billingAction: 'checkout' | 'portal' | null;
   profileRef: RefObject<HTMLDivElement | null>;
@@ -29,6 +31,7 @@ export function DashboardHeader({
   user,
   org,
   currencySymbol,
+  billingEnabled,
   isProfileOpen,
   billingAction,
   profileRef,
@@ -111,48 +114,52 @@ export function DashboardHeader({
 
             <div className="profile-dropdown-divider" />
 
-            <div className="profile-dropdown-body">
-              {org?.billing_plan === 'pro' ? (
-                <button
-                  type="button"
-                  disabled={billingAction !== null}
-                  aria-busy={billingAction === 'portal'}
-                  onClick={onManageBilling}
-                  className="profile-dropdown-item"
-                >
-                  <span className="profile-dropdown-item__label">
-                    <DashboardSettingsIcon />
-                    {billingAction === 'portal' ? 'Opening billing…' : 'Manage Billing'}
-                  </span>
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    disabled={billingAction !== null}
-                    aria-busy={billingAction === 'checkout'}
-                    onClick={() => onCheckout('monthly')}
-                    className="profile-dropdown-item upgrade"
-                  >
-                    <span className="profile-dropdown-item__label">
-                      <DashboardRocketIcon />
-                      {proTrialCheckoutCta(currencySymbol, 'monthly')}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={billingAction !== null}
-                    aria-busy={billingAction === 'checkout'}
-                    onClick={() => onCheckout('yearly')}
-                    className="profile-dropdown-item"
-                  >
-                    <span>{proTrialCheckoutCta(currencySymbol, 'yearly')} · Save ~35%</span>
-                  </button>
-                </>
-              )}
-            </div>
+            {billingEnabled ? (
+              <>
+                <div className="profile-dropdown-body">
+                  {org?.billing_plan === 'pro' ? (
+                    <button
+                      type="button"
+                      disabled={billingAction !== null}
+                      aria-busy={billingAction === 'portal'}
+                      onClick={onManageBilling}
+                      className="profile-dropdown-item"
+                    >
+                      <span className="profile-dropdown-item__label">
+                        <DashboardSettingsIcon />
+                        {billingAction === 'portal' ? 'Opening billing…' : 'Manage Billing'}
+                      </span>
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        disabled={billingAction !== null}
+                        aria-busy={billingAction === 'checkout'}
+                        onClick={() => onCheckout('monthly')}
+                        className="profile-dropdown-item upgrade"
+                      >
+                        <span className="profile-dropdown-item__label">
+                          <DashboardRocketIcon />
+                          {proTrialCheckoutCta(currencySymbol, 'monthly')}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={billingAction !== null}
+                        aria-busy={billingAction === 'checkout'}
+                        onClick={() => onCheckout('yearly')}
+                        className="profile-dropdown-item"
+                      >
+                        <span>{proTrialCheckoutCta(currencySymbol, 'yearly')} · Save ~35%</span>
+                      </button>
+                    </>
+                  )}
+                </div>
 
-            <div className="profile-dropdown-divider" />
+                <div className="profile-dropdown-divider" />
+              </>
+            ) : null}
 
             <div className="profile-dropdown-footer">
               <form action="/api/auth/logout" method="post">

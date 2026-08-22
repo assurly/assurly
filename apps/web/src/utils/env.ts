@@ -81,13 +81,27 @@ export function assertStripeConfig(): void {
 }
 
 /**
+ * Whether paid plans are available on this deployment. Billing is optional: an
+ * instance deployed without Stripe credentials runs as a free-only Ship Gate,
+ * and every upgrade surface hides itself instead of failing at checkout.
+ */
+export function isBillingConfigured(): boolean {
+  return REQUIRED_STRIPE_ENV.every((name) => Boolean(process.env[name]?.trim()));
+}
+
+/**
  * Startup gate for Stripe. Mirrors assertProductionSupabaseConfig: billing
  * credentials are only mandatory in production. In development and test the
  * server must boot with the unfilled placeholders from .env.example, so
  * Stripe validation is deferred to the billing endpoints that actually need it.
+ *
+ * Omitting Stripe entirely is a supported free-only deployment. A partial
+ * configuration is always a mistake, so it still fails the boot.
  */
 export function assertProductionStripeConfig(): void {
   if (process.env.NODE_ENV !== 'production') return;
+  const present = REQUIRED_STRIPE_ENV.filter((name) => process.env[name]?.trim());
+  if (present.length === 0) return;
   assertStripeConfig();
 }
 
