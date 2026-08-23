@@ -177,7 +177,7 @@ test.describe('Landing page', () => {
 
     await expect(async () => {
       const gap = await page.evaluate(() => {
-        const header = document.querySelector('.legal-header');
+        const header = document.querySelector('.site-header');
         const h2 = document.querySelector('#cookies h2');
         if (!header || !h2) return null;
         return h2.getBoundingClientRect().top - header.getBoundingClientRect().bottom;

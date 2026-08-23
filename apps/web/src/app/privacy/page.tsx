@@ -1,17 +1,16 @@
 import type { Metadata } from 'next';
-import { StructuredData } from '../_components/StructuredData';
-import { subPageGraph } from '../../utils/structuredData';
-import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
-import React from 'react';
+import React, { type ReactElement } from 'react';
 import Link from 'next/link';
-import { AssurlyMark } from '../_components/AssurlyMark';
-import { AssurlyWordmark } from '../_components/AssurlyWordmark';
 import { CookieInventoryTable } from '../_components/CookieInventoryTable';
 import { SiteFooter } from '../_components/SiteFooter';
-import { ThemeToggle } from '../_components/ThemeToggle';
+import { SiteNavHeader } from '../_components/home/SiteNavHeader';
+import { StructuredData } from '../_components/StructuredData';
 import { COOKIE_NAME } from '../../utils/auth';
 import { CONTACT_SUBJECT_PARAM } from '../../utils/contactSubjects';
 import { PRO_TRIAL_PERIOD_DAYS } from '../../utils/pricing';
+import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
+import { resolveSiteNavAuth } from '../../utils/siteNavAuth';
+import { subPageGraph } from '../../utils/structuredData';
 
 /**
  * Deep link to the contact form with the privacy subject preselected. The query
@@ -47,22 +46,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function PrivacyPage() {
+export default async function PrivacyPage(): Promise<ReactElement> {
+  const { authenticated, loginUrl } = await resolveSiteNavAuth();
+
   return (
     <div className="legal-container">
       <StructuredData graph={subPageGraph('/privacy', 'Privacy Policy', PAGE_DESCRIPTION)} />
-      <header className="legal-header">
-        <Link href="/" className="back-link">
-          ← Back to Home
-        </Link>
-        <div className="legal-header-end">
-          <ThemeToggle />
-          <div className="logo" role="img" aria-label="Assurly">
-            <AssurlyMark className="site-logo-mark" />
-            <AssurlyWordmark accentClassName="site-logo-accent" />
-          </div>
-        </div>
-      </header>
+      <SiteNavHeader authenticated={authenticated} loginUrl={loginUrl} />
 
       <main className="legal-content">
         <h1>Privacy Policy</h1>

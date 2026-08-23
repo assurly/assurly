@@ -279,15 +279,25 @@ describe('accessibility and responsive UI contracts', () => {
     expect(globalsCss).not.toMatch(/html:has\(\.legal-container\)\s*\{[^}]*scroll-padding-top:/);
   });
 
-  it('keeps Apps/Settings clickable under the sticky dashboard header', () => {
-    const tabsRule = globalsCss.match(/^\.dashboard-tabs\s*\{([^}]+)\}/m);
-    expect(tabsRule?.[1] ?? '').toMatch(/position:\s*sticky/);
-    expect(tabsRule?.[1] ?? '').toMatch(/z-index:\s*25/);
-    expect(tabsRule?.[1] ?? '').toMatch(/pointer-events:\s*none/);
-    expect(globalsCss).toMatch(/^\.dashboard-tab\s*\{[^}]*pointer-events:\s*auto/m);
+  it('keeps dashboard header and section tabs as one sticky chrome', () => {
+    const chromeRule = globalsCss.match(/^\.dashboard-chrome\s*\{([^}]+)\}/m);
+    expect(chromeRule?.[1] ?? '').toMatch(/position:\s*sticky/);
+    expect(chromeRule?.[1] ?? '').toMatch(/top:\s*0/);
+    expect(chromeRule?.[1] ?? '').toMatch(/z-index:\s*30/);
+    expect(chromeRule?.[1] ?? '').toMatch(/gap:\s*0/);
+
     const headerRule = globalsCss.match(/^\.dashboard-header\s*\{([^}]+)\}/m);
+    expect(headerRule?.[1] ?? '').not.toMatch(/position:\s*sticky/);
     expect(headerRule?.[1] ?? '').toMatch(/pointer-events:\s*none/);
     expect(globalsCss).toMatch(/^\.dashboard-header > \*\s*\{[^}]*pointer-events:\s*auto/m);
+
+    const tabsRule = globalsCss.match(/^\.dashboard-tabs\s*\{([^}]+)\}/m);
+    expect(tabsRule?.[1] ?? '').not.toMatch(/position:\s*sticky/);
+    expect(tabsRule?.[1] ?? '').toMatch(/margin:\s*0/);
+
+    const mainRule = globalsCss.match(/^\.dashboard-main\s*\{([^}]+)\}/m);
+    expect(mainRule?.[1] ?? '').toMatch(/margin:\s*0/);
+
     const scanHeaderRule = globalsCss.match(/^\.repo-scan-header\s*\{([^}]+)\}/m);
     expect(scanHeaderRule?.[1] ?? '').toMatch(/position:\s*sticky/);
     expect(scanHeaderRule?.[1] ?? '').toMatch(/top:\s*var\(--dashboard-sticky-offset/);
@@ -297,6 +307,20 @@ describe('accessibility and responsive UI contracts', () => {
     expect(globalsCss).not.toMatch(
       /@media \(max-width: 992px\)[\s\S]*?\.selected-repo-header\s*\{[^}]*position:\s*sticky/,
     );
+  });
+
+  it('places dashboard tabs in the sticky chrome, not inside main', () => {
+    const clientSrc = readFileSync(
+      new URL('./dashboard/_components/DashboardClient.tsx', import.meta.url),
+      'utf8',
+    );
+    expect(clientSrc).toMatch(/className="dashboard-chrome"/);
+    const chromeBlock = clientSrc.match(
+      /<div className="dashboard-chrome">([\s\S]*?)<\/div>\s*<main/,
+    )?.[1];
+    expect(chromeBlock).toMatch(/<DashboardHeader/);
+    expect(chromeBlock).toMatch(/<DashboardNav/);
+    expect(clientSrc).not.toMatch(/dashboard-main__inner[\s\S]*<DashboardNav/);
   });
 
   it('keeps warning Ship Gate bullets inline with the label', () => {
@@ -337,12 +361,17 @@ describe('accessibility and responsive UI contracts', () => {
     expect(globalsCss).toContain("data-overflow-end='true'");
   });
 
-  it('states the server transit boundary consistently on both legal pages', () => {
-    const privacy = renderToStaticMarkup(<PrivacyPage />);
-    const terms = renderToStaticMarkup(<TermsPage />);
+  it('states the server transit boundary consistently on both legal pages', async () => {
+    process.env.APP_URL = process.env.APP_URL?.trim() || 'http://localhost:3000';
+    const privacy = renderToStaticMarkup(await PrivacyPage());
+    const terms = renderToStaticMarkup(await TermsPage());
     expect(privacy).toContain('passes transiently through Assurly');
     expect(privacy).toContain('do not store complete repository source files');
     expect(privacy).not.toContain('never leave your device');
     expect(terms).toContain('transmit repository content through Assurly');
+    expect(privacy).toContain('hamburger-btn');
+    expect(terms).toContain('hamburger-btn');
+    expect(privacy).not.toContain('legal-header');
+    expect(terms).not.toContain('legal-header');
   });
 });

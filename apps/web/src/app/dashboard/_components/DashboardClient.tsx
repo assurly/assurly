@@ -2481,37 +2481,34 @@ function DashboardContent({
       {showSplash ? <DashboardSplash onDone={() => setShowSplash(false)} /> : null}
       {toast ? <DashboardToast toast={toast} onDismiss={() => setToast(null)} /> : null}
 
-      <DashboardHeader
-        user={user}
-        org={org}
-        currencySymbol={currencySymbol}
-        billingEnabled={billingEnabled}
-        isProfileOpen={isProfileOpen}
-        billingAction={billingAction}
-        profileRef={profileRef}
-        profileMenuRef={profileMenuRef}
-        onToggleProfile={(trigger) => {
-          rememberProfileTrigger(trigger);
-          setIsProfileOpen(!isProfileOpen);
-        }}
-        onManageBilling={() => {
-          setIsProfileOpen(false);
-          void handleManageBilling();
-        }}
-        onCheckout={(plan) => {
-          setIsProfileOpen(false);
-          void handleCheckout(plan);
-        }}
-      />
+      <div className="dashboard-chrome">
+        <DashboardHeader
+          user={user}
+          org={org}
+          currencySymbol={currencySymbol}
+          billingEnabled={billingEnabled}
+          isProfileOpen={isProfileOpen}
+          billingAction={billingAction}
+          profileRef={profileRef}
+          profileMenuRef={profileMenuRef}
+          onToggleProfile={(trigger) => {
+            rememberProfileTrigger(trigger);
+            setIsProfileOpen(!isProfileOpen);
+          }}
+          onManageBilling={() => {
+            setIsProfileOpen(false);
+            void handleManageBilling();
+          }}
+          onCheckout={(plan) => {
+            setIsProfileOpen(false);
+            void handleCheckout(plan);
+          }}
+        />
+        <DashboardNav active={navIdForView(dashboardView)} onNavigate={handleDashboardNavChange} />
+      </div>
 
       <main className="dashboard-main">
-        <div className="dashboard-main__inner">
-          <DashboardNav
-            active={navIdForView(dashboardView)}
-            onNavigate={handleDashboardNavChange}
-          />
-          {renderDashboardView()}
-        </div>
+        <div className="dashboard-main__inner">{renderDashboardView()}</div>
       </main>
 
       <SiteFooter variant="compact" />

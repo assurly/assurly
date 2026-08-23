@@ -37,13 +37,18 @@ export const LANDING_NAV_LINKS: readonly SiteNavLink[] = [
   { href: '#contact', label: 'Contact' },
 ];
 
-export const MCP_NAV_LINKS: readonly SiteNavLink[] = [
+/** Product pages off the landing route — same labels, home-rooted hashes. */
+export const MARKETING_NAV_LINKS: readonly SiteNavLink[] = [
   { href: '/#features', label: 'Features' },
   { href: '/#pricing', label: 'Pricing' },
-  { href: '/mcp', label: 'MCP Server', current: true },
+  { href: '/mcp', label: 'MCP Server' },
   { href: '/#faq', label: 'FAQ' },
   { href: '/#contact', label: 'Contact' },
 ];
+
+export const MCP_NAV_LINKS: readonly SiteNavLink[] = MARKETING_NAV_LINKS.map((link) =>
+  link.href === '/mcp' ? { ...link, current: true } : link,
+);
 
 const HEADER_AUTH_LABELS = {
   signIn: 'Sign In',

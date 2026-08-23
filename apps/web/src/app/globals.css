@@ -1257,12 +1257,6 @@ body.menu-open .site-header,
   flex-shrink: 0;
 }
 
-.legal-header-end {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
 .unauth-brand-row {
   display: flex;
   align-items: center;
@@ -1769,14 +1763,16 @@ body.menu-open .site-header,
   display: flex;
   gap: 4px;
   background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 4px;
-  margin-bottom: 24px;
-  position: sticky;
-  top: var(--dashboard-header-height, 80px);
-  z-index: 25;
-  pointer-events: none;
+  border: none;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+  padding: 6px 24px 8px;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+  position: relative;
+  top: auto;
+  z-index: auto;
 }
 
 .dashboard-tab {
@@ -2672,7 +2668,7 @@ footer {
 
 @media (max-width: 480px) {
   /* Keep .legal-container unpadded so SiteFooter can full-bleed like the landing page.
-     .legal-header / .legal-content already carry their own horizontal padding. */
+     .legal-content already carries its own horizontal padding. */
   .container,
   .dashboard-main__inner {
     padding-inline: var(--space-4);
@@ -3307,22 +3303,6 @@ html[data-theme='light'] .form-group select {
   background-image: url("data:image/svg+xml;utf8,<svg fill='%23181b22' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>");
 }
 
-@media (max-width: 640px) {
-  .legal-header {
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
-  .legal-header-end {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  html:has(.legal-container) {
-    --legal-sticky-offset: 11.5rem;
-  }
-}
-
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus,
@@ -3448,41 +3428,25 @@ html[data-theme='light'] .form-group select {
   margin-top: auto;
 }
 
-.legal-header {
+/* Same sticky chrome as the landing page (`HomeHeader`); stretch past
+   `align-items: center` on `.legal-container`. */
+.legal-container > header {
+  align-self: stretch;
   width: 100%;
-  max-width: 800px;
-  padding: 40px 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid var(--border-color);
 }
 
 /*
- * Global `header` is sticky. `.legal-header` is ~127px tall, but
- * `section[id] { scroll-margin-top: 100px }` is shorter, so hash targets
- * such as `/privacy#cookies` land the section h2 under the bar.
+ * Global `header` is sticky. Site chrome is ~80px tall. Hash targets
+ * such as `/privacy#cookies` must clear that bar.
  * Use only scroll-margin here — pairing it with html scroll-padding-top
  * stacks both offsets and shows the previous section.
  */
 html:has(.legal-container) {
-  --legal-sticky-offset: 8rem;
+  --legal-sticky-offset: 5.75rem;
 }
 
 .legal-section[id] {
-  scroll-margin-top: calc(var(--legal-sticky-offset, 8rem) + 1.25rem);
-}
-
-.legal-header .back-link {
-  font-size: 0.95rem;
-  color: var(--accent-color);
-  font-weight: 500;
-  transition: var(--transition-smooth);
-}
-
-.legal-header .back-link:hover {
-  color: var(--accent-hover);
-  transform: translateX(-2px);
+  scroll-margin-top: calc(var(--legal-sticky-offset, 5.75rem) + 1.25rem);
 }
 
 .legal-content {
@@ -4531,17 +4495,38 @@ body:has(.cookie-notice) {
   padding: 24px;
 }
 
+/* Header + Apps/Checker/Settings are one sticky unit. Independent sticky
+   offsets on each row left a viewport gap that page content scrolled through. */
+.dashboard-chrome {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dashboard-chrome:has(.dashboard-header-menu-open) {
+  z-index: 10050;
+}
+
 .dashboard-header {
   --dashboard-header-height: 80px;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: none;
   padding: 16px 24px;
   background-color: var(--color-surface);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  position: sticky;
-  top: 0;
-  z-index: 30;
+  position: relative;
+  top: auto;
+  z-index: 1;
   pointer-events: none;
 }
 
@@ -4629,7 +4614,7 @@ body:has(.cookie-notice) {
   flex: 1;
   min-height: 0;
   max-width: none;
-  margin: 16px 0 0 0;
+  margin: 0;
   padding: 0;
   overflow-x: clip;
   overflow-y: visible;
@@ -4641,7 +4626,7 @@ body:has(.cookie-notice) {
 .dashboard-main__inner {
   max-width: 1200px;
   margin-inline: auto;
-  padding: 0 24px 40px;
+  padding: 20px 24px 40px;
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -6975,10 +6960,10 @@ button.dashboard-repo-selector-item {
     margin-top: 4px;
   }
   .dashboard-main {
-    margin-top: 24px;
+    margin-top: 0;
   }
   .dashboard-main__inner {
-    padding: 0 16px 40px;
+    padding: 16px 16px 40px;
   }
   .workspace-card {
     padding: 16px;
@@ -7107,7 +7092,7 @@ button.dashboard-repo-selector-item {
     padding: 12px 12px;
   }
   .dashboard-main__inner {
-    padding: 0 10px 40px;
+    padding: 16px 10px 40px;
   }
   .workspace-card {
     padding: 12px;
@@ -7117,7 +7102,7 @@ button.dashboard-repo-selector-item {
     font-size: 1.1rem !important;
   }
   .dashboard-tabs {
-    padding: 3px;
+    padding: 4px 12px 6px;
   }
   .dashboard-tab {
     font-size: 0.82rem;
@@ -9684,6 +9669,10 @@ body.dashboard-menu-open {
     gap: 0 !important;
   }
 
+  .dashboard-tabs {
+    padding: 6px 20px 8px;
+  }
+
   .dashboard-header-right {
     width: auto !important;
     border-top: none !important;
@@ -9709,6 +9698,22 @@ body.dashboard-menu-open {
 
   body.dashboard-menu-open .dashboard-main {
     visibility: hidden;
+  }
+
+  body.dashboard-menu-open .dashboard-chrome {
+    background-color: transparent;
+    border-bottom-color: transparent;
+    pointer-events: none;
+  }
+
+  body.dashboard-menu-open .dashboard-tabs {
+    visibility: hidden;
+    height: 0;
+    overflow: hidden;
+    padding: 0 !important;
+    margin: 0;
+    border: none;
+    pointer-events: none;
   }
 
   body.dashboard-menu-open .dashboard-header,
@@ -10531,7 +10536,7 @@ body {
     padding-left: 1.9rem;
   }
   .dashboard-main {
-    margin-top: 20px;
+    margin-top: 0;
   }
   .dashboard-main__inner {
     padding-inline: 12px;

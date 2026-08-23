@@ -1,15 +1,14 @@
 import type { Metadata } from 'next';
-import { StructuredData } from '../_components/StructuredData';
-import { subPageGraph } from '../../utils/structuredData';
-import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
-import React from 'react';
+import React, { type ReactElement } from 'react';
 import Link from 'next/link';
-import { AssurlyMark } from '../_components/AssurlyMark';
-import { AssurlyWordmark } from '../_components/AssurlyWordmark';
 import { SiteFooter } from '../_components/SiteFooter';
-import { ThemeToggle } from '../_components/ThemeToggle';
+import { SiteNavHeader } from '../_components/home/SiteNavHeader';
+import { StructuredData } from '../_components/StructuredData';
 import { CONTACT_SUBJECT_PARAM } from '../../utils/contactSubjects';
 import { PRO_TRIAL_PERIOD_DAYS } from '../../utils/pricing';
+import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
+import { resolveSiteNavAuth } from '../../utils/siteNavAuth';
+import { subPageGraph } from '../../utils/structuredData';
 
 /**
  * Deep link to the contact form with the Terms subject preselected. The query
@@ -45,22 +44,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function TermsPage() {
+export default async function TermsPage(): Promise<ReactElement> {
+  const { authenticated, loginUrl } = await resolveSiteNavAuth();
+
   return (
     <div className="legal-container">
       <StructuredData graph={subPageGraph('/terms', 'Terms of Service', PAGE_DESCRIPTION)} />
-      <header className="legal-header">
-        <Link href="/" className="back-link">
-          ← Back to Home
-        </Link>
-        <div className="legal-header-end">
-          <ThemeToggle />
-          <div className="logo" role="img" aria-label="Assurly">
-            <AssurlyMark className="site-logo-mark" />
-            <AssurlyWordmark accentClassName="site-logo-accent" />
-          </div>
-        </div>
-      </header>
+      <SiteNavHeader authenticated={authenticated} loginUrl={loginUrl} />
 
       <main className="legal-content">
         <h1>Terms of Service</h1>

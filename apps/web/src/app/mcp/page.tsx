@@ -1,10 +1,8 @@
 import type { Metadata } from 'next';
-import { headers } from 'next/headers';
 import type { ReactElement } from 'react';
 import mcpServerPackage from '../../../../../packages/mcp-server/package.json';
-import { getSessionUser } from '../../utils/auth';
-import { resolveApplicationUrlFromHost } from '../../utils/env';
 import { MCP_TOOL_COUNT } from '../../utils/productFacts';
+import { resolveSiteNavAuth } from '../../utils/siteNavAuth';
 import { PRO_TRIAL_COPY, PRO_TRIAL_PERIOD_DAYS } from '../../utils/pricing';
 import { SITE_OG_IMAGE } from '../../utils/siteMetadata';
 import { subPageGraph } from '../../utils/structuredData';
@@ -86,24 +84,12 @@ const ERR_VERDICT_ARGS = 'Provide exactly one of `url` or `repo`.';
 const MCP_SERVER_VERSION: string = mcpServerPackage.version;
 
 export default async function McpPage(): Promise<ReactElement> {
-  const requestHeaders = await headers();
-  const appUrl = resolveApplicationUrlFromHost(
-    requestHeaders.get('x-forwarded-host') ?? requestHeaders.get('host'),
-    requestHeaders.get('x-forwarded-proto'),
-  );
-  const user = await getSessionUser(
-    new Request('http://assurly.local/', {
-      headers: { cookie: requestHeaders.get('cookie') ?? '' },
-    }),
-  );
+  const { authenticated, loginUrl } = await resolveSiteNavAuth();
 
   return (
     <div className="mcp-container">
       <StructuredData graph={subPageGraph('/mcp', 'MCP Server', PAGE_DESCRIPTION)} />
-      <McpHeader
-        authenticated={user !== null}
-        loginUrl={new URL('/api/auth/login', appUrl).toString()}
-      />
+      <McpHeader authenticated={authenticated} loginUrl={loginUrl} />
 
       <main className="mcp-content">
         <section className="mcp-hero" aria-labelledby="mcp-hero-heading">

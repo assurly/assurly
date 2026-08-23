@@ -23,6 +23,13 @@ export function dashboardChromeOffsetPx(): number {
     return FALLBACK_HEADER_PX + SCROLL_GAP_PX;
   }
 
+  const chrome = document.querySelector('.dashboard-chrome');
+  if (chrome) {
+    const chromeBottom = chrome.getBoundingClientRect().bottom;
+    const selected = document.querySelector('.selected-repo-header');
+    return Math.round(stickyChromeBottom(selected, chromeBottom) + SCROLL_GAP_PX);
+  }
+
   const header = document.querySelector('.dashboard-header');
   const headerRect = header?.getBoundingClientRect();
   const headerBottom = headerRect?.bottom ?? headerRect?.height ?? FALLBACK_HEADER_PX;

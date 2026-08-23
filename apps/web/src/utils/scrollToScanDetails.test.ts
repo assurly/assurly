@@ -74,6 +74,26 @@ describe('scrollToScanDetails', () => {
     expect(document.activeElement).toBe(document.getElementById(REPO_SCAN_CARD_ID));
   });
 
+  it('uses the unified dashboard chrome height for the scroll offset', () => {
+    const chrome = document.createElement('div');
+    chrome.className = 'dashboard-chrome';
+    Object.defineProperty(chrome, 'getBoundingClientRect', {
+      value: () => ({
+        height: 136,
+        top: 0,
+        bottom: 136,
+        width: 800,
+        left: 0,
+        right: 800,
+        x: 0,
+        y: 0,
+      }),
+    });
+    document.body.appendChild(chrome);
+
+    expect(dashboardChromeOffsetPx()).toBe(152);
+  });
+
   it('includes sticky dashboard tabs in the scroll offset', () => {
     mountHeader(80);
     const tabs = document.createElement('div');

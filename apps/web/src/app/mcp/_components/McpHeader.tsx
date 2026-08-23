@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, type ReactElement } from 'react';
-import { HomeHeader, MCP_NAV_LINKS } from '../../_components/home/HomeHeader';
+import type { ReactElement } from 'react';
+import { MCP_NAV_LINKS } from '../../_components/home/HomeHeader';
+import { SiteNavHeader } from '../../_components/home/SiteNavHeader';
 
 interface McpHeaderProps {
   authenticated: boolean;
@@ -9,32 +10,11 @@ interface McpHeaderProps {
 }
 
 /**
- * Same primary-nav contract as the landing header: hamburger drawer ≤1100px,
- * focus trap / Escape / outside-close via `useAccessibleMenu`, and body
- * `menu-open` scroll lock. Product-page links use `/#…` anchors back home.
+ * Landing nav chrome with MCP Server marked current. Drawer behaviour lives
+ * in `SiteNavHeader` (hamburger ≤1100px, `/#…` product links).
  */
 export function McpHeader({ authenticated, loginUrl }: McpHeaderProps): ReactElement {
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  useEffect(() => {
-    if (menuOpen) {
-      document.body.classList.add('menu-open');
-    } else {
-      document.body.classList.remove('menu-open');
-    }
-    return () => {
-      document.body.classList.remove('menu-open');
-    };
-  }, [menuOpen]);
-
   return (
-    <HomeHeader
-      authenticated={authenticated}
-      loginUrl={loginUrl}
-      menuOpen={menuOpen}
-      onMenuChange={setMenuOpen}
-      navLinks={MCP_NAV_LINKS}
-      logoHref="/"
-    />
+    <SiteNavHeader authenticated={authenticated} loginUrl={loginUrl} navLinks={MCP_NAV_LINKS} />
   );
 }
