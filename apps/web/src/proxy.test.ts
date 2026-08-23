@@ -89,7 +89,10 @@ describe('Proxy Middleware', () => {
     );
     expect(policy).toContain(`'${THEME_BOOTSTRAP_CSP_HASH}'`);
     expect(policy).not.toContain("script-src 'self' 'unsafe-inline'");
+    expect(policy).toContain("frame-src 'self'");
     expect(policy).toContain("frame-ancestors 'none'");
+    expect(policy).not.toContain('vercel.live');
+    expect(response.headers.get('x-vercel-skip-toolbar')).toBe('1');
   });
 
   it('uses a unique nonce on every request', async () => {

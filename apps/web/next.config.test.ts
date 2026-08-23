@@ -13,6 +13,7 @@ describe('Next.js production configuration', () => {
     const headers = new Map(rules?.[0]?.headers.map(({ key, value }) => [key, value]));
     expect(headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(headers.get('X-Frame-Options')).toBe('DENY');
+    expect(headers.get('x-vercel-skip-toolbar')).toBe('1');
     expect(headers.get('Permissions-Policy')).toContain('camera=()');
   });
 });

@@ -158,6 +158,7 @@ function contentSecurityPolicy(nonce: string): string {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
+    "frame-src 'self'",
     "frame-ancestors 'none'",
   ];
   if (process.env.NODE_ENV === 'production') directives.push('upgrade-insecure-requests');
@@ -171,6 +172,9 @@ function createResponse(request: NextRequest, nonce: string): NextResponse {
   requestHeaders.set('Content-Security-Policy', policy);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('Content-Security-Policy', policy);
+  // Presence of this header is enough: Vercel skips injecting the Live/Toolbar
+  // iframe. Allowlisting vercel.live would weaken nonce + strict-dynamic CSP.
+  response.headers.set('x-vercel-skip-toolbar', '1');
   return response;
 }
 
@@ -197,6 +201,7 @@ function redirectAnonymous(request: NextRequest): NextResponse {
  *      they are server-rendered.
  *   2. Transparently refreshing Supabase sessions that are about to expire.
  *   3. Attaching a per-request nonce-based Content-Security-Policy.
+ *   4. Opting out of Vercel Toolbar injection (`x-vercel-skip-toolbar`).
  */
 export async function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
