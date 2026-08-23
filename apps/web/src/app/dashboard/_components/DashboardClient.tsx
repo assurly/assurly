@@ -683,21 +683,22 @@ function DashboardContent({
     }
   };
 
+  // Restore lives in Settings only, so the list is fetched when Settings is open
+  // rather than on every dashboard load.
   useEffect(() => {
-    if (!org) return;
+    if (!org || dashboardView !== 'settings') return;
     let cancelled = false;
     void clientApi
       .dismissedRepositories()
       .then(({ repositories }) => {
         if (!cancelled) setDismissedRepos(repositories);
       })
-      // Restore is a recovery affordance in Settings, not part of the main flow;
-      // a failure here must not blank the dashboard.
+      // A recovery affordance must never take the rest of Settings down with it.
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [org, verdictRefreshKey]);
+  }, [org, dashboardView, verdictRefreshKey]);
 
   const wasScanningRef = useRef(false);
   // Set when a scan is kicked off from the tools column (Scan Public Repository),
