@@ -88,7 +88,7 @@ describe('Supabase authentication routes', () => {
       options: {
         redirectTo: `${expectedOrigin}/api/auth/callback`,
         scopes: 'repo',
-        queryParams: { prompt: 'consent' },
+        queryParams: { prompt: 'select_account' },
       },
     });
   });

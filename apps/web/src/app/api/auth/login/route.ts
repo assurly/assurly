@@ -28,7 +28,8 @@ export const GET = secureRoute(
       options: {
         redirectTo: `${appUrl}/api/auth/callback`,
         scopes: 'repo',
-        queryParams: { prompt: 'consent' },
+        // GitHub-documented prompt that forces the account picker.
+        queryParams: { prompt: 'select_account' },
       },
     });
     if (error || !data?.url) {
