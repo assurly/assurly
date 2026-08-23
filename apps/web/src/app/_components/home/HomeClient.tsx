@@ -34,6 +34,14 @@ import { formatCount } from '../../../utils/pluralize';
 import { sanitizeGitHubOwner } from '../../../utils/scanProxy';
 import { isLikelyScannableUrl } from '../../../utils/urlValidation';
 import {
+  CONTACT_EMAIL_MAX_LENGTH,
+  CONTACT_MESSAGE_HINT,
+  CONTACT_MESSAGE_MAX_LENGTH,
+  CONTACT_NAME_MAX_LENGTH,
+  contactMessageLengthIssue,
+  describeContactSubmitError,
+} from '../../../utils/contactForm';
+import {
   CONTACT_SUBJECTS,
   DEFAULT_CONTACT_SUBJECT,
   type ContactSubject,
@@ -747,6 +755,13 @@ export default function HomeClient({
     if (contactTimeoutRef.current) {
       clearTimeout(contactTimeoutRef.current);
     }
+
+    const messageIssue = contactMessageLengthIssue(contactMessage);
+    if (messageIssue) {
+      setContactFeedback({ success: false, message: messageIssue });
+      return;
+    }
+
     setIsSubmittingContact(true);
     setContactFeedback(null);
 
@@ -763,10 +778,10 @@ export default function HomeClient({
       setContactSubject('technical');
       setContactMessage('');
       contactTimeoutRef.current = setTimeout(() => setContactFeedback(null), 4000);
-    } catch {
+    } catch (error: unknown) {
       setContactFeedback({
         success: false,
-        message: 'An error occurred. Please try again later.',
+        message: describeContactSubmitError(error),
       });
     } finally {
       setIsSubmittingContact(false);
@@ -1855,6 +1870,7 @@ export default function HomeClient({
                     id="contact-name"
                     type="text"
                     required
+                    maxLength={CONTACT_NAME_MAX_LENGTH}
                     placeholder="Jane Doe"
                     value={contactName}
                     onChange={(e) => setContactName(e.target.value)}
@@ -1867,6 +1883,7 @@ export default function HomeClient({
                     id="contact-email"
                     type="email"
                     required
+                    maxLength={CONTACT_EMAIL_MAX_LENGTH}
                     placeholder="jane@example.com"
                     value={contactEmail}
                     onChange={(e) => setContactEmail(e.target.value)}
@@ -1894,10 +1911,32 @@ export default function HomeClient({
                     id="contact-message"
                     required
                     rows={5}
+                    maxLength={CONTACT_MESSAGE_MAX_LENGTH}
+                    aria-describedby={
+                      contactFeedback?.success === false
+                        ? 'contact-message-hint contact-feedback'
+                        : 'contact-message-hint'
+                    }
+                    aria-invalid={
+                      contactFeedback?.success === false &&
+                      contactMessageLengthIssue(contactMessage) !== null
+                    }
                     placeholder="Tell us what you need help with..."
                     value={contactMessage}
-                    onChange={(e) => setContactMessage(e.target.value)}
+                    onChange={(e) => {
+                      const nextMessage = e.target.value;
+                      setContactMessage(nextMessage);
+                      if (
+                        contactFeedback?.success === false &&
+                        contactMessageLengthIssue(nextMessage) === null
+                      ) {
+                        setContactFeedback(null);
+                      }
+                    }}
                   />
+                  <p id="contact-message-hint" className="form-hint">
+                    {CONTACT_MESSAGE_HINT}
+                  </p>
                 </div>
 
                 <button
@@ -1910,6 +1949,8 @@ export default function HomeClient({
 
                 {contactFeedback && (
                   <div
+                    id="contact-feedback"
+                    role="status"
                     className={`feedback-message ${contactFeedback.success ? 'success' : 'error'}`}
                   >
                     {contactFeedback.success ? <HomeCheckIcon /> : <HomeXIcon />}{' '}

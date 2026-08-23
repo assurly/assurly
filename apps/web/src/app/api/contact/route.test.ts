@@ -91,6 +91,22 @@ describe('Contact API Route Handler', () => {
     expect(await response.json()).toMatchObject({ success: true, simulated: true });
   });
 
+  it('returns a 400 error when the message is shorter than the minimum length', async () => {
+    const response = await POST(
+      new Request('http://localhost/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...validContactBody,
+          message: 'ccc',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.code).toBe('invalid_request');
+  });
+
   it('returns a 400 error when required fields are missing', async () => {
     const mockRequest = new Request('http://localhost/api/contact', {
       method: 'POST',

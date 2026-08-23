@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { ApiError, emptyObjectSchema, RATE_LIMITS, secureRoute } from '../../../utils/apiSecurity';
+import {
+  CONTACT_EMAIL_MAX_LENGTH,
+  CONTACT_MESSAGE_MAX_LENGTH,
+  CONTACT_MESSAGE_MIN_LENGTH,
+  CONTACT_NAME_MAX_LENGTH,
+} from '../../../utils/contactForm';
 import { CONTACT_SUBJECT_VALUES } from '../../../utils/contactSubjects';
 
 const contactBody = z
@@ -9,15 +15,15 @@ const contactBody = z
       .string()
       .trim()
       .min(1)
-      .max(100)
+      .max(CONTACT_NAME_MAX_LENGTH)
       .refine((value) => !/[\u0000-\u001f\u007f]/.test(value)),
-    email: z.string().email().max(254),
+    email: z.string().email().max(CONTACT_EMAIL_MAX_LENGTH),
     subject: z.enum(CONTACT_SUBJECT_VALUES),
     message: z
       .string()
       .trim()
-      .min(10)
-      .max(2000)
+      .min(CONTACT_MESSAGE_MIN_LENGTH)
+      .max(CONTACT_MESSAGE_MAX_LENGTH)
       .refine((value) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value)),
   })
   .strict();
