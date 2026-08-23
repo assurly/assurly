@@ -18,13 +18,15 @@ const repositoryParams = z
 const patchBody = z
   .object({
     scanCapability: z.enum(['browser', 'cli_only', 'invalid']).optional(),
+    /** Only un-hiding is accepted here; hiding is DELETE. */
+    dismissed: z.literal(false).optional(),
   })
   .strict()
-  .refine((body) => body.scanCapability !== undefined, {
+  .refine((body) => body.scanCapability !== undefined || body.dismissed !== undefined, {
     message: 'At least one field is required.',
   });
 
-/** Update repository scan capability (e.g. after a too-large browser scan). */
+/** Update scan capability, or restore a repository the user hid from Your apps. */
 export const PATCH = secureRoute(
   {
     routeId: 'repositories:patch',
@@ -42,6 +44,9 @@ export const PATCH = secureRoute(
     await requireRepositoryAccess(context, params.id);
     if (body.scanCapability) {
       await context.db.updateRepositoryScanCapability(params.id, body.scanCapability);
+    }
+    if (body.dismissed === false) {
+      await getAdminDbAdapter().undismissRepository(params.id);
     }
     const repository = await context.db.getRepository(params.id);
     if (!repository) throw new ApiError(404, 'not_found', 'Repository not found.');

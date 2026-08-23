@@ -61,6 +61,14 @@ export async function mockDashboardClientApis(page: Page): Promise<void> {
     await route.fulfill(jsonOk({ keys: [] }));
   });
 
+  await page.route('**/api/repositories/dismissed', async (route: Route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill(jsonOk({ repositories: [] }));
+  });
+
   await page.route('**/api/repositories/*/trend', async (route: Route) => {
     const path = new URL(route.request().url()).pathname.split('/');
     const repositoriesIndex = path.indexOf('repositories');

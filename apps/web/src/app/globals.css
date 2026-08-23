@@ -5958,6 +5958,70 @@ button.dashboard-repo-selector-item {
   padding-top: 16px;
 }
 
+.repo-list-panel__hidden {
+  border-top: 1px solid var(--color-border);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.repo-list-panel__hidden-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.repo-list-panel__hidden-copy {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.repo-list-panel__hidden-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  min-width: 0;
+}
+
+.repo-list-panel__hidden-name {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-list-panel__restore {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  background-color: transparent;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  color: var(--color-accent);
+  font-weight: 600;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.repo-list-panel__restore:hover:not(:disabled) {
+  background-color: var(--color-border);
+}
+
+.repo-list-panel__restore:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--focus-ring);
+}
+
+.repo-list-panel__restore:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .dashboard-repo-list-item--selected {
   background-color: var(--color-border);
   border-color: var(--color-border-strong);

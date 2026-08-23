@@ -7,10 +7,14 @@ import { DashboardFolderIcon } from './icons/DashboardIcons';
 
 export interface RepoListPanelProps {
   repositories: Repository[];
+  /** Repos the user removed from Your apps. Restoring is the only way back. */
+  dismissedRepositories: Repository[];
   selectedRepoId: string | null;
   scanCountsByRepoId: Record<string, number>;
   hasGitHubInstallation: boolean;
+  restoringRepositoryId: string | null;
   onSelectRepository: (repository: Repository) => void;
+  onRestoreRepository: (repositoryId: string) => void;
 }
 
 export function formatRepositoryScanCount(scanCount: number): string {
@@ -22,10 +26,13 @@ export function formatRepositoryScanCount(scanCount: number): string {
 
 export function RepoListPanel({
   repositories,
+  dismissedRepositories,
   selectedRepoId,
   scanCountsByRepoId,
   hasGitHubInstallation,
+  restoringRepositoryId,
   onSelectRepository,
+  onRestoreRepository,
 }: RepoListPanelProps): ReactElement {
   const [filterQuery, setFilterQuery] = useState('');
   const filteredRepositories = useMemo(
@@ -117,6 +124,29 @@ export function RepoListPanel({
           </div>
         ) : null}
       </div>
+
+      {dismissedRepositories.length > 0 ? (
+        <div className="repo-list-panel__hidden" data-testid="repo-list-hidden">
+          <h3 className="repo-list-panel__hidden-title">Hidden repositories</h3>
+          <p className="repo-list-panel__hidden-copy">
+            Removed from Your apps. Scan history was kept — restore to guard them again.
+          </p>
+          {dismissedRepositories.map((repository) => (
+            <div key={repository.id} className="repo-list-panel__hidden-item">
+              <span className="repo-list-panel__hidden-name">{repository.name}</span>
+              <button
+                type="button"
+                className="repo-list-panel__restore"
+                onClick={() => onRestoreRepository(repository.id)}
+                disabled={restoringRepositoryId === repository.id}
+                aria-label={`Restore repository ${repository.name}`}
+              >
+                {restoringRepositoryId === repository.id ? 'Restoring…' : 'Restore'}
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

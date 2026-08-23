@@ -24,9 +24,12 @@ const repositorySchema = z.object({
   name: z.string(),
   github_repo_id: z.number(),
   is_active: z.boolean(),
+  dismissed_at: z.string().nullable().optional(),
+  source: z.enum(['installation', 'manual']).optional(),
   created_at: z.string(),
   scan_capability: scanCapabilitySchema.optional(),
 });
+const dismissedRepositoriesSchema = z.object({ repositories: z.array(repositorySchema) });
 const scanGateVerdictSchema = z.enum(['ready', 'review', 'blocked', 'failed']);
 const scanScopeSchema = z
   .object({
@@ -377,6 +380,14 @@ export const clientApi = {
       jsonRequest('DELETE'),
     );
   },
+  dismissedRepositories: (): Promise<{ repositories: Repository[] }> =>
+    requestJson('/api/repositories/dismissed', dismissedRepositoriesSchema),
+  restoreRepository: (repositoryId: string): Promise<Repository> =>
+    requestJson(
+      `/api/repositories/${encodeURIComponent(repositoryId)}`,
+      repositorySchema,
+      jsonRequest('PATCH', { dismissed: false }),
+    ),
   scans: (repositoryId: string): Promise<{ scans: Scan[] }> =>
     requestJson(`/api/scans?repoId=${encodeURIComponent(repositoryId)}`, scansSchema),
   targets: (): Promise<{ targets: TargetCard[] }> => requestJson('/api/targets', targetsSchema),

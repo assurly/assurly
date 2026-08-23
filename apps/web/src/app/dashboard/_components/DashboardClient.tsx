@@ -549,6 +549,8 @@ function DashboardContent({
   const [verdictCardsError, setVerdictCardsError] = useState<string | null>(null);
   const [removingTargetId, setRemovingTargetId] = useState<string | null>(null);
   const [removingRepositoryId, setRemovingRepositoryId] = useState<string | null>(null);
+  const [dismissedRepos, setDismissedRepos] = useState<Repository[]>([]);
+  const [restoringRepositoryId, setRestoringRepositoryId] = useState<string | null>(null);
   const [rescanningTargetId, setRescanningTargetId] = useState<string | null>(null);
   /** Bumps when a card Rescan targets an already-selected repo (selection alone would not re-fire). */
   const [scanKickToken, setScanKickToken] = useState(0);
@@ -658,6 +660,45 @@ function DashboardContent({
       setRemovingRepositoryId(null);
     }
   };
+
+  const handleRestoreRepo = async (repositoryId: string): Promise<void> => {
+    setRestoringRepositoryId(repositoryId);
+    setVerdictCardsError(null);
+    try {
+      const restored = await clientApi.restoreRepository(repositoryId);
+      setDismissedRepos((current) => current.filter((repo) => repo.id !== repositoryId));
+      setRepos((current) =>
+        dedupeRepositoriesByGithubId([
+          restored,
+          ...current.filter((repo) => repo.id !== repositoryId),
+        ]),
+      );
+      setVerdictRefreshKey((key) => key + 1);
+    } catch (err: unknown) {
+      setVerdictCardsError(
+        err instanceof ClientApiError ? err.message : 'Could not restore that repository.',
+      );
+    } finally {
+      setRestoringRepositoryId(null);
+    }
+  };
+
+  // Restore lives in Settings only, so the list is fetched when Settings is open
+  // rather than on every dashboard load.
+  useEffect(() => {
+    if (!org || dashboardView !== 'settings') return;
+    let cancelled = false;
+    void clientApi
+      .dismissedRepositories()
+      .then(({ repositories }) => {
+        if (!cancelled) setDismissedRepos(repositories);
+      })
+      // A recovery affordance must never take the rest of Settings down with it.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [org, dashboardView, verdictRefreshKey]);
 
   const wasScanningRef = useRef(false);
   // Set when a scan is kicked off from the tools column (Scan Public Repository),
@@ -2448,10 +2489,13 @@ function DashboardContent({
             repoList={
               <RepoListPanel
                 repositories={repos}
+                dismissedRepositories={dismissedRepos}
                 selectedRepoId={selectedRepo?.id ?? null}
                 scanCountsByRepoId={scanCountsByRepoId}
                 hasGitHubInstallation={Boolean(org?.github_installation_id)}
+                restoringRepositoryId={restoringRepositoryId}
                 onSelectRepository={handleSelectRepo}
+                onRestoreRepository={(repositoryId) => void handleRestoreRepo(repositoryId)}
               />
             }
             apiKeys={<ApiKeys />}
