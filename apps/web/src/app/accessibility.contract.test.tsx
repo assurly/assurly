@@ -258,6 +258,8 @@ describe('accessibility and responsive UI contracts', () => {
     expect(pageRule?.[1] ?? '').toMatch(/min-height:\s*100dvh/);
     expect(pageRule?.[1] ?? '').toMatch(/overflow:\s*visible/);
     expect(pageRule?.[1] ?? '').not.toMatch(/overflow:\s*hidden/);
+    expect(pageRule?.[1] ?? '').toMatch(/max-width:\s*100%/);
+    expect(pageRule?.[1] ?? '').not.toMatch(/100vw/);
 
     const mainRule = globalsCss.match(/^\.dashboard-main\s*\{([^}]+)\}/m);
     expect(mainRule?.[1] ?? '').not.toMatch(/overflow-y:\s*auto/);
@@ -269,6 +271,15 @@ describe('accessibility and responsive UI contracts', () => {
     const listRule = globalsCss.match(/^\.verdict-card-list\s*\{([^}]+)\}/m);
     expect(listRule?.[1] ?? '').not.toMatch(/max-height:/);
     expect(listRule?.[1] ?? '').not.toMatch(/overflow-y:\s*auto/);
+  });
+
+  it('keeps dashboard text fields at 16px so iOS Safari does not zoom on focus', () => {
+    expect(globalsCss).toMatch(/\.dashboard-public-connect__input\s*\{[^}]*font-size:\s*1rem/);
+    expect(globalsCss).toMatch(
+      /\.dashboard-page :is\([\s\S]*?input\[type='text'\][\s\S]*?textarea[\s\S]*?select[\s\S]*?\)\s*\{[^}]*font-size:\s*16px\s*!important/,
+    );
+    expect(globalsCss).toMatch(/html\s*\{[^}]*-webkit-text-size-adjust:\s*100%/);
+    expect(globalsCss).toMatch(/\.scanner-input\s*\{[^}]*font-size:\s*1rem/);
   });
 
   it('clears the sticky legal header when jumping to /privacy#cookies', () => {

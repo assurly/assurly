@@ -56,6 +56,21 @@ test.describe('Dashboard mobile flows @375px', () => {
     ).toBeVisible();
   });
 
+  test('keeps scan text fields at 16px so iOS Safari will not zoom on focus', async ({ page }) => {
+    await page.getByRole('button', { name: /back to apps/i }).click();
+    const urlInput = page.locator('#dashboard-deployed-url');
+    await expect(urlInput).toBeAttached();
+    await expect
+      .poll(async () => urlInput.evaluate((element) => getComputedStyle(element).fontSize))
+      .toBe('16px');
+
+    const overflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
+  });
+
   test('jumps to the scan details container from the repo header', async ({ page }) => {
     await page.getByTestId('scan-details-container').waitFor({ state: 'attached' });
     await assertJumpToScanDetails(page);
