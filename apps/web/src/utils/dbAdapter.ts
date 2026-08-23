@@ -31,12 +31,23 @@ export interface Membership {
 /** Whether the dashboard can scan this repository in-browser. */
 export type RepositoryScanCapability = 'browser' | 'cli_only' | 'invalid';
 
+/**
+ * Which lifecycle owns the row. `installation` rows follow the GitHub App and are
+ * deactivated when the App stops granting them; `manual` rows come from Connect &
+ * Scan and are never touched by installation sync.
+ */
+export type RepositorySource = 'installation' | 'manual';
+
 export interface Repository {
   id: string;
   organization_id: string;
   name: string;
   github_repo_id: number;
+  /** Whether the repo is still reachable. Independent of whether the user hid it. */
   is_active: boolean;
+  /** Set while the user has hidden the repo from Your apps. */
+  dismissed_at?: string | null;
+  source?: RepositorySource;
   created_at: string;
   scan_capability?: RepositoryScanCapability;
 }
@@ -400,7 +411,10 @@ export interface DbAdapter {
     succeeded: boolean,
     failureMessage?: string,
   ): Promise<void>;
+  /** Repos shown in Your apps: reachable and not hidden by the user. */
   getRepositories(orgId: string): Promise<Repository[]>;
+  /** Reachable repos the user hid, so Settings can offer Restore. */
+  getDismissedRepositories(orgId: string): Promise<Repository[]>;
   getRepository(repoId: string): Promise<Repository | null>;
   getRepositoryByGithubRepoId(githubRepoId: number): Promise<Repository | null>;
   addRepository(orgId: string, name: string, githubRepoId: number): Promise<Repository>;
@@ -408,8 +422,14 @@ export interface DbAdapter {
     repoId: string,
     capability: RepositoryScanCapability,
   ): Promise<void>;
-  setRepositoryActive(repoId: string, isActive: boolean, name?: string): Promise<void>;
-  /** Hides the repo from Your apps (`is_active = false`). Scan history is kept. */
+  /**
+   * Makes an existing row reachable again through Connect & Scan and hands its
+   * lifecycle back to the user, so the next installation sync cannot prune it.
+   */
+  reconnectRepository(repoId: string, name: string): Promise<void>;
+  /** Un-hides a repo the user dismissed. */
+  undismissRepository(repoId: string): Promise<void>;
+  /** Hides the repo from Your apps. Scan history is kept and Restore undoes it. */
   deleteRepository(repoId: string): Promise<void>;
   saveScan(
     repoId: string,
@@ -729,7 +749,13 @@ export class SupabaseDbAdapter implements DbAdapter {
 
   async getRepositories(orgId: string): Promise<Repository[]> {
     return this.fetchDb(
-      `repositories?select=*&organization_id=eq.${eq(orgId)}&is_active=eq.true&order=created_at.desc`,
+      `repositories?select=*&organization_id=eq.${eq(orgId)}&is_active=eq.true&dismissed_at=is.null&order=created_at.desc`,
+    );
+  }
+
+  async getDismissedRepositories(orgId: string): Promise<Repository[]> {
+    return this.fetchDb(
+      `repositories?select=*&organization_id=eq.${eq(orgId)}&is_active=eq.true&dismissed_at=not.is.null&order=dismissed_at.desc`,
     );
   }
 
@@ -764,17 +790,25 @@ export class SupabaseDbAdapter implements DbAdapter {
     });
   }
 
-  async setRepositoryActive(repoId: string, isActive: boolean, name?: string): Promise<void> {
-    const patch: { is_active: boolean; name?: string } = { is_active: isActive };
-    if (name) patch.name = name;
+  async reconnectRepository(repoId: string, name: string): Promise<void> {
     await this.fetchDb(`repositories?id=eq.${eq(repoId)}`, {
       method: 'PATCH',
-      body: JSON.stringify(patch),
+      body: JSON.stringify({ is_active: true, dismissed_at: null, source: 'manual', name }),
+    });
+  }
+
+  async undismissRepository(repoId: string): Promise<void> {
+    await this.fetchDb(`repositories?id=eq.${eq(repoId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ dismissed_at: null }),
     });
   }
 
   async deleteRepository(repoId: string): Promise<void> {
-    await this.setRepositoryActive(repoId, false);
+    await this.fetchDb(`repositories?id=eq.${eq(repoId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ dismissed_at: new Date().toISOString() }),
+    });
   }
 
   async saveScan(

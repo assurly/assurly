@@ -126,8 +126,10 @@ begin
 
   perform public.finish_github_webhook_delivery('delivery-sql-1', true, null);
 
+  -- A repo the user hid must stay hidden across sync, yet stay reachable so
+  -- Restore can bring it back. Overloading is_active made this unrecoverable.
   update public.repositories
-  set is_active = false
+  set dismissed_at = now()
   where github_repo_id = 9600000001;
 
   select public.connect_github_installation(
@@ -142,9 +144,51 @@ begin
   if exists (
     select 1 from public.repositories
     where github_repo_id = 9600000001
-      and is_active
+      and dismissed_at is null
   ) then
     raise exception 'dismissed repository was resurrected by GitHub install sync';
+  end if;
+  if not exists (
+    select 1 from public.repositories
+    where github_repo_id = 9600000001
+      and is_active
+      and source = 'installation'
+  ) then
+    raise exception 're-granted repository was left unreachable by GitHub install sync';
+  end if;
+
+  -- A public repo added through Connect & Scan is never in the installation and
+  -- must survive a sync that does not mention it.
+  insert into public.repositories (organization_id, name, github_repo_id, source)
+  values ('60000000-0000-0000-0000-000000000006', 'public/manual', 9600000002, 'manual');
+
+  select public.connect_github_installation(
+    '60000000-0000-0000-0000-000000000006',
+    6001,
+    '60001',
+    '[{"id":9600000001,"full_name":"tenant-a/private"}]'::jsonb
+  ) into connected;
+  if not exists (
+    select 1 from public.repositories
+    where github_repo_id = 9600000002
+      and is_active
+  ) then
+    raise exception 'manually connected repository was pruned by GitHub install sync';
+  end if;
+
+  -- Installation-owned repos that lose their grant still get deactivated.
+  select public.connect_github_installation(
+    '60000000-0000-0000-0000-000000000006',
+    6001,
+    '60001',
+    '[]'::jsonb
+  ) into connected;
+  if exists (
+    select 1 from public.repositories
+    where github_repo_id = 9600000001
+      and is_active
+  ) then
+    raise exception 'revoked repository stayed active after GitHub install sync';
   end if;
 end
 $$;

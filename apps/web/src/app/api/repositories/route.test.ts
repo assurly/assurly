@@ -4,7 +4,7 @@ import { POST } from './route';
 
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
-  setRepositoryActive: vi.fn(),
+  reconnectRepository: vi.fn(),
 }));
 vi.mock('../../../utils/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../utils/auth')>()),
@@ -12,7 +12,7 @@ vi.mock('../../../utils/auth', async (importOriginal) => ({
 }));
 vi.mock('../../../utils/dbAdapter', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../utils/dbAdapter')>()),
-  getAdminDbAdapter: () => ({ setRepositoryActive: mocks.setRepositoryActive }),
+  getAdminDbAdapter: () => ({ reconnectRepository: mocks.reconnectRepository }),
 }));
 
 const db = {
@@ -122,9 +122,40 @@ describe('POST /api/repositories tenant boundary', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.setRepositoryActive).toHaveBeenCalledWith('repo-hidden', true, 'owner/repo');
+    expect(mocks.reconnectRepository).toHaveBeenCalledWith('repo-hidden', 'owner/repo');
     expect(db.addRepository).not.toHaveBeenCalled();
     expect(await response.json()).toMatchObject({ id: 'repo-hidden', is_active: true });
+  });
+
+  it('reconnects a repository the user dismissed but that is still reachable', async () => {
+    db.getRepositoryByGithubRepoId.mockResolvedValue({
+      id: 'repo-dismissed',
+      organization_id: 'org-a',
+      name: 'owner/repo',
+      github_repo_id: 123,
+      is_active: true,
+      dismissed_at: '2026-08-20T00:00:00Z',
+    });
+    db.getRepository.mockResolvedValue({
+      id: 'repo-dismissed',
+      organization_id: 'org-a',
+      name: 'owner/repo',
+      github_repo_id: 123,
+      is_active: true,
+      dismissed_at: null,
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/repositories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'owner/repo', githubRepoId: 123 }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.reconnectRepository).toHaveBeenCalledWith('repo-dismissed', 'owner/repo');
+    expect(await response.json()).toMatchObject({ dismissed_at: null });
   });
 
   it('rejects a GitHub repository already connected to another organization', async () => {

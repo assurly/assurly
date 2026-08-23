@@ -45,8 +45,8 @@ export const POST = secureRoute(
       throw new ApiError(409, 'conflict', 'That GitHub repository is already connected elsewhere.');
     }
     if (existingByGithub && existingByGithub.organization_id === organization.id) {
-      if (!existingByGithub.is_active) {
-        await getAdminDbAdapter().setRepositoryActive(existingByGithub.id, true, body.name);
+      if (!existingByGithub.is_active || existingByGithub.dismissed_at) {
+        await getAdminDbAdapter().reconnectRepository(existingByGithub.id, body.name);
         const restored = await context.db.getRepository(existingByGithub.id);
         if (!restored) throw new ApiError(404, 'not_found', 'Repository not found.');
         return NextResponse.json(restored);

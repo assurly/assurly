@@ -276,7 +276,7 @@ describe('accessibility and responsive UI contracts', () => {
   it('keeps dashboard text fields at 16px so iOS Safari does not zoom on focus', () => {
     expect(globalsCss).toMatch(/\.dashboard-public-connect__input\s*\{[^}]*font-size:\s*1rem/);
     expect(globalsCss).toMatch(
-      /\.dashboard-page :is\([\s\S]*?input\[type='text'\][\s\S]*?textarea[\s\S]*?select[\s\S]*?\)\s*\{[^}]*font-size:\s*16px\s*!important/,
+      /\.dashboard-page\s+:is\([\s\S]*?input\[type='text'\][\s\S]*?textarea[\s\S]*?select[\s\S]*?\)\s*\{[^}]*font-size:\s*16px\s*!important/,
     );
     expect(globalsCss).toMatch(/html\s*\{[^}]*-webkit-text-size-adjust:\s*100%/);
     expect(globalsCss).toMatch(/\.scanner-input\s*\{[^}]*font-size:\s*1rem/);

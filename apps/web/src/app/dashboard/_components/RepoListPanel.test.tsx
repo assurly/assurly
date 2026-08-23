@@ -51,7 +51,10 @@ function renderPanel(overrides: Partial<RepoListPanelProps> = {}): ReturnType<ty
         'repo-attesta-fixes': 1,
       }}
       hasGitHubInstallation={true}
+      dismissedRepositories={[]}
+      restoringRepositoryId={null}
       onSelectRepository={vi.fn()}
+      onRestoreRepository={vi.fn()}
       {...overrides}
     />,
   );
@@ -147,6 +150,39 @@ describe('RepoListPanel', () => {
 
     expect(screen.getByText('No repositories connected.')).toBeTruthy();
     expect(screen.queryByTestId('repo-list-filter')).toBeNull();
+  });
+
+  it('hides the Hidden repositories section when nothing was dismissed', () => {
+    renderPanel({ dismissedRepositories: [] });
+
+    expect(screen.queryByTestId('repo-list-hidden')).toBeNull();
+  });
+
+  it('offers Restore for every dismissed repository', () => {
+    const onRestoreRepository = vi.fn();
+    renderPanel({ dismissedRepositories: [repositories[0]], onRestoreRepository });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restore repository tibco87/Attesta' }));
+
+    expect(onRestoreRepository).toHaveBeenCalledWith('repo-attesta');
+  });
+
+  it('disables only the repository currently being restored', () => {
+    renderPanel({
+      dismissedRepositories: repositories,
+      restoringRepositoryId: 'repo-attesta',
+    });
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Restore repository tibco87/Attesta' })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole('button', { name: 'Restore repository tibco87/Attesta---Fixes' })
+        .hasAttribute('disabled'),
+    ).toBe(false);
   });
 
   it('renders Adjust GitHub App permissions as a CTA when installation exists', () => {
