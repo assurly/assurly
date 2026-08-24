@@ -339,6 +339,26 @@ describe('accessibility and responsive UI contracts', () => {
     expect(globalsCss).not.toMatch(/\.ship-gate-list--warnings \.ship-gate-list-item::before/);
   });
 
+  it('keeps the selected repo header from collapsing names to one character', () => {
+    const headerRule = globalsCss.match(/^\.selected-repo-header\s*\{([^}]+)\}/m);
+    const infoRule = globalsCss.match(/^\.selected-repo-header__info\s*\{([^}]+)\}/m);
+    const nameRule = globalsCss.match(/^\.selected-repo-header__name\s*\{([^}]+)\}/m);
+    const labelRule = globalsCss.match(/^\.selected-repo-header__label\s*\{([^}]+)\}/m);
+    const actionsRule = globalsCss.match(/^\.selected-repo-header__actions\s*\{([^}]+)\}/m);
+
+    expect(headerRule?.[1] ?? '').toMatch(/flex-wrap:\s*wrap/);
+    expect(infoRule?.[1] ?? '').toMatch(/flex:\s*1 1 12rem/);
+    expect(infoRule?.[1] ?? '').toMatch(/min-width:\s*0/);
+    expect(nameRule?.[1] ?? '').not.toMatch(/word-break:\s*break-word/);
+    expect(labelRule?.[1] ?? '').toMatch(/text-overflow:\s*ellipsis/);
+    expect(labelRule?.[1] ?? '').toMatch(/white-space:\s*nowrap/);
+    expect(actionsRule?.[1] ?? '').toMatch(/flex-wrap:\s*wrap/);
+    expect(actionsRule?.[1] ?? '').not.toMatch(/flex-shrink:\s*0/);
+    expect(globalsCss).toMatch(
+      /@media \(max-width: 576px\)[\s\S]*?\.selected-repo-header\s*\{[^}]*flex-direction:\s*column/,
+    );
+  });
+
   it('uses the shared button radius for dashboard repo and jump controls', () => {
     const switcherRule = globalsCss.match(/^\.dashboard-app-switcher__item\s*\{([^}]+)\}/m);
     const jumpRule = globalsCss.match(/^\.selected-repo-header__jump\s*\{([^}]+)\}/m);
@@ -370,6 +390,18 @@ describe('accessibility and responsive UI contracts', () => {
     expect(globalsCss).toContain('.scan-history-rail-viewport');
     expect(globalsCss).toContain("data-overflow-start='true'");
     expect(globalsCss).toContain("data-overflow-end='true'");
+  });
+
+  it('does not mask Your apps filter chips on narrow viewports', () => {
+    // Same class of bug as the scan-history rail: mask-image on the overflow
+    // row fades the chips' 1px borders. overflow-x:auto also computes
+    // overflow-y to auto, so the scrollport must pad the stroke.
+    const mobileFilterRule =
+      globalsCss.match(/\.verdict-section__filters\s*\{[^}]*flex-wrap:\s*nowrap[^}]*\}/)?.[0] ?? '';
+    const declarations = mobileFilterRule.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(declarations).not.toMatch(/mask-image/);
+    expect(declarations).toMatch(/padding-block:/);
+    expect(declarations).toMatch(/overflow-x:\s*auto/);
   });
 
   it('states the server transit boundary consistently on both legal pages', async () => {

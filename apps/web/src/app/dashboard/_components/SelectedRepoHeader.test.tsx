@@ -29,9 +29,13 @@ describe('SelectedRepoHeader', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: 'tibco87/Attesta' })).toBeTruthy();
+    const heading = screen.getByRole('heading', { name: 'tibco87/Attesta' });
+    expect(heading).toBeTruthy();
     expect(screen.getByText('4 scans')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'tibco87/Attesta' }).textContent).not.toMatch(/📁/);
+    expect(heading.textContent).not.toMatch(/📁/);
+    const label = heading.querySelector('.selected-repo-header__label');
+    expect(label).toBeTruthy();
+    expect(label?.getAttribute('title')).toBe('tibco87/Attesta');
   });
 
   it('calls onJumpToResults when Jump to results is clicked', () => {

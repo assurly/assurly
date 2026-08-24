@@ -4604,7 +4604,6 @@ body:has(.cookie-notice) {
 }
 
 .dashboard-repo-list-item__name,
-.selected-repo-header__name,
 .dashboard-repo-heading,
 .dashboard-workspace-title,
 .dashboard-repo-name,
@@ -6069,35 +6068,58 @@ button.dashboard-repo-selector-item {
 
 .selected-repo-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .selected-repo-header__info {
+  flex: 1 1 12rem;
   min-width: 0;
 }
 
+/* Long owner/repo strings must ellipsize, not wrap per character. */
 .selected-repo-header__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
+  min-width: 0;
+  max-width: 100%;
   font-size: 1rem;
   font-weight: 700;
   color: var(--color-text);
-  word-break: break-word;
+}
+
+.selected-repo-header__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .selected-repo-header__meta {
   margin: 4px 0 0;
   font-size: 0.82rem;
   color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 .selected-repo-header__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.selected-repo-header__branch {
+  min-width: 0;
 }
 
 .selected-repo-header__branch select {
@@ -6990,9 +7012,11 @@ button.dashboard-repo-selector-item {
 
   .selected-repo-header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+    min-width: 0;
     padding: 12px 14px;
     border: 1px solid var(--color-border);
     border-radius: 10px;
@@ -7066,6 +7090,25 @@ button.dashboard-repo-selector-item {
   }
   .dashboard-main__inner {
     padding: 16px 16px 40px;
+  }
+  .selected-repo-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .selected-repo-header__info,
+  .selected-repo-header__actions {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+  .selected-repo-header__actions {
+    justify-content: flex-start;
+  }
+  .selected-repo-header__branch {
+    flex: 1 1 8rem;
+  }
+  .selected-repo-header__branch select {
+    width: 100%;
+    max-width: none;
   }
   .workspace-card {
     padding: 16px;
@@ -10591,8 +10634,13 @@ body {
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    padding-bottom: 2px;
-    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    /* overflow-x:auto computes overflow-y to auto, which clips the chips'
+       1px top stroke on iOS. Pad the scrollport instead of fading this row —
+       a mask on the overflow container fades the chips' own borders and
+       radii, the same unfinished-edge bug we already fixed on the scan
+       history rail. */
+    padding-block: 3px;
+    padding-inline: 1px;
   }
   .verdict-section__filters::-webkit-scrollbar {
     display: none;

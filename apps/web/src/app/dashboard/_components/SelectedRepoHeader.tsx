@@ -53,7 +53,9 @@ export function SelectedRepoHeader({
       <div className="selected-repo-header__info">
         <h1 className="selected-repo-header__name">
           <DashboardFolderIcon />
-          <span>{repoName}</span>
+          <span className="selected-repo-header__label" title={repoName}>
+            {repoName}
+          </span>
         </h1>
         <p className="selected-repo-header__meta" aria-busy={isLoadingScans}>
           {formatSelectedRepoScanCount(scanCount, repoDetailStatus)}
