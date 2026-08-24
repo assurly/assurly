@@ -1,6 +1,6 @@
 import { FAQ_ENTRIES } from './faq';
 import { PRICES, PRO_TRIAL_PERIOD_DAYS } from './pricing';
-import { SITE_ORIGIN } from './siteMetadata';
+import { SITE_ORIGIN, publicPageUrl } from './siteMetadata';
 
 /**
  * schema.org graphs for the public pages.
@@ -44,7 +44,7 @@ function logo(): JsonLdNode {
 type JsonLdNode = Record<string, unknown>;
 
 function absolute(path: string): string {
-  return path === '/' ? `${SITE_ORIGIN}/` : `${SITE_ORIGIN}${path}`;
+  return publicPageUrl(SITE_ORIGIN, path);
 }
 
 function organization(): JsonLdNode {
@@ -170,7 +170,7 @@ function breadcrumbs(path: string, label: string): JsonLdNode {
     '@type': 'BreadcrumbList',
     '@id': `${absolute(path)}#breadcrumb`,
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE_ORIGIN}/` },
+      { '@type': 'ListItem', position: 1, name: 'Home', item: absolute('/') },
       { '@type': 'ListItem', position: 2, name: label, item: absolute(path) },
     ],
   };

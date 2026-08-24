@@ -11,6 +11,22 @@
 export const SITE_ORIGIN = 'https://assurly.dev';
 
 /**
+ * Absolute URL for a public page.
+ *
+ * Homepage keeps the trailing slash — that is the origin form schema.org,
+ * sitemaps, and Google treat as the URL of `/`. Every other path is
+ * slash-free, matching Next's default routing (`trailingSlash: false`).
+ *
+ * `origin` is typically `getApplicationUrl()` (sitemap, canonical, robots)
+ * or `SITE_ORIGIN` (stable JSON-LD `@id`s). Passing either with or without
+ * a trailing slash is fine.
+ */
+export function publicPageUrl(origin: string, path: string): string {
+  const base = new URL(origin).origin;
+  return path === '/' ? `${base}/` : new URL(path, `${base}/`).href.replace(/\/$/, '');
+}
+
+/**
  * Shared Open Graph image descriptor.
  *
  * `app/opengraph-image.tsx` only reaches a route that does not declare its own

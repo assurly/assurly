@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import { CookieNotice } from './_components/CookieNotice';
 import { ThemeProvider } from './_components/ThemeProvider';
 import { getApplicationUrl } from '../utils/env';
+import { publicPageUrl } from '../utils/siteMetadata';
 import { THEME_BOOTSTRAP_SCRIPT, THEME_COLOR_HEX } from '../utils/theme';
 import './design-tokens.css';
 import './globals.css';
@@ -21,11 +22,14 @@ const SITE_TITLE = 'Assurly | Pre-deploy Ship Gate for AI-built SaaS';
 const SITE_DESCRIPTION =
   'Scan your deployed URL in 60 seconds, get a Ship Score, fix blockers with one click, and monitor every deploy — before you ship to Vercel, Supabase, and Stripe.';
 
+const applicationUrl = getApplicationUrl();
+const homeUrl = publicPageUrl(applicationUrl, '/');
+
 export const metadata: Metadata = {
-  // Resolves the relative `canonical` and `openGraph.url` of this layout and of
-  // every page that overrides them. Without it Next emits them verbatim, and a
-  // relative og:url breaks link previews on crawlers that never resolve it.
-  metadataBase: new URL(getApplicationUrl()),
+  // Resolves relative `canonical` / `openGraph.url` on child pages. Homepage
+  // canonical is a real `<link>` in `page.tsx`: Next's Metadata API strips the
+  // origin trailing slash, which would disagree with sitemap.xml.
+  metadataBase: new URL(applicationUrl),
   title: SITE_TITLE,
   description: SITE_DESCRIPTION,
   // Icons. `app/favicon.ico` is auto-linked by the file convention; these add the
@@ -50,15 +54,12 @@ export const metadata: Metadata = {
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
     type: 'website',
-    url: '/',
+    url: homeUrl,
   },
   twitter: {
     card: 'summary_large_image',
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
-  },
-  alternates: {
-    canonical: '/',
   },
   other: {
     google: 'notranslate',

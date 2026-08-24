@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { getApplicationUrl } from '../utils/env';
+import { publicPageUrl } from '../utils/siteMetadata';
 
 /** Public, indexable pages only — nothing under /dashboard or /report belongs here. */
 const PUBLIC_PATHS = [
@@ -11,11 +12,11 @@ const PUBLIC_PATHS = [
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = getApplicationUrl().replace(/\/$/, '');
+  const origin = getApplicationUrl();
   const lastModified = new Date();
 
   return PUBLIC_PATHS.map(({ path, priority, changeFrequency }) => ({
-    url: `${baseUrl}${path}`,
+    url: publicPageUrl(origin, path),
     lastModified,
     changeFrequency,
     priority,

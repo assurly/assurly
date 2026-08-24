@@ -38,9 +38,8 @@ export const metadata: Metadata = {
     title: PAGE_TITLE,
     description: PAGE_DESCRIPTION,
   },
-  // Without this the page inherits `canonical: '/'` from the root layout and
-  // tells search engines it is a duplicate of the homepage — while sitemap.ts
-  // lists it as indexable. The canonical wins, so the sitemap entry is ignored.
+  // Required — this page is in sitemap.ts. The homepage canonical is a raw
+  // <link> on `/` only and is not inherited.
   alternates: {
     canonical: '/privacy',
   },

@@ -31,8 +31,7 @@ export const metadata: Metadata = {
     description: TRUST_DESCRIPTION,
   },
   // This is the page buyers read before connecting a private repository, and
-  // sitemap.ts gives it the highest priority after / and /mcp. Inheriting the
-  // root layout's `canonical: '/'` would fold it into the homepage instead.
+  // sitemap.ts gives it the highest priority after / and /mcp.
   alternates: {
     canonical: '/trust',
   },

@@ -3,15 +3,16 @@ import { headers } from 'next/headers';
 import HomeClient from './_components/home/HomeClient';
 import { OAuthCodeRecovery } from './_components/home/OAuthCodeRecovery';
 import { StructuredData } from './_components/StructuredData';
-import { homePageGraph } from '../utils/structuredData';
 import { getSessionUser } from '../utils/auth';
-import { resolveApplicationUrlFromHost } from '../utils/env';
 import {
   CONTACT_SUBJECT_PARAM,
   DEFAULT_CONTACT_SUBJECT,
   isContactSubject,
   type ContactSubject,
 } from '../utils/contactSubjects';
+import { resolveApplicationUrlFromHost } from '../utils/env';
+import { publicPageUrl } from '../utils/siteMetadata';
+import { homePageGraph } from '../utils/structuredData';
 
 const OAUTH_CODE = /^[A-Za-z0-9._~-]{1,2048}$/;
 
@@ -55,6 +56,11 @@ export default async function HomePage({ searchParams }: HomePageProps): Promise
 
   return (
     <>
+      {/* Next's Metadata API serializes the origin without a trailing slash.
+          Sitemap loc and JSON-LD use `https://assurly.dev/`; a raw link is
+          the one way to emit the same string. Child pages still set canonical
+          through `alternates` — they are not origins, so Next leaves them intact. */}
+      <link rel="canonical" href={publicPageUrl(appUrl, '/')} />
       <StructuredData graph={homePageGraph(HOME_DESCRIPTION)} />
       <HomeClient
         initialAuthenticated={user !== null}

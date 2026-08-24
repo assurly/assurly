@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { getApplicationUrl } from '../utils/env';
+import { publicPageUrl } from '../utils/siteMetadata';
 
 /**
  * Crawl policy. The marketing pages are open; everything that belongs to a customer is
@@ -8,8 +9,6 @@ import { getApplicationUrl } from '../utils/env';
  * (the pages also carry their own `noindex`, this is the belt to that pair of braces).
  */
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = getApplicationUrl().replace(/\/$/, '');
-
   return {
     rules: [
       {
@@ -18,6 +17,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/api/', '/dashboard', '/report/'],
       },
     ],
-    sitemap: `${baseUrl}/sitemap.xml`,
+    sitemap: publicPageUrl(getApplicationUrl(), '/sitemap.xml'),
   };
 }

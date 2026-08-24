@@ -37,8 +37,7 @@ export const metadata: Metadata = {
     title: PAGE_TITLE,
     description: PAGE_DESCRIPTION,
   },
-  // See privacy/page.tsx: the root layout's `canonical: '/'` is inherited
-  // otherwise, which contradicts this page's entry in sitemap.ts.
+  // See privacy/page.tsx: sitemap.ts lists this page, so it must be canonical.
   alternates: {
     canonical: '/terms',
   },

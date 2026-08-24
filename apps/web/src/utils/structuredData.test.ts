@@ -86,6 +86,12 @@ describe('structured data', () => {
     expect(offers.find((offer) => offer.name === 'Pro')?.description).toMatch(/^3-day free trial/);
   });
 
+  it('uses the origin form for the homepage so it matches sitemap loc', () => {
+    const page = findByType(homePageGraph('Home'), 'WebPage');
+    expect(page.url).toBe('https://assurly.dev/');
+    expect(page['@id']).toBe('https://assurly.dev/');
+  });
+
   /**
    * The site removed its fabricated testimonials because inventing consumer
    * reviews is unfair in all circumstances under Annex I of Directive

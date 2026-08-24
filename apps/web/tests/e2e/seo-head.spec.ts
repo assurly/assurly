@@ -1,34 +1,36 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * sitemap.ts asks search engines to index a specific list of pages. A page that
- * inherits the root layout's `alternates.canonical: '/'` tells them the opposite
- * — that it is a duplicate of the homepage — and the canonical wins, so the
- * sitemap entry is silently discarded.
+ * sitemap.ts asks search engines to index a specific list of pages. Each of
+ * those pages must declare itself canonical — a missing tag, or a tag pointing
+ * at `/`, tells the crawler the sitemap entry is a duplicate.
  *
- * /privacy, /terms and /trust all shipped in exactly that state. Nothing failed,
- * because nothing compared the two. This does.
+ * /privacy, /terms and /trust all shipped without their own canonical. Nothing
+ * failed, because nothing compared the two. This does.
  */
 test.describe('SEO head metadata', () => {
   test('every page in the sitemap declares itself canonical', async ({ page, baseURL }) => {
     const sitemap = await (await page.request.get('/sitemap.xml')).text();
-    const paths = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(
-      (match) => new URL(match[1]).pathname,
-    );
+    const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]);
 
-    expect(paths.length).toBeGreaterThan(0);
+    expect(locs.length).toBeGreaterThan(0);
 
-    for (const path of paths) {
+    for (const loc of locs) {
+      const path = new URL(loc).pathname;
       await page.goto(path, { waitUntil: 'domcontentloaded' });
 
       const canonical = page.locator('link[rel="canonical"]');
       await expect(canonical, `${path} declares no canonical`).toHaveCount(1);
 
-      // `.href` resolves relative values, so this compares destinations rather
-      // than the literal attribute — either form is valid to a crawler.
+      const hrefAttr = await canonical.getAttribute('href');
       const resolved = new URL(await canonical.evaluate((link) => (link as HTMLLinkElement).href));
       expect(resolved.pathname, `${path} points its canonical elsewhere`).toBe(path);
       expect(resolved.origin).toBe(new URL(baseURL ?? 'http://127.0.0.1:3200').origin);
+      // The homepage must keep the trailing slash in the raw attribute — URL
+      // parsing hides `https://assurly.dev` vs `https://assurly.dev/`.
+      if (path === '/') {
+        expect(hrefAttr, 'homepage canonical must match sitemap loc').toBe(loc);
+      }
     }
   });
 
