@@ -754,8 +754,10 @@ export class SupabaseDbAdapter implements DbAdapter {
   }
 
   async getDismissedRepositories(orgId: string): Promise<Repository[]> {
+    // A bulk dismissal writes one timestamp to many rows, and Postgres gives ties no
+    // stable order — the Restore button would move between loads without the name key.
     return this.fetchDb(
-      `repositories?select=*&organization_id=eq.${eq(orgId)}&is_active=eq.true&dismissed_at=not.is.null&order=dismissed_at.desc`,
+      `repositories?select=*&organization_id=eq.${eq(orgId)}&is_active=eq.true&dismissed_at=not.is.null&order=dismissed_at.desc,name.asc`,
     );
   }
 

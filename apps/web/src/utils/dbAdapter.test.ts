@@ -364,4 +364,17 @@ describe('user database adapter', () => {
     expect(url).toContain('limit=50');
     expect(url).not.toContain('select=*');
   });
+
+  it('orders dismissed repositories deterministically', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getUserDbAdapter('jwt').getDismissedRepositories('org-a');
+    const url = String(fetchMock.mock.calls[0][0]);
+    // Bulk dismissals share one timestamp, so the name key is what stops the
+    // Restore rows from reshuffling between loads.
+    expect(url).toContain('order=dismissed_at.desc,name.asc');
+  });
 });
