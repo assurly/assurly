@@ -5,11 +5,14 @@ import {
   applyAutoFixToFileContent,
   autoFixGroupCommitMessage,
   fileHasEnvStatementKey,
+  isRlsAutoFix,
   resolveAutoFixTargetPath,
+  rlsFixRefusalReason,
   summarizeAutoFixPlan,
 } from './githubAutoFix';
 import {
   AutoFixAlreadyAppliedError,
+  AutoFixNotApplicableError,
   encodeGitHubPath,
   GitHubApiError,
   githubContentsApiUrl,
@@ -164,6 +167,77 @@ function buildFixBranch(seed: string): string {
   return `assurly-fix-${crypto.createHash('sha256').update(seed).digest('hex').slice(0, 12)}`;
 }
 
+function decodeGitHubFileContent(encoded: string): string | null {
+  try {
+    return Buffer.from(encoded.replace(/\n/g, ''), 'base64').toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+async function readRepositoryFileContent(
+  repositoryName: string,
+  filePath: string,
+  ref: string,
+  token: string,
+): Promise<string | null> {
+  encodeGitHubPath(filePath);
+  const response = await githubRequest(githubContentsApiUrl(repositoryName, filePath, ref), token);
+  if (!response.ok) return null;
+  const parsed = fileSchema.safeParse(await response.json());
+  if (!parsed.success) return null;
+  return decodeGitHubFileContent(parsed.data.content);
+}
+
+async function assertRlsSourceAllowsFix(options: {
+  repositoryName: string;
+  sourceFilePath: string;
+  ref: string;
+  token: string;
+}): Promise<void> {
+  const content = await readRepositoryFileContent(
+    options.repositoryName,
+    options.sourceFilePath,
+    options.ref,
+    options.token,
+  );
+  if (content === null) {
+    throw new AutoFixNotApplicableError(
+      `Assurly could not read '${options.sourceFilePath}' from GitHub, so this PostgreSQL-only Row-Level Security fix was not applied. Re-scan the repository and try again.`,
+    );
+  }
+  const reason = rlsFixRefusalReason(options.sourceFilePath, content);
+  if (reason) throw new AutoFixNotApplicableError(reason);
+}
+
+async function assertRlsFixesAllowed(options: {
+  repositoryName: string;
+  ref: string;
+  token: string;
+  fixes: readonly GitHubAutoFix[];
+  fallbackSourcePath?: string;
+}): Promise<void> {
+  const sourcePaths = new Set<string>();
+  for (const fix of options.fixes) {
+    if (!isRlsAutoFix(fix)) continue;
+    const source = fix.sourceFilePath ?? options.fallbackSourcePath;
+    if (!source) {
+      throw new AutoFixNotApplicableError(
+        'Assurly could not read the SQL source file from GitHub, so this PostgreSQL-only Row-Level Security fix was not applied. Re-scan the repository and try again.',
+      );
+    }
+    sourcePaths.add(source);
+  }
+  for (const sourceFilePath of sourcePaths) {
+    await assertRlsSourceAllowsFix({
+      repositoryName: options.repositoryName,
+      sourceFilePath,
+      ref: options.ref,
+      token: options.token,
+    });
+  }
+}
+
 /** Creates or reuses a GitHub pull request for an allowlisted auto-fix. */
 export async function executeGitHubFixPullRequest(input: ExecuteGitHubFixInput): Promise<string> {
   const repositoryName = input.repositoryName;
@@ -184,6 +258,13 @@ export async function executeGitHubFixPullRequest(input: ExecuteGitHubFixInput):
 
   const fixBranch = buildFixBranch(input.branchSeed);
   const targetFilePath = resolveAutoFixTargetPath(input.filePath, input.fix);
+  await assertRlsFixesAllowed({
+    repositoryName,
+    ref: baseBranch,
+    token: writeTarget.token,
+    fixes: [input.fix],
+    fallbackSourcePath: input.filePath,
+  });
   const workflowToken = await resolveWorkflowCommitToken({
     needed: isWorkflowFilePath(targetFilePath),
     isUpstreamCommit: writeTarget.commitRepositoryName === repositoryName,
@@ -337,12 +418,19 @@ export interface ExecuteGitHubBatchFixInput {
   repositoryId?: number;
 }
 
+export interface GitHubBatchFixRefusal {
+  filePath: string;
+  reason: string;
+}
+
 export interface GitHubBatchFixResult {
   prUrl: string;
   /** Target file paths that are present on the fix branch (committed or already applied). */
   committedFilePaths: string[];
   /** Target file paths that could not be committed (e.g. missing workflow scope). */
   skippedFilePaths: string[];
+  /** Target file paths refused because the finding source is not PostgreSQL. */
+  refusedFixes: GitHubBatchFixRefusal[];
 }
 
 /**
@@ -399,16 +487,29 @@ export async function executeGitHubBatchFixPullRequest(
 
   const committedFilePaths: string[] = [];
   const skippedFilePaths: string[] = [];
+  const refusedFixes: GitHubBatchFixRefusal[] = [];
   let lastCommitError: unknown = null;
 
   for (const group of input.files) {
     const commitToken = isWorkflowFilePath(group.filePath) && workflowToken ? workflowToken : token;
     try {
+      await assertRlsFixesAllowed({
+        repositoryName,
+        ref: baseBranch,
+        token,
+        fixes: group.fixes,
+      });
       await commitFileGroupToBranch({ token: commitToken, commitRepositoryName, fixBranch, group });
       committedFilePaths.push(group.filePath);
     } catch (error) {
       // A revoked or unauthorized token is fatal for the whole batch.
       if (error instanceof GitHubWriteAccessError) throw error;
+      if (error instanceof AutoFixNotApplicableError) {
+        refusedFixes.push({ filePath: group.filePath, reason: error.message });
+        skippedFilePaths.push(group.filePath);
+        lastCommitError = error;
+        continue;
+      }
       console.error(`[github/fix] skipped ${group.filePath}:`, error);
       lastCommitError = error;
       skippedFilePaths.push(group.filePath);
@@ -416,6 +517,7 @@ export async function executeGitHubBatchFixPullRequest(
   }
 
   if (committedFilePaths.length === 0) {
+    if (lastCommitError instanceof AutoFixNotApplicableError) throw lastCommitError;
     const existingUrl = await findExistingPullRequest(
       pullRequestRepositoryName,
       pullRequestHeadOwner,
@@ -423,7 +525,7 @@ export async function executeGitHubBatchFixPullRequest(
       token,
     );
     if (existingUrl) {
-      return { prUrl: existingUrl, committedFilePaths, skippedFilePaths };
+      return { prUrl: existingUrl, committedFilePaths, skippedFilePaths, refusedFixes };
     }
     if (lastCommitError) throw lastCommitError;
     throw new AutoFixAlreadyAppliedError();
@@ -447,7 +549,7 @@ export async function executeGitHubBatchFixPullRequest(
     token,
   });
 
-  return { prUrl, committedFilePaths, skippedFilePaths };
+  return { prUrl, committedFilePaths, skippedFilePaths, refusedFixes };
 }
 
 /** Applies every fix in a group to one file and commits it if the content changed. */

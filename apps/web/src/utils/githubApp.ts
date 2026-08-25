@@ -59,6 +59,16 @@ export class AutoFixAlreadyAppliedError extends Error {
   }
 }
 
+/** Raised when a proposed auto-fix cannot apply to this repository (e.g. Postgres RLS on MySQL). */
+export class AutoFixNotApplicableError extends Error {
+  readonly status = 422;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'AutoFixNotApplicableError';
+  }
+}
+
 /** Server-side PAT used by the public-scan proxy and as a write fallback for auto-fix. */
 export function getGitHubServerPat(): string | undefined {
   const value = process.env.GITHUB_PAT?.trim() || process.env.GITHUB_TOKEN?.trim();

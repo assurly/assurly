@@ -1,4 +1,4 @@
-import { detectSqlDialect } from '@assurly/scanner-core';
+import { detectSqlDialect, isPostgresSqlSource } from '@assurly/scanner-core';
 
 export interface GitHubAutoFix {
   statement: string;
@@ -6,6 +6,11 @@ export interface GitHubAutoFix {
   title: string;
   /** When set, the fix commit targets this repository path instead of the finding path. */
   targetFilePath?: string;
+  /**
+   * Finding file this RLS fix was derived from. Distinct from `targetFilePath`,
+   * which is a new migration; the content-aware dialect gate reads this path.
+   */
+  sourceFilePath?: string;
   /** How to merge the statement into the target file. Defaults to append. */
   applyMode?: GitHubAutoFixApplyMode;
 }
@@ -195,10 +200,13 @@ export function buildGitHubAutoFix(
   const lowerPath = filePath.toLowerCase();
   const lowerMessage = message.toLowerCase();
 
+  // Path-only: content is empty, so this does not detect MySQL dumps — those are
+  // refused by the content-aware gate in githubFixPipeline. Using isPostgresSqlSource
+  // keeps the dialect policy in one place so future path-based signals apply here too.
   if (
     lowerPath.endsWith('.sql') &&
     lowerMessage.includes('row-level security') &&
-    detectSqlDialect({ file: filePath, content: '' }) !== 'clickhouse'
+    isPostgresSqlSource({ file: filePath, content: '' })
   ) {
     const tableName =
       message.match(/table\s+'([^']+)'/i)?.[1] ?? message.match(/supabase table\s+'([^']+)'/i)?.[1];
@@ -209,6 +217,7 @@ export function buildGitHubAutoFix(
       description: `Enable Row-Level Security (RLS) on table \`${tableName}\` (with a policy scaffold to complete).`,
       title: `security(rls): enable row level security on ${tableName}`,
       targetFilePath: resolveRlsMigrationTarget(filePath),
+      sourceFilePath: filePath,
       applyMode: 'append',
     };
   }
@@ -387,9 +396,24 @@ export function isAutoFixableFinding(finding: {
 
   if (finding.severity !== 'error') return false;
 
+  // Path-only (empty content): does not detect MySQL. The pipeline gate does.
   return (
     filePath.endsWith('.sql') &&
     message.includes('row-level security') &&
-    detectSqlDialect({ file: finding.file_path, content: '' }) !== 'clickhouse'
+    isPostgresSqlSource({ file: finding.file_path, content: '' })
   );
+}
+
+export function isRlsAutoFix(fix: GitHubAutoFix): boolean {
+  return /enable\s+row\s+level\s+security/i.test(fix.statement);
+}
+
+/** Why an RLS fix must not be committed against this SQL source, or `null` if it may. */
+export function rlsFixRefusalReason(filePath: string, content: string): string | null {
+  if (isPostgresSqlSource({ file: filePath, content })) return null;
+  const dialect = detectSqlDialect({ file: filePath, content });
+  if (dialect === 'mysql') {
+    return 'This file is a MySQL schema. Row-level security does not apply to MySQL. Re-scan the repository to clear this stale finding.';
+  }
+  return 'This SQL file is not PostgreSQL. Row-level security cannot be applied here. Re-scan the repository to clear this stale finding.';
 }

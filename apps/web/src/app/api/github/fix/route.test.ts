@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from './route';
-import { AutoFixAlreadyAppliedError, GitHubWriteAccessError } from '../../../../utils/githubApp';
+import {
+  AutoFixAlreadyAppliedError,
+  AutoFixNotApplicableError,
+  GitHubWriteAccessError,
+} from '../../../../utils/githubApp';
 import { resetRateLimitsForTests } from '../../../../utils/rateLimit';
 
 const mocks = vi.hoisted(() => ({
@@ -311,6 +315,53 @@ describe('GitHub fix auto-fix flow (POST /api/github/fix)', () => {
     expect(body.error.code).toBe('github_unavailable');
   });
 
+  it('returns a per-finding refusal for a MySQL RLS fix and still commits the rest', async () => {
+    const envFinding = '44000000-0000-4000-8000-000000000004';
+    const mysqlReason =
+      'This file is a MySQL schema. Row-level security does not apply to MySQL. Re-scan the repository to clear this stale finding.';
+    db.getScanFindings.mockResolvedValue([
+      {
+        id: findingId,
+        scan_id: scanId,
+        severity: 'error',
+        file_path: 'database.sql',
+        message:
+          "Supabase table 'attempts' is created but Row-Level Security (RLS) is not enabled.",
+      },
+      {
+        id: envFinding,
+        scan_id: scanId,
+        severity: 'warning',
+        file_path: 'apps/web/src/lib/stripe.ts',
+        rule_id: 'undocumented-env',
+        message:
+          "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
+      },
+    ]);
+    mocks.executeGitHubBatchFixPullRequest.mockResolvedValue({
+      prUrl: 'https://github.com/acme/app/pull/12',
+      committedFilePaths: ['apps/web/.env.example'],
+      skippedFilePaths: ['99999999999999_assurly_enable_rls.sql'],
+      refusedFixes: [
+        {
+          filePath: '99999999999999_assurly_enable_rls.sql',
+          reason: mysqlReason,
+        },
+      ],
+    });
+
+    const response = await POST(fixRequest({ repoId, scanId, batch: true }));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.prUrl).toBe('https://github.com/acme/app/pull/12');
+    expect(body.findingIds).toEqual([envFinding]);
+    expect(body.refused).toEqual([{ findingId, reason: mysqlReason }]);
+    expect(db.updateFindingFixPrUrls).toHaveBeenCalledWith([
+      { findingId: envFinding, fixPrUrl: 'https://github.com/acme/app/pull/12' },
+    ]);
+  });
+
   it('maps an already-applied batch fix to a 409 with an accurate message', async () => {
     db.getScanFindings.mockResolvedValue([
       {
@@ -352,5 +403,20 @@ describe('GitHub fix auto-fix flow (POST /api/github/fix)', () => {
     expect(response.status).toBe(409);
     expect(body.error.code).toBe('fix_already_applied');
     expect(body.error.message).toBe('This fix has already been applied.');
+  });
+
+  it('maps a non-Postgres RLS refusal to fix_not_applicable', async () => {
+    mocks.executeGitHubFixPullRequest.mockRejectedValue(
+      new AutoFixNotApplicableError(
+        'This file is a MySQL schema. Row-level security does not apply to MySQL. Re-scan the repository to clear this stale finding.',
+      ),
+    );
+
+    const response = await POST(fixRequest({ repoId, scanId, findingId }));
+    const body = await response.json();
+
+    expect(response.status).toBe(422);
+    expect(body.error.code).toBe('fix_not_applicable');
+    expect(body.error.message).toContain('MySQL schema');
   });
 });

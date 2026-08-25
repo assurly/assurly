@@ -26,6 +26,7 @@ import {
 } from '../../../../utils/githubFixPipeline';
 import {
   AutoFixAlreadyAppliedError,
+  AutoFixNotApplicableError,
   GitHubApiError,
   GitHubWriteAccessError,
   isGitHubRepositoryName,
@@ -67,6 +68,9 @@ function rethrowAutoFixError(operation: string, error: unknown, targetFilePath?:
   if (error instanceof GitHubWriteAccessError) throw error;
   if (error instanceof AutoFixAlreadyAppliedError) {
     throw new ApiError(409, 'fix_already_applied', error.message);
+  }
+  if (error instanceof AutoFixNotApplicableError) {
+    throw new ApiError(error.status, 'fix_not_applicable', error.message);
   }
   console.error(`[github/fix] ${operation} failed:`, error);
   if (error instanceof GitHubApiError) {
@@ -233,11 +237,20 @@ export const POST = secureRoute(
         throw nothingCommittedError(batchResult.skippedFilePaths);
       }
 
+      const refusedByTarget = new Map(
+        (batchResult.refusedFixes ?? []).map((item) => [item.filePath, item.reason]),
+      );
+      const refused = pendingFindings.flatMap((finding) => {
+        const reason = refusedByTarget.get(resolveFindingAutoFixTargetPath(finding));
+        return reason ? [{ findingId: finding.id, reason }] : [];
+      });
+
       await persistFixPullRequest(context, findingIds, batchResult.prUrl);
       return NextResponse.json(
         {
           prUrl: assertTrustedRedirect(batchResult.prUrl, ['https://github.com']),
           findingIds,
+          ...(refused.length > 0 ? { refused } : {}),
         },
         { status: 201 },
       );

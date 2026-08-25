@@ -7,6 +7,7 @@ import {
   resolveEnvExamplePath,
   resolveFindingAutoFixTargetPath,
   resolveRlsMigrationTarget,
+  rlsFixRefusalReason,
   summarizeAutoFixPlan,
 } from './githubAutoFix';
 
@@ -154,6 +155,25 @@ describe('resolveEnvExamplePath', () => {
     expect(resolveEnvExamplePath('packages/scanner-core/src/index.ts')).toBe(
       'packages/scanner-core/.env.example',
     );
+  });
+});
+
+describe('rlsFixRefusalReason', () => {
+  const mysqlDump = [
+    '-- Adminer 4.2.0 MySQL dump',
+    '',
+    'CREATE TABLE `attempts` (',
+    '  `id` int(11) NOT NULL AUTO_INCREMENT,',
+    '  PRIMARY KEY (`id`)',
+    ') ENGINE=InnoDB DEFAULT CHARSET=utf8;',
+  ].join('\n');
+
+  it('refuses when the finding source is a MySQL schema', () => {
+    expect(rlsFixRefusalReason('database.sql', mysqlDump)).toMatch(/MySQL schema/);
+  });
+
+  it('allows when the finding source is Postgres', () => {
+    expect(rlsFixRefusalReason('db/schema.sql', 'create table public.orders(id uuid);')).toBeNull();
   });
 });
 

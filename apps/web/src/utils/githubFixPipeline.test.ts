@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutoFixAlreadyAppliedError } from './githubApp';
-import { buildGitHubAutoFix } from './githubAutoFix';
-import { executeGitHubFixPullRequest } from './githubFixPipeline';
+import { buildGitHubAutoFix, buildGitHubAutoFixPlan } from './githubAutoFix';
+import { executeGitHubBatchFixPullRequest, executeGitHubFixPullRequest } from './githubFixPipeline';
 
 const mocks = vi.hoisted(() => ({
   resolveGitHubWriteTarget: vi.fn(),
@@ -54,6 +54,18 @@ describe('executeGitHubFixPullRequest', () => {
         return new Response('{}', { status: 201 });
       }
       if (url.includes('/contents/') && method === 'GET') {
+        if (url.includes('003_create_auth_schema')) {
+          return new Response(
+            JSON.stringify({
+              sha: 'b'.repeat(40),
+              content: Buffer.from('create table public.organizations(id uuid);').toString(
+                'base64',
+              ),
+              encoding: 'base64',
+            }),
+            { status: 200 },
+          );
+        }
         return new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 });
       }
       if (url.includes('/contents/') && method === 'PUT') {
@@ -308,5 +320,257 @@ describe('executeGitHubFixPullRequest', () => {
       ([, requestInit]) => (requestInit as RequestInit | undefined)?.method === 'PUT',
     );
     expect(putCall).toBeUndefined();
+  });
+});
+
+const MYSQL_PHPAUTH = [
+  '-- Adminer 4.2.0 MySQL dump',
+  '',
+  'CREATE TABLE `attempts` (',
+  '  `id` int(11) NOT NULL AUTO_INCREMENT,',
+  "  `ip` char(39) NOT NULL DEFAULT '',",
+  '  `expiredate` datetime NOT NULL,',
+  '  PRIMARY KEY (`id`)',
+  ') ENGINE=InnoDB DEFAULT CHARSET=utf8;',
+].join('\n');
+
+const POSTGRES_ORDERS = 'create table public.orders(id uuid);';
+
+function githubFileContentsResponse(content: string, sha = 'b'.repeat(40)): Response {
+  return new Response(
+    JSON.stringify({
+      sha,
+      content: Buffer.from(content).toString('base64'),
+      encoding: 'base64',
+    }),
+    { status: 200 },
+  );
+}
+
+function contentsPathFromUrl(url: string): string {
+  const match = url.match(/\/contents\/([^?]+)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+describe('RLS auto-fix dialect gate', () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', fetchMock);
+    mocks.resolveGitHubWriteTarget.mockResolvedValue({
+      token: 'user-token',
+      commitRepositoryName: 'acme/app',
+      pullRequestRepositoryName: 'acme/app',
+      pullRequestHeadOwner: 'acme',
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function mockGitHub(options: {
+    sourcePath: string;
+    source?: { status: number; content?: string };
+    onPut?: (url: string, body: { content?: string }) => void;
+  }): void {
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('/git/ref/heads/main') && method === 'GET') {
+        return new Response(JSON.stringify({ object: { sha: 'a'.repeat(40) } }), { status: 200 });
+      }
+      if (url.endsWith('/git/refs') && method === 'POST') {
+        return new Response('{}', { status: 201 });
+      }
+      if (url.includes('/contents/') && method === 'GET') {
+        const path = contentsPathFromUrl(url);
+        if (path === options.sourcePath) {
+          if (options.source?.status === 200 && options.source.content !== undefined) {
+            return githubFileContentsResponse(options.source.content);
+          }
+          return new Response(JSON.stringify({ message: 'Not Found' }), {
+            status: options.source?.status ?? 404,
+          });
+        }
+        return new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 });
+      }
+      if (url.includes('/contents/') && method === 'PUT') {
+        const putBody = JSON.parse(String(init?.body)) as { content?: string };
+        options.onPut?.(url, putBody);
+        return new Response('{}', { status: 201 });
+      }
+      if (url.endsWith('/pulls') && method === 'POST') {
+        return new Response(JSON.stringify({ html_url: 'https://github.com/acme/app/pull/42' }), {
+          status: 201,
+        });
+      }
+      return new Response(`unexpected ${method} ${url}`, { status: 500 });
+    });
+  }
+
+  it('refuses an RLS auto-fix when the finding source is a MySQL schema', async () => {
+    const fix = buildGitHubAutoFix(
+      'database.sql',
+      "Database table 'attempts' is created but Row-Level Security (RLS) is not enabled.",
+    );
+    expect(fix).toBeTruthy();
+    if (!fix) return;
+
+    const putUrls: string[] = [];
+    mockGitHub({
+      sourcePath: 'database.sql',
+      source: { status: 200, content: MYSQL_PHPAUTH },
+      onPut: (url) => putUrls.push(url),
+    });
+
+    await expect(
+      executeGitHubFixPullRequest({
+        repositoryName: 'acme/app',
+        baseBranch: 'main',
+        filePath: 'database.sql',
+        fix,
+        branchSeed: 'finding-mysql',
+        userGitHubToken: 'user-token',
+      }),
+    ).rejects.toThrow(/MySQL schema/);
+
+    expect(putUrls).toEqual([]);
+  });
+
+  it('allows an RLS auto-fix when the finding source is Postgres', async () => {
+    const fix = buildGitHubAutoFix(
+      'db/schema.sql',
+      "Database table 'orders' is created but Row-Level Security (RLS) is not enabled.",
+    );
+    expect(fix).toBeTruthy();
+    if (!fix) return;
+
+    const putUrls: string[] = [];
+    mockGitHub({
+      sourcePath: 'db/schema.sql',
+      source: { status: 200, content: POSTGRES_ORDERS },
+      onPut: (url) => putUrls.push(url),
+    });
+
+    const prUrl = await executeGitHubFixPullRequest({
+      repositoryName: 'acme/app',
+      baseBranch: 'main',
+      filePath: 'db/schema.sql',
+      fix,
+      branchSeed: 'finding-postgres',
+      userGitHubToken: 'user-token',
+    });
+
+    expect(prUrl).toBe('https://github.com/acme/app/pull/42');
+    expect(putUrls.some((url) => url.includes('assurly_enable_rls'))).toBe(true);
+  });
+
+  it('refuses an RLS auto-fix when the finding source file cannot be fetched', async () => {
+    const fix = buildGitHubAutoFix(
+      'database.sql',
+      "Database table 'attempts' is created but Row-Level Security (RLS) is not enabled.",
+    );
+    expect(fix).toBeTruthy();
+    if (!fix) return;
+
+    const putUrls: string[] = [];
+    mockGitHub({
+      sourcePath: 'database.sql',
+      source: { status: 404 },
+      onPut: (url) => putUrls.push(url),
+    });
+
+    await expect(
+      executeGitHubFixPullRequest({
+        repositoryName: 'acme/app',
+        baseBranch: 'main',
+        filePath: 'database.sql',
+        fix,
+        branchSeed: 'finding-missing',
+        userGitHubToken: 'user-token',
+      }),
+    ).rejects.toThrow(/could not read/);
+
+    expect(putUrls).toEqual([]);
+  });
+
+  it('commits a legitimate env fix in a batch and refuses only the MySQL RLS finding', async () => {
+    const plan = buildGitHubAutoFixPlan([
+      {
+        file_path: 'database.sql',
+        message:
+          "Database table 'attempts' is created but Row-Level Security (RLS) is not enabled.",
+      },
+      {
+        file_path: 'apps/web/src/lib/stripe.ts',
+        message:
+          "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
+        rule_id: 'undocumented-env',
+      },
+    ]);
+    expect(plan).not.toBeNull();
+    if (!plan) return;
+
+    const putPaths: string[] = [];
+    mockGitHub({
+      sourcePath: 'database.sql',
+      source: { status: 200, content: MYSQL_PHPAUTH },
+      onPut: (url) => putPaths.push(contentsPathFromUrl(url)),
+    });
+
+    const result = await executeGitHubBatchFixPullRequest({
+      repositoryName: 'acme/app',
+      baseBranch: 'main',
+      files: plan,
+      branchSeed: 'batch:scan-1',
+      userGitHubToken: 'user-token',
+    });
+
+    expect(result.prUrl).toBe('https://github.com/acme/app/pull/42');
+    expect(result.committedFilePaths).toEqual(['apps/web/.env.example']);
+    expect(result.committedFilePaths.some((path) => path.includes('assurly_enable_rls'))).toBe(
+      false,
+    );
+    expect(putPaths).toEqual(['apps/web/.env.example']);
+    expect(result.refusedFixes).toEqual([
+      {
+        filePath: '99999999999999_assurly_enable_rls.sql',
+        reason: expect.stringMatching(/MySQL schema/),
+      },
+    ]);
+  });
+
+  it('refuses a batch that contains only MySQL RLS findings', async () => {
+    const plan = buildGitHubAutoFixPlan([
+      {
+        file_path: 'database.sql',
+        message:
+          "Database table 'attempts' is created but Row-Level Security (RLS) is not enabled.",
+      },
+    ]);
+    expect(plan).not.toBeNull();
+    if (!plan) return;
+
+    const putPaths: string[] = [];
+    mockGitHub({
+      sourcePath: 'database.sql',
+      source: { status: 200, content: MYSQL_PHPAUTH },
+      onPut: (url) => putPaths.push(contentsPathFromUrl(url)),
+    });
+
+    await expect(
+      executeGitHubBatchFixPullRequest({
+        repositoryName: 'acme/app',
+        baseBranch: 'main',
+        files: plan,
+        branchSeed: 'batch:scan-mysql-only',
+        userGitHubToken: 'user-token',
+      }),
+    ).rejects.toThrow(/MySQL schema/);
+
+    expect(putPaths).toEqual([]);
   });
 });
