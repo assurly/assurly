@@ -17,7 +17,9 @@ const db = {
   getScanFindings: vi.fn(),
   saveScan: vi.fn(),
   deleteScan: vi.fn(),
+  getTargetByIdentifier: vi.fn(),
   upsertTarget: vi.fn(),
+  markScanProjectionStale: vi.fn(),
 };
 
 describe('/api/scans tenant isolation', () => {
@@ -106,9 +108,10 @@ describe('/api/scans persistence contract', () => {
       db,
     });
     // Caller is a member of the org that owns the repository → access granted.
-    db.getRepository.mockResolvedValue({ id: repoId, organization_id: 'org-a' });
+    db.getRepository.mockResolvedValue({ id: repoId, organization_id: 'org-a', name: 'acme/api' });
     db.getOrganization.mockResolvedValue({ id: 'org-a' });
     db.getMembership.mockResolvedValue({ id: 'membership-a', role: 'admin' });
+    db.getTargetByIdentifier.mockResolvedValue(null);
     db.saveScan.mockImplementation(
       async (
         repository_id: string,
@@ -262,6 +265,7 @@ describe('DELETE /api/scans', () => {
     });
     db.getOrganization.mockResolvedValue({ id: 'org-a' });
     db.getMembership.mockResolvedValue({ id: 'membership-a', role: 'admin' });
+    db.getTargetByIdentifier.mockResolvedValue(null);
     db.deleteScan.mockResolvedValue(undefined);
     db.upsertTarget.mockResolvedValue({});
     db.getScanFindings.mockResolvedValue([]);

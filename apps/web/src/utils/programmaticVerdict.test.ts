@@ -216,6 +216,32 @@ describe('resolveProgrammaticVerdict', () => {
     expect(result.activeProbeAllowed).toBe(false);
   });
 
+  it('returns the stored repo verdict when the target has no public badge token', async () => {
+    const result = await resolveProgrammaticVerdict(
+      db(
+        vi.fn().mockResolvedValue(
+          target({
+            kind: 'repo',
+            identifier: 'tibco87/PHPAuth',
+            display_name: 'tibco87/PHPAuth',
+            current_verdict: 'blocked',
+            current_ship_score: 59,
+            last_checked_at: '2026-08-09T19:47:28.312Z',
+            badge_token: null,
+          }),
+        ),
+      ),
+      'org-1',
+      { kind: 'repo', identifier: 'tibco87/PHPAuth' },
+      BASE,
+    );
+    expect(result.status).toBe('blocked');
+    expect(result.shipScore).toBe(59);
+    expect(result.lastCheckedAt).toBe('2026-08-09T19:47:28.312Z');
+    expect(result.trustPageUrl).toBeNull();
+    expect(result.badgeUrl).toBeNull();
+  });
+
   it('allows active probing for a repo target (implicitly owned)', async () => {
     const result = await resolveProgrammaticVerdict(
       db(vi.fn().mockResolvedValue(target({ kind: 'repo', identifier: 'acme/api' }))),

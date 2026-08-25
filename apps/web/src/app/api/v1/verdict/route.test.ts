@@ -193,6 +193,55 @@ describe('GET /api/v1/verdict (keyed programmatic verdict)', () => {
     );
   });
 
+  it('returns the stored repo verdict when the target has scans but no badge token', async () => {
+    useKey('free');
+    const { getTargetByIdentifier } = useTarget(
+      target({
+        kind: 'repo',
+        identifier: 'tibco87/PHPAuth',
+        display_name: 'tibco87/PHPAuth',
+        repository_id: 'a26e03a7-42b0-42be-b2c9-fd685ea177a0',
+        current_verdict: 'blocked',
+        current_ship_score: 59,
+        last_checked_at: '2026-08-09T19:47:28.312Z',
+        badge_token: null,
+        ownership_verified: false,
+      }),
+    );
+    const res = await GET(
+      new Request('http://localhost/api/v1/verdict?repo=tibco87%2FPHPAuth', {
+        headers: { authorization: 'Bearer ask_live_dummy' },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe('blocked');
+    expect(body.shipScore).toBe(59);
+    expect(body.lastCheckedAt).toBe('2026-08-09T19:47:28.312Z');
+    expect(body.kind).toBe('repo');
+    expect(body.identifier).toBe('tibco87/PHPAuth');
+    expect(body.trustPageUrl).toBeNull();
+    expect(body.badgeUrl).toBeNull();
+    expect(getTargetByIdentifier).toHaveBeenCalledWith('org-1', 'repo', 'tibco87/PHPAuth');
+  });
+
+  it('returns unknown for a repository with no stored scan target', async () => {
+    useKey('free');
+    useTarget(null);
+    const res = await GET(
+      new Request('http://localhost/api/v1/verdict?repo=acme%2Fnever-scanned', {
+        headers: { authorization: 'Bearer ask_live_dummy' },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe('unknown');
+    expect(body.shipScore).toBeNull();
+    expect(body.lastCheckedAt).toBeNull();
+    expect(body.kind).toBe('repo');
+    expect(body.identifier).toBe('acme/never-scanned');
+  });
+
   it('returns unknown for a target the org does not own', async () => {
     useKey('free');
     useTarget(null);

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Target } from './dbAdapter';
-import { PUBLIC_TRUST_KEYS, toPublicIssueCategory, toPublicTrustProjection } from './publicTrust';
+import {
+  PUBLIC_TRUST_KEYS,
+  toPublicIssueCategory,
+  toPublicTrustProjection,
+  toHostedTrustProjection,
+} from './publicTrust';
 
 function target(overrides: Partial<Target> = {}): Target {
   return {
@@ -102,5 +107,12 @@ describe('toPublicTrustProjection', () => {
 
   it('returns null when the target has no badge token', () => {
     expect(toPublicTrustProjection(target({ badge_token: null }))).toBeNull();
+  });
+
+  it('still projects a hosted verdict when the target has no badge token', () => {
+    const hosted = toHostedTrustProjection(target({ badge_token: null, current_ship_score: 59 }));
+    expect(hosted.verdict).toBe('blocked');
+    expect(hosted.shipScore).toBe(59);
+    expect(hosted.badgeToken).toBeNull();
   });
 });

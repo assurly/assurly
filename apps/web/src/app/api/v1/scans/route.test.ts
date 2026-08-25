@@ -23,6 +23,7 @@ const db = {
   getRepositories: vi.fn(),
   getRepository: vi.fn(),
   saveScan: vi.fn(),
+  getTargetByIdentifier: vi.fn(),
   upsertTarget: vi.fn(),
 };
 
@@ -50,6 +51,7 @@ describe('POST /api/v1/scans', () => {
       organization_id: 'org-1',
       name: 'acme/saas',
     });
+    db.getTargetByIdentifier.mockResolvedValue(null);
     db.saveScan.mockResolvedValue({
       id: '22000000-0000-4000-8000-000000000002',
       repository_id: '11000000-0000-4000-8000-000000000001',

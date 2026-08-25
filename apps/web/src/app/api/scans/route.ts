@@ -201,7 +201,16 @@ export const DELETE = secureRoute(
         }
       }
     } catch (error) {
-      console.error('Failed to re-sync target after scan delete:', error);
+      console.error(
+        JSON.stringify({
+          service: 'assurly-api',
+          event: 'target-sync-failed',
+          repoId: scan.repository_id,
+          scanId: scan.id,
+          errorType: error instanceof Error ? error.name : 'UnknownError',
+          errorMessage: error instanceof Error ? error.message : String(error),
+        }),
+      );
     }
 
     return NextResponse.json({ ok: true });

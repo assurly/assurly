@@ -26,8 +26,14 @@ export interface PublicTrustProjection {
     category: string;
     severity: Severity;
   } | null;
+  /** Shareable badge token. The public trust page requires this to be present. */
   badgeToken: string;
 }
+
+/** Hosted (keyed API) projection — same shape as the public DTO, badge optional. */
+export type HostedTrustProjection = Omit<PublicTrustProjection, 'badgeToken'> & {
+  badgeToken: string | null;
+};
 
 export interface VerdictEvidenceShape {
   topIssue?: Verdict['topIssue'] | null;
@@ -103,10 +109,8 @@ export function categoryRemediation(category: string): string {
   }
 }
 
-/** Builds the public DTO. Returns null when the target has no shareable badge token. */
-export function toPublicTrustProjection(target: Target): PublicTrustProjection | null {
-  if (!target.badge_token) return null;
-
+/** Builds the hosted DTO. Does not require a public badge token. */
+export function toHostedTrustProjection(target: Target): HostedTrustProjection {
   const evidence = (target.verdict_evidence ?? {}) as VerdictEvidenceShape;
   const top = evidence.topIssue ?? null;
 
@@ -126,6 +130,13 @@ export function toPublicTrustProjection(target: Target): PublicTrustProjection |
       : null,
     badgeToken: target.badge_token,
   };
+}
+
+/** Builds the public DTO. Returns null when the target has no shareable badge token. */
+export function toPublicTrustProjection(target: Target): PublicTrustProjection | null {
+  if (!target.badge_token) return null;
+  const hosted = toHostedTrustProjection(target);
+  return { ...hosted, badgeToken: target.badge_token };
 }
 
 /** Keys allowed on a public trust JSON response — used by tests. */

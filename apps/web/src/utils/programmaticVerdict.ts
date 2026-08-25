@@ -9,8 +9,8 @@ import type {
 import { isActiveProbeAllowed } from './ownership/gate';
 import {
   categoryRemediation,
-  toPublicTrustProjection,
-  type PublicTrustProjection,
+  toHostedTrustProjection,
+  type HostedTrustProjection,
 } from './publicTrust';
 
 /**
@@ -131,7 +131,7 @@ function trustUrls(
 
 function toResponse(
   query: ProgrammaticVerdictQuery,
-  projection: PublicTrustProjection | null,
+  projection: HostedTrustProjection | null,
   activeProbeAllowed: boolean,
   appBaseUrl: string | null,
   fixOutcomes: ProgrammaticFixOutcome[],
@@ -210,7 +210,7 @@ export async function resolveProgrammaticVerdict(
 
   return toResponse(
     query,
-    toPublicTrustProjection(target),
+    toHostedTrustProjection(target),
     activeProbeAllowed,
     appBaseUrl,
     fixOutcomes,

@@ -1,4 +1,5 @@
 import type { DbAdapter, ScanFinding, ScanShipGateMeta } from './dbAdapter';
+import { generateBadgeToken } from './guardian';
 import { resolveVerdictFromScanFindings } from './shipGate';
 
 export interface PersistRepoScanInput {
@@ -20,57 +21,76 @@ export interface RepoTargetVerdictInput {
   verdictOverride?: 'ready' | 'review' | 'blocked' | 'failed';
 }
 
+function logTargetSyncFailure(
+  event: 'target-sync-failed' | 'target-reset-failed' | 'target-sync-stale-mark-failed',
+  details: Record<string, unknown>,
+  error: unknown,
+): void {
+  console.error(
+    JSON.stringify({
+      service: 'assurly-api',
+      event,
+      ...details,
+      errorType: error instanceof Error ? error.name : 'UnknownError',
+      errorMessage: error instanceof Error ? error.message : String(error),
+    }),
+  );
+}
+
 /**
  * Recomputes and writes the repo's `target` (the current-verdict projection)
  * from a set of scan findings. Shared by browser POST /api/scans and
  * programmatic POST /api/v1/scans so cards stay on one SoT.
+ *
+ * Throws on failure so the caller can record a stale projection. Do not let
+ * that throw fail the user's scan.
  */
 export async function syncRepoTargetVerdict(
-  db: DbAdapter,
+  db: Pick<DbAdapter, 'getRepository' | 'getTargetByIdentifier' | 'upsertTarget'>,
   repoId: string,
   input: RepoTargetVerdictInput,
 ): Promise<void> {
-  try {
-    const repo = await db.getRepository(repoId);
-    if (!repo) return;
-    const verdict = resolveVerdictFromScanFindings(input.findings, {
-      scannedFileCount: input.scannedFileCount,
-    });
-    const currentVerdict =
-      input.verdictOverride && input.verdictOverride !== 'failed'
-        ? input.verdictOverride
-        : input.verdictOverride === 'failed'
-          ? 'unknown'
-          : verdict.status;
-    const currentShipScore =
-      input.verdictOverride === 'failed' ? null : (input.shipScoreOverride ?? verdict.shipScore);
-    await db.upsertTarget({
-      organizationId: repo.organization_id,
-      kind: 'repo',
-      identifier: repo.name,
-      displayName: repo.name,
-      repositoryId: repo.id,
-      generatorFingerprint: input.generatorFingerprint ?? undefined,
-      currentVerdict,
-      currentShipScore,
-      verdictEvidence: {
-        topIssue: input.verdictOverride === 'failed' ? null : verdict.topIssue,
-        blockerCount: verdict.blockerCount,
-        reviewCount: verdict.reviewCount,
-        warningCount: verdict.warningCount,
-        headline: verdict.headline,
-      },
-      lastCheckedAt: input.lastCheckedAt ?? new Date().toISOString(),
-    });
-  } catch (error) {
-    console.error('Failed to sync target from scan:', error);
-  }
+  const repo = await db.getRepository(repoId);
+  if (!repo) return;
+  const verdict = resolveVerdictFromScanFindings(input.findings, {
+    scannedFileCount: input.scannedFileCount,
+  });
+  const currentVerdict =
+    input.verdictOverride && input.verdictOverride !== 'failed'
+      ? input.verdictOverride
+      : input.verdictOverride === 'failed'
+        ? 'unknown'
+        : verdict.status;
+  const currentShipScore =
+    input.verdictOverride === 'failed' ? null : (input.shipScoreOverride ?? verdict.shipScore);
+  const existing = await db.getTargetByIdentifier(repo.organization_id, 'repo', repo.name);
+  const badgeToken = existing?.badge_token ?? generateBadgeToken();
+  await db.upsertTarget({
+    organizationId: repo.organization_id,
+    kind: 'repo',
+    identifier: repo.name,
+    displayName: repo.name,
+    repositoryId: repo.id,
+    generatorFingerprint: input.generatorFingerprint ?? undefined,
+    currentVerdict,
+    currentShipScore,
+    verdictEvidence: {
+      topIssue: input.verdictOverride === 'failed' ? null : verdict.topIssue,
+      blockerCount: verdict.blockerCount,
+      reviewCount: verdict.reviewCount,
+      warningCount: verdict.warningCount,
+      headline: verdict.headline,
+    },
+    lastCheckedAt: input.lastCheckedAt ?? new Date().toISOString(),
+    badgeToken,
+  });
 }
 
 export async function resetRepoTargetToNeutral(db: DbAdapter, repoId: string): Promise<void> {
   try {
     const repo = await db.getRepository(repoId);
     if (!repo) return;
+    const existing = await db.getTargetByIdentifier(repo.organization_id, 'repo', repo.name);
     await db.upsertTarget({
       organizationId: repo.organization_id,
       kind: 'repo',
@@ -81,9 +101,10 @@ export async function resetRepoTargetToNeutral(db: DbAdapter, repoId: string): P
       currentShipScore: null,
       verdictEvidence: {},
       lastCheckedAt: null,
+      badgeToken: existing?.badge_token ?? undefined,
     });
   } catch (error) {
-    console.error('Failed to reset target after deleting the last scan:', error);
+    logTargetSyncFailure('target-reset-failed', { repoId }, error);
   }
 }
 
@@ -101,13 +122,26 @@ export async function persistRepoScan(db: DbAdapter, input: PersistRepoScanInput
     input.findings,
     input.meta,
   );
-  await syncRepoTargetVerdict(db, input.repoId, {
-    findings: input.findings as ScanFinding[],
-    scannedFileCount: input.meta.scannedFileCount ?? undefined,
-    generatorFingerprint: input.generatorFingerprint,
-    lastCheckedAt: scan.created_at ?? null,
-    shipScoreOverride: input.meta.shipScore ?? undefined,
-    verdictOverride: input.meta.verdict ?? undefined,
-  });
+  try {
+    await syncRepoTargetVerdict(db, input.repoId, {
+      findings: input.findings as ScanFinding[],
+      scannedFileCount: input.meta.scannedFileCount ?? undefined,
+      generatorFingerprint: input.generatorFingerprint,
+      lastCheckedAt: scan.created_at ?? null,
+      shipScoreOverride: input.meta.shipScore ?? undefined,
+      verdictOverride: input.meta.verdict ?? undefined,
+    });
+  } catch (error) {
+    logTargetSyncFailure('target-sync-failed', { repoId: input.repoId, scanId: scan.id }, error);
+    try {
+      await db.markScanProjectionStale(scan.id);
+    } catch (markError) {
+      logTargetSyncFailure(
+        'target-sync-stale-mark-failed',
+        { repoId: input.repoId, scanId: scan.id },
+        markError,
+      );
+    }
+  }
   return scan;
 }

@@ -463,6 +463,11 @@ export interface DbAdapter {
     identifier: string,
   ): Promise<Target | null>;
   upsertTarget(input: UpsertTargetInput): Promise<Target>;
+  /**
+   * Records that the current-verdict projection failed to update after this
+   * scan was persisted. Best-effort — callers must not fail the scan on this.
+   */
+  markScanProjectionStale(scanId: string): Promise<void>;
   /** Permanently deletes one target. Canaries / alert prefs / fix outcomes cascade. */
   deleteTarget(id: string): Promise<void>;
   setTargetOwnership(id: string, input: SetTargetOwnershipInput): Promise<Target>;
@@ -1061,6 +1066,20 @@ export class SupabaseDbAdapter implements DbAdapter {
       },
     );
     return rows[0];
+  }
+
+  async markScanProjectionStale(scanId: string): Promise<void> {
+    const existing = await this.first<{ id: string; scan_scope: Record<string, unknown> | null }>(
+      `scans?select=id,scan_scope&id=eq.${eq(scanId)}`,
+    );
+    if (!existing) return;
+    const scope =
+      existing.scan_scope && typeof existing.scan_scope === 'object' ? existing.scan_scope : {};
+    await this.fetchDb(`scans?id=eq.${eq(scanId)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ scan_scope: { ...scope, projectionStale: true } }),
+    });
   }
 
   async deleteTarget(id: string): Promise<void> {
