@@ -13,6 +13,41 @@ const CLICKHOUSE_AI_LOGS = [
   'ORDER BY (created_at, id);',
 ].join('\n');
 
+const MYSQL_PHPAUTH = [
+  '-- Adminer 4.2.0 MySQL dump',
+  '',
+  'CREATE TABLE `attempts` (',
+  '  `id` int(11) NOT NULL AUTO_INCREMENT,',
+  "  `ip` char(39) NOT NULL DEFAULT '',",
+  '  `expiredate` datetime NOT NULL,',
+  '  PRIMARY KEY (`id`)',
+  ') ENGINE=InnoDB DEFAULT CHARSET=utf8;',
+  '',
+  'CREATE TABLE `config` (',
+  '  `setting` varchar(100) NOT NULL,',
+  '  `value` varchar(255) DEFAULT NULL,',
+  '  UNIQUE KEY `setting` (`setting`)',
+  ') ENGINE=InnoDB DEFAULT CHARSET=utf8;',
+  '',
+  'CREATE TABLE `requests` (',
+  '  `id` int(11) NOT NULL AUTO_INCREMENT,',
+  '  `uid` int(11) NOT NULL,',
+  '  PRIMARY KEY (`id`)',
+  ') ENGINE=InnoDB DEFAULT CHARSET=utf8;',
+  '',
+  'CREATE TABLE `sessions` (',
+  '  `id` int(11) NOT NULL AUTO_INCREMENT,',
+  '  `uid` int(11) NOT NULL,',
+  '  PRIMARY KEY (`id`)',
+  ') ENGINE=InnoDB DEFAULT CHARSET=utf8;',
+  '',
+  'CREATE TABLE `users` (',
+  '  `id` int(11) NOT NULL AUTO_INCREMENT,',
+  '  `email` varchar(100) DEFAULT NULL,',
+  '  PRIMARY KEY (`id`)',
+  ') ENGINE=InnoDB DEFAULT CHARSET=utf8;',
+].join('\n');
+
 describe('detectSqlDialect', () => {
   it('classifies ClickHouse by path even without engine syntax', () => {
     expect(
@@ -69,5 +104,47 @@ describe('detectSqlDialect', () => {
         content: CLICKHOUSE_AI_LOGS,
       }),
     ).toBe(false);
+  });
+
+  it('classifies a MySQL dump (PHPAuth-style) so Postgres rules do not run', () => {
+    expect(detectSqlDialect({ file: 'database.sql', content: MYSQL_PHPAUTH })).toBe('mysql');
+    expect(isPostgresSqlSource({ file: 'database.sql', content: MYSQL_PHPAUTH })).toBe(false);
+  });
+
+  it('classifies a minimal MySQL table by ENGINE=InnoDB and backticks', () => {
+    expect(
+      detectSqlDialect({
+        file: 'schema.sql',
+        content: 'CREATE TABLE `attempts` (`id` int) ENGINE=InnoDB;',
+      }),
+    ).toBe('mysql');
+  });
+
+  it('does not treat a Postgres migration that mentions engine as MySQL', () => {
+    const postgresWithEngineWord = [
+      'create table public.orders (',
+      '  id uuid primary key,',
+      '  search_engine text',
+      ');',
+      '-- the ranking engine writes into this table',
+    ].join('\n');
+    expect(
+      detectSqlDialect({
+        file: 'supabase/migrations/001.sql',
+        content: postgresWithEngineWord,
+      }),
+    ).toBe('postgres');
+    expect(
+      detectSqlDialect({
+        file: 'db/schema.sql',
+        content: postgresWithEngineWord,
+      }),
+    ).toBe('unknown');
+    expect(
+      detectSqlDialect({
+        file: 'db/schema.sql',
+        content: postgresWithEngineWord,
+      }),
+    ).not.toBe('mysql');
   });
 });

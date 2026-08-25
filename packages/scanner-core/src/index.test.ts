@@ -174,6 +174,39 @@ describe('shared scanner core', () => {
     expect(scan.findings[0]?.ruleId).toBe('supabase-rls');
   });
 
+  it('does not emit RLS findings for MySQL SQL', () => {
+    const mysql = [
+      '-- Adminer 4.2.0 MySQL dump',
+      '',
+      'CREATE TABLE `attempts` (',
+      '  `id` int(11) NOT NULL AUTO_INCREMENT,',
+      '  PRIMARY KEY (`id`)',
+      ') ENGINE=InnoDB DEFAULT CHARSET=utf8;',
+      '',
+      'CREATE TABLE `config` (',
+      '  `setting` varchar(100) NOT NULL,',
+      '  UNIQUE KEY `setting` (`setting`)',
+      ') ENGINE=InnoDB DEFAULT CHARSET=utf8;',
+      '',
+      'CREATE TABLE `requests` (',
+      '  `id` int(11) NOT NULL AUTO_INCREMENT,',
+      '  PRIMARY KEY (`id`)',
+      ') ENGINE=InnoDB DEFAULT CHARSET=utf8;',
+      '',
+      'CREATE TABLE `sessions` (',
+      '  `id` int(11) NOT NULL AUTO_INCREMENT,',
+      '  PRIMARY KEY (`id`)',
+      ') ENGINE=InnoDB DEFAULT CHARSET=utf8;',
+      '',
+      'CREATE TABLE `users` (',
+      '  `id` int(11) NOT NULL AUTO_INCREMENT,',
+      '  PRIMARY KEY (`id`)',
+      ') ENGINE=InnoDB DEFAULT CHARSET=utf8;',
+    ].join('\n');
+    const scan = scanSqlMigrations([{ file: 'database.sql', content: mysql }]);
+    expect(scan.findings.filter((finding) => finding.ruleId.includes('rls'))).toEqual([]);
+  });
+
   it('does not emit RLS or migration-safety findings for ClickHouse SQL', () => {
     const clickhouse = [
       'CREATE TABLE IF NOT EXISTS ai_logs (',

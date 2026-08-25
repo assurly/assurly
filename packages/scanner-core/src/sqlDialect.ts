@@ -1,4 +1,4 @@
-export type SqlDialect = 'postgres' | 'clickhouse' | 'unknown';
+export type SqlDialect = 'postgres' | 'clickhouse' | 'mysql' | 'unknown';
 
 export interface SqlDialectInput {
   file: string;
@@ -13,6 +13,18 @@ const CLICKHOUSE_TYPES =
 
 const CLICKHOUSE_PARTITION = /\bPARTITION\s+BY\s+toYYYYMM\b/i;
 
+const MYSQL_DUMP_HEADER = /(?:^|\n)\s*--[^\n]*(?:MySQL|MariaDB)\s+dump/i;
+
+const MYSQL_ENGINE = /\bENGINE\s*=\s*(?:InnoDB|MyISAM|MEMORY|ARCHIVE|CSV)\b/i;
+
+const MYSQL_AUTO_INCREMENT = /\bAUTO_INCREMENT\b/i;
+
+const MYSQL_CHARSET = /\bDEFAULT\s+CHARSET\s*=|\bCOLLATE\s*=\s*utf8mb4_/i;
+
+const MYSQL_DISPLAY_WIDTH = /\b(?:tinyint|smallint|mediumint|int|integer|bigint)\s*\(\s*\d+\s*\)/i;
+
+const POSTGRES_RULE_DIALECTS: readonly SqlDialect[] = ['postgres', 'unknown'];
+
 function normalizePath(file: string): string {
   return file.replace(/\\/g, '/').toLowerCase();
 }
@@ -23,6 +35,17 @@ function looksLikeClickHouse(input: SqlDialectInput): boolean {
     CLICKHOUSE_ENGINE.test(input.content) ||
     CLICKHOUSE_TYPES.test(input.content) ||
     CLICKHOUSE_PARTITION.test(input.content)
+  );
+}
+
+function looksLikeMySQL(input: SqlDialectInput): boolean {
+  return (
+    MYSQL_DUMP_HEADER.test(input.content) ||
+    MYSQL_ENGINE.test(input.content) ||
+    MYSQL_AUTO_INCREMENT.test(input.content) ||
+    MYSQL_CHARSET.test(input.content) ||
+    MYSQL_DISPLAY_WIDTH.test(input.content) ||
+    (/\bcreate\s+table\b/i.test(input.content) && /`[^`]+`/.test(input.content))
   );
 }
 
@@ -39,16 +62,18 @@ function looksLikePostgres(input: SqlDialectInput): boolean {
 
 /**
  * Classifies a .sql file so Postgres-only rules (RLS, policies, NOT NULL
- * ALTER) do not fire on ClickHouse. Unknown stays on the Postgres path —
- * that is the historical default for `db/migrations/*.sql`.
+ * ALTER) do not fire on ClickHouse or MySQL. Unknown stays on the Postgres
+ * path — that is the historical default for `db/migrations/*.sql`. ClickHouse
+ * is checked first so mixed ClickHouse/MySQL engine signals stay ClickHouse.
  */
 export function detectSqlDialect(input: SqlDialectInput): SqlDialect {
   if (looksLikeClickHouse(input)) return 'clickhouse';
+  if (looksLikeMySQL(input)) return 'mysql';
   if (looksLikePostgres(input)) return 'postgres';
   return 'unknown';
 }
 
 /** True when Postgres-flavoured SQL rules should run on this source. */
 export function isPostgresSqlSource(input: SqlDialectInput): boolean {
-  return detectSqlDialect(input) !== 'clickhouse';
+  return POSTGRES_RULE_DIALECTS.includes(detectSqlDialect(input));
 }
