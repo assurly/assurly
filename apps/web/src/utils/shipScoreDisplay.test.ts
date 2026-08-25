@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BLOCKED_SCORE_CAP as ENGINE_BLOCKED_SCORE_CAP } from '@assurly/scanner-core';
 import {
   BLOCKED_SCORE_CAP,
   clampShipScoreForBlockedVerdict,
@@ -8,6 +9,7 @@ import {
   INCOMPLETE_SCORE_CAP,
   resolveDisplayedShipScore,
 } from './shipScoreDisplay';
+import { buildShipGateFromScanFindings } from './shipGate';
 
 const incompleteFinding = {
   id: 'f1',
@@ -92,6 +94,46 @@ describe('resolveDisplayedShipScore', () => {
     expect(
       resolveDisplayedShipScore({ ship_score: 88, scanned_file_count: 10 }, [blockerFinding]),
     ).toBeLessThanOrEqual(BLOCKED_SCORE_CAP);
+  });
+});
+
+describe('card and detail ship-score projections', () => {
+  it('agree on the score for the same findings (PHPAuth-style RLS group + warning)', () => {
+    const tables = ['attempts', 'config', 'requests', 'sessions', 'users'];
+    const findings = [
+      ...tables.map((table, index) => ({
+        id: `rls-${table}`,
+        scan_id: 's1',
+        rule_id: 'supabase-rls',
+        severity: 'error' as const,
+        confidence: 'high' as const,
+        file_path: 'database.sql',
+        line_number: index + 1,
+        message: `Supabase table '${table}' is created but Row-Level Security (RLS) is not enabled.`,
+        suggestion: '',
+        created_at: '2026-08-09T19:47:28.312Z',
+      })),
+      {
+        id: 'warn-gha',
+        scan_id: 's1',
+        rule_id: 'github-actions-integration',
+        severity: 'warning' as const,
+        confidence: 'high' as const,
+        file_path: 'Global Configs',
+        line_number: 1,
+        message: 'GitHub Actions workflow for Assurly is missing.',
+        suggestion: '',
+        created_at: '2026-08-09T19:47:28.312Z',
+      },
+    ];
+    const scan = { ship_score: null, scanned_file_count: null, clean_file_count: null };
+    const detailScore = resolveDisplayedShipScore(scan, findings);
+    const cardScore = buildShipGateFromScanFindings(findings).shipScore;
+
+    expect(detailScore).toBe(cardScore);
+    expect(detailScore).toBe(ENGINE_BLOCKED_SCORE_CAP);
+    // The pre-group raw formula (5 blockers × 12 + 1 warning × 4) must not reappear.
+    expect(detailScore).not.toBe(100 - 5 * 12 - 1 * 4);
   });
 });
 

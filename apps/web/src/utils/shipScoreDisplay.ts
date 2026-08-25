@@ -50,7 +50,16 @@ export function clampShipScoreForBlockedVerdict(
   return Math.min(score, BLOCKED_SCORE_CAP);
 }
 
+type ScoreScan = Pick<Scan, 'ship_score' | 'scanned_file_count' | 'clean_file_count'> & {
+  verdict?: Scan['verdict'] | 'unknown' | null;
+};
+
 type TrendFinding = Parameters<typeof buildShipGateFromScanFindings>[0];
+
+export interface DisplayedShipScoreHints {
+  incomplete?: boolean;
+  blocked?: boolean;
+}
 
 function findingsSuggestBlockers(findings: TrendFinding): boolean {
   return findings.some(
@@ -66,13 +75,17 @@ function findingsSuggestBlockers(findings: TrendFinding): boolean {
  * verdicts never display above {@link BLOCKED_SCORE_CAP}.
  */
 export function resolveDisplayedShipScore(
-  scan: Pick<Scan, 'ship_score' | 'scanned_file_count' | 'clean_file_count'>,
+  scan: ScoreScan,
   findings: TrendFinding,
+  hints: DisplayedShipScoreHints = {},
 ): number {
-  const incomplete = indicatesIncompleteCoverage({
-    findingRuleIds: findings.map((finding) => finding.rule_id),
-  });
-  const blocked = findingsSuggestBlockers(findings);
+  const incomplete =
+    hints.incomplete ??
+    indicatesIncompleteCoverage({
+      findingRuleIds: findings.map((finding) => finding.rule_id),
+    });
+  const blocked =
+    hints.blocked ?? (scan.verdict === 'blocked' || findingsSuggestBlockers(findings));
 
   // Incomplete Instant Gate: recompute through the engine so cap + floor match
   // scanner-core (persisted pre-floor rows would otherwise keep showing 0).

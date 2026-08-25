@@ -8,6 +8,7 @@ vi.mock('../../../utils/auth', async (importOriginal) => ({
 
 import { GET, POST } from './route';
 import type { TargetCard } from './route';
+import { resolveDisplayedShipScore } from '../../../utils/shipScoreDisplay';
 
 const db = {
   getOrganizationByUserId: vi.fn(),
@@ -61,6 +62,92 @@ describe('GET /api/targets', () => {
     expect(targets).toEqual([]);
   });
 
+  it('card and detail projections agree when a legacy scan has no stored ship_score', async () => {
+    const tables = ['attempts', 'config', 'requests', 'sessions', 'users'];
+    const findings = [
+      ...tables.map((table, index) => ({
+        id: `rls-${table}`,
+        scan_id: 'scan-phpauth',
+        rule_id: 'supabase-rls',
+        severity: 'error' as const,
+        confidence: 'high' as const,
+        file_path: 'database.sql',
+        line_number: index + 1,
+        message: `Supabase table '${table}' is created but Row-Level Security (RLS) is not enabled.`,
+        suggestion: '',
+        created_at: '2026-08-09T19:47:28.312Z',
+      })),
+      {
+        id: 'warn-gha',
+        scan_id: 'scan-phpauth',
+        rule_id: 'github-actions-integration',
+        severity: 'warning' as const,
+        confidence: 'high' as const,
+        file_path: 'Global Configs',
+        line_number: 1,
+        message: 'GitHub Actions workflow for Assurly is missing.',
+        suggestion: '',
+        created_at: '2026-08-09T19:47:28.312Z',
+      },
+    ];
+    db.getRepositories.mockResolvedValue([
+      {
+        id: 'a26e03a7-42b0-42be-b2c9-fd685ea177a0',
+        organization_id: 'org-1',
+        name: 'tibco87/PHPAuth',
+      },
+    ]);
+    db.getTargets.mockResolvedValue([
+      {
+        id: 'target-phpauth',
+        organization_id: 'org-1',
+        repository_id: 'a26e03a7-42b0-42be-b2c9-fd685ea177a0',
+        kind: 'repo',
+        identifier: 'tibco87/PHPAuth',
+        display_name: 'tibco87/PHPAuth',
+        generator_fingerprint: null,
+        ownership_verified: false,
+        current_verdict: 'blocked',
+        current_ship_score: 36,
+        verdict_evidence: {},
+        last_checked_at: '2026-08-09T19:47:28.312Z',
+        badge_token: null,
+      },
+    ]);
+    db.getLatestScanSummaries.mockResolvedValue(
+      new Map([
+        [
+          'a26e03a7-42b0-42be-b2c9-fd685ea177a0',
+          {
+            id: 'scan-phpauth',
+            repository_id: 'a26e03a7-42b0-42be-b2c9-fd685ea177a0',
+            ship_score: null,
+            created_at: '2026-08-09T19:47:28.312Z',
+          },
+        ],
+      ]),
+    );
+    db.getRecentScans.mockResolvedValue([
+      {
+        id: 'scan-phpauth',
+        ship_score: null,
+        scanned_file_count: null,
+        clean_file_count: null,
+        created_at: '2026-08-09T19:47:28.312Z',
+      },
+    ]);
+    db.getScanFindings.mockResolvedValue(findings);
+
+    const { targets } = await callGet();
+    const detailScore = resolveDisplayedShipScore(
+      { ship_score: null, scanned_file_count: null, clean_file_count: null },
+      findings,
+    );
+    expect(targets[0].shipScore).toBe(detailScore);
+    expect(targets[0].shipScore).toBe(59);
+    expect(targets[0].shipScore).not.toBe(36);
+  });
+
   it('uses the synced target row as the authoritative verdict', async () => {
     db.getRepositories.mockResolvedValue([
       { id: 'repo-1', organization_id: 'org-1', name: 'acme/api' },
@@ -89,8 +176,9 @@ describe('GET /api/targets', () => {
           {
             id: 'scan-9',
             repository_id: 'repo-1',
-            ship_score: null,
+            ship_score: 76,
             created_at: '2026-07-13T10:00:00.000Z',
+            verdict: 'blocked',
           },
         ],
       ]),

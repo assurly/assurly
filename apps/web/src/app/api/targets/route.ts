@@ -18,8 +18,6 @@ import type {
 import { isGitHubRepositoryName } from '../../../utils/githubApp';
 import type { VerdictEvidenceShape } from '../../../utils/publicTrust';
 import {
-  clampShipScoreForBlockedVerdict,
-  clampShipScoreForCoverage,
   indicatesIncompleteCoverage,
   resolveDisplayedShipScore,
 } from '../../../utils/shipScoreDisplay';
@@ -92,15 +90,21 @@ function cardFromTargetRow(
     topIssueLabel: topIssue?.label,
   });
   const failed = isFailedLatestScan(latest);
-  const rawScore = failed
+  const shipScore = failed
     ? null
-    : typeof latest?.ship_score === 'number'
-      ? latest.ship_score
-      : target.current_ship_score;
-  const shipScore = clampShipScoreForBlockedVerdict(
-    clampShipScoreForCoverage(rawScore, incomplete),
-    target.current_verdict === 'blocked',
-  );
+    : resolveDisplayedShipScore(
+        latest ?? {
+          ship_score: target.current_ship_score,
+          scanned_file_count: null,
+          clean_file_count: null,
+          verdict: target.current_verdict === 'blocked' ? 'blocked' : null,
+        },
+        [],
+        {
+          incomplete,
+          blocked: target.current_verdict === 'blocked',
+        },
+      );
   return {
     id: target.id,
     kind: 'repo',
@@ -125,10 +129,19 @@ function cardFromTargetRow(
 
 function cardFromUrlTarget(target: Target): TargetCard {
   const evidence = (target.verdict_evidence ?? {}) as VerdictEvidenceShape;
-  const shipScore = clampShipScoreForBlockedVerdict(
-    target.current_ship_score,
-    target.current_verdict === 'blocked',
-  );
+  const shipScore =
+    target.current_ship_score == null
+      ? null
+      : resolveDisplayedShipScore(
+          {
+            ship_score: target.current_ship_score,
+            scanned_file_count: null,
+            clean_file_count: null,
+            verdict: target.current_verdict === 'blocked' ? 'blocked' : null,
+          },
+          [],
+          { blocked: target.current_verdict === 'blocked' },
+        );
   return {
     id: target.id,
     kind: 'url',
@@ -314,9 +327,9 @@ export const GET = secureRoute(
     const repoCards = await Promise.all(
       repos.map(async (repo): Promise<TargetCard> => {
         const target = targetByRepoId.get(repo.id);
-        if (target && target.current_verdict) {
-          const latest = latestByRepoId.get(repo.id);
-          return cardFromTargetRow(target, repo, latest ?? null);
+        const latest = latestByRepoId.get(repo.id);
+        if (target && target.current_verdict && typeof latest?.ship_score === 'number') {
+          return cardFromTargetRow(target, repo, latest);
         }
         return deriveCardFromLatestScan(context.db, repo, target);
       }),
