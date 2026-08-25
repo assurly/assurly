@@ -10,6 +10,11 @@ const MYSQL_ENGINE = /\bENGINE\s*=\s*(?:InnoDB|MyISAM|MEMORY|ARCHIVE|CSV)\b/i;
 const MYSQL_AUTO_INCREMENT = /\bAUTO_INCREMENT\b/i;
 const MYSQL_CHARSET = /\bDEFAULT\s+CHARSET\s*=|\bCOLLATE\s*=\s*utf8mb4_/i;
 const MYSQL_DISPLAY_WIDTH = /\b(?:tinyint|smallint|mediumint|int|integer|bigint)\s*\(\s*\d+\s*\)/i;
+const MSSQL_GO_BATCH = /(?:^|\n)\s*GO\s*(?:\r?\n|$)/i;
+const MSSQL_BRACKETED_IDENT = /\[[^\]]+\]\s*\.\s*\[[^\]]+\]/;
+const MSSQL_IDENTITY = /\bIDENTITY\s*\(\s*\d+\s*,\s*\d+\s*\)/i;
+const MSSQL_TYPES = /\b(?:NVARCHAR|UNIQUEIDENTIFIER)\b/i;
+const MSSQL_CREATE_BRACKET = /\bCREATE\s+TABLE\s+\[/i;
 const POSTGRES_RULE_DIALECTS = ['postgres', 'unknown'];
 function normalizePath(file) {
     return file.replace(/\\/g, '/').toLowerCase();
@@ -29,6 +34,13 @@ function looksLikeMySQL(input) {
         MYSQL_DISPLAY_WIDTH.test(input.content) ||
         (/\bcreate\s+table\b/i.test(input.content) && /`[^`]+`/.test(input.content)));
 }
+function looksLikeMSSQL(input) {
+    return (MSSQL_GO_BATCH.test(input.content) ||
+        MSSQL_BRACKETED_IDENT.test(input.content) ||
+        MSSQL_IDENTITY.test(input.content) ||
+        MSSQL_TYPES.test(input.content) ||
+        MSSQL_CREATE_BRACKET.test(input.content));
+}
 function looksLikePostgres(input) {
     return (/supabase/i.test(input.file) ||
         /supabase/i.test(input.content) ||
@@ -39,15 +51,18 @@ function looksLikePostgres(input) {
 }
 /**
  * Classifies a .sql file so Postgres-only rules (RLS, policies, NOT NULL
- * ALTER) do not fire on ClickHouse or MySQL. Unknown stays on the Postgres
- * path — that is the historical default for `db/migrations/*.sql`. ClickHouse
- * is checked first so mixed ClickHouse/MySQL engine signals stay ClickHouse.
+ * ALTER) do not fire on ClickHouse, MySQL, or MSSQL. Unknown stays on the
+ * Postgres path — that is the historical default for `db/migrations/*.sql`.
+ * ClickHouse is checked first so mixed ClickHouse/MySQL engine signals stay
+ * ClickHouse.
  */
 function detectSqlDialect(input) {
     if (looksLikeClickHouse(input))
         return 'clickhouse';
     if (looksLikeMySQL(input))
         return 'mysql';
+    if (looksLikeMSSQL(input))
+        return 'mssql';
     if (looksLikePostgres(input))
         return 'postgres';
     return 'unknown';

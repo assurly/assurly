@@ -174,6 +174,24 @@ describe('shared scanner core', () => {
     expect(scan.findings[0]?.ruleId).toBe('supabase-rls');
   });
 
+  it('does not emit RLS findings for MSSQL SQL', () => {
+    const mssql = [
+      'CREATE TABLE [dbo].[users] (',
+      '  [id] INT IDENTITY(1,1) NOT NULL,',
+      '  [email] NVARCHAR(100) NULL,',
+      '  [guid] UNIQUEIDENTIFIER NOT NULL',
+      ');',
+      'GO',
+      'CREATE TABLE [dbo].[sessions] (',
+      '  [id] INT IDENTITY(1,1) NOT NULL,',
+      '  [uid] INT NOT NULL',
+      ');',
+      'GO',
+    ].join('\n');
+    const scan = scanSqlMigrations([{ file: 'database_mssql.sql', content: mssql }]);
+    expect(scan.findings.filter((finding) => finding.ruleId.includes('rls'))).toEqual([]);
+  });
+
   it('does not emit RLS findings for MySQL SQL', () => {
     const mysql = [
       '-- Adminer 4.2.0 MySQL dump',

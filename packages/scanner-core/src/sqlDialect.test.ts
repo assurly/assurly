@@ -13,6 +13,20 @@ const CLICKHOUSE_AI_LOGS = [
   'ORDER BY (created_at, id);',
 ].join('\n');
 
+const MSSQL_PHPAUTH = [
+  'CREATE TABLE [dbo].[users] (',
+  '  [id] INT IDENTITY(1,1) NOT NULL,',
+  '  [email] NVARCHAR(100) NULL,',
+  '  [guid] UNIQUEIDENTIFIER NOT NULL',
+  ');',
+  'GO',
+  'CREATE TABLE [dbo].[sessions] (',
+  '  [id] INT IDENTITY(1,1) NOT NULL,',
+  '  [uid] INT NOT NULL',
+  ');',
+  'GO',
+].join('\n');
+
 const MYSQL_PHPAUTH = [
   '-- Adminer 4.2.0 MySQL dump',
   '',
@@ -118,6 +132,11 @@ describe('detectSqlDialect', () => {
         content: 'CREATE TABLE `attempts` (`id` int) ENGINE=InnoDB;',
       }),
     ).toBe('mysql');
+  });
+
+  it('classifies a PHPAuth-style MSSQL schema so Postgres rules do not run', () => {
+    expect(detectSqlDialect({ file: 'database_mssql.sql', content: MSSQL_PHPAUTH })).toBe('mssql');
+    expect(isPostgresSqlSource({ file: 'database_mssql.sql', content: MSSQL_PHPAUTH })).toBe(false);
   });
 
   it('does not treat a Postgres migration that mentions engine as MySQL', () => {
