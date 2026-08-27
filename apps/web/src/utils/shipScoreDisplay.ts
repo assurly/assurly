@@ -1,5 +1,5 @@
 import { BLOCKED_SCORE_CAP } from '@assurly/scanner-core';
-import type { Scan } from './dbAdapter';
+import type { Scan, Target } from './dbAdapter';
 import { buildShipGateFromScanFindings } from './shipGate';
 
 export { BLOCKED_SCORE_CAP };
@@ -53,6 +53,33 @@ export function clampShipScoreForBlockedVerdict(
 type ScoreScan = Pick<Scan, 'ship_score' | 'scanned_file_count' | 'clean_file_count'> & {
   verdict?: Scan['verdict'] | 'unknown' | null;
 };
+
+type ScoreTarget = Pick<Target, 'current_ship_score' | 'current_verdict' | 'verdict_evidence'>;
+
+/**
+ * Ship Score for a surface that only holds the `targets` row — the keyed
+ * verdict API, the public badge, the trust page. Applies the same coverage and
+ * blocked clamps the dashboard applies, derived from the row alone so a public
+ * or hot route never pays for a scan/findings query. Null stays null: an
+ * unscored target must never be handed a fabricated number.
+ */
+export function resolveTargetShipScore(target: ScoreTarget): number | null {
+  if (target.current_ship_score == null) return null;
+
+  const evidence = (target.verdict_evidence ?? {}) as {
+    topIssue?: { key?: string | null; label?: string | null } | null;
+  };
+  const blocked = target.current_verdict === 'blocked';
+  const incomplete = indicatesIncompleteCoverage({
+    topIssueKey: evidence.topIssue?.key,
+    topIssueLabel: evidence.topIssue?.label,
+  });
+
+  const coverageClamped =
+    clampShipScoreForCoverage(target.current_ship_score, incomplete, { hasBlockers: blocked }) ??
+    target.current_ship_score;
+  return clampShipScoreForBlockedVerdict(coverageClamped, blocked);
+}
 
 type TrendFinding = Parameters<typeof buildShipGateFromScanFindings>[0];
 

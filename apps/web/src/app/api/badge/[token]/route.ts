@@ -3,6 +3,7 @@ import { buildShipGateFromScanFindings } from '../../../../utils/shipGate';
 import { RATE_LIMITS, secureRoute } from '../../../../utils/apiSecurity';
 import { getAdminDbAdapter, type Target } from '../../../../utils/dbAdapter';
 import { getApplicationUrl } from '../../../../utils/env';
+import { resolveTargetShipScore } from '../../../../utils/shipScoreDisplay';
 
 const SHARE_TOKEN_PATTERN = /^[a-f0-9]{32}$/;
 
@@ -65,7 +66,7 @@ function scoreFromTarget(target: Target): {
   status: 'ready' | 'review' | 'blocked' | 'unknown';
 } {
   return {
-    shipScore: target.current_ship_score ?? null,
+    shipScore: resolveTargetShipScore(target),
     status: target.current_verdict ?? 'unknown',
   };
 }

@@ -20,6 +20,7 @@ import type { VerdictEvidenceShape } from '../../../utils/publicTrust';
 import {
   indicatesIncompleteCoverage,
   resolveDisplayedShipScore,
+  resolveTargetShipScore,
 } from '../../../utils/shipScoreDisplay';
 
 /**
@@ -129,19 +130,9 @@ function cardFromTargetRow(
 
 function cardFromUrlTarget(target: Target): TargetCard {
   const evidence = (target.verdict_evidence ?? {}) as VerdictEvidenceShape;
-  const shipScore =
-    target.current_ship_score == null
-      ? null
-      : resolveDisplayedShipScore(
-          {
-            ship_score: target.current_ship_score,
-            scanned_file_count: null,
-            clean_file_count: null,
-            verdict: target.current_verdict === 'blocked' ? 'blocked' : null,
-          },
-          [],
-          { blocked: target.current_verdict === 'blocked' },
-        );
+  // A url card has only the target row to go on — the same input the badge and
+  // the keyed verdict API resolve from, so it uses the same resolver.
+  const shipScore = resolveTargetShipScore(target);
   return {
     id: target.id,
     kind: 'url',

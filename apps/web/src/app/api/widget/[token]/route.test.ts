@@ -60,7 +60,8 @@ describe('GET /api/widget/[token] (OEM white-label widget)', () => {
     expect(res.headers.get('content-type')).toContain('image/svg+xml');
     const svg = await res.text();
     expect(svg).toContain('Security-checked by Assurly');
-    expect(svg).toContain('80/100');
+    // Stored 80, clamped to the blocked cap exactly as the dashboard clamps it.
+    expect(svg).toContain('59/100');
     expect(svg).toContain('Database access control (RLS)');
     // Shape-only: the exposed table name is never in the widget.
     expect(svg).not.toContain('invoices');

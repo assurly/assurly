@@ -1,6 +1,7 @@
 import type { Severity } from '@assurly/scanner-core';
 import type { Target, TargetVerdict } from './dbAdapter';
 import type { Verdict } from './shipGate';
+import { resolveTargetShipScore } from './shipScoreDisplay';
 
 /**
  * Whitelisted public projection for the badge / trust-page growth loop.
@@ -119,7 +120,7 @@ export function toHostedTrustProjection(target: Target): HostedTrustProjection {
     identifier: target.identifier,
     kind: target.kind,
     verdict: target.current_verdict ?? 'unknown',
-    shipScore: target.current_ship_score,
+    shipScore: resolveTargetShipScore(target),
     lastCheckedAt: target.last_checked_at,
     generatorFingerprint: target.generator_fingerprint,
     topIssue: top

@@ -106,7 +106,8 @@ describe('GET /api/v1/verdict (keyed programmatic verdict)', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe('blocked');
-    expect(body.shipScore).toBe(80);
+    // Stored 80, clamped to the blocked cap exactly as the dashboard clamps it.
+    expect(body.shipScore).toBe(59);
     expect(body.topIssue.category).toBe('Database access control (RLS)');
     expect(body.activeProbeAllowed).toBe(true);
     expect(body.fixOutcomes).toEqual([]);

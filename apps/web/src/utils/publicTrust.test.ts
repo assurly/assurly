@@ -57,7 +57,9 @@ describe('toPublicTrustProjection', () => {
       displayName: 'Demo App',
       identifier: 'https://app.example',
       verdict: 'blocked',
-      shipScore: 72,
+      // Stored 72, but a blocked verdict never displays above the blocked cap —
+      // the same clamp the dashboard applies.
+      shipScore: 59,
       badgeToken: 'b'.repeat(32),
       topIssue: {
         category: 'Database access control (RLS)',

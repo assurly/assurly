@@ -107,7 +107,8 @@ describe('resolveProgrammaticVerdict', () => {
 
     expect(lookup).toHaveBeenCalledWith('org-1', 'url', 'https://app.example.com');
     expect(result.status).toBe('blocked');
-    expect(result.shipScore).toBe(80);
+    // Stored 80, clamped to the blocked cap exactly as the dashboard clamps it.
+    expect(result.shipScore).toBe(59);
     expect(result.activeProbeAllowed).toBe(true);
     expect(result.topIssue?.category).toBe('Database access control (RLS)');
     expect(result.topIssue?.remediation).toMatch(/Row-Level Security/i);
