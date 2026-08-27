@@ -50,6 +50,31 @@ describe('GET /api/badge/[token]', () => {
     expect(db.getScanByShareToken).not.toHaveBeenCalled();
   });
 
+  it.each(['blocked', 'ready'] as const)(
+    'never fabricates a score for a %s target without a stored ship score',
+    async (verdict) => {
+      const token = 'c'.repeat(32);
+      db.getTargetByBadgeToken.mockResolvedValue({
+        id: 'target-1',
+        badge_token: token,
+        current_verdict: verdict,
+        current_ship_score: null,
+      });
+
+      const response = await GET(new Request(`http://localhost/api/badge/${token}`), {
+        params: Promise.resolve({ token }),
+      });
+
+      expect(response.status).toBe(200);
+      const svg = await response.text();
+      expect(svg).not.toContain('0/100');
+      expect(svg).not.toContain('100/100');
+      expect(svg).not.toMatch(/Ship Score \d/);
+      expect(svg).toContain('Ship Score unavailable');
+      expect(db.getScanByShareToken).not.toHaveBeenCalled();
+    },
+  );
+
   it('falls back to a scan share token for backward compatibility', async () => {
     db.getScanByShareToken.mockResolvedValue({
       id: 'scan-1',

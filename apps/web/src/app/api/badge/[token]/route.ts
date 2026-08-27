@@ -32,14 +32,19 @@ function badgeColor(status: 'ready' | 'review' | 'blocked' | 'unknown'): string 
 /**
  * Founders embed: "Verified by Assurly · Ship Score N/100".
  * Links back to the public trust page (growth loop).
+ * A null score renders an explicit unscored variant — this badge goes into
+ * users' READMEs, so it must never invent a number we do not have.
  */
 function buildBadgeSvg(
-  shipScore: number,
+  shipScore: number | null,
   status: 'ready' | 'review' | 'blocked' | 'unknown',
   trustHref: string | null,
 ): string {
   const fill = badgeColor(status);
-  const label = `Verified by Assurly · Ship Score ${shipScore}/100`;
+  const label =
+    shipScore == null
+      ? 'Assurly · Ship Score unavailable'
+      : `Verified by Assurly · Ship Score ${shipScore}/100`;
   const inner = `<rect width="260" height="28" rx="4" fill="${fill}"/><text x="130" y="19" fill="#ffffff" font-family="system-ui,sans-serif" font-size="12" font-weight="600" text-anchor="middle">${label}</text>`;
   if (trustHref) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="260" height="28" role="img" aria-label="${label}"><a href="${trustHref}" target="_blank" rel="noopener">${inner}</a></svg>`;
@@ -56,12 +61,13 @@ function trustPageUrl(token: string): string {
 }
 
 function scoreFromTarget(target: Target): {
-  shipScore: number;
+  shipScore: number | null;
   status: 'ready' | 'review' | 'blocked' | 'unknown';
 } {
-  const status = target.current_verdict ?? 'unknown';
-  const shipScore = target.current_ship_score ?? (status === 'ready' ? 100 : 0);
-  return { shipScore, status };
+  return {
+    shipScore: target.current_ship_score ?? null,
+    status: target.current_verdict ?? 'unknown',
+  };
 }
 
 /** Public Ship Score badge as SVG — prefers live target badge_token, falls back to scan share token. */

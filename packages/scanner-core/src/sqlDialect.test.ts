@@ -139,6 +139,86 @@ describe('detectSqlDialect', () => {
     expect(isPostgresSqlSource({ file: 'database_mssql.sql', content: MSSQL_PHPAUTH })).toBe(false);
   });
 
+  it('does not treat a Postgres migration that mentions SQL Server in a comment as MSSQL', () => {
+    const input = {
+      file: 'supabase/migrations/004.sql',
+      content: [
+        '-- ported from SQL Server: [dbo].[users].[email] was NVARCHAR(255)',
+        'create table public.users (id uuid primary key, email text);',
+      ].join('\n'),
+    };
+    expect(detectSqlDialect(input)).toBe('postgres');
+    expect(isPostgresSqlSource(input)).toBe(true);
+  });
+
+  it('does not treat a Postgres migration that mentions AUTO_INCREMENT in a comment as MySQL', () => {
+    const input = {
+      file: 'supabase/migrations/007.sql',
+      content: [
+        '-- replaces the old MySQL AUTO_INCREMENT id',
+        'create table public.t (id uuid primary key);',
+      ].join('\n'),
+    };
+    expect(detectSqlDialect(input)).toBe('postgres');
+    expect(isPostgresSqlSource(input)).toBe(true);
+  });
+
+  it('does not treat a bracketed identifier in a comment as MSSQL', () => {
+    const input = {
+      file: 'supabase/migrations/006.sql',
+      content: ['-- was [dbo].[orders]', 'create table public.orders (id uuid);'].join('\n'),
+    };
+    expect(detectSqlDialect(input)).toBe('postgres');
+    expect(isPostgresSqlSource(input)).toBe(true);
+  });
+
+  it('does not treat a GO line inside a string literal as an MSSQL batch separator', () => {
+    const input = {
+      file: 'db/schema.sql',
+      content: "insert into moves (note) values ('the answer is\nGO\nagain');",
+    };
+    expect(detectSqlDialect(input)).toBe('unknown');
+    expect(isPostgresSqlSource(input)).toBe(true);
+  });
+
+  it('still classifies a header-only mysqldump as MySQL', () => {
+    const input = {
+      file: 'dump.sql',
+      content: [
+        '-- MySQL dump 10.13  Distrib 8.0.32',
+        'CREATE TABLE users (id int, email varchar(255));',
+      ].join('\n'),
+    };
+    expect(detectSqlDialect(input)).toBe('mysql');
+    expect(isPostgresSqlSource(input)).toBe(false);
+  });
+
+  it('falls back to unknown when the only Postgres signal sits in a comment', () => {
+    const input = {
+      file: 'db/schema.sql',
+      content: ['-- supabase: policies live in auth.uid() land', 'create table t (id uuid);'].join(
+        '\n',
+      ),
+    };
+    expect(detectSqlDialect(input)).toBe('unknown');
+    expect(isPostgresSqlSource(input)).toBe(true);
+  });
+
+  it('ignores dialect vocabulary inside block comments and dollar-quoted bodies', () => {
+    const input = {
+      file: 'supabase/migrations/008.sql',
+      content: [
+        '/* legacy MySQL schema used ENGINE=InnoDB and AUTO_INCREMENT',
+        '   while the report ran on [dbo].[orders] */',
+        'create function public.note() returns text language sql as $$',
+        "  select 'ENGINE=InnoDB'",
+        '$$;',
+      ].join('\n'),
+    };
+    expect(detectSqlDialect(input)).toBe('postgres');
+    expect(isPostgresSqlSource(input)).toBe(true);
+  });
+
   it('does not treat a Postgres migration that mentions engine as MySQL', () => {
     const postgresWithEngineWord = [
       'create table public.orders (',

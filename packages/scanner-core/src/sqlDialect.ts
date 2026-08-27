@@ -35,48 +35,120 @@ const MSSQL_CREATE_BRACKET = /\bCREATE\s+TABLE\s+\[/i;
 
 const POSTGRES_RULE_DIALECTS: readonly SqlDialect[] = ['postgres', 'unknown'];
 
+const DOLLAR_QUOTE_TAG = /\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$/y;
+
+/**
+ * Signals matched against `code` (comments and string bodies blanked out), so a
+ * Postgres migration that only *mentions* `[dbo].[users]` or AUTO_INCREMENT in a
+ * comment is not misread as MSSQL/MySQL — that silently disables the RLS rules.
+ * `raw` exists for the one signal that is deliberately comment-based.
+ */
+interface DialectSignals {
+  file: string;
+  raw: string;
+  code: string;
+}
+
+/**
+ * Blanks out SQL comments and literal bodies. Not a SQL parser: it only has to
+ * remove the regions where prose and data live, while keeping line breaks so
+ * line-anchored signals (GO batches) still match.
+ */
+function stripCommentsAndLiterals(content: string): string {
+  let out = '';
+  let index = 0;
+  while (index < content.length) {
+    const char = content[index];
+    if (char === '-' && content[index + 1] === '-') {
+      const lineEnd = content.indexOf('\n', index);
+      if (lineEnd === -1) break;
+      index = lineEnd;
+      continue;
+    }
+    if (char === '/' && content[index + 1] === '*') {
+      const blockEnd = content.indexOf('*/', index + 2);
+      index = blockEnd === -1 ? content.length : blockEnd + 2;
+      out += ' ';
+      continue;
+    }
+    if (char === "'") {
+      index += 1;
+      while (index < content.length) {
+        if (content[index] !== "'") {
+          index += 1;
+          continue;
+        }
+        if (content[index + 1] === "'") {
+          index += 2;
+          continue;
+        }
+        index += 1;
+        break;
+      }
+      out += "''";
+      continue;
+    }
+    if (char === '$') {
+      DOLLAR_QUOTE_TAG.lastIndex = index;
+      const tag = DOLLAR_QUOTE_TAG.exec(content);
+      if (tag) {
+        const bodyEnd = content.indexOf(tag[0], index + tag[0].length);
+        index = bodyEnd === -1 ? content.length : bodyEnd + tag[0].length;
+        out += ' ';
+        continue;
+      }
+    }
+    out += char;
+    index += 1;
+  }
+  return out;
+}
+
 function normalizePath(file: string): string {
   return file.replace(/\\/g, '/').toLowerCase();
 }
 
-function looksLikeClickHouse(input: SqlDialectInput): boolean {
+function looksLikeClickHouse(input: DialectSignals): boolean {
   if (normalizePath(input.file).includes('clickhouse')) return true;
   return (
-    CLICKHOUSE_ENGINE.test(input.content) ||
-    CLICKHOUSE_TYPES.test(input.content) ||
-    CLICKHOUSE_PARTITION.test(input.content)
+    CLICKHOUSE_ENGINE.test(input.code) ||
+    CLICKHOUSE_TYPES.test(input.code) ||
+    CLICKHOUSE_PARTITION.test(input.code)
   );
 }
 
-function looksLikeMySQL(input: SqlDialectInput): boolean {
+function looksLikeMySQL(input: DialectSignals): boolean {
   return (
-    MYSQL_DUMP_HEADER.test(input.content) ||
-    MYSQL_ENGINE.test(input.content) ||
-    MYSQL_AUTO_INCREMENT.test(input.content) ||
-    MYSQL_CHARSET.test(input.content) ||
-    MYSQL_DISPLAY_WIDTH.test(input.content) ||
-    (/\bcreate\s+table\b/i.test(input.content) && /`[^`]+`/.test(input.content))
+    // Intentionally raw: this is the mysqldump/Adminer banner, which only ever
+    // appears as a comment. Stripping comments here would let Postgres RLS
+    // rules run on MySQL dumps again. Do not "simplify" it onto `code`.
+    MYSQL_DUMP_HEADER.test(input.raw) ||
+    MYSQL_ENGINE.test(input.code) ||
+    MYSQL_AUTO_INCREMENT.test(input.code) ||
+    MYSQL_CHARSET.test(input.code) ||
+    MYSQL_DISPLAY_WIDTH.test(input.code) ||
+    (/\bcreate\s+table\b/i.test(input.code) && /`[^`]+`/.test(input.code))
   );
 }
 
-function looksLikeMSSQL(input: SqlDialectInput): boolean {
+function looksLikeMSSQL(input: DialectSignals): boolean {
   return (
-    MSSQL_GO_BATCH.test(input.content) ||
-    MSSQL_BRACKETED_IDENT.test(input.content) ||
-    MSSQL_IDENTITY.test(input.content) ||
-    MSSQL_TYPES.test(input.content) ||
-    MSSQL_CREATE_BRACKET.test(input.content)
+    MSSQL_GO_BATCH.test(input.code) ||
+    MSSQL_BRACKETED_IDENT.test(input.code) ||
+    MSSQL_IDENTITY.test(input.code) ||
+    MSSQL_TYPES.test(input.code) ||
+    MSSQL_CREATE_BRACKET.test(input.code)
   );
 }
 
-function looksLikePostgres(input: SqlDialectInput): boolean {
+function looksLikePostgres(input: DialectSignals): boolean {
   return (
     /supabase/i.test(input.file) ||
-    /supabase/i.test(input.content) ||
-    /auth\.uid\(\)/i.test(input.content) ||
-    /auth\.users\b/i.test(input.content) ||
-    /create\s+policy\b/i.test(input.content) ||
-    /enable\s+row\s+level\s+security/i.test(input.content)
+    /supabase/i.test(input.code) ||
+    /auth\.uid\(\)/i.test(input.code) ||
+    /auth\.users\b/i.test(input.code) ||
+    /create\s+policy\b/i.test(input.code) ||
+    /enable\s+row\s+level\s+security/i.test(input.code)
   );
 }
 
@@ -88,10 +160,15 @@ function looksLikePostgres(input: SqlDialectInput): boolean {
  * ClickHouse.
  */
 export function detectSqlDialect(input: SqlDialectInput): SqlDialect {
-  if (looksLikeClickHouse(input)) return 'clickhouse';
-  if (looksLikeMySQL(input)) return 'mysql';
-  if (looksLikeMSSQL(input)) return 'mssql';
-  if (looksLikePostgres(input)) return 'postgres';
+  const signals: DialectSignals = {
+    file: input.file,
+    raw: input.content,
+    code: stripCommentsAndLiterals(input.content),
+  };
+  if (looksLikeClickHouse(signals)) return 'clickhouse';
+  if (looksLikeMySQL(signals)) return 'mysql';
+  if (looksLikeMSSQL(signals)) return 'mssql';
+  if (looksLikePostgres(signals)) return 'postgres';
   return 'unknown';
 }
 

@@ -9,8 +9,15 @@
  * Apply (do not run against production from an agent — hand this to a human):
  *   npx tsx --env-file=apps/web/.env.local apps/web/scripts/backfill-repo-target-projections.ts --apply
  *
+ * Badge minting is opt-in via --mint-badges. Minting a badge_token creates
+ * auth-free public URLs for that repo (/report/<token>, /api/badge/<token>) and
+ * makes GET /api/v1/verdict start returning them. Tokens are unguessable, but
+ * publishing a verdict page for a private repo is a product decision, so it is
+ * never a side effect of a score backfill.
+ *
  * Touches:
- *   - public.targets.badge_token — only repo rows where badge_token IS NULL
+ *   - public.targets.badge_token — only with --mint-badges, and only repo rows
+ *     where badge_token IS NULL
  *   - public.targets.current_verdict, current_ship_score, verdict_evidence, last_checked_at
  *     — repo rows whose latest successful scan has ship_score IS NULL (legacy)
  *   - public.scans.ship_score, verdict — those same latest scans
@@ -18,10 +25,10 @@
  * Does not touch findings, identifiers, organizations, or API keys.
  *
  * Expected dry-run output (shape):
- *   { "mode": "dry-run", "repoTargets": N, "missingBadgeTokens": N, "identifiersMissingBadge": [...] }
- *   badge  owner/name  would mint  <8 hex>…
+ *   { "mode": "dry-run", "mintBadges": false, "repoTargets": N, "missingBadgeTokens": N, "identifiersMissingBadge": [...] }
+ *   badge  owner/name  skipped (pass --mint-badges to mint)
  *   score  owner/name  stored=36  recomputed=59  would write
- *   { "mode": "dry-run", "badgeMints": N, "scoreResyncs": N }
+ *   { "mode": "dry-run", "badgeMints": 0, "scoreResyncs": N }
  */
 
 import { getAdminDbAdapter } from '../src/utils/dbAdapter';
@@ -31,6 +38,7 @@ import { syncRepoTargetVerdict } from '../src/utils/persistRepoScan';
 import { resolveVerdictFromScanFindings } from '../src/utils/shipGate';
 
 const apply = process.argv.includes('--apply');
+const mintBadges = process.argv.includes('--mint-badges');
 
 type TargetRow = {
   id: string;
@@ -67,6 +75,7 @@ async function main(): Promise<void> {
     JSON.stringify(
       {
         mode: apply ? 'apply' : 'dry-run',
+        mintBadges,
         repoTargets: targets.length,
         missingBadgeTokens: missingBadge.length,
         identifiersMissingBadge: missingBadge.map((row) => row.identifier),
@@ -77,6 +86,10 @@ async function main(): Promise<void> {
   );
 
   for (const target of missingBadge) {
+    if (!mintBadges) {
+      console.log(`badge  ${target.identifier}  skipped (pass --mint-badges to mint)`);
+      continue;
+    }
     const token = generateBadgeToken();
     console.log(
       `badge  ${target.identifier}  ${apply ? 'mint' : 'would mint'}  ${token.slice(0, 8)}…`,
@@ -133,7 +146,7 @@ async function main(): Promise<void> {
     JSON.stringify(
       {
         mode: apply ? 'apply' : 'dry-run',
-        badgeMints: missingBadge.length,
+        badgeMints: mintBadges ? missingBadge.length : 0,
         scoreResyncs,
       },
       null,
