@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getUserDbAdapter } from './dbAdapter';
+import {
+  getUserDbAdapter,
+  SUPABASE_FETCH_TIMEOUT_MS,
+  SUPABASE_MUTATION_TIMEOUT_MS,
+} from './dbAdapter';
 
 describe('user database adapter', () => {
   const originalEnv = { ...process.env };
@@ -376,5 +380,81 @@ describe('user database adapter', () => {
     // Bulk dismissals share one timestamp, so the name key is what stops the
     // Restore rows from reshuffling between loads.
     expect(url).toContain('order=dismissed_at.desc,name.asc');
+  });
+
+  /**
+   * Real `fetch` never settles a hung connection until the AbortSignal fires.
+   * A mock that ignores the signal would hide a missing timeout: the race
+   * against `HUNG` is what fails the suite instead of hanging it.
+   */
+  function neverSettlingFetch(_input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    return new Promise((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!signal) return;
+      const abort = (): void => {
+        const reason = signal.reason;
+        reject(
+          reason instanceof Error
+            ? reason
+            : new DOMException('The operation was aborted due to timeout.', 'TimeoutError'),
+        );
+      };
+      if (signal.aborted) {
+        abort();
+        return;
+      }
+      signal.addEventListener('abort', abort, { once: true });
+    });
+  }
+
+  it(
+    'rejects a hung GET within the read budget',
+    async () => {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
+      vi.stubGlobal('fetch', vi.fn(neverSettlingFetch));
+
+      const outcome = await Promise.race([
+        getUserDbAdapter('jwt')
+          .getRepository('repo-a')
+          .then(
+            () => 'resolved',
+            (error: Error) => `rejected: ${error.message}`,
+          ),
+        new Promise<string>((resolve) =>
+          setTimeout(() => resolve('HUNG'), SUPABASE_FETCH_TIMEOUT_MS + 1_000),
+        ),
+      ]);
+
+      expect(outcome).toBe(
+        `rejected: Supabase request timed out after ${SUPABASE_FETCH_TIMEOUT_MS}ms`,
+      );
+    },
+    SUPABASE_FETCH_TIMEOUT_MS + 5_000,
+  );
+
+  it('gives mutations a longer timeout than reads', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockImplementation(
+            () => new Response(JSON.stringify([{ id: 'key-1' }]), { status: 200 }),
+          ),
+      );
+
+      await getUserDbAdapter('jwt').getRepository('repo-a');
+      expect(timeoutSpy).toHaveBeenCalledWith(SUPABASE_FETCH_TIMEOUT_MS);
+
+      timeoutSpy.mockClear();
+      await getUserDbAdapter('jwt').deleteApiKey('key-1');
+      expect(timeoutSpy).toHaveBeenCalledWith(SUPABASE_MUTATION_TIMEOUT_MS);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
   });
 });

@@ -23,6 +23,8 @@ import {
   resolveTargetShipScore,
 } from '../../../utils/shipScoreDisplay';
 
+export const maxDuration = 60;
+
 /**
  * One app's current safety verdict for the dashboard. This is the object the
  * product leads with — "can I ship this right now?" at a glance — replacing the

@@ -5,6 +5,8 @@ import { requireRepositoryAccess } from '../../../../../utils/authorization';
 import { selectLatestScanPerCommit } from '../../../../../utils/scanHistoryDisplay';
 import { resolveDisplayedShipScore } from '../../../../../utils/shipScoreDisplay';
 
+export const maxDuration = 60;
+
 const TREND_SCAN_LIMIT = 30;
 
 const repositoryParams = z

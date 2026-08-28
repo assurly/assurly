@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SUPABASE_MUTATION_TIMEOUT_MS } from './dbAdapter';
 import { persistRepoScan } from './persistRepoScan';
 
 describe('persistRepoScan', () => {
@@ -94,45 +95,49 @@ describe('persistRepoScan', () => {
     );
   });
 
-  it('keeps the scan when target sync fails and records that the projection is stale', async () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const db = {
-      saveScan: vi.fn().mockResolvedValue({
-        id: 'scan-ok',
-        repository_id: 'repo-1',
-        created_at: '2026-08-10T00:00:00.000Z',
-        scan_scope: { scanned: 12 },
-      }),
-      getRepository: vi.fn().mockResolvedValue({
-        id: 'repo-1',
-        organization_id: 'org-1',
-        name: 'acme/saas',
-      }),
-      getTargetByIdentifier: vi.fn().mockResolvedValue(null),
-      upsertTarget: vi.fn().mockRejectedValue(new Error('db down')),
-      markScanProjectionStale: vi.fn().mockResolvedValue(undefined),
-    };
+  it.each(['db down', `Supabase request timed out after ${SUPABASE_MUTATION_TIMEOUT_MS}ms`])(
+    'keeps the scan when target sync fails (%s) and records that the projection is stale',
+    async (message) => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const db = {
+        saveScan: vi.fn().mockResolvedValue({
+          id: 'scan-ok',
+          repository_id: 'repo-1',
+          created_at: '2026-08-10T00:00:00.000Z',
+          scan_scope: { scanned: 12 },
+        }),
+        getRepository: vi.fn().mockResolvedValue({
+          id: 'repo-1',
+          organization_id: 'org-1',
+          name: 'acme/saas',
+        }),
+        getTargetByIdentifier: vi.fn().mockResolvedValue(null),
+        upsertTarget: vi.fn().mockRejectedValue(new Error(message)),
+        markScanProjectionStale: vi.fn().mockResolvedValue(undefined),
+      };
 
-    const scan = await persistRepoScan(db as never, {
-      repoId: 'repo-1',
-      commitSha: 'abc',
-      branch: 'main',
-      status: 'success',
-      findings: [],
-      meta: {
-        shipScore: 96,
-        verdict: 'ready',
-        scannedFileCount: 12,
-        cleanFileCount: 12,
-      },
-    });
+      const scan = await persistRepoScan(db as never, {
+        repoId: 'repo-1',
+        commitSha: 'abc',
+        branch: 'main',
+        status: 'success',
+        findings: [],
+        meta: {
+          shipScore: 96,
+          verdict: 'ready',
+          scannedFileCount: 12,
+          cleanFileCount: 12,
+        },
+      });
 
-    expect(scan.id).toBe('scan-ok');
-    expect(db.markScanProjectionStale).toHaveBeenCalledWith('scan-ok');
-    expect(errorSpy).toHaveBeenCalled();
-    const logged = errorSpy.mock.calls.map((args) => args.join(' ')).join('\n');
-    expect(logged).toContain('target-sync-failed');
-    expect(logged).toContain('repo-1');
-    errorSpy.mockRestore();
-  });
+      expect(scan.id).toBe('scan-ok');
+      expect(db.markScanProjectionStale).toHaveBeenCalledWith('scan-ok');
+      expect(errorSpy).toHaveBeenCalled();
+      const logged = errorSpy.mock.calls.map((args) => args.join(' ')).join('\n');
+      expect(logged).toContain('target-sync-failed');
+      expect(logged).toContain('repo-1');
+      expect(logged).toContain(message);
+      errorSpy.mockRestore();
+    },
+  );
 });

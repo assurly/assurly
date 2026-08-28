@@ -3,6 +3,20 @@ import { getSupabaseAdminConfig, getSupabaseConfig } from './env';
 
 export type { BillingPlan };
 
+/**
+ * Wall-clock ceiling for a single Supabase REST read (GET/HEAD). A wedged
+ * upstream (Cloudflare 520) otherwise holds the serverless function until the
+ * platform kill (~5 min). Longer than GitHub's 8s metadata bound because
+ * `getScanFindings` on a large scan is not a lookup.
+ */
+export const SUPABASE_FETCH_TIMEOUT_MS = 12_000;
+
+/**
+ * Ceiling for POST/PATCH/DELETE. Longer so a slow-but-succeeding write is not
+ * aborted mid-flight; still far under the platform kill.
+ */
+export const SUPABASE_MUTATION_TIMEOUT_MS = 25_000;
+
 export interface User {
   id: string;
   name: string;
@@ -534,6 +548,38 @@ function persistableCommitSha(commitSha: string): string {
   return isHexCommitSha(commitSha) ? commitSha.toLowerCase() : commitSha;
 }
 
+function supabaseTimeoutMs(method: string | undefined): number {
+  const verb = (method ?? 'GET').toUpperCase();
+  if (verb === 'POST' || verb === 'PATCH' || verb === 'PUT' || verb === 'DELETE') {
+    return SUPABASE_MUTATION_TIMEOUT_MS;
+  }
+  return SUPABASE_FETCH_TIMEOUT_MS;
+}
+
+function isAbortTimeout(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'TimeoutError' || error.name === 'AbortError') return true;
+  return (
+    error.cause instanceof Error &&
+    (error.cause.name === 'TimeoutError' || error.cause.name === 'AbortError')
+  );
+}
+
+async function fetchWithSupabaseTimeout(url: string, options: RequestInit): Promise<Response> {
+  const timeoutMs = supabaseTimeoutMs(options.method);
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    if (isAbortTimeout(error)) {
+      throw new Error(`Supabase request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+}
+
 /** api_keys columns safe to expose to a client — `key_hash` is deliberately absent. */
 const API_KEY_SAFE_COLUMNS =
   'id,organization_id,label,key_prefix,plan,last_used_at,revoked_at,created_at';
@@ -554,7 +600,7 @@ export class SupabaseDbAdapter implements DbAdapter {
   ) {}
 
   private async fetchDb<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const response = await fetch(`${this.url}/rest/v1/${path}`, {
+    const response = await fetchWithSupabaseTimeout(`${this.url}/rest/v1/${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -595,7 +641,7 @@ export class SupabaseDbAdapter implements DbAdapter {
    * the total comes from the `content-range` header (`*​/N`). Aggregate-only.
    */
   private async count(path: string): Promise<number> {
-    const response = await fetch(`${this.url}/rest/v1/${path}`, {
+    const response = await fetchWithSupabaseTimeout(`${this.url}/rest/v1/${path}`, {
       method: 'HEAD',
       headers: {
         apikey: this.apiKey,
