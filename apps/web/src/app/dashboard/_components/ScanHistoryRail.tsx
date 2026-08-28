@@ -5,8 +5,8 @@ import type { Scan } from '../../../utils/dbAdapter';
 import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
 import {
   formatCommitShaShort,
-  formatScanTime,
-  selectLatestScanPerCommit,
+  formatScanDateTime,
+  visibleScanHistory,
 } from '../../../utils/scanHistoryDisplay';
 import {
   readRailOverflow,
@@ -32,7 +32,7 @@ export function ScanHistoryRail({
 }: ScanHistoryRailProps): ReactElement {
   const chipRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const railRef = useRef<HTMLDivElement>(null);
-  const visibleScans = useMemo(() => selectLatestScanPerCommit(scans), [scans]);
+  const visibleScans = useMemo(() => visibleScanHistory(scans), [scans]);
   const [overflow, setOverflow] = useState<RailOverflow>(NO_RAIL_OVERFLOW);
 
   // The scan awaiting an explicit delete confirmation, or null when the dialog
@@ -128,7 +128,7 @@ export function ScanHistoryRail({
           // A list of scans is what this actually is, and `aria-current` marks the
           // selected one without promising keyboard behaviour that does not exist.
           role="list"
-          aria-label="Select scan by commit"
+          aria-label="Select a scan"
         >
           {visibleScans.map((scan) => {
             const isSelected = selectedScanId === scan.id;
@@ -160,7 +160,7 @@ export function ScanHistoryRail({
                   />
                   <span className="scan-history-rail__label">
                     commit {formatCommitShaShort(scan.commit_sha)} ·{' '}
-                    <time dateTime={scan.created_at}>{formatScanTime(scan.created_at)}</time>
+                    <time dateTime={scan.created_at}>{formatScanDateTime(scan.created_at)}</time>
                   </span>
                 </button>
 
@@ -171,7 +171,7 @@ export function ScanHistoryRail({
                     data-testid={`scan-history-delete-${scan.id}`}
                     aria-label={`Delete the scan of commit ${formatCommitShaShort(
                       scan.commit_sha,
-                    )} from ${formatScanTime(scan.created_at)}`}
+                    )} from ${formatScanDateTime(scan.created_at)}`}
                     onClick={(event) => openConfirm(scan, event.currentTarget)}
                   >
                     <span aria-hidden="true">×</span>
@@ -203,7 +203,7 @@ export function ScanHistoryRail({
             </h4>
             <p id="scan-delete-dialog-desc" className="scan-delete-dialog__desc">
               Delete the scan of commit {formatCommitShaShort(confirmScan.commit_sha)} from{' '}
-              {formatScanTime(confirmScan.created_at)}? This permanently removes it and its
+              {formatScanDateTime(confirmScan.created_at)}? This permanently removes it and its
               findings.
             </p>
             <div className="scan-delete-dialog__actions">

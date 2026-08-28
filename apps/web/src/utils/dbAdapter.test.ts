@@ -130,41 +130,8 @@ describe('user database adapter', () => {
       });
     });
 
-    it('lowercases a hex SHA and deletes older scans of the same commit', async () => {
-      process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
-      const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
-        const href = String(url);
-        const method = init?.method ?? 'GET';
-        if (href.endsWith('/rest/v1/scans') && method === 'POST') {
-          return new Response(
-            JSON.stringify([
-              {
-                id: 'scan-new',
-                repository_id: 'repo-1',
-                commit_sha: 'c8039c4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                created_at: '2026-08-17T12:00:00.000Z',
-              },
-            ]),
-            { status: 201 },
-          );
-        }
-        if (href.includes('/rest/v1/scans?select=id,created_at') && method === 'GET') {
-          return new Response(
-            JSON.stringify([
-              { id: 'scan-old', created_at: '2026-08-17T11:00:00.000Z' },
-              { id: 'scan-new', created_at: '2026-08-17T12:00:00.000Z' },
-            ]),
-            { status: 200 },
-          );
-        }
-        if (href.includes('/rest/v1/scans?id=eq.scan-old') && method === 'DELETE') {
-          return new Response(JSON.stringify([{ id: 'scan-old' }]), { status: 200 });
-        }
-        return new Response(JSON.stringify([]), { status: 200 });
-      });
-      vi.stubGlobal('fetch', fetchMock);
-
+    it('lowercases a hex SHA and keeps earlier scans of the same commit', async () => {
+      const fetchMock = stubSupabase();
       await getUserDbAdapter('jwt').saveScan(
         'repo-1',
         'C8039C4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
@@ -182,11 +149,14 @@ describe('user database adapter', () => {
       expect(JSON.parse((insertCall![1] as RequestInit).body as string).commit_sha).toBe(
         'c8039c4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       );
-      const deleteCall = fetchMock.mock.calls.find(
-        ([url, init]) =>
-          String(url).includes('id=eq.scan-old') && (init as RequestInit).method === 'DELETE',
+      const siblingList = fetchMock.mock.calls.filter(([url]) =>
+        String(url).includes('select=id,created_at'),
       );
-      expect(deleteCall).toBeDefined();
+      const deletes = fetchMock.mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'DELETE',
+      );
+      expect(siblingList).toHaveLength(0);
+      expect(deletes).toHaveLength(0);
     });
 
     it('does not prune sibling scans for an unknown placeholder SHA', async () => {

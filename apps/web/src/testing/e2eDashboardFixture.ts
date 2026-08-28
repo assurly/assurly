@@ -41,7 +41,7 @@ export const e2eAttestaScans: Scan[] = [
     status: 'failed',
     error_count: 7,
     warning_count: 1,
-    created_at: '2026-06-26T08:55:00.000Z',
+    created_at: '2026-06-26T09:20:00.000Z',
   },
   {
     id: '22000000-0000-4000-8000-000000000004',
@@ -100,7 +100,7 @@ export const e2eAttestaFindingsByScanId: Record<string, ScanFinding[]> = {
       line_number: 1,
       message:
         "Supabase table 'organizations' is created but Row-Level Security (RLS) is not enabled.",
-      created_at: '2026-06-26T08:55:00.000Z',
+      created_at: '2026-06-26T09:20:00.000Z',
     },
   ],
   [attestaCleanScanId]: [

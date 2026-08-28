@@ -36,6 +36,8 @@ describe('dashboard label copy', () => {
 
   it('formats scan history chip copy', () => {
     expect(formatCommitShaShort(scan.commit_sha)).toBe('669c039');
-    expect(formatScanHistoryChipLabel(scan)).toMatch(/^commit 669c039 · \d{2}:\d{2}$/);
+    expect(formatScanHistoryChipLabel(scan)).toContain('commit 669c039 · ');
+    expect(formatScanHistoryChipLabel(scan)).toMatch(/\d{4}/);
+    expect(formatScanHistoryChipLabel(scan)).toMatch(/\d{1,2}:\d{2}/);
   });
 });

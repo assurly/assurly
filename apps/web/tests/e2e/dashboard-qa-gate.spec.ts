@@ -59,6 +59,20 @@ for (const viewport of QA_VIEWPORTS) {
     test('supports scan history navigation and jump to results', async ({ page }) => {
       await waitForBlockedScanVerdict(page);
 
+      // Fixture has four saved runs (three of the same commit plus deadbee).
+      // History must keep every run, newest first, with date and time on the chip.
+      await expect(page.getByRole('heading', { name: 'Scan history (4)' })).toBeVisible();
+      const chips = page.locator('[data-testid^="scan-history-chip-"]');
+      await expect(chips).toHaveCount(4);
+      await expect(chips.nth(0)).toHaveAttribute(
+        'data-testid',
+        'scan-history-chip-22000000-0000-4000-8000-000000000003',
+      );
+      await expect(chips.nth(0)).toHaveText(/commit 669c039 · .+\d{4}.+\d{1,2}:\d{2}/);
+      await expect(
+        page.getByTestId('scan-history-chip-22000000-0000-4000-8000-000000000001'),
+      ).toBeVisible();
+
       const rail = page.getByTestId('scan-history-rail').locator('.scan-history-rail');
       const metrics = await rail.evaluate((element) => ({
         scrollWidth: element.scrollWidth,

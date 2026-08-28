@@ -4,9 +4,11 @@ import {
   countVisibleScanHistory,
   excludeTooLargeFailedScans,
   formatCommitShaShort,
+  formatScanDateTime,
   formatScanHistoryChipLabel,
-  formatScanTime,
   selectLatestScanPerCommit,
+  sortScansNewestFirst,
+  visibleScanHistory,
 } from './scanHistoryDisplay';
 
 function buildScan(overrides: Partial<Scan> & Pick<Scan, 'id'>): Scan {
@@ -22,6 +24,15 @@ function buildScan(overrides: Partial<Scan> & Pick<Scan, 'id'>): Scan {
   };
 }
 
+const SCAN_DATE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+};
+
 describe('scanHistoryDisplay', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -33,32 +44,60 @@ describe('scanHistoryDisplay', () => {
     expect(formatCommitShaShort('not-a-sha')).toBe('not-a-sha');
   });
 
-  it('formats scan timestamps as pinned en-US 24-hour local time', () => {
+  it('formats scan timestamps as pinned en-US date and 24-hour local time', () => {
     const iso = '2026-06-26T08:55:00.000Z';
-    const expected = new Date(iso).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-    expect(formatScanTime(iso)).toBe(expected);
+    const expected = new Date(iso).toLocaleString('en-US', SCAN_DATE_TIME_FORMAT);
+    expect(formatScanDateTime(iso)).toBe(expected);
 
-    const spy = vi.spyOn(Date.prototype, 'toLocaleTimeString');
-    formatScanTime(iso);
-    expect(spy).toHaveBeenCalledWith('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
+    const spy = vi.spyOn(Date.prototype, 'toLocaleString');
+    formatScanDateTime(iso);
+    expect(spy).toHaveBeenCalledWith('en-US', SCAN_DATE_TIME_FORMAT);
 
-    expect(formatScanTime('invalid')).toBe('invalid');
+    expect(formatScanDateTime('invalid')).toBe('invalid');
   });
 
-  it('builds scan history chip labels with middle-dot separators', () => {
+  it('builds scan history chip labels with commit, date, and time', () => {
     const scan = buildScan({ id: 'scan-1' });
-    expect(formatScanHistoryChipLabel(scan)).toMatch(/^commit 669c039 · \d{2}:\d{2}$/);
+    expect(formatScanHistoryChipLabel(scan)).toBe(
+      `commit 669c039 · ${formatScanDateTime(scan.created_at)}`,
+    );
   });
 
-  it('keeps only the newest scan per hex commit SHA', () => {
+  it('sorts scans newest first, then by id when timestamps tie', () => {
+    const scans = [
+      buildScan({ id: 'scan-old', created_at: '2026-08-17T09:00:00.000Z' }),
+      buildScan({ id: 'scan-tie-b', created_at: '2026-08-17T10:00:00.000Z' }),
+      buildScan({ id: 'scan-tie-a', created_at: '2026-08-17T10:00:00.000Z' }),
+      buildScan({ id: 'scan-new', created_at: '2026-08-17T11:00:00.000Z' }),
+    ];
+    expect(sortScansNewestFirst(scans).map((scan) => scan.id)).toEqual([
+      'scan-new',
+      'scan-tie-b',
+      'scan-tie-a',
+      'scan-old',
+    ]);
+  });
+
+  it('keeps every scan of the same commit in the history rail, newest first', () => {
+    const sharedSha = 'c8039c4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const scans = [
+      buildScan({ id: 'scan-old', commit_sha: sharedSha, created_at: '2026-08-17T09:00:00.000Z' }),
+      buildScan({ id: 'scan-new', commit_sha: sharedSha, created_at: '2026-08-17T10:00:00.000Z' }),
+      buildScan({
+        id: 'scan-other',
+        commit_sha: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        created_at: '2026-08-17T09:30:00.000Z',
+      }),
+    ];
+
+    expect(visibleScanHistory(scans).map((scan) => scan.id)).toEqual([
+      'scan-new',
+      'scan-other',
+      'scan-old',
+    ]);
+  });
+
+  it('keeps only the newest scan per hex commit SHA for trend charts', () => {
     const sharedSha = 'c8039c4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const scans = [
       buildScan({ id: 'scan-new', commit_sha: sharedSha, created_at: '2026-08-17T10:00:00.000Z' }),
@@ -81,7 +120,7 @@ describe('scanHistoryDisplay', () => {
     ]);
   });
 
-  it('collapses eight copies of the same SHA to one scan', () => {
+  it('collapses eight copies of the same SHA to one scan for trend charts', () => {
     const sha = 'c8039c4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const scans = Array.from({ length: 8 }, (_, index) =>
       buildScan({
@@ -103,14 +142,14 @@ describe('scanHistoryDisplay', () => {
     expect(selectLatestScanPerCommit(scans).map((scan) => scan.id)).toEqual(['u-1', 'u-2']);
   });
 
-  it('counts the same commit once so the header matches the history rail', () => {
+  it('counts every saved scan so the header matches the history rail', () => {
     const sha = 'c8039c4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const scans = [
       buildScan({ id: 'scan-a', commit_sha: sha, created_at: '2026-08-17T10:00:00.000Z' }),
       buildScan({ id: 'scan-b', commit_sha: sha, created_at: '2026-08-17T11:00:00.000Z' }),
       buildScan({ id: 'scan-c', commit_sha: sha, created_at: '2026-08-17T12:00:00.000Z' }),
     ];
-    expect(countVisibleScanHistory(scans)).toBe(1);
+    expect(countVisibleScanHistory(scans)).toBe(3);
   });
 
   it('does not count too-large Instant Gate failures in the visible history total', () => {
@@ -142,5 +181,6 @@ describe('scanHistoryDisplay', () => {
       }),
     ];
     expect(excludeTooLargeFailedScans(scans).map((scan) => scan.id)).toEqual(['keep']);
+    expect(visibleScanHistory(scans).map((scan) => scan.id)).toEqual(['keep']);
   });
 });

@@ -71,11 +71,7 @@ import {
   buildShipGateFromWebFindings,
 } from '../../../utils/shipGate';
 import { resolveDisplayedShipScore } from '../../../utils/shipScoreDisplay';
-import {
-  countVisibleScanHistory,
-  excludeTooLargeFailedScans,
-  selectLatestScanPerCommit,
-} from '../../../utils/scanHistoryDisplay';
+import { countVisibleScanHistory, visibleScanHistory } from '../../../utils/scanHistoryDisplay';
 import { resolveShipGateScanContext } from '../../../utils/shipGateScanContext';
 import { RepoListPanel } from './RepoListPanel';
 import { buildRepoTargetLookup } from './buildRepoTargetLookup';
@@ -850,7 +846,7 @@ function DashboardContent({
 
     const applyScans = (repoScans: Scan[]): void => {
       if (cancelled) return;
-      const visibleScans = selectLatestScanPerCommit(repoScans);
+      const visibleScans = visibleScanHistory(repoScans);
       const uniqueCount = countVisibleScanHistory(repoScans);
       setScans((prev) => {
         if (JSON.stringify(prev) === JSON.stringify(repoScans)) {
@@ -1022,7 +1018,7 @@ function DashboardContent({
     const merged = localScanForRepo
       ? [localScanForRepo, ...scans.filter((s) => s.id !== localScanForRepo.id)]
       : scans;
-    return excludeTooLargeFailedScans(selectLatestScanPerCommit(merged));
+    return visibleScanHistory(merged);
   }, [localScanForRepo, scans]);
 
   const displayedFindings = useMemo(() => {

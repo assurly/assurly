@@ -928,31 +928,7 @@ export class SupabaseDbAdapter implements DbAdapter {
       });
     }
 
-    if (isHexCommitSha(persistedSha)) {
-      await this.pruneOlderScansForCommit(repoId, persistedSha, scan);
-    }
-
     return scan;
-  }
-
-  /**
-   * Re-scanning the same commit replaces history, not appends it. Delete only
-   * strictly older siblings so two concurrent inserts cannot delete each other.
-   */
-  private async pruneOlderScansForCommit(
-    repoId: string,
-    commitSha: string,
-    keep: Pick<Scan, 'id' | 'created_at'>,
-  ): Promise<void> {
-    if (!keep.created_at) return;
-    const siblings = await this.fetchDb<Array<{ id: string; created_at: string }>>(
-      `scans?select=id,created_at&repository_id=eq.${eq(repoId)}&commit_sha=eq.${eq(commitSha)}`,
-    );
-    for (const sibling of siblings) {
-      if (sibling.id === keep.id) continue;
-      if (sibling.created_at >= keep.created_at) continue;
-      await this.deleteScan(sibling.id);
-    }
   }
 
   getScan(scanId: string): Promise<Scan | null> {
