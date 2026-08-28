@@ -8,14 +8,25 @@ export type { BillingPlan };
  * upstream (Cloudflare 520) otherwise holds the serverless function until the
  * platform kill (~5 min). Longer than GitHub's 8s metadata bound because
  * `getScanFindings` on a large scan is not a lookup.
+ *
+ * Sized from measured production load, not guessed. `/api/targets` is ~2.7s
+ * idle, but one dashboard render also fires ~30 concurrent `/api/scans` reads;
+ * under that self-inflicted contention `targets:read` was observed at 14.9s and
+ * individual scan reads at 21s. A 12s budget aborted those legitimate reads and
+ * the dashboard rendered "Internal server error" with zero apps. Keep this
+ * comfortably above the worst observed read and well under `maxDuration = 60`.
+ * The real fix is to stop issuing 30 requests per render; until then, do not
+ * lower this without re-measuring under a full dashboard load.
  */
-export const SUPABASE_FETCH_TIMEOUT_MS = 12_000;
+export const SUPABASE_FETCH_TIMEOUT_MS = 30_000;
 
 /**
  * Ceiling for POST/PATCH/DELETE. Longer so a slow-but-succeeding write is not
- * aborted mid-flight; still far under the platform kill.
+ * aborted mid-flight; still far under the platform kill. Must stay >= the read
+ * budget: aborting a write risks a silent partial success, so writes never get
+ * less headroom than reads.
  */
-export const SUPABASE_MUTATION_TIMEOUT_MS = 25_000;
+export const SUPABASE_MUTATION_TIMEOUT_MS = 40_000;
 
 export interface User {
   id: string;

@@ -435,6 +435,10 @@ describe('user database adapter', () => {
   );
 
   it('gives mutations a longer timeout than reads', async () => {
+    // Aborting a write risks a silent partial success, so the mutation budget
+    // must never drop below the read budget when either is retuned.
+    expect(SUPABASE_MUTATION_TIMEOUT_MS).toBeGreaterThanOrEqual(SUPABASE_FETCH_TIMEOUT_MS);
+
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
