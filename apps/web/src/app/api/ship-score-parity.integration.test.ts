@@ -76,11 +76,85 @@ function makeTarget(fixture: {
   };
 }
 
+interface LatestScanFixture {
+  shipScore: number | null;
+  findings?: Array<{
+    id: string;
+    scan_id: string;
+    rule_id: string;
+    severity: 'error' | 'warning';
+    confidence: 'high';
+    file_path: string;
+    line_number: number;
+    message: string;
+    suggestion: string;
+    created_at: string;
+  }>;
+}
+
+/** Live PHPAuth findings: grouped RLS blockers recompute to BLOCKED_SCORE_CAP (59). */
+function phpAuthFindings(): NonNullable<LatestScanFixture['findings']> {
+  const tables = ['attempts', 'config', 'requests', 'sessions', 'users'];
+  return [
+    ...tables.map((table, index) => ({
+      id: `rls-${table}`,
+      scan_id: 'scan-1',
+      rule_id: 'supabase-rls',
+      severity: 'error' as const,
+      confidence: 'high' as const,
+      file_path: 'database.sql',
+      line_number: index + 1,
+      message: `Supabase table '${table}' is created but Row-Level Security (RLS) is not enabled.`,
+      suggestion: '',
+      created_at: CHECKED_AT,
+    })),
+    {
+      id: 'warn-gha',
+      scan_id: 'scan-1',
+      rule_id: 'github-actions-integration',
+      severity: 'warning' as const,
+      confidence: 'high' as const,
+      file_path: 'Global Configs',
+      line_number: 1,
+      message: 'GitHub Actions workflow for Assurly is missing.',
+      suggestion: '',
+      created_at: CHECKED_AT,
+    },
+  ];
+}
+
 /**
- * The dashboard card. The latest scan carries the same stored score as the
- * target row — the one fixture both surfaces resolve from.
+ * The dashboard card. When `latestScan` is omitted the scan row carries the
+ * same stored score as the target — the fixture both surfaces resolve from
+ * after a consistent write. Pass `latestScan` to pin the production case
+ * where the two columns disagree.
  */
-async function dashboardScore(target: Target): Promise<number | null> {
+async function dashboardScore(
+  target: Target,
+  latestScan?: LatestScanFixture,
+): Promise<number | null> {
+  const scanRow =
+    latestScan !== undefined
+      ? {
+          id: 'scan-1',
+          repository_id: REPO_ID,
+          ship_score: latestScan.shipScore,
+          verdict: target.current_verdict,
+          scanned_file_count: null,
+          clean_file_count: null,
+          created_at: CHECKED_AT,
+        }
+      : target.current_ship_score == null
+        ? null
+        : {
+            id: 'scan-1',
+            repository_id: REPO_ID,
+            ship_score: target.current_ship_score,
+            verdict: target.current_verdict,
+            scanned_file_count: null,
+            clean_file_count: null,
+            created_at: CHECKED_AT,
+          };
   const db = {
     getOrganizationByUserId: vi
       .fn()
@@ -89,26 +163,11 @@ async function dashboardScore(target: Target): Promise<number | null> {
       .fn()
       .mockResolvedValue([{ id: REPO_ID, organization_id: ORG_ID, name: target.identifier }]),
     getTargets: vi.fn().mockResolvedValue([target]),
-    getLatestScanSummaries: vi.fn().mockResolvedValue(
-      target.current_ship_score == null
-        ? new Map()
-        : new Map([
-            [
-              REPO_ID,
-              {
-                id: 'scan-1',
-                repository_id: REPO_ID,
-                ship_score: target.current_ship_score,
-                verdict: target.current_verdict,
-                scanned_file_count: null,
-                clean_file_count: null,
-                created_at: CHECKED_AT,
-              },
-            ],
-          ]),
-    ),
-    getRecentScans: vi.fn().mockResolvedValue([]),
-    getScanFindings: vi.fn().mockResolvedValue([]),
+    getLatestScanSummaries: vi
+      .fn()
+      .mockResolvedValue(scanRow ? new Map([[REPO_ID, scanRow]]) : new Map()),
+    getRecentScans: vi.fn().mockResolvedValue(scanRow ? [scanRow] : []),
+    getScanFindings: vi.fn().mockResolvedValue(latestScan?.findings ?? []),
   };
   mocks.requireUser.mockResolvedValue({
     user: { id: 'user-1', name: 'User', email: 'user@example.com', avatar_url: '' },
@@ -255,5 +314,63 @@ describe('Ship Score parity across every user-visible surface', () => {
     const svg = await badgeSvg(target);
     expect(svg).toContain('Ship Score unavailable');
     expect(svg).not.toMatch(/Ship Score \d/);
+  });
+
+  /**
+   * Data-driven divergence, not a clamp bug. The dashboard prefers the scan
+   * row; a null `scans.ship_score` forces a findings recompute (59). The keyed
+   * API, trust page and badge read `targets.current_ship_score` (36). A
+   * consistent backfill of both columns closes this; do not weaken the fixture
+   * until the columns agree.
+   */
+  it('documents the live PHPAuth shape: null scan score vs stored target 36', async () => {
+    const target = makeTarget({
+      identifier: 'tibco87/PHPAuth',
+      storedScore: 36,
+      verdict: 'blocked',
+      topIssue: {
+        key: 'rls:users',
+        label: 'Missing RLS on table: users',
+        severity: 'error',
+      },
+    });
+    const latestScan = { shipScore: null, findings: phpAuthFindings() };
+
+    const dashboard = await dashboardScore(target, latestScan);
+    const keyed = await verdictApiScore(target);
+    const trust = await trustScore(target);
+
+    expect(dashboard).toBe(BLOCKED_SCORE_CAP);
+    expect(keyed).toBe(36);
+    expect(trust).toBe(36);
+    expect(toPublicTrustProjection(target)?.shipScore).toBe(36);
+    expect(await badgeSvg(target)).toContain('Ship Score 36/100');
+    expect(keyed).not.toBe(dashboard);
+  });
+
+  /**
+   * Different input numbers, same displayed number. The dashboard clamps the
+   * scan row (96 → 79); the keyed API already holds the capped target column.
+   * This is the live tibco87/ShipReady shape — equality holds because of the
+   * coverage cap, not because the fixture forced the columns to match.
+   */
+  it('reports one number when the live ShipReady scan row is 96 and the target stores 79', async () => {
+    const target = makeTarget({
+      identifier: 'tibco87/ShipReady',
+      storedScore: 79,
+      verdict: 'review',
+      topIssue: {
+        key: 'rule:scan-completeness',
+        label: 'Scan is incomplete',
+        severity: 'warning',
+      },
+    });
+
+    const dashboard = await dashboardScore(target, { shipScore: 96 });
+    expect(await verdictApiScore(target)).toBe(dashboard);
+    expect(await trustScore(target)).toBe(dashboard);
+    expect(toPublicTrustProjection(target)?.shipScore).toBe(dashboard);
+    expect(await badgeSvg(target)).toContain(`Ship Score ${dashboard}/100`);
+    expect(dashboard).toBe(INCOMPLETE_SCORE_CAP);
   });
 });
