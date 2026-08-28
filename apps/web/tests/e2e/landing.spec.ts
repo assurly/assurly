@@ -163,6 +163,60 @@ test.describe('Landing page', () => {
     expect(headMeta.canonical).toMatch(/\/$/);
   });
 
+  test('sticky header is fully opaque in light and dark so scrolled copy cannot show through', async ({
+    page,
+  }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    const readHeaderPaint = async (): Promise<{ alpha: number; backdropFilter: string }> =>
+      page.locator('header.site-header').evaluate((el) => {
+        const style = getComputedStyle(el);
+        const canvas = document.createElement('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          return { alpha: -1, backdropFilter: style.backdropFilter };
+        }
+        ctx.fillStyle = style.backgroundColor;
+        ctx.fillRect(0, 0, 1, 1);
+        return {
+          alpha: ctx.getImageData(0, 0, 1, 1).data[3] / 255,
+          backdropFilter: style.backdropFilter,
+        };
+      });
+
+    const darkPaint = await readHeaderPaint();
+    expect(darkPaint.alpha).toBe(1);
+    expect(darkPaint.backdropFilter === 'none' || darkPaint.backdropFilter === '').toBe(true);
+
+    await page
+      .getByRole('group', { name: 'Color theme' })
+      .getByRole('button', { name: 'Light' })
+      .click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+
+    const lightPaint = await readHeaderPaint();
+    expect(lightPaint.alpha).toBe(1);
+    expect(lightPaint.backdropFilter === 'none' || lightPaint.backdropFilter === '').toBe(true);
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    const compactLightPaint = await readHeaderPaint();
+    expect(compactLightPaint.alpha).toBe(1);
+    expect(
+      compactLightPaint.backdropFilter === 'none' || compactLightPaint.backdropFilter === '',
+    ).toBe(true);
+
+    await page.locator('html').evaluate((html) => {
+      html.setAttribute('data-theme', 'dark');
+    });
+    const compactDarkPaint = await readHeaderPaint();
+    expect(compactDarkPaint.alpha).toBe(1);
+    expect(
+      compactDarkPaint.backdropFilter === 'none' || compactDarkPaint.backdropFilter === '',
+    ).toBe(true);
+  });
+
   test('footer Cookies link lands the cookies heading below the sticky header', async ({
     page,
   }) => {

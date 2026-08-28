@@ -290,6 +290,16 @@ describe('accessibility and responsive UI contracts', () => {
     expect(globalsCss).not.toMatch(/html:has\(\.legal-container\)\s*\{[^}]*scroll-padding-top:/);
   });
 
+  it('keeps the landing sticky header fully opaque so scrolled copy cannot show through', () => {
+    expect(tokensCss).toMatch(/--color-header-bg:\s*var\(--color-canvas\)/);
+    expect(tokensCss).not.toMatch(/--color-header-bg:\s*color-mix/);
+
+    const headerRule = globalsCss.match(/^header\s*\{([^}]+)\}/m);
+    expect(headerRule?.[1] ?? '').toMatch(/background-color:\s*var\(--color-header-bg\)/);
+    expect(headerRule?.[1] ?? '').toMatch(/position:\s*sticky/);
+    expect(headerRule?.[1] ?? '').not.toMatch(/backdrop-filter/);
+  });
+
   it('keeps dashboard header and section tabs as one sticky chrome', () => {
     const chromeRule = globalsCss.match(/^\.dashboard-chrome\s*\{([^}]+)\}/m);
     expect(chromeRule?.[1] ?? '').toMatch(/position:\s*sticky/);

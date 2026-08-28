@@ -25,7 +25,7 @@
   --color-info: hsl(199 89% 60%);
   --color-focus: var(--color-accent);
   --color-scrim: hsl(240 10% 4% / 0.85);
-  --color-header-bg: color-mix(in srgb, var(--color-canvas) 90%, transparent);
+  --color-header-bg: var(--color-canvas);
   --color-overlay-soft: hsl(0 0% 100% / 0.06);
 
   /* Spacing and sizing */
@@ -111,7 +111,7 @@ html[data-theme='light'] {
   --color-danger-text: hsl(0 72% 40%);
   --color-info: hsl(199 89% 38%);
   --color-scrim: hsl(240 10% 10% / 0.45);
-  --color-header-bg: color-mix(in srgb, var(--color-canvas) 90%, transparent);
+  --color-header-bg: var(--color-canvas);
   --color-overlay-soft: hsl(240 10% 10% / 0.05);
   --shadow-card: 0 10px 30px hsl(240 10% 20% / 0.08);
   --shadow-menu: 0 18px 48px hsl(240 10% 20% / 0.14);

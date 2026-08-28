@@ -268,11 +268,13 @@ p {
   padding: 0 24px;
 }
 
+/* Opaque sticky chrome — same contract as `.dashboard-chrome`.
+   A translucent color-mix + backdrop-filter let scrolled copy show through
+   the bar (and on iOS Safari backdrop-filter can fail to paint a background). */
 header {
   border-bottom: 1px solid var(--border-color);
   padding: 20px 0;
   background-color: var(--color-header-bg);
-  backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
   z-index: 10002;
@@ -397,12 +399,6 @@ header nav a:not(.btn):hover {
    Keep in sync with LANDING_NAV_OVERLAY_MQ / DASHBOARD_NAV_OVERLAY_MQ.
    Landing chrome is scoped to .site-header; dashboard overlay is a separate 1100px block. */
 @media (max-width: 1100px) {
-  /* backdrop-filter creates a containing block that traps fixed descendants */
-  .site-header {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-
   .site-header .logo {
     position: relative;
     z-index: 10003;
@@ -528,7 +524,9 @@ body.menu-open footer {
   visibility: hidden;
 }
 
-/* Keep the header chrome above the overlay while the drawer is open */
+/* Keep the header chrome above the overlay while the drawer is open.
+   The full-viewport drawer already paints `--color-canvas`, so the bar
+   itself stays transparent and the logo/hamburger sit on that surface. */
 body.menu-open .site-header,
 .site-header.site-header-menu-open {
   position: fixed;
@@ -537,8 +535,6 @@ body.menu-open .site-header,
   right: 0;
   width: 100%;
   z-index: 10002;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   background-color: transparent;
   border-bottom-color: transparent;
 }
