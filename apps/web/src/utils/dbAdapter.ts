@@ -1031,7 +1031,7 @@ export class SupabaseDbAdapter implements DbAdapter {
     );
     const emails: string[] = [];
     for (const membership of memberships) {
-      const response = await fetch(
+      const response = await fetchWithSupabaseTimeout(
         `${this.url}/auth/v1/admin/users/${encodeURIComponent(membership.user_id)}`,
         {
           headers: {

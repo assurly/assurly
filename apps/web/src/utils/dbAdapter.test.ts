@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  getAdminDbAdapter,
   getUserDbAdapter,
   SUPABASE_FETCH_TIMEOUT_MS,
   SUPABASE_MUTATION_TIMEOUT_MS,
@@ -457,4 +458,44 @@ describe('user database adapter', () => {
       timeoutSpy.mockRestore();
     }
   });
+
+  it(
+    'getOrganizationAdminEmails: rejects a hung Auth Admin API call within the read budget',
+    async () => {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
+      process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-secret';
+
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
+          // Memberships list resolves immediately so the loop reaches the Auth Admin call
+          if (String(url).includes('/rest/v1/memberships')) {
+            return Promise.resolve(
+              new Response(JSON.stringify([{ user_id: 'user-uuid-1' }]), { status: 200 }),
+            );
+          }
+          // Auth Admin API hangs until the AbortSignal fires
+          return neverSettlingFetch(url, init);
+        }),
+      );
+
+      const outcome = await Promise.race([
+        getAdminDbAdapter()
+          .getOrganizationAdminEmails('org-1')
+          .then(
+            () => 'resolved',
+            (error: Error) => `rejected: ${error.message}`,
+          ),
+        new Promise<string>((resolve) =>
+          setTimeout(() => resolve('HUNG'), SUPABASE_FETCH_TIMEOUT_MS + 1_000),
+        ),
+      ]);
+
+      expect(outcome).toBe(
+        `rejected: Supabase request timed out after ${SUPABASE_FETCH_TIMEOUT_MS}ms`,
+      );
+    },
+    SUPABASE_FETCH_TIMEOUT_MS + 5_000,
+  );
 });
