@@ -6267,6 +6267,16 @@ button.dashboard-repo-selector-item {
   color: var(--color-text);
 }
 
+.scan-history-rail__label {
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.scan-history-rail__when {
+  font-variant-numeric: tabular-nums;
+}
+
 .scan-history-rail__status {
   display: inline-block;
   width: 6px;
@@ -6342,6 +6352,92 @@ button.dashboard-repo-selector-item {
     pointer-events: auto;
     min-width: var(--touch-target);
     min-height: var(--touch-target);
+  }
+}
+
+/* Compact dashboard (phone + stacked tablet): a vertical list, not a
+ * one-chip-wide horizontal rail. Date+time made each chip ~phone-width, so
+ * 11 scans were unreachable behind a sideways swipe. */
+@media (max-width: 992px) {
+  .scan-history-rail-viewport::before,
+  .scan-history-rail-viewport::after {
+    inset-inline: 0;
+    width: auto;
+    height: 20px;
+  }
+
+  .scan-history-rail-viewport::before {
+    inset-block-start: 0;
+    inset-block-end: auto;
+    background: linear-gradient(to bottom, var(--color-surface), transparent);
+  }
+
+  .scan-history-rail-viewport::after {
+    inset-block-end: 0;
+    inset-block-start: auto;
+    background: linear-gradient(to top, var(--color-surface), transparent);
+  }
+
+  .scan-history-rail {
+    flex-direction: column;
+    align-items: stretch;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scroll-snap-type: y proximity;
+    scroll-padding-block: 16px;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: contain;
+    max-height: min(13.75rem, 42vh);
+    padding: 4px 2px 8px;
+    gap: 8px;
+  }
+
+  .scan-history-rail__item {
+    width: 100%;
+    scroll-snap-align: start;
+  }
+
+  .scan-history-rail__chip {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: normal;
+    align-items: flex-start;
+    padding: 10px 12px;
+    text-align: start;
+    gap: 8px;
+  }
+
+  .scan-history-rail__status {
+    margin-top: 0.45em;
+  }
+
+  .scan-history-rail__label {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .scan-history-rail__sep {
+    display: none;
+  }
+
+  .scan-history-rail__when {
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+  }
+
+  .scan-history-rail__item:has(.scan-history-rail__delete) .scan-history-rail__chip {
+    padding-inline-end: 12px;
+  }
+
+  .scan-history-rail__delete {
+    position: static;
+    opacity: 1;
+    pointer-events: auto;
+    align-self: stretch;
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+    border-inline-start: 1px solid var(--color-border);
   }
 }
 
@@ -7141,9 +7237,6 @@ button.dashboard-repo-selector-item {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
-  }
-  .scan-history-rail {
-    gap: 6px;
   }
   .scan-finding-action-row {
     display: flex;

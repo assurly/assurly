@@ -24,6 +24,22 @@ export interface ScanHistoryRailProps {
 
 const NO_RAIL_OVERFLOW: RailOverflow = { start: false, end: false };
 
+function overflowOnAxis(
+  chipStart: number,
+  chipEnd: number,
+  railStart: number,
+  railEnd: number,
+  inset: number,
+): number {
+  if (chipStart < railStart) {
+    return chipStart - (railStart + inset);
+  }
+  if (chipEnd > railEnd) {
+    return chipEnd - (railEnd - inset);
+  }
+  return 0;
+}
+
 export function ScanHistoryRail({
   scans,
   selectedScanId,
@@ -77,19 +93,27 @@ export function ScanHistoryRail({
       return;
     }
 
-    // Reveal the active chip HORIZONTALLY inside the rail only. `scrollIntoView`
-    // would also scroll the whole page vertically to the chip — jerking the user
-    // down to the middle of the scan workspace. Scrolling the rail's own overflow
-    // keeps the page position untouched. The inset matches the edge fade so the
-    // chip lands in the unfaded region, not under the overlay.
+    // Reveal the active chip inside the rail only — horizontally on desktop,
+    // vertically in the compact stacked list. `scrollIntoView` would also
+    // scroll the page down to the workspace.
     const railRect = rail.getBoundingClientRect();
     const chipRect = activeChip.getBoundingClientRect();
-    const overflowLeft = chipRect.left - (railRect.left + SCAN_HISTORY_RAIL_EDGE_INSET);
-    const overflowRight = chipRect.right - (railRect.right - SCAN_HISTORY_RAIL_EDGE_INSET);
-    if (overflowLeft < 0) {
-      rail.scrollBy({ left: overflowLeft, behavior: 'smooth' });
-    } else if (overflowRight > 0) {
-      rail.scrollBy({ left: overflowRight, behavior: 'smooth' });
+    const left = overflowOnAxis(
+      chipRect.left,
+      chipRect.right,
+      railRect.left,
+      railRect.right,
+      SCAN_HISTORY_RAIL_EDGE_INSET,
+    );
+    const top = overflowOnAxis(
+      chipRect.top,
+      chipRect.bottom,
+      railRect.top,
+      railRect.bottom,
+      SCAN_HISTORY_RAIL_EDGE_INSET,
+    );
+    if (left !== 0 || top !== 0) {
+      rail.scrollBy({ left, top, behavior: 'smooth' });
     }
   }, [selectedScanId, visibleScans]);
 
@@ -159,8 +183,16 @@ export function ScanHistoryRail({
                     aria-hidden="true"
                   />
                   <span className="scan-history-rail__label">
-                    commit {formatCommitShaShort(scan.commit_sha)} ·{' '}
-                    <time dateTime={scan.created_at}>{formatScanDateTime(scan.created_at)}</time>
+                    <span className="scan-history-rail__commit">
+                      commit {formatCommitShaShort(scan.commit_sha)}
+                    </span>
+                    <span className="scan-history-rail__sep" aria-hidden="true">
+                      {' '}
+                      ·{' '}
+                    </span>
+                    <time className="scan-history-rail__when" dateTime={scan.created_at}>
+                      {formatScanDateTime(scan.created_at)}
+                    </time>
                   </span>
                 </button>
 

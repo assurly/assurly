@@ -3,15 +3,26 @@ import type { Scan } from './dbAdapter';
 /** Git commit SHAs we collapse on. Placeholders like `unknown` stay unique. */
 const HEX_COMMIT_SHA = /^[0-9a-f]{7,40}$/i;
 
-/** Pinned so Node SSR and the browser render the same chip label. */
-const SCAN_DATE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-};
+/** English abbreviations — iOS `toLocaleString('en-US')` inserts "at" and
+ * stretched history chips across a phone width. */
+const SHORT_MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+function padTwoDigits(value: number): string {
+  return value.toString().padStart(2, '0');
+}
 
 export function formatCommitShaShort(commitSha: string): string {
   if (commitSha.length > 8 && /^[0-9a-f]+$/i.test(commitSha)) {
@@ -25,10 +36,8 @@ export function formatScanDateTime(isoTimestamp: string): string {
   if (Number.isNaN(date.getTime())) {
     return isoTimestamp;
   }
-  // Pin en-US so Node SSR and the browser agree. Leaving the locale ambient
-  // makes the string follow the runtime default (en-US on the server, the
-  // visitor's locale in Chromium) and React reports a hydration mismatch.
-  return date.toLocaleString('en-US', SCAN_DATE_TIME_FORMAT);
+  const month = SHORT_MONTHS[date.getMonth()] ?? 'Jan';
+  return `${month} ${date.getDate()}, ${date.getFullYear()} · ${padTwoDigits(date.getHours())}:${padTwoDigits(date.getMinutes())}`;
 }
 
 function commitIdentityKey(scan: Scan): string {

@@ -64,14 +64,17 @@ describe('ScanHistoryRail', () => {
   it('labels chips with commit SHA, date, and time, and keeps every scan', () => {
     render(<ScanHistoryRail scans={scans} selectedScanId="scan-3" onSelectScan={vi.fn()} />);
 
-    expect(screen.getAllByRole('button', { name: /commit 669c039 ·/i }).length).toBe(3);
-    expect(screen.getAllByRole('button', { name: /commit deadbee ·/i }).length).toBe(1);
-    expect(screen.getAllByRole('button', { name: /commit 669c039 ·/i })[0]?.textContent).toMatch(
-      /[A-Z][a-z]{2} \d{1,2}, \d{4}, \d{2}:\d{2}/,
+    expect(screen.getAllByRole('button', { name: /commit 669c039/i }).length).toBe(3);
+    expect(screen.getAllByRole('button', { name: /commit deadbee/i }).length).toBe(1);
+    expect(screen.getAllByRole('button', { name: /commit 669c039/i })[0]?.textContent).toMatch(
+      /[A-Z][a-z]{2} \d{1,2}, \d{4} · \d{2}:\d{2}/,
     );
     expect(screen.queryByText(/#1 of 3/i)).toBeNull();
     expect(screen.getByTestId('scan-history-chip-scan-1')).toBeTruthy();
     expect(screen.getByTestId('scan-history-chip-scan-3')).toBeTruthy();
+    expect(
+      screen.getByTestId('scan-history-chip-scan-3').querySelector('.scan-history-rail__when'),
+    ).toBeTruthy();
   });
 
   it('renders chips newest first so the latest scan is first in the rail', () => {
@@ -112,21 +115,30 @@ describe('ScanHistoryRail', () => {
 
     const rail = screen.getByRole('list', { name: 'Select a scan' });
     // Rail viewport spans x=0..200; the newly-selected chip sits off to the right.
-    vi.spyOn(rail, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 200 } as DOMRect);
+    vi.spyOn(rail, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      right: 200,
+      top: 0,
+      bottom: 40,
+    } as DOMRect);
     const chip4 = screen.getByTestId('scan-history-chip-scan-4');
-    vi.spyOn(chip4, 'getBoundingClientRect').mockReturnValue({ left: 240, right: 320 } as DOMRect);
+    vi.spyOn(chip4, 'getBoundingClientRect').mockReturnValue({
+      left: 240,
+      right: 320,
+      top: 0,
+      bottom: 40,
+    } as DOMRect);
 
     scrollBy.mockClear();
     rerender(<ScanHistoryRail scans={scans} selectedScanId="scan-4" onSelectScan={vi.fn()} />);
 
-    // Only the rail scrolls horizontally; the page-scrolling scrollIntoView is
-    // never used, so the workspace above the rail stays put.
+    // Only the rail scrolls; the page-scrolling scrollIntoView is never used.
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(scrollBy).toHaveBeenCalledWith({
       left: 320 - (200 - SCAN_HISTORY_RAIL_EDGE_INSET),
+      top: 0,
       behavior: 'smooth',
     });
-    expect(scrollBy.mock.calls[0][0]).not.toHaveProperty('top');
   });
 
   it('contains horizontal scrolling inside the rail wrapper', () => {

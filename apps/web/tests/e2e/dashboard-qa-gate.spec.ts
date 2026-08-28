@@ -68,7 +68,9 @@ for (const viewport of QA_VIEWPORTS) {
         'data-testid',
         'scan-history-chip-22000000-0000-4000-8000-000000000003',
       );
-      await expect(chips.nth(0)).toHaveText(/commit 669c039 · .+\d{4}.+\d{1,2}:\d{2}/);
+      await expect(chips.nth(0)).toHaveText(/commit 669c039/);
+      await expect(chips.nth(0)).toHaveText(/\d{4}/);
+      await expect(chips.nth(0)).toHaveText(/\d{1,2}:\d{2}/);
       await expect(
         page.getByTestId('scan-history-chip-22000000-0000-4000-8000-000000000001'),
       ).toBeVisible();
@@ -77,10 +79,16 @@ for (const viewport of QA_VIEWPORTS) {
       const metrics = await rail.evaluate((element) => ({
         scrollWidth: element.scrollWidth,
         clientWidth: element.clientWidth,
+        scrollHeight: element.scrollHeight,
+        clientHeight: element.clientHeight,
       }));
       if (metrics.scrollWidth > metrics.clientWidth) {
         await rail.evaluate((element) => {
           element.scrollLeft = element.scrollWidth;
+        });
+      } else if (metrics.scrollHeight > metrics.clientHeight) {
+        await rail.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
         });
       }
 

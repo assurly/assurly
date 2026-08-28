@@ -24,15 +24,6 @@ function buildScan(overrides: Partial<Scan> & Pick<Scan, 'id'>): Scan {
   };
 }
 
-const SCAN_DATE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-};
-
 describe('scanHistoryDisplay', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -44,15 +35,27 @@ describe('scanHistoryDisplay', () => {
     expect(formatCommitShaShort('not-a-sha')).toBe('not-a-sha');
   });
 
-  it('formats scan timestamps as pinned en-US date and 24-hour local time', () => {
+  it('formats scan timestamps as a compact local date and 24-hour time', () => {
     const iso = '2026-06-26T08:55:00.000Z';
-    const expected = new Date(iso).toLocaleString('en-US', SCAN_DATE_TIME_FORMAT);
-    expect(formatScanDateTime(iso)).toBe(expected);
-
-    const spy = vi.spyOn(Date.prototype, 'toLocaleString');
-    formatScanDateTime(iso);
-    expect(spy).toHaveBeenCalledWith('en-US', SCAN_DATE_TIME_FORMAT);
-
+    const date = new Date(iso);
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ] as const;
+    const pad = (value: number): string => value.toString().padStart(2, '0');
+    expect(formatScanDateTime(iso)).toBe(
+      `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()} · ${pad(date.getHours())}:${pad(date.getMinutes())}`,
+    );
     expect(formatScanDateTime('invalid')).toBe('invalid');
   });
 

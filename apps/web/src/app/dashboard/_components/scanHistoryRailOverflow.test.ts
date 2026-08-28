@@ -36,4 +36,28 @@ describe('readRailOverflow', () => {
       end: true,
     });
   });
+
+  it('reports vertical overflow when the stacked list is taller than the viewport', () => {
+    expect(
+      readRailOverflow({
+        scrollLeft: 0,
+        scrollWidth: 200,
+        clientWidth: 200,
+        scrollTop: 0,
+        scrollHeight: 400,
+        clientHeight: 200,
+      }),
+    ).toEqual({ start: false, end: true });
+
+    expect(
+      readRailOverflow({
+        scrollLeft: 0,
+        scrollWidth: 200,
+        clientWidth: 200,
+        scrollTop: 200,
+        scrollHeight: 400,
+        clientHeight: 200,
+      }),
+    ).toEqual({ start: true, end: false });
+  });
 });

@@ -32,24 +32,25 @@ test.describe('Dashboard mobile flows @375px', () => {
     ).toBeVisible();
   });
 
-  test('scrolls the scan history rail horizontally on mobile', async ({ page }) => {
+  test('scrolls the scan history list vertically on mobile', async ({ page }) => {
     const rail = page.getByTestId('scan-history-rail').locator('.scan-history-rail');
     await expect(rail).toBeVisible();
+    await expect(rail).toHaveCSS('flex-direction', 'column');
 
     const beforeScroll = await rail.evaluate((element) => ({
-      scrollLeft: element.scrollLeft,
-      scrollWidth: element.scrollWidth,
-      clientWidth: element.clientWidth,
+      scrollTop: element.scrollTop,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
     }));
-    expect(beforeScroll.scrollWidth).toBeGreaterThan(beforeScroll.clientWidth);
+    expect(beforeScroll.scrollHeight).toBeGreaterThan(beforeScroll.clientHeight);
 
     await rail.evaluate((element) => {
-      element.scrollLeft = element.scrollWidth;
+      element.scrollTop = element.scrollHeight;
     });
 
     await expect
-      .poll(async () => rail.evaluate((element) => element.scrollLeft))
-      .toBeGreaterThan(beforeScroll.scrollLeft);
+      .poll(async () => rail.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(beforeScroll.scrollTop);
 
     await expect(
       page.getByTestId('scan-history-chip-22000000-0000-4000-8000-000000000004'),
