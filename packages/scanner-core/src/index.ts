@@ -116,19 +116,22 @@ export function selectFiles<T>(files: readonly T[], maxFiles?: number): FileSele
  *   the full tree. The browser selects from a sample the server already capped,
  *   so `selection.total` describes that sample — and when the sample was read
  *   whole, `selection.complete` reports a truncated scan as complete.
+ * @param options.eligibleTotalIsLowerBound Only part of the tree was fetched, so
+ *   `eligibleTotal` is a floor. Say so rather than name a total nothing measured.
  */
 export function incompleteScanFinding(
   selection: FileSelection<unknown>,
-  options: { eligibleTotal?: number } = {},
+  options: { eligibleTotal?: number; eligibleTotalIsLowerBound?: boolean } = {},
 ): ScannerFinding | null {
   const analyzed = selection.files.length;
   const eligible = Math.max(options.eligibleTotal ?? selection.total, analyzed);
   if (eligible <= analyzed) return null;
+  const eligibleLabel = options.eligibleTotalIsLowerBound ? `at least ${eligible}` : `${eligible}`;
 
   return {
     ruleId: 'scan-completeness',
     severity: 'warning',
-    message: `Scan is incomplete: analyzed ${analyzed} of ${eligible} eligible files (configured limit: ${selection.limit}).`,
+    message: `Scan is incomplete: analyzed ${analyzed} of ${eligibleLabel} eligible files (configured limit: ${selection.limit}).`,
     suggestion:
       'Increase the scanner file limit or run the local CLI for a complete repository scan.',
   };

@@ -41,9 +41,12 @@ export declare function selectFiles<T>(files: readonly T[], maxFiles?: number): 
  *   the full tree. The browser selects from a sample the server already capped,
  *   so `selection.total` describes that sample — and when the sample was read
  *   whole, `selection.complete` reports a truncated scan as complete.
+ * @param options.eligibleTotalIsLowerBound Only part of the tree was fetched, so
+ *   `eligibleTotal` is a floor. Say so rather than name a total nothing measured.
  */
 export declare function incompleteScanFinding(selection: FileSelection<unknown>, options?: {
     eligibleTotal?: number;
+    eligibleTotalIsLowerBound?: boolean;
 }): ScannerFinding | null;
 export declare function scanStripeWebhook(content: string, file?: string): ScanResult;
 export declare function scanRscDataLeaks(content: string, file?: string): ScanResult;

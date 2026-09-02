@@ -477,7 +477,12 @@ export default function HomeClient({
         limit: 100,
       });
       const incompleteFinding = incompleteScanFinding(fileSelection, {
-        ...(scopeTotals ? { eligibleTotal: scopeTotals.surfaceAnalyzable } : {}),
+        ...(scopeTotals
+          ? {
+              eligibleTotal: scopeTotals.surfaceAnalyzable,
+              eligibleTotalIsLowerBound: scopeTotals.partial === true,
+            }
+          : {}),
       });
       if (incompleteFinding) {
         allFindings.push({

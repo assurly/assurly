@@ -1770,7 +1770,12 @@ function DashboardContent({
 
       const selectedFiles = new Set(fileSelection.files);
       const incompleteFinding = incompleteScanFinding(fileSelection, {
-        ...(scopeTotals ? { eligibleTotal: scopeTotals.surfaceAnalyzable } : {}),
+        ...(scopeTotals
+          ? {
+              eligibleTotal: scopeTotals.surfaceAnalyzable,
+              eligibleTotalIsLowerBound: scopeTotals.partial === true,
+            }
+          : {}),
       });
       if (incompleteFinding) allFindings.push(incompleteFinding);
       const coverageFinding = unanalyzedSourceFinding(unanalyzedSummary);

@@ -67,6 +67,14 @@ describe('shared scanner core', () => {
     );
   });
 
+  it('says "at least" when the eligible count is only a floor', () => {
+    const selection = selectFiles(['a', 'b', 'c'], 2);
+    expect(
+      incompleteScanFinding(selection, { eligibleTotal: 111, eligibleTotalIsLowerBound: true })
+        ?.message,
+    ).toContain('2 of at least 111');
+  });
+
   it('stays silent when the repository really was read in full', () => {
     const selection = selectFiles(['a', 'b'], 2);
     expect(incompleteScanFinding(selection, { eligibleTotal: 2 })).toBeNull();

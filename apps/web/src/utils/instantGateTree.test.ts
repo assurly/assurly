@@ -68,6 +68,21 @@ describe('selectInstantGateTreeEntries', () => {
     });
   });
 
+  /**
+   * `loadInstantGateTree` fetches only the apps/ and supabase/ subtrees when a
+   * repository has them, so nothing downstream ever sees the rest of the tree.
+   * Counting what arrived and calling it the repository is how vercel/ai — 8,645
+   * files — was reported as "100 of 111 source files".
+   */
+  it('flags the counts as a floor when only part of the tree was fetched', () => {
+    const selected = selectInstantGateTreeEntries(
+      [{ path: 'apps/web/src/a.ts', type: 'blob' as const }],
+      false,
+      true,
+    );
+    expect(selected.totals.partial).toBe(true);
+  });
+
   it('flags the counts as a floor when GitHub truncated its own tree', () => {
     const selected = selectInstantGateTreeEntries(
       [{ path: 'apps/web/src/a.ts', type: 'blob' as const }],

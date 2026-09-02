@@ -58,9 +58,14 @@ export function clearInstantGateTreeCacheForTests(): void {
   treeCache.clear();
 }
 
+/**
+ * @param treeIsPartial Only part of the repository was fetched (the apps/ and
+ *   supabase/ subtree path below), so the measured counts are a floor.
+ */
 export function selectInstantGateTreeEntries(
   entries: readonly { path?: unknown; type?: unknown; sha?: unknown; url?: unknown }[],
   githubTruncated = false,
+  treeIsPartial = false,
 ): { tree: SlimTreeEntry[]; truncated: boolean; totals: ScanScopeTotals } {
   const blobs = entries.filter(
     (entry): entry is { path: string; type: 'blob' } =>
@@ -75,12 +80,12 @@ export function selectInstantGateTreeEntries(
   return {
     tree: ranked.map((entry) => ({ path: entry.path, type: 'blob' })),
     truncated: githubTruncated || ranked.length < surface.length,
-    // Measured here because this is the last place the whole tree exists. The
-    // browser receives `ranked` and nothing else, so a sample-derived coverage
-    // figure would only ever describe the sample.
+    // Measured on everything fetched, not on `ranked` — the browser receives
+    // `ranked` and nothing else, so a sample-derived figure would only ever
+    // describe the sample.
     totals: measureScanScopeTotals(
       blobs.map((entry) => entry.path),
-      { partial: githubTruncated },
+      { partial: githubTruncated || treeIsPartial },
     ),
   };
 }
@@ -216,7 +221,9 @@ export async function loadInstantGateTree(options: {
     combined = parsed.entries;
   }
 
-  const selected = selectInstantGateTreeEntries(combined, truncated);
+  // The apps/ branch above fetches two subtrees rather than the repository, so
+  // the counts describe those roots only and must be reported as a floor.
+  const selected = selectInstantGateTreeEntries(combined, truncated, Boolean(appsSha));
   const value: InstantGateTreeResult = {
     default_branch: options.branch,
     ...(commitSha ? { commit_sha: commitSha } : {}),
