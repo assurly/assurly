@@ -14,8 +14,6 @@ coverage
 .secrets/
 
 # Environment Variables
-.env
-.env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -49,3 +47,11 @@ lerna-debug.log*
 /apps/web/out/
 .public-mirror/
 .vercel
+
+.projects/cache
+.projects/vault
+.projects/state.test.json
+.projects/state.local.test.json
+.env
+.env.*
+!.env.example
