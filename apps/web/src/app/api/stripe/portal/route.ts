@@ -10,7 +10,11 @@ import {
 } from '../../../../utils/apiSecurity';
 import { requireOrganizationMember } from '../../../../utils/authorization';
 import { getAdminDbAdapter } from '../../../../utils/dbAdapter';
-import { getAppUrl, getStripeClient } from '../../../../utils/stripe';
+import {
+  getAppUrl,
+  getStripeClient,
+  getStripePortalConfigurationId,
+} from '../../../../utils/stripe';
 import { ensureStripeCustomer } from '../../../../utils/stripeCustomer';
 
 export const POST = secureRoute(
@@ -44,9 +48,11 @@ export const POST = secureRoute(
       (organizationId) => adminDb.getOrganization(organizationId),
     );
 
+    const configuration = getStripePortalConfigurationId();
     const session = await stripe.billingPortal.sessions.create({
       customer: customer.id,
       return_url: `${getAppUrl()}/dashboard?billing=sync`,
+      ...(configuration ? { configuration } : {}),
     });
     return NextResponse.json({
       url: assertTrustedRedirect(session.url, ['https://billing.stripe.com']),

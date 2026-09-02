@@ -93,10 +93,27 @@ describe('assertStripeConfig – startup gate', () => {
 
   it('does not throw for a live key in production', () => {
     vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VERCEL_ENV', 'production');
     vi.stubEnv('STRIPE_SECRET_KEY', `sk_${'live'}_valid_production_key`);
     vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_production_secret');
     vi.stubEnv('STRIPE_PRICE_MONTHLY', 'price_monthly_prod');
     vi.stubEnv('STRIPE_PRICE_YEARLY', 'price_yearly_prod');
+    expect(() => assertStripeConfig()).not.toThrow();
+  });
+
+  it('rejects a test key on Vercel production', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    stubValidStripe();
+
+    expect(() => assertStripeConfig()).toThrow(ConfigurationError);
+    expect(() => assertStripeConfig()).toThrow(/live Stripe secret key/);
+  });
+
+  it('allows a test key on Vercel preview', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    stubValidStripe();
     expect(() => assertStripeConfig()).not.toThrow();
   });
 

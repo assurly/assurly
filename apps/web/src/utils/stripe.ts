@@ -44,6 +44,12 @@ export function getAllowedStripePriceIds(): ReadonlySet<string> {
   return new Set([getStripePriceId('monthly'), getStripePriceId('yearly')]);
 }
 
+/** Dedicated Customer Portal config so Assurly does not reuse another product's default. */
+export function getStripePortalConfigurationId(): string | undefined {
+  const value = process.env.STRIPE_PORTAL_CONFIGURATION_ID?.trim();
+  return value || undefined;
+}
+
 export function getAppUrl(): string {
   const configuredUrl = requiredEnvironmentVariable('APP_URL');
 

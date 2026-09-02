@@ -250,6 +250,24 @@ describe('Stripe webhook security', () => {
     expect(db.processStripeBillingEvent).not.toHaveBeenCalled();
   });
 
+  it('acknowledges foreign-account events that have no Assurly organization metadata', async () => {
+    vi.mocked(stripe.checkout.sessions.retrieve).mockResolvedValueOnce({
+      id: 'cs_clipsmart',
+      mode: 'subscription',
+      status: 'complete',
+      payment_status: 'paid',
+      client_reference_id: '3145349',
+      customer: 'cus_other',
+      subscription: 'sub_other',
+      metadata: {},
+    } as never);
+
+    const response = await POST(signedRequest(checkoutEvent()));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ received: true, result: 'ignored' });
+    expect(db.processStripeBillingEvent).not.toHaveBeenCalled();
+  });
+
   it('ignores billing mutations for an OEM workspace', async () => {
     db.getOrganization.mockResolvedValue({
       id: 'org-a',

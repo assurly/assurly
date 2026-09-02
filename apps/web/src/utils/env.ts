@@ -51,6 +51,10 @@ const REQUIRED_STRIPE_ENV = [
   'STRIPE_PRICE_YEARLY',
 ] as const;
 
+function isVercelProduction(): boolean {
+  return process.env.VERCEL_ENV === 'production';
+}
+
 export function assertStripeConfig(): void {
   const missing = REQUIRED_STRIPE_ENV.filter((name) => !process.env[name]?.trim());
   if (missing.length > 0) {
@@ -60,6 +64,12 @@ export function assertStripeConfig(): void {
   }
 
   const secretKey = process.env.STRIPE_SECRET_KEY!.trim();
+  if (isVercelProduction() && secretKey.startsWith('sk_test_')) {
+    throw new ConfigurationError(
+      'Production billing must use a live Stripe secret key (sk_live_...). ' +
+        'Preview and local deployments stay on test keys.',
+    );
+  }
   if (secretKey.startsWith('sk_live_') && process.env.NODE_ENV !== 'production') {
     // Warn loudly but do not block – developer may intentionally test against live mode.
     console.warn(

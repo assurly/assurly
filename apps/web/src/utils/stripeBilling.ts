@@ -226,6 +226,26 @@ export async function processStripeEvent(
   db: DbAdapter,
   event: Stripe.Event,
 ): Promise<'processed' | 'duplicate' | 'ignored'> {
+  try {
+    return await applyAssurlyStripeEvent(stripe, db, event);
+  } catch (error) {
+    // Shared Stripe account: ClipSmart and other products omit organizationId.
+    // Acknowledge those events so Stripe does not disable this endpoint.
+    if (
+      error instanceof StripeBillingValidationError &&
+      error.message === 'Missing Stripe organization metadata.'
+    ) {
+      return 'ignored';
+    }
+    throw error;
+  }
+}
+
+async function applyAssurlyStripeEvent(
+  stripe: Stripe,
+  db: DbAdapter,
+  event: Stripe.Event,
+): Promise<'processed' | 'duplicate' | 'ignored'> {
   let parsed: { billingEvent: StripeBillingEvent; subscription: Stripe.Subscription } | null;
 
   if (event.type === 'checkout.session.completed') {
