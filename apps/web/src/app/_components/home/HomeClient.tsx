@@ -427,7 +427,8 @@ export default function HomeClient({
       setScanProgress(15);
       setScanLogs((prev) => [
         ...prev,
-        `Found ${tree.length} files in repository.`,
+        // `tree` is the ranked, capped candidate list — not a repository file count.
+        `Fetched ${tree.length} candidate files to scan.`,
         'Detecting stack and analyzing project structure...',
       ]);
 
