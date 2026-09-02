@@ -28,7 +28,6 @@ describe('DashboardHeader brand a11y', () => {
       <DashboardHeader
         user={user}
         org={org}
-        currencySymbol="$"
         billingEnabled
         isProfileOpen={false}
         billingAction={null}
@@ -52,7 +51,6 @@ describe('DashboardHeader brand a11y', () => {
       <DashboardHeader
         user={user}
         org={org}
-        currencySymbol="$"
         billingEnabled
         isProfileOpen={false}
         billingAction={null}
@@ -76,7 +74,6 @@ describe('DashboardHeader brand a11y', () => {
       <DashboardHeader
         user={user}
         org={org}
-        currencySymbol="$"
         billingEnabled
         isProfileOpen
         billingAction={null}
@@ -100,7 +97,6 @@ describe('DashboardHeader brand a11y', () => {
         <DashboardHeader
           user={user}
           org={{ ...org, billing_plan: plan }}
-          currencySymbol="$"
           billingEnabled={false}
           isProfileOpen
           billingAction={null}
@@ -128,7 +124,6 @@ describe('DashboardHeader brand a11y', () => {
       <DashboardHeader
         user={user}
         org={org}
-        currencySymbol="$"
         billingEnabled
         isProfileOpen
         billingAction={null}

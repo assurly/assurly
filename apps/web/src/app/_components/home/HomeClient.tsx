@@ -55,7 +55,6 @@ import {
 import { ProofEvidence, type ProofEvidenceItem } from '../../dashboard/_components/ProofEvidence';
 import { SiteFooter } from '../SiteFooter';
 import { AuthButton } from './AuthButton';
-import { CurrencyToggle } from './CurrencyToggle';
 import { HomeHeader } from './HomeHeader';
 import {
   HomeCheckIcon,
@@ -85,7 +84,7 @@ import {
   isVisibilityHeadline,
   type VisibilityHeadline,
 } from './VisibilityScanResult';
-import { PRICES, PRO_TRIAL_COPY } from '../../../utils/pricing';
+import { CURRENCY_SYMBOL, PRICES, PRO_TRIAL_COPY } from '../../../utils/pricing';
 import { readScanScopeTotals } from '../../../utils/scanScopeTotals';
 
 interface HomeClientProps {
@@ -216,17 +215,10 @@ export default function HomeClient({
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [hoursSaved, setHoursSaved] = useState<number>(8);
   const [hourlyRate, setHourlyRate] = useState<number>(60);
-  const [currency, setCurrency] = useState<'USD' | 'EUR'>('USD');
-
-  const currencySymbol = currency === 'USD' ? '$' : '€';
-
   // Shared with the SoftwareApplication structured data — see utils/pricing.ts
-  // for why these no longer live inline.
-  const prices = PRICES[currency];
-
-  const renderCurrencyToggle = (): React.ReactElement => (
-    <CurrencyToggle currency={currency} onChange={setCurrency} />
-  );
+  // for why these no longer live inline, and why there is one currency.
+  const currencySymbol = CURRENCY_SYMBOL;
+  const prices = PRICES;
 
   /**
    * Computes an inline background style for a range slider that renders a
@@ -1546,7 +1538,6 @@ export default function HomeClient({
             See how much time and money you save by validating your AI code deployments
             automatically.
           </p>
-          <div className="roi-calculator-controls">{renderCurrencyToggle()}</div>
           <div className="roi-calculator-grid">
             <div className="roi-inputs">
               <div className="roi-input-group">
@@ -1675,8 +1666,6 @@ export default function HomeClient({
                 <span className="discount-badge">Save ~35%</span>
               </button>
             </div>
-
-            {renderCurrencyToggle()}
           </div>
 
           <div className="pricing-grid">

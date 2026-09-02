@@ -15,7 +15,6 @@ export const DASHBOARD_NAV_OVERLAY_MQ = '(max-width: 1100px)';
 export interface DashboardHeaderProps {
   user: User;
   org: Organization | null;
-  currencySymbol: string;
   /** False on deployments without Stripe credentials: every upgrade surface hides. */
   billingEnabled: boolean;
   isProfileOpen: boolean;
@@ -30,7 +29,6 @@ export interface DashboardHeaderProps {
 export function DashboardHeader({
   user,
   org,
-  currencySymbol,
   billingEnabled,
   isProfileOpen,
   billingAction,
@@ -141,7 +139,7 @@ export function DashboardHeader({
                       >
                         <span className="profile-dropdown-item__label">
                           <DashboardRocketIcon />
-                          {proTrialCheckoutCta(currencySymbol, 'monthly')}
+                          {proTrialCheckoutCta('monthly')}
                         </span>
                       </button>
                       <button
@@ -151,7 +149,7 @@ export function DashboardHeader({
                         onClick={() => onCheckout('yearly')}
                         className="profile-dropdown-item"
                       >
-                        <span>{proTrialCheckoutCta(currencySymbol, 'yearly')} · Save ~35%</span>
+                        <span>{proTrialCheckoutCta('yearly')} · Save ~35%</span>
                       </button>
                     </>
                   )}

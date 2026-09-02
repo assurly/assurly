@@ -10,6 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { CURRENCY_SYMBOL, PRICES } from '../../../utils/pricing';
 import HomeClient from './HomeClient';
 
 vi.mock('next/navigation', () => ({
@@ -138,7 +139,7 @@ describe('ROI Calculator — value label synchronisation', () => {
     changeSlider(getRateSlider(), '120');
 
     // The displayed value must contain the new rate (with currency symbol)
-    expect(screen.getByText('$120/hr')).toBeTruthy();
+    expect(screen.getByText(`${CURRENCY_SYMBOL}120/hr`)).toBeTruthy();
   });
 
   it('initial hours label displays the default value', () => {
@@ -148,7 +149,7 @@ describe('ROI Calculator — value label synchronisation', () => {
 
   it('initial rate label displays the default value', () => {
     render(<HomeClient initialAuthenticated={false} />);
-    expect(screen.getByText('$60/hr')).toBeTruthy();
+    expect(screen.getByText(`${CURRENCY_SYMBOL}60/hr`)).toBeTruthy();
   });
 });
 
@@ -165,62 +166,67 @@ function hasSavingsText(text: string): boolean {
   return screen.getAllByText(text).length > 0;
 }
 
+/**
+ * Net monthly saving the calculator should display for a manual audit cost.
+ * Derived from the published price so a price change updates these tests with
+ * the page instead of leaving them asserting a number nobody charges.
+ */
+function savings(manualCost: number): string {
+  return `${CURRENCY_SYMBOL}${Math.max(0, manualCost - PRICES.guardMonthly).toFixed(0)}`;
+}
+
 // ---------------------------------------------------------------------------
 // ROI calculation correctness
 // ---------------------------------------------------------------------------
 
 describe('ROI Calculator — savings computation', () => {
-  it('shows $1 savings at the minimum plausible hours and rate', () => {
+  it('shows the smallest positive saving at the minimum plausible hours and rate', () => {
     render(<HomeClient initialAuthenticated={false} />);
 
     changeSlider(getHoursSlider(), '1');
     changeSlider(getRateSlider(), '20');
 
-    // 1 hr × $20 = $20 manual cost; Solo plan $19/mo → net savings $1
-    expect(hasSavingsText('$1')).toBe(true);
+    // 1 hr x 20 = 20 manual cost, less the monthly plan price.
+    expect(hasSavingsText(savings(1 * 20))).toBe(true);
   });
 
   it('calculates the correct net savings for a mid-range scenario', () => {
     render(<HomeClient initialAuthenticated={false} />);
 
-    // Manual audit: 10 hrs × $80 = $800; Solo monthly plan: $19 → savings $781
     changeSlider(getHoursSlider(), '10');
     changeSlider(getRateSlider(), '80');
 
-    expect(hasSavingsText('$781')).toBe(true);
+    expect(hasSavingsText(savings(10 * 80))).toBe(true);
   });
 
   it('recalculates savings immediately after changing the hours slider', () => {
     render(<HomeClient initialAuthenticated={false} />);
 
-    // Baseline: 8 × $60 = $480 − $19 = $461
-    expect(hasSavingsText('$461')).toBe(true);
+    expect(hasSavingsText(savings(8 * 60))).toBe(true);
 
-    // Change to 15 hrs: 15 × $60 = $900 − $19 = $881
     changeSlider(getHoursSlider(), '15');
-    expect(hasSavingsText('$881')).toBe(true);
+    expect(hasSavingsText(savings(15 * 60))).toBe(true);
   });
 
   it('recalculates savings immediately after changing the rate slider', () => {
     render(<HomeClient initialAuthenticated={false} />);
 
-    // Baseline: 8 × $60 = $480 − $19 = $461
-    expect(hasSavingsText('$461')).toBe(true);
+    expect(hasSavingsText(savings(8 * 60))).toBe(true);
 
-    // Change rate to $100: 8 × $100 = $800 − $19 = $781
     changeSlider(getRateSlider(), '100');
-    expect(hasSavingsText('$781')).toBe(true);
+    expect(hasSavingsText(savings(8 * 100))).toBe(true);
   });
 
   it('shows zero savings when manual audit cost is at or below the plan price', () => {
     render(<HomeClient initialAuthenticated={false} />);
 
-    // Floor is $0 when cost ≤ plan price. The slider minimum (1h × $20 = $20)
-    // still exceeds the $19 plan, so the lowest reachable net savings is $1.
+    // The floor is zero once manual cost drops to the plan price. The slider
+    // minimum (1h x 20) still exceeds it, so the lowest reachable saving is
+    // that difference rather than zero.
     changeSlider(getHoursSlider(), '1');
     changeSlider(getRateSlider(), '20');
 
-    expect(hasSavingsText('$1')).toBe(true);
+    expect(hasSavingsText(savings(1 * 20))).toBe(true);
   });
 });
 

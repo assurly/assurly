@@ -1,5 +1,5 @@
 import { FAQ_ENTRIES } from './faq';
-import { PRICES, PRO_TRIAL_PERIOD_DAYS } from './pricing';
+import { CURRENCY_CODE, PRICES, PRO_TRIAL_PERIOD_DAYS } from './pricing';
 import { SITE_ORIGIN, publicPageUrl } from './siteMetadata';
 
 /**
@@ -93,8 +93,6 @@ function website(): JsonLdNode {
 }
 
 function softwareApplication(): JsonLdNode {
-  const usd = PRICES.USD;
-
   return {
     '@type': 'SoftwareApplication',
     '@id': SOFTWARE_ID,
@@ -111,8 +109,8 @@ function softwareApplication(): JsonLdNode {
       {
         '@type': 'Offer',
         name: 'Free',
-        price: usd.free,
-        priceCurrency: 'USD',
+        price: PRICES.free,
+        priceCurrency: CURRENCY_CODE,
         description:
           'Unlimited local CLI scans, the live URL proof-probe, one guarded app, and MCP server access for AI agents.',
         url: `${SITE_ORIGIN}/#pricing`,
@@ -120,14 +118,14 @@ function softwareApplication(): JsonLdNode {
       {
         '@type': 'Offer',
         name: 'Pro',
-        price: usd.guardMonthly,
-        priceCurrency: 'USD',
+        price: PRICES.guardMonthly,
+        priceCurrency: CURRENCY_CODE,
         description: `${PRO_TRIAL_PERIOD_DAYS}-day free trial, then unlimited guarded apps, continuous monitoring on every deploy, AI deep review, auto-fix pull requests, and private repository scanning.`,
         url: `${SITE_ORIGIN}/#pricing`,
         priceSpecification: {
           '@type': 'UnitPriceSpecification',
-          price: usd.guardMonthly,
-          priceCurrency: 'USD',
+          price: PRICES.guardMonthly,
+          priceCurrency: CURRENCY_CODE,
           unitCode: 'MON',
           billingIncrement: 1,
         },

@@ -368,8 +368,6 @@ function DashboardContent({
   const [localScan, setLocalScan] = useState<Scan | null>(null);
   const localScanRef = useRef<Scan | null>(null);
   const [localFindings, setLocalFindings] = useState<ScanFinding[]>([]);
-  const [currency] = useState<'USD' | 'EUR'>('USD');
-  const currencySymbol = currency === 'USD' ? '$' : '€';
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
   const { menuRef: profileMenuRef, rememberTrigger: rememberProfileTrigger } =
@@ -2537,7 +2535,6 @@ function DashboardContent({
         <DashboardHeader
           user={user}
           org={org}
-          currencySymbol={currencySymbol}
           billingEnabled={billingEnabled}
           isProfileOpen={isProfileOpen}
           billingAction={billingAction}

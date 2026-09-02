@@ -179,7 +179,7 @@ describe('Upgrade checkout when a subscription already exists', () => {
 
     render(<DashboardClient initialSession={freeSession} />);
     fireEvent.click(screen.getByRole('button', { name: 'Open account menu for Free User' }));
-    fireEvent.click(screen.getByRole('button', { name: proTrialCheckoutCta('$', 'monthly') }));
+    fireEvent.click(screen.getByRole('button', { name: proTrialCheckoutCta('monthly') }));
 
     await waitFor(() => expect(checkoutMock).toHaveBeenCalledWith('monthly'));
     await waitFor(() => expect(portalMock).toHaveBeenCalledTimes(1));

@@ -1,4 +1,4 @@
-import { PRICES, PRO_TRIAL_PERIOD_DAYS } from './pricing';
+import { CURRENCY_SYMBOL, PRICES, PRO_TRIAL_PERIOD_DAYS } from './pricing';
 import { MCP_TOOL_COUNT, RULE_AREA_COUNT } from './productFacts';
 
 export interface FaqEntry {
@@ -78,12 +78,12 @@ export const FAQ_ENTRIES: FaqEntry[] = [
     question: 'Is Assurly free?',
     answer:
       'The CLI is free and unlimited: `npx assurly scan` runs the full gate locally with no account. The free hosted plan adds the live URL proof-probe, one guarded app and MCP server access. The Pro plan, at $' +
-      `${PRICES.USD.guardMonthly} per month, starts with a ${PRO_TRIAL_PERIOD_DAYS}-day free trial and adds unlimited guarded apps, continuous monitoring on every deploy, AI deep review, auto-fix pull requests and private repository scanning.`,
+      `${CURRENCY_SYMBOL}${PRICES.guardMonthly} per month, starts with a ${PRO_TRIAL_PERIOD_DAYS}-day free trial and adds unlimited guarded apps, continuous monitoring on every deploy, AI deep review, auto-fix pull requests and private repository scanning.`,
   },
   {
     id: 'pro-trial',
     question: 'Does Pro include a free trial?',
-    answer: `Yes. Pro includes a ${PRO_TRIAL_PERIOD_DAYS}-day free trial. You add a payment method at checkout; nothing is charged during the trial. Unless you cancel before it ends, the subscription converts to the plan you chose ($${PRICES.USD.guardMonthly} per month or $${PRICES.USD.guardYearly} per year) and billing starts. One trial per customer and payment method.`,
+    answer: `Yes. Pro includes a ${PRO_TRIAL_PERIOD_DAYS}-day free trial. You add a payment method at checkout; nothing is charged during the trial. Unless you cancel before it ends, the subscription converts to the plan you chose (${CURRENCY_SYMBOL}${PRICES.guardMonthly} per month or ${CURRENCY_SYMBOL}${PRICES.guardYearly} per year) and billing starts. One trial per customer and payment method.`,
   },
   {
     id: 'seo-geo-audit',

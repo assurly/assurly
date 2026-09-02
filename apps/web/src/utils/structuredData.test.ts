@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FAQ_ENTRIES } from './faq';
-import { PRICES } from './pricing';
+import { CURRENCY_CODE, PRICES } from './pricing';
 import { homePageGraph, subPageGraph } from './structuredData';
 
 type Node = Record<string, unknown>;
@@ -13,6 +13,7 @@ interface QuestionNode {
 interface OfferNode {
   name: string;
   price: number;
+  priceCurrency: string;
   description?: string;
 }
 
@@ -77,8 +78,24 @@ describe('structured data', () => {
   it('quotes the prices the pricing cards show', () => {
     const offers = findByType(homePageGraph('Home'), 'SoftwareApplication').offers as OfferNode[];
 
-    expect(offers.find((offer) => offer.name === 'Free')?.price).toBe(PRICES.USD.free);
-    expect(offers.find((offer) => offer.name === 'Pro')?.price).toBe(PRICES.USD.guardMonthly);
+    expect(offers.find((offer) => offer.name === 'Free')?.price).toBe(PRICES.free);
+    expect(offers.find((offer) => offer.name === 'Pro')?.price).toBe(PRICES.guardMonthly);
+  });
+
+  /**
+   * Search engines and AI assistants quote this block directly, and a wrong
+   * currency here is repeated far beyond any page we can correct. Stripe can
+   * only charge euros, so every offer must say so.
+   */
+  it('publishes every offer in the currency Stripe can charge', () => {
+    const application = findByType(homePageGraph('Home'), 'SoftwareApplication');
+    const offers = application.offers as OfferNode[];
+
+    expect(offers.length).toBeGreaterThan(0);
+    for (const offer of offers) {
+      expect(offer.priceCurrency).toBe(CURRENCY_CODE);
+    }
+    expect(JSON.stringify(application)).not.toContain('USD');
   });
 
   it('describes the Pro offer as starting with a 3-day trial', () => {

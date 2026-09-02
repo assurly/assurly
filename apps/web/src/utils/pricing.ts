@@ -1,4 +1,15 @@
-export type Currency = 'USD' | 'EUR';
+/**
+ * Assurly charges in euros, and only in euros.
+ *
+ * Stripe holds exactly two live prices for Assurly Pro — €17/month and
+ * €130/year — with no USD price, and a Stripe customer's currency locks after
+ * their first invoice. Checkout resolves one price id per interval and sends no
+ * currency, so any surface quoting dollars advertises a price the checkout
+ * cannot charge. Adding a second currency here is not a copy change: it needs
+ * matching Stripe prices first.
+ */
+export const CURRENCY_CODE = 'EUR';
+export const CURRENCY_SYMBOL = '€';
 
 export interface CurrencyPrices {
   free: number;
@@ -21,19 +32,11 @@ export interface CurrencyPrices {
  * The OEM/platform tier is usage- and seat-based and quoted through sales, so it
  * has no fixed number here and is described in the schema as a quote instead.
  */
-export const PRICES: Record<Currency, CurrencyPrices> = {
-  USD: {
-    free: 0,
-    guardMonthly: 19,
-    guardYearly: 149,
-    guardMonthlyEquiv: 12.4,
-  },
-  EUR: {
-    free: 0,
-    guardMonthly: 17,
-    guardYearly: 130,
-    guardMonthlyEquiv: 10.8,
-  },
+export const PRICES: CurrencyPrices = {
+  free: 0,
+  guardMonthly: 17,
+  guardYearly: 130,
+  guardMonthlyEquiv: 10.8,
 };
 
 /**
@@ -53,13 +56,12 @@ export const PRO_TRIAL_COPY = {
   checkoutSuccess: `Assurly Pro is active. First-time checkouts include a ${PRO_TRIAL_PERIOD_DAYS}-day trial before any charge.`,
 } as const;
 
-export function proTrialCheckoutCta(currencySymbol: string, period: 'monthly' | 'yearly'): string {
-  const usd = PRICES.USD;
+export function proTrialCheckoutCta(period: 'monthly' | 'yearly'): string {
   switch (period) {
     case 'yearly':
-      return `${PRO_TRIAL_COPY.cta} (${currencySymbol}${usd.guardYearly}/yr after)`;
+      return `${PRO_TRIAL_COPY.cta} (${CURRENCY_SYMBOL}${PRICES.guardYearly}/yr after)`;
     case 'monthly':
-      return `${PRO_TRIAL_COPY.cta} (${currencySymbol}${usd.guardMonthly}/mo after)`;
+      return `${PRO_TRIAL_COPY.cta} (${CURRENCY_SYMBOL}${PRICES.guardMonthly}/mo after)`;
     default: {
       const exhaustive: never = period;
       return exhaustive;

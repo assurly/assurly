@@ -252,9 +252,9 @@ export default async function TermsPage(): Promise<ReactElement> {
             </table>
           </div>
           <p>
-            Prices are also shown in US dollars ($19 / month, $149 / year). The currency and amount
-            you will be charged are displayed before you confirm. OEM and platform access is agreed
-            separately and is not purchasable from the pricing page.
+            All prices are in euros and you are charged in euros. The amount is displayed before you
+            confirm. OEM and platform access is agreed separately and is not purchasable from the
+            pricing page.
           </p>
           <p>
             Plan features may change as the Service develops; section 14 explains how we handle
