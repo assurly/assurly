@@ -120,6 +120,7 @@ import {
 import { scrollToRepoWorkspace, scrollToScanDetails } from '../../../utils/scrollToScanDetails';
 import { consumeDashboardSplashRequest } from '../../../utils/splashSignal';
 import { invalidateRepoScansCache, loadRepoScans } from '../../../utils/scansQueryCache';
+import { readScanScopeTotals } from '../../../utils/scanScopeTotals';
 import {
   subscribeToUnauthorizedSession,
   notifyUnauthorizedSession,
@@ -1648,6 +1649,8 @@ function DashboardContent({
           ? treeData.commit_sha
           : undefined;
       const tree: GitHubTreeNode[] = treeData.tree || [];
+      // `tree` is the capped sample; these describe the repository it came from.
+      const scopeTotals = readScanScopeTotals(treeData);
 
       if (
         priorSession &&
@@ -1712,6 +1715,7 @@ function DashboardContent({
       const scanScope = buildScanScope(rankedCandidates, fileSelection.files, {
         treePaths,
         unanalyzed: unanalyzedLanguageCounts(unanalyzedSummary),
+        ...(scopeTotals ? { totals: scopeTotals } : {}),
         limit: INSTANT_GATE_MAX_FILES,
       });
       setLastScanFileCount(fileSelection.files.length);
@@ -1765,7 +1769,9 @@ function DashboardContent({
       }
 
       const selectedFiles = new Set(fileSelection.files);
-      const incompleteFinding = incompleteScanFinding(fileSelection);
+      const incompleteFinding = incompleteScanFinding(fileSelection, {
+        ...(scopeTotals ? { eligibleTotal: scopeTotals.surfaceAnalyzable } : {}),
+      });
       if (incompleteFinding) allFindings.push(incompleteFinding);
       const coverageFinding = unanalyzedSourceFinding(unanalyzedSummary);
       if (coverageFinding) allFindings.push(coverageFinding);

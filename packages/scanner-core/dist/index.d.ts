@@ -1,4 +1,4 @@
-import { INSTANT_GATE_MAX_FILES, buildScanScope, formatScanScopeSummary, getFileRelevanceScore, inferScanRoots, instantGateSurfaceFiles, isScannableFile, isTextScanSurface, rankFilesByRelevance, type BuildScanScopeOptions, type ScanScope, type ScanScopeGaps } from './fileRelevance';
+import { INSTANT_GATE_MAX_FILES, buildScanScope, formatScanScopeSummary, getFileRelevanceScore, inferScanRoots, instantGateSurfaceFiles, isScannableFile, isTextScanSurface, measureScanScopeTotals, rankFilesByRelevance, type BuildScanScopeOptions, type ScanScope, type ScanScopeGaps, type ScanScopeTotals } from './fileRelevance';
 export type Severity = 'error' | 'warning';
 export type FindingConfidence = 'high' | 'medium' | 'low';
 export interface ScannerFinding {
@@ -36,7 +36,15 @@ export declare function isSupabaseRlsMessage(message: string): boolean;
  */
 export declare function subsumeRlsFindings(findings: readonly ScannerFinding[]): ScannerFinding[];
 export declare function selectFiles<T>(files: readonly T[], maxFiles?: number): FileSelection<T>;
-export declare function incompleteScanFinding(selection: FileSelection<unknown>): ScannerFinding | null;
+/**
+ * @param options.eligibleTotal Eligible files across the repository, measured on
+ *   the full tree. The browser selects from a sample the server already capped,
+ *   so `selection.total` describes that sample — and when the sample was read
+ *   whole, `selection.complete` reports a truncated scan as complete.
+ */
+export declare function incompleteScanFinding(selection: FileSelection<unknown>, options?: {
+    eligibleTotal?: number;
+}): ScannerFinding | null;
 export declare function scanStripeWebhook(content: string, file?: string): ScanResult;
 export declare function scanRscDataLeaks(content: string, file?: string): ScanResult;
 /** Next.js API route / Route Handler paths, including monorepo apps/<pkg>/src/app/api. */
@@ -81,7 +89,7 @@ export declare function resolveEnvExampleForPath(codePath: string, examples: rea
 /** Collect env keys that appear exclusively in non-scannable (test/fixture) files. */
 export declare function collectTestOnlyEnvKeys(sources: readonly SourceInput[]): Set<string>;
 export declare function scanEnvVariables(exampleContent: string, codeContent: string, exampleFile?: string, codeFile?: string, options?: ScanEnvOptions): ScanResult;
-export { INSTANT_GATE_MAX_FILES, buildScanScope, formatScanScopeSummary, getFileRelevanceScore, inferScanRoots, instantGateSurfaceFiles, isScannableFile, isTextScanSurface, rankFilesByRelevance, type BuildScanScopeOptions, type ScanScope, type ScanScopeGaps, };
+export { INSTANT_GATE_MAX_FILES, buildScanScope, formatScanScopeSummary, getFileRelevanceScore, inferScanRoots, instantGateSurfaceFiles, isScannableFile, isTextScanSurface, measureScanScopeTotals, rankFilesByRelevance, type BuildScanScopeOptions, type ScanScope, type ScanScopeGaps, type ScanScopeTotals, };
 export { SCAN_LANGUAGE_COVERAGE_RULE_ID, UNANALYZED_SOURCE_LANGUAGES, formatUnanalyzedLogLine, isAnalyzedCodeFile, isAnalyzedSourceFile, isSecuritySurfacePath, summarizeUnanalyzedSource, unanalyzedLanguageCounts, unanalyzedLanguageForPath, unanalyzedSourceFinding, type UnanalyzedLanguageCount, type UnanalyzedLanguageSummary, type UnanalyzedSourceSummary, } from './languageCoverage';
 export { MAX_PACKAGE_MANIFESTS, describeDetectedStack, detectStackFromManifests, selectPackageManifestPaths, type DetectedDatabase, type DetectedDeployment, type DetectedFramework, type DetectedPayments, type DetectedStack, type DetectStackFromManifestsInput, type PackageManifestInput, } from './stackDetect';
 export { scanAiAppSecurity, scanAiLlmKeyLeak, scanAiPiiToModelContext, scanAiPromptInjection, scanAiRateLimit, scanAiRouteAuthz, } from './aiAppSecurity';

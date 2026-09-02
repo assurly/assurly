@@ -86,6 +86,7 @@ import {
   type VisibilityHeadline,
 } from './VisibilityScanResult';
 import { PRICES, PRO_TRIAL_COPY } from '../../../utils/pricing';
+import { readScanScopeTotals } from '../../../utils/scanScopeTotals';
 
 interface HomeClientProps {
   initialAuthenticated: boolean;
@@ -420,6 +421,8 @@ export default function HomeClient({
       const treeData = await treeResponse.json();
       const defaultBranch = treeData.default_branch || 'main';
       const tree: { path: string; type: string }[] = treeData.tree || [];
+      // `tree` is the capped sample; these describe the repository it came from.
+      const scopeTotals = readScanScopeTotals(treeData);
 
       setScanProgress(15);
       setScanLogs((prev) => [
@@ -470,9 +473,12 @@ export default function HomeClient({
       const scanScope = buildScanScope(rankedCandidates, fileSelection.files, {
         treePaths,
         unanalyzed: unanalyzedLanguageCounts(unanalyzedSummary),
+        ...(scopeTotals ? { totals: scopeTotals } : {}),
         limit: 100,
       });
-      const incompleteFinding = incompleteScanFinding(fileSelection);
+      const incompleteFinding = incompleteScanFinding(fileSelection, {
+        ...(scopeTotals ? { eligibleTotal: scopeTotals.surfaceAnalyzable } : {}),
+      });
       if (incompleteFinding) {
         allFindings.push({
           severity: incompleteFinding.severity,

@@ -143,19 +143,59 @@ export interface ScanScope {
   roots: string[];
   unanalyzed?: UnanalyzedLanguageCount[];
   sourceTotal?: number;
+  /** `sourceTotal` counts only what GitHub returned; the repository holds more. */
+  sourceTotalIsLowerBound?: boolean;
   limit?: number;
   gaps?: ScanScopeGaps;
+}
+
+/**
+ * Repository-wide counts measured on the complete tree.
+ *
+ * The Instant Gate ranks and caps the tree server-side, so the browser only ever
+ * holds a sample. A sample cannot describe the repository it came from: deriving
+ * coverage from it reported "100 of 111 source files" for a repository holding
+ * thousands. Whoever still has the full tree measures these and sends them with
+ * the sample.
+ */
+export interface ScanScopeTotals {
+  /** Scannable source files in the repository — analysed plus unread languages. */
+  sourceTotal: number;
+  /** Of those, the ones inside the Instant Gate app roots. */
+  surfaceSource: number;
+  /** Of the surface, the ones Assurly rules can actually read. */
+  surfaceAnalyzable: number;
+  /** GitHub truncated its own tree, so every count here is a floor, not a total. */
+  partial?: boolean;
 }
 
 export interface BuildScanScopeOptions {
   roots?: string[];
   treePaths?: readonly string[];
   unanalyzed?: readonly UnanalyzedLanguageCount[];
+  /** Counts measured on the full tree. Without them the sample describes itself. */
+  totals?: ScanScopeTotals;
   limit?: number;
 }
 
 function isSourceFile(filePath: string): boolean {
   return isAnalyzedCodeFile(filePath) || unanalyzedLanguageForPath(filePath) !== null;
+}
+
+/** Measures {@link ScanScopeTotals} over a complete tree, before any cap applies. */
+export function measureScanScopeTotals(
+  paths: readonly string[],
+  options: { partial?: boolean } = {},
+): ScanScopeTotals {
+  const allSource = paths.filter(isScannableFile).filter(isSourceFile);
+  const surfaceSource = instantGateSurfaceFiles(allSource, (path) => path);
+
+  return {
+    sourceTotal: allSource.length,
+    surfaceSource: surfaceSource.length,
+    surfaceAnalyzable: surfaceSource.filter(isAnalyzedCodeFile).length,
+    ...(options.partial ? { partial: true } : {}),
+  };
 }
 
 /** Derive monorepo app/package roots from scanned paths for the scope summary line. */
@@ -193,11 +233,21 @@ function buildScanScopeFromTree(
   const analyzedOnSurface = surfaceSource.filter(isAnalyzedCodeFile);
   const selectedSet = new Set(selectedPaths.map(normalizePath));
   const scanned = analyzedOnSurface.filter((path) => selectedSet.has(normalizePath(path))).length;
-  const overLimit = Math.max(0, analyzedOnSurface.length - scanned);
-  const notAnalysed = surfaceSource.filter(
-    (path) => unanalyzedLanguageForPath(path) !== null,
-  ).length;
-  const outsideAppRoots = Math.max(0, allSource.length - surfaceSource.length);
+
+  // Prefer counts measured on the full tree. Derived from the sample they only
+  // describe the sample, which is how a capped scan claimed near-full coverage.
+  // Written so `scanned + notAnalysed + overLimit + outsideAppRoots` still folds
+  // back to `sourceTotal` — the invariant every caller of this scope relies on.
+  const totals = options.totals;
+  const sourceTotal = totals?.sourceTotal ?? allSource.length;
+  const overLimit = Math.max(0, (totals?.surfaceAnalyzable ?? analyzedOnSurface.length) - scanned);
+  const notAnalysed = totals
+    ? Math.max(0, totals.surfaceSource - totals.surfaceAnalyzable)
+    : surfaceSource.filter((path) => unanalyzedLanguageForPath(path) !== null).length;
+  const outsideAppRoots = totals
+    ? Math.max(0, totals.sourceTotal - totals.surfaceSource)
+    : Math.max(0, allSource.length - surfaceSource.length);
+
   const unanalyzed =
     options.unanalyzed && options.unanalyzed.length > 0
       ? [...options.unanalyzed]
@@ -211,7 +261,8 @@ function buildScanScopeFromTree(
       options.roots ??
       inferScanRoots(analyzedSelected.length > 0 ? analyzedSelected : selectedPaths),
     ...(unanalyzed ? { unanalyzed } : {}),
-    sourceTotal: allSource.length,
+    sourceTotal,
+    ...(totals?.partial ? { sourceTotalIsLowerBound: true } : {}),
     ...(options.limit !== undefined ? { limit: options.limit } : {}),
     gaps: { notAnalysed, overLimit, outsideAppRoots },
   };
@@ -269,7 +320,12 @@ export function formatScanScopeSummary(scope: ScanScope): string {
   }
 
   const totalNoun = scope.sourceTotal === 1 ? 'source file' : 'source files';
-  const parts = [`Scanned ${rootsLabel} · ${scope.scanned} of ${scope.sourceTotal} ${totalNoun}`];
+  // GitHub truncated the tree, so the repository holds at least this many. Say
+  // "more than" rather than name a total we cannot stand behind.
+  const totalLabel = scope.sourceTotalIsLowerBound
+    ? `more than ${scope.sourceTotal}`
+    : `${scope.sourceTotal}`;
+  const parts = [`Scanned ${rootsLabel} · ${scope.scanned} of ${totalLabel} ${totalNoun}`];
 
   if (scope.unanalyzed && scope.unanalyzed.length > 0) {
     parts.push(`${formatUnanalyzedClause(scope.unanalyzed)} not analysed`);

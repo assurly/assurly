@@ -2,7 +2,9 @@ import {
   INSTANT_GATE_MAX_FILES,
   instantGateSurfaceFiles,
   isScannableFile,
+  measureScanScopeTotals,
   rankFilesByRelevance,
+  type ScanScopeTotals,
 } from '@assurly/scanner-core';
 import {
   GITHUB_FETCH_TIMEOUT_MS,
@@ -29,6 +31,8 @@ export interface InstantGateTreeResult {
   commit_sha?: string;
   truncated: boolean;
   tree: SlimTreeEntry[];
+  /** Repository-wide counts; `tree` is only the capped sample of it. */
+  totals: ScanScopeTotals;
 }
 
 interface GitHubTreeEntry {
@@ -57,7 +61,7 @@ export function clearInstantGateTreeCacheForTests(): void {
 export function selectInstantGateTreeEntries(
   entries: readonly { path?: unknown; type?: unknown; sha?: unknown; url?: unknown }[],
   githubTruncated = false,
-): { tree: SlimTreeEntry[]; truncated: boolean } {
+): { tree: SlimTreeEntry[]; truncated: boolean; totals: ScanScopeTotals } {
   const blobs = entries.filter(
     (entry): entry is { path: string; type: 'blob' } =>
       entry.type === 'blob' && typeof entry.path === 'string' && entry.path.length > 0,
@@ -71,6 +75,13 @@ export function selectInstantGateTreeEntries(
   return {
     tree: ranked.map((entry) => ({ path: entry.path, type: 'blob' })),
     truncated: githubTruncated || ranked.length < surface.length,
+    // Measured here because this is the last place the whole tree exists. The
+    // browser receives `ranked` and nothing else, so a sample-derived coverage
+    // figure would only ever describe the sample.
+    totals: measureScanScopeTotals(
+      blobs.map((entry) => entry.path),
+      { partial: githubTruncated },
+    ),
   };
 }
 
@@ -211,6 +222,7 @@ export async function loadInstantGateTree(options: {
     ...(commitSha ? { commit_sha: commitSha } : {}),
     truncated: selected.truncated,
     tree: selected.tree,
+    totals: selected.totals,
   };
   treeCache.set(cacheId, { at: Date.now(), value });
   return value;

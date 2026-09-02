@@ -39,15 +39,42 @@ export interface ScanScope {
     roots: string[];
     unanalyzed?: UnanalyzedLanguageCount[];
     sourceTotal?: number;
+    /** `sourceTotal` counts only what GitHub returned; the repository holds more. */
+    sourceTotalIsLowerBound?: boolean;
     limit?: number;
     gaps?: ScanScopeGaps;
+}
+/**
+ * Repository-wide counts measured on the complete tree.
+ *
+ * The Instant Gate ranks and caps the tree server-side, so the browser only ever
+ * holds a sample. A sample cannot describe the repository it came from: deriving
+ * coverage from it reported "100 of 111 source files" for a repository holding
+ * thousands. Whoever still has the full tree measures these and sends them with
+ * the sample.
+ */
+export interface ScanScopeTotals {
+    /** Scannable source files in the repository — analysed plus unread languages. */
+    sourceTotal: number;
+    /** Of those, the ones inside the Instant Gate app roots. */
+    surfaceSource: number;
+    /** Of the surface, the ones Assurly rules can actually read. */
+    surfaceAnalyzable: number;
+    /** GitHub truncated its own tree, so every count here is a floor, not a total. */
+    partial?: boolean;
 }
 export interface BuildScanScopeOptions {
     roots?: string[];
     treePaths?: readonly string[];
     unanalyzed?: readonly UnanalyzedLanguageCount[];
+    /** Counts measured on the full tree. Without them the sample describes itself. */
+    totals?: ScanScopeTotals;
     limit?: number;
 }
+/** Measures {@link ScanScopeTotals} over a complete tree, before any cap applies. */
+export declare function measureScanScopeTotals(paths: readonly string[], options?: {
+    partial?: boolean;
+}): ScanScopeTotals;
 /** Derive monorepo app/package roots from scanned paths for the scope summary line. */
 export declare function inferScanRoots(paths: readonly string[]): string[];
 export declare function buildScanScope(allCandidates: readonly string[], selectedPaths: readonly string[], options?: BuildScanScopeOptions): ScanScope;

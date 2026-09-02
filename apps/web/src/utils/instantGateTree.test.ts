@@ -40,6 +40,41 @@ describe('selectInstantGateTreeEntries', () => {
     expect(selected.tree).toHaveLength(INSTANT_GATE_MAX_FILES);
     expect(selected.truncated).toBe(true);
   });
+
+  /**
+   * The sample that leaves this function is all the browser ever sees, so the
+   * repository-wide counts have to travel with it. Without them a capped scan
+   * reported "100 of 111 source files" for a repository holding thousands.
+   */
+  it('measures the repository before the cap, not the sample it returns', () => {
+    const entries = [
+      ...Array.from({ length: 500 }, (_, index) => ({
+        path: `apps/web/src/lib/mod-${index}.ts`,
+        type: 'blob' as const,
+      })),
+      { path: 'apps/web/src/legacy.go', type: 'blob' as const },
+      { path: 'tools/build.ts', type: 'blob' as const },
+      { path: 'node_modules/react/index.js', type: 'blob' as const },
+      { path: 'README.md', type: 'blob' as const },
+    ];
+
+    const selected = selectInstantGateTreeEntries(entries);
+
+    expect(selected.tree).toHaveLength(INSTANT_GATE_MAX_FILES);
+    expect(selected.totals).toEqual({
+      sourceTotal: 502,
+      surfaceSource: 501,
+      surfaceAnalyzable: 500,
+    });
+  });
+
+  it('flags the counts as a floor when GitHub truncated its own tree', () => {
+    const selected = selectInstantGateTreeEntries(
+      [{ path: 'apps/web/src/a.ts', type: 'blob' as const }],
+      true,
+    );
+    expect(selected.totals.partial).toBe(true);
+  });
 });
 
 describe('loadInstantGateTree', () => {

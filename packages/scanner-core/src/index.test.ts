@@ -45,6 +45,33 @@ describe('shared scanner core', () => {
     expect(incompleteScanFinding(selection)?.message).toContain('2 of 3');
   });
 
+  /**
+   * The browser selects from a sample the server already capped, so the
+   * selection describes the sample. Counting eligible files from it told the
+   * user a truncated scan had read almost everything.
+   */
+  it('counts eligible files across the repository, not the sample it received', () => {
+    const selection = selectFiles(['a', 'b', 'c'], 2);
+    expect(incompleteScanFinding(selection, { eligibleTotal: 4213 })?.message).toContain(
+      '2 of 4213',
+    );
+  });
+
+  it('still reports incompleteness when the sample was scanned whole', () => {
+    const selection = selectFiles(['a', 'b'], 2);
+    expect(selection.complete).toBe(true);
+    // Unaided this is silent — the sample was fully read, so nothing looks wrong.
+    expect(incompleteScanFinding(selection)).toBeNull();
+    expect(incompleteScanFinding(selection, { eligibleTotal: 4213 })?.message).toContain(
+      '2 of 4213',
+    );
+  });
+
+  it('stays silent when the repository really was read in full', () => {
+    const selection = selectFiles(['a', 'b'], 2);
+    expect(incompleteScanFinding(selection, { eligibleTotal: 2 })).toBeNull();
+  });
+
   it('uses AST exports and imports for Edge compatibility', () => {
     const code = `import { readFile } from\n'node:fs';\nexport const runtime = 'edge';`;
     const scan = scanEdgeRuntime(code, 'app/api/route.ts');

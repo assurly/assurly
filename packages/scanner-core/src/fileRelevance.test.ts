@@ -8,6 +8,7 @@ import {
   instantGateSurfaceFiles,
   isScannableFile,
   isTextScanSurface,
+  measureScanScopeTotals,
   rankFilesByRelevance,
 } from './fileRelevance';
 
@@ -290,5 +291,83 @@ describe('instantGateSurfaceFiles', () => {
       'apps/web/src/app/page.tsx',
       'supabase/migrations/001.sql',
     ]);
+  });
+});
+
+/**
+ * The browser never receives the repository — the server ranks, caps and sends a
+ * sample. Deriving coverage from that sample tells the user "100 of 111 source
+ * files" for a repository holding thousands, which is the one claim a security
+ * tool cannot get wrong. These pin the true totals travelling with the sample.
+ */
+describe('scan scope over a server-truncated tree', () => {
+  /** Five source files; the server caps the sample at the two it ranked highest. */
+  const repositoryPaths = [
+    'apps/web/src/a.ts',
+    'apps/web/src/b.ts',
+    'apps/web/src/c.ts',
+    'apps/web/src/legacy.go',
+    'tools/build.ts',
+  ];
+  const sampleSentToBrowser = ['apps/web/src/a.ts', 'apps/web/src/b.ts'];
+
+  it('measures the repository, not the sample the browser received', () => {
+    expect(measureScanScopeTotals(repositoryPaths)).toEqual({
+      sourceTotal: 5,
+      surfaceSource: 4,
+      surfaceAnalyzable: 3,
+    });
+  });
+
+  it('reports the sample as the denominator when no totals travel with it', () => {
+    const scope = buildScanScope(sampleSentToBrowser, sampleSentToBrowser, {
+      treePaths: sampleSentToBrowser,
+      limit: 2,
+    });
+
+    // Documents the defect the totals exist to remove: the sample cannot
+    // describe the repository, so unaided it claims full coverage of itself.
+    expect(scope.sourceTotal).toBe(2);
+    expect(formatScanScopeSummary(scope)).toBe('Scanned apps/web · 2 of 2 source files');
+  });
+
+  it('uses the repository totals as the denominator and keeps the gap invariant', () => {
+    const scope = buildScanScope(sampleSentToBrowser, sampleSentToBrowser, {
+      treePaths: sampleSentToBrowser,
+      totals: measureScanScopeTotals(repositoryPaths),
+      // Measured on the full tree too — the sample holds no Go file to name.
+      unanalyzed: [{ language: 'Go', fileCount: 1 }],
+      limit: 2,
+    });
+
+    expect(scope.scanned).toBe(2);
+    expect(scope.sourceTotal).toBe(5);
+    expect(scope.gaps).toEqual({ notAnalysed: 1, overLimit: 1, outsideAppRoots: 1 });
+    expect(scope.skipped).toBe(3);
+    expect(scope.scanned + scope.skipped).toBe(scope.sourceTotal);
+    expect(formatScanScopeSummary(scope)).toBe(
+      'Scanned apps/web · 2 of 5 source files · 1 Go file not analysed · 1 over the 2-file limit · 1 outside app roots',
+    );
+  });
+
+  it('never states an exact total GitHub itself truncated away', () => {
+    const scope = buildScanScope(sampleSentToBrowser, sampleSentToBrowser, {
+      treePaths: sampleSentToBrowser,
+      totals: measureScanScopeTotals(repositoryPaths, { partial: true }),
+      limit: 2,
+    });
+
+    expect(scope.sourceTotalIsLowerBound).toBe(true);
+    expect(formatScanScopeSummary(scope)).toContain('2 of more than 5 source files');
+  });
+
+  it('leaves a complete local tree untouched — the CLI already sees every file', () => {
+    const scope = buildScanScope(repositoryPaths, sampleSentToBrowser, {
+      treePaths: repositoryPaths,
+      limit: 2,
+    });
+
+    expect(scope.sourceTotal).toBe(5);
+    expect(scope.sourceTotalIsLowerBound).toBeUndefined();
   });
 });
