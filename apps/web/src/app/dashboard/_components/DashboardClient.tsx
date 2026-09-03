@@ -921,11 +921,15 @@ function DashboardContent({
   // Stable key so a new array identity for the same repos does not re-prefetch.
   const repoIdsKey = useMemo(() => repos.map((repo) => repo.id).join(','), [repos]);
 
-  // Prefetch scan counts for every connected repository so the sidebar can surface
-  // history without requiring the user to open each repo first. Deduped via
-  // loadRepoScans so Strict Mode + selected-repo load share one network trip.
+  // The Settings repo list is the only place a per-repository scan count is
+  // rendered, so the counts are loaded when Settings is open rather than on
+  // every dashboard load. Loading them eagerly put one `/api/scans` read per
+  // connected repository on the critical path — 24 concurrent reads on a
+  // 24-repo account, each pulling full scan rows — for a number no other view
+  // shows. Deduped via loadRepoScans so Strict Mode and the selected-repo load
+  // still share one network trip.
   useEffect(() => {
-    if (!repoIdsKey) return;
+    if (!repoIdsKey || dashboardView !== 'settings') return;
     const ids = repoIdsKey.split(',').filter(Boolean);
     let cancelled = false;
 
@@ -949,7 +953,7 @@ function DashboardContent({
     return () => {
       cancelled = true;
     };
-  }, [repoIdsKey]);
+  }, [repoIdsKey, dashboardView]);
 
   // Fetch findings when selected scan changes
   useEffect(() => {
