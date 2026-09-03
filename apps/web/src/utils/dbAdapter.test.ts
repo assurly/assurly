@@ -325,7 +325,47 @@ describe('user database adapter', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const url = String(fetchMock.mock.calls[0][0]);
     expect(url).toContain('repository_id=in.(repo-a,repo-b)');
-    expect(url).toContain('select=id,repository_id,ship_score,created_at,verdict,failure_reason');
+    expect(url).toContain(
+      'select=id,repository_id,ship_score,created_at,verdict,failure_reason,branch,scan_scope',
+    );
+  });
+
+  it('indexes the latest default-branch scan, skipping a newer feature branch', async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            id: 'scan-pr',
+            repository_id: 'repo-a',
+            branch: 'feat/login',
+            ship_score: 10,
+            created_at: '2026-08-03T00:00:00.000Z',
+          },
+          {
+            id: 'scan-main',
+            repository_id: 'repo-a',
+            branch: 'main',
+            ship_score: 80,
+            created_at: '2026-08-01T00:00:00.000Z',
+          },
+          {
+            id: 'scan-pr-only',
+            repository_id: 'repo-c',
+            branch: 'feat/login',
+            ship_score: 10,
+            created_at: '2026-08-02T00:00:00.000Z',
+          },
+        ]),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const summaries = await getUserDbAdapter('jwt').getLatestScanSummaries(['repo-a', 'repo-c']);
+    expect(summaries.get('repo-a')?.id).toBe('scan-main');
+    expect(summaries.has('repo-c')).toBe(false);
   });
 
   it('limits recent scans and does not select star', async () => {

@@ -327,6 +327,51 @@ describe('GET /api/targets', () => {
     expect(targets[0].shipScore).toBeLessThan(100);
   });
 
+  /**
+   * The branch rule is only as good as the default branch the route hands it.
+   * If this map stops being passed the rule silently reverts to guessing
+   * main/master, and a repo that ships from elsewhere shows a feature branch's
+   * score again — with no test failing anywhere else.
+   */
+  it('hands each repository its own default branch to the scan lookup', async () => {
+    db.getRepositories.mockResolvedValue([
+      { id: 'repo-a', organization_id: 'org-1', name: 'tibco87/Anima', default_branch: 'src' },
+      { id: 'repo-b', organization_id: 'org-1', name: 'acme/plain' },
+    ]);
+    db.getTargets.mockResolvedValue([]);
+    db.getRecentScans.mockResolvedValue([]);
+
+    await callGet();
+
+    expect(db.getLatestScanSummaries).toHaveBeenCalledWith(
+      ['repo-a', 'repo-b'],
+      new Map([
+        ['repo-a', 'src'],
+        ['repo-b', undefined],
+      ]),
+    );
+  });
+
+  it('leaves a repository unscanned when its only scan is off the default branch', async () => {
+    db.getRepositories.mockResolvedValue([
+      { id: 'repo-a', organization_id: 'org-1', name: 'tibco87/Anima', default_branch: 'src' },
+    ]);
+    db.getTargets.mockResolvedValue([]);
+    // The dashboard used to read this `main` scan as the repository verdict.
+    db.getRecentScans.mockResolvedValue([
+      {
+        id: 'scan-main',
+        branch: 'main',
+        ship_score: 59,
+        verdict: 'blocked',
+        created_at: '2026-08-29T00:00:00.000Z',
+      },
+    ]);
+
+    const { targets } = await callGet();
+    expect(targets[0]).toMatchObject({ verdict: 'unknown', shipScore: null, latestScanId: null });
+  });
+
   it('reports "unknown" for a repository that has never been scanned', async () => {
     db.getRepositories.mockResolvedValue([
       { id: 'repo-3', organization_id: 'org-1', name: 'acme/fresh' },

@@ -286,6 +286,7 @@ describe('Run Secure Scan results rendering', () => {
       findings: [],
     });
     expect(payload.shipScore).toBeUndefined();
+    expect(payload.scanScope).toMatchObject({ defaultBranch: 'src' });
     expect(await screen.findByRole('button', { name: /Scan main instead/i })).toBeTruthy();
   });
 

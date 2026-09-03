@@ -5,130 +5,18 @@ import { countGuardedApps, isListedUrlTarget } from '../../../utils/guardedApps'
 import { entitlementsForPlan } from '../../../utils/entitlements';
 import { normalizeUrlIdentifier } from '../../../utils/ownership';
 import { assertScannableUrl, UrlSafetyError } from '../../../utils/urlSafety';
-import { resolveVerdictFromScanFindings, type Verdict } from '../../../utils/shipGate';
-import type {
-  DbAdapter,
-  LatestScanSummary,
-  Organization,
-  Repository,
-  RepositoryScanCapability,
-  Target,
-  TargetVerdict,
-} from '../../../utils/dbAdapter';
-import { isGitHubRepositoryName } from '../../../utils/githubApp';
+import type { DbAdapter, Organization, Target, TargetVerdict } from '../../../utils/dbAdapter';
 import type { VerdictEvidenceShape } from '../../../utils/publicTrust';
 import {
-  indicatesIncompleteCoverage,
-  resolveDisplayedShipScore,
-  resolveTargetShipScore,
-} from '../../../utils/shipScoreDisplay';
+  buildRepoTargetCard,
+  scoreDroppedFromEvidence,
+  type TargetCard,
+} from '../../../utils/repoTargetCard';
+import { resolveTargetShipScore } from '../../../utils/shipScoreDisplay';
 
 export const maxDuration = 60;
 
-/**
- * One app's current safety verdict for the dashboard. This is the object the
- * product leads with — "can I ship this right now?" at a glance — replacing the
- * raw repo list as the primary surface (Phase 1 of the genius rebuild).
- */
-export interface TargetCard {
-  /** Stable id: the target row id when synced, else a repo-derived key. */
-  id: string;
-  kind: 'repo' | 'url';
-  identifier: string;
-  displayName: string;
-  repositoryId: string | null;
-  generatorFingerprint: string | null;
-  verdict: TargetVerdict;
-  shipScore: number | null;
-  topIssue: Verdict['topIssue'];
-  /** When the app was last checked (latest scan / guardian time), or null if never. */
-  lastCheckedAt: string | null;
-  /** Latest scan id, for opening the detail view (repo targets). */
-  latestScanId: string | null;
-  ownershipVerified: boolean;
-  /** Continuous Guardian is watching this app (ownership-verified url, or connected repo). */
-  guardianEnabled: boolean;
-  /** True when the ship score dropped since the previous guardian/scan check. */
-  scoreDropped: boolean;
-  /** Public badge token when available (for embed copy). */
-  badgeToken: string | null;
-  /** Repo-only capability for Unscanned hygiene / CLI-only cards. */
-  scanCapability: RepositoryScanCapability;
-  /** True when the latest persisted scan failed before producing a verdict. */
-  lastScanFailed: boolean;
-  lastScanFailureReason: string | null;
-}
-
-function resolveRepoScanCapability(repo: Repository): RepositoryScanCapability {
-  if (!isGitHubRepositoryName(repo.name)) return 'invalid';
-  if (repo.scan_capability === 'cli_only' || repo.scan_capability === 'invalid') {
-    return repo.scan_capability;
-  }
-  return 'browser';
-}
-
-function scoreDroppedFromEvidence(
-  evidence: VerdictEvidenceShape,
-  currentScore: number | null,
-): boolean {
-  const previous = evidence.previousShipScore;
-  if (previous == null || currentScore == null) return false;
-  return currentScore < previous;
-}
-
-function isFailedLatestScan(latest: LatestScanSummary | null | undefined): boolean {
-  if (!latest) return false;
-  return latest.verdict === 'failed' || Boolean(latest.failure_reason);
-}
-
-function cardFromTargetRow(
-  target: Target,
-  repo: Repository,
-  latest: LatestScanSummary | null,
-): TargetCard {
-  const evidence = (target.verdict_evidence ?? {}) as VerdictEvidenceShape;
-  const topIssue = evidence.topIssue ?? null;
-  const incomplete = indicatesIncompleteCoverage({
-    topIssueKey: topIssue?.key,
-    topIssueLabel: topIssue?.label,
-  });
-  const failed = isFailedLatestScan(latest);
-  const shipScore = failed
-    ? null
-    : resolveDisplayedShipScore(
-        latest ?? {
-          ship_score: target.current_ship_score,
-          scanned_file_count: null,
-          clean_file_count: null,
-          verdict: target.current_verdict === 'blocked' ? 'blocked' : null,
-        },
-        [],
-        {
-          incomplete,
-          blocked: target.current_verdict === 'blocked',
-        },
-      );
-  return {
-    id: target.id,
-    kind: 'repo',
-    identifier: target.identifier,
-    displayName: target.display_name ?? repo.name,
-    repositoryId: repo.id,
-    generatorFingerprint: target.generator_fingerprint,
-    verdict: target.current_verdict ?? 'unknown',
-    shipScore,
-    topIssue,
-    lastCheckedAt: target.last_checked_at,
-    latestScanId: latest?.id ?? null,
-    ownershipVerified: target.ownership_verified,
-    guardianEnabled: true,
-    scoreDropped: scoreDroppedFromEvidence(evidence, shipScore),
-    badgeToken: target.badge_token,
-    scanCapability: resolveRepoScanCapability(repo),
-    lastScanFailed: failed,
-    lastScanFailureReason: latest?.failure_reason ?? null,
-  };
-}
+export type { TargetCard };
 
 function cardFromUrlTarget(target: Target): TargetCard {
   const evidence = (target.verdict_evidence ?? {}) as VerdictEvidenceShape;
@@ -154,87 +42,6 @@ function cardFromUrlTarget(target: Target): TargetCard {
     scanCapability: 'browser',
     lastScanFailed: false,
     lastScanFailureReason: null,
-  };
-}
-
-/**
- * Builds a verdict card for a repository that has no synced target row yet
- * (e.g. it was scanned before targets existed). Derives the verdict from the
- * latest persisted scan so the dashboard shows real state immediately, without
- * a data backfill. Targets self-populate on the next scan.
- */
-async function deriveCardFromLatestScan(
-  db: DbAdapter,
-  repo: Repository,
-  target: Target | undefined,
-): Promise<TargetCard> {
-  const scans = await db.getRecentScans(repo.id);
-  const latest = scans[0];
-  const evidence = (target?.verdict_evidence ?? {}) as VerdictEvidenceShape;
-  const base: TargetCard = {
-    id: target?.id ?? `repo:${repo.id}`,
-    kind: 'repo',
-    identifier: repo.name,
-    displayName: repo.name,
-    repositoryId: repo.id,
-    generatorFingerprint: target?.generator_fingerprint ?? null,
-    verdict: 'unknown',
-    shipScore: null,
-    topIssue: null,
-    lastCheckedAt: null,
-    latestScanId: null,
-    ownershipVerified: target?.ownership_verified ?? false,
-    guardianEnabled: true,
-    scoreDropped: false,
-    badgeToken: target?.badge_token ?? null,
-    scanCapability: resolveRepoScanCapability(repo),
-    lastScanFailed: false,
-    lastScanFailureReason: null,
-  };
-  if (!latest) return base;
-
-  // Prefer persisted Ship Gate SoT; failed empty scans stay Unscanned (unknown).
-  if (latest.verdict === 'failed' || latest.failure_reason) {
-    return {
-      ...base,
-      lastCheckedAt: latest.created_at,
-      latestScanId: latest.id,
-      lastScanFailed: true,
-      lastScanFailureReason: latest.failure_reason ?? null,
-    };
-  }
-  if (typeof latest.ship_score === 'number' && latest.verdict) {
-    const findings = latest.verdict === 'ready' ? [] : await db.getScanFindings(latest.id);
-    const fallback = resolveVerdictFromScanFindings(findings, {
-      scannedFileCount: latest.scanned_file_count ?? undefined,
-      cleanFileCount: latest.clean_file_count ?? undefined,
-    });
-    const shipScore = resolveDisplayedShipScore(latest, findings);
-    return {
-      ...base,
-      verdict: latest.verdict,
-      shipScore,
-      topIssue: fallback.topIssue,
-      lastCheckedAt: latest.created_at,
-      latestScanId: latest.id,
-      scoreDropped: scoreDroppedFromEvidence(evidence, shipScore),
-    };
-  }
-
-  const findings = await db.getScanFindings(latest.id);
-  const verdict = resolveVerdictFromScanFindings(findings, {
-    scannedFileCount: latest.scanned_file_count ?? undefined,
-    cleanFileCount: latest.clean_file_count ?? undefined,
-  });
-  const shipScore = resolveDisplayedShipScore(latest, findings);
-  return {
-    ...base,
-    verdict: verdict.status,
-    shipScore,
-    topIssue: verdict.topIssue,
-    lastCheckedAt: latest.created_at,
-    latestScanId: latest.id,
-    scoreDropped: scoreDroppedFromEvidence(evidence, shipScore),
   };
 }
 
@@ -313,18 +120,18 @@ export const GET = secureRoute(
     // One-off probes never create rows; every url target here was explicitly Guarded.
     const urlTargets = targets.filter(isListedUrlTarget);
 
-    const latestByRepoId = await context.db.getLatestScanSummaries(repos.map((repo) => repo.id));
+    // Built from repos we already loaded, so the branch rule costs no extra query.
+    const defaultBranchByRepoId = new Map(repos.map((repo) => [repo.id, repo.default_branch]));
+    const latestByRepoId = await context.db.getLatestScanSummaries(
+      repos.map((repo) => repo.id),
+      defaultBranchByRepoId,
+    );
 
-    // A synced target row is authoritative and cheap; only repos without one
-    // pay for a latest-scan derivation. All cards are built in parallel.
     const repoCards = await Promise.all(
-      repos.map(async (repo): Promise<TargetCard> => {
+      repos.map((repo): Promise<TargetCard> => {
         const target = targetByRepoId.get(repo.id);
         const latest = latestByRepoId.get(repo.id);
-        if (target && target.current_verdict && typeof latest?.ship_score === 'number') {
-          return cardFromTargetRow(target, repo, latest);
-        }
-        return deriveCardFromLatestScan(context.db, repo, target);
+        return buildRepoTargetCard(context.db, repo, target, latest);
       }),
     );
 

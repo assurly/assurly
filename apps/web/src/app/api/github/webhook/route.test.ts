@@ -145,6 +145,7 @@ describe('GitHub webhook security and idempotency', () => {
           sourceTotal: 0,
           roots: ['repository'],
           gaps: { notAnalysed: 0, overLimit: 0, outsideAppRoots: 0 },
+          source: 'pull_request',
         }),
       }),
     );
@@ -200,6 +201,7 @@ describe('GitHub webhook security and idempotency', () => {
           sourceTotal: 2,
           unanalyzed: [{ language: 'Go', fileCount: 1 }],
           gaps: { notAnalysed: 1, overLimit: 0, outsideAppRoots: 0 },
+          source: 'pull_request',
         }),
       }),
     );

@@ -10,6 +10,7 @@ import {
   resetRepoTargetToNeutral,
   syncRepoTargetVerdict,
 } from '../../../utils/persistRepoScan';
+import { scanOwnsRepoVerdict, selectVerdictOwningScan } from '../../../utils/verdictOwningScan';
 
 const scanQuery = z
   .object({
@@ -177,26 +178,25 @@ export const DELETE = secureRoute(
     await context.db.deleteScan(scan.id);
 
     // Re-sync the repo target so the current-verdict card never goes stale:
-    // deleting the NEWEST scan must recompute the verdict from the new newest
-    // remaining scan (or reset to neutral when none remain). Deleting an older
-    // scan leaves the verdict untouched. Best-effort — a resync failure must
-    // never turn a successful delete into a 5xx.
+    // deleting the scan that currently owns the verdict recomputes from the
+    // next owning remaining scan (or resets to Unscanned when none remain).
+    // Deleting a feature-branch scan, or an older default-branch scan, leaves
+    // the projection untouched.
     try {
-      const remaining = await context.db.getRecentScans(scan.repository_id);
-      if (remaining.length === 0) {
-        await resetRepoTargetToNeutral(context.db, scan.repository_id);
-      } else {
-        // `remaining` is ordered created_at desc and no longer contains the
-        // deleted scan, so the deleted scan was the newest iff it is at least as
-        // recent as the newest survivor.
-        const newest = remaining[0];
-        const deletedWasNewest =
-          new Date(scan.created_at).getTime() >= new Date(newest.created_at).getTime();
-        if (deletedWasNewest) {
-          const findings = await context.db.getScanFindings(newest.id);
+      const [remaining, repo] = await Promise.all([
+        context.db.getRecentScans(scan.repository_id),
+        context.db.getRepository(scan.repository_id),
+      ]);
+      const repoDefaultBranch = repo?.default_branch;
+      const owning = selectVerdictOwningScan(remaining, repoDefaultBranch);
+      if (scanOwnsRepoVerdict(scan, repoDefaultBranch)) {
+        if (!owning) {
+          await resetRepoTargetToNeutral(context.db, scan.repository_id);
+        } else if (new Date(scan.created_at).getTime() >= new Date(owning.created_at).getTime()) {
+          const findings = await context.db.getScanFindings(owning.id);
           await syncRepoTargetVerdict(context.db, scan.repository_id, {
             findings,
-            lastCheckedAt: newest.created_at,
+            lastCheckedAt: owning.created_at,
           });
         }
       }

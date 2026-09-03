@@ -1,6 +1,11 @@
-import type { DbAdapter, ScanFinding, ScanShipGateMeta } from './dbAdapter';
+import type { DbAdapter, Repository, ScanFinding, ScanShipGateMeta } from './dbAdapter';
 import { generateBadgeToken } from './guardian';
 import { resolveVerdictFromScanFindings } from './shipGate';
+import {
+  recordedDefaultBranch,
+  scanOwnsRepoVerdict,
+  type VerdictOwningScanFields,
+} from './verdictOwningScan';
 
 export interface PersistRepoScanInput {
   repoId: string;
@@ -19,10 +24,21 @@ export interface RepoTargetVerdictInput {
   lastCheckedAt: string | null;
   shipScoreOverride?: number;
   verdictOverride?: 'ready' | 'review' | 'blocked' | 'failed';
+  /**
+   * When creating a target that has no badge token, mint one. Default true so
+   * live scan writes keep today's behaviour. Backfill passes false unless
+   * `--mint-badges` is set — minting publishes auth-free URLs.
+   */
+  mintBadgeIfMissing?: boolean;
 }
 
 function logTargetSyncFailure(
-  event: 'target-sync-failed' | 'target-reset-failed' | 'target-sync-stale-mark-failed',
+  event:
+    | 'target-sync-failed'
+    | 'target-reset-failed'
+    | 'target-sync-stale-mark-failed'
+    | 'repo-default-branch-read-failed'
+    | 'repo-default-branch-write-failed',
   details: Record<string, unknown>,
   error: unknown,
 ): void {
@@ -64,7 +80,8 @@ export async function syncRepoTargetVerdict(
   const currentShipScore =
     input.verdictOverride === 'failed' ? null : (input.shipScoreOverride ?? verdict.shipScore);
   const existing = await db.getTargetByIdentifier(repo.organization_id, 'repo', repo.name);
-  const badgeToken = existing?.badge_token ?? generateBadgeToken();
+  const mintBadge = input.mintBadgeIfMissing !== false;
+  const badgeToken = existing?.badge_token ?? (mintBadge ? generateBadgeToken() : undefined);
   await db.upsertTarget({
     organizationId: repo.organization_id,
     kind: 'repo',
@@ -108,7 +125,43 @@ export async function resetRepoTargetToNeutral(db: DbAdapter, repoId: string): P
   }
 }
 
-/** Persist findings + Ship Gate meta and sync the dashboard card projection. */
+/**
+ * Teaches the repository which branch it ships from, from the GitHub default
+ * the scan observed while it ran, and returns the branch that ownership should
+ * be judged against.
+ *
+ * This is what retires the main/master guess: one scan of any branch records
+ * the real default, and every older scan of that repository is then judged
+ * against it too.
+ *
+ * Best-effort — the column is absent until the migration runs, and a scan must
+ * never fail because we could not record a branch name.
+ */
+async function learnRepoDefaultBranch(
+  db: Pick<DbAdapter, 'getRepository' | 'updateRepositoryDefaultBranch'>,
+  repoId: string,
+  scan: VerdictOwningScanFields,
+): Promise<string | null | undefined> {
+  const observed = recordedDefaultBranch(scan);
+  let repo: Repository | null = null;
+  try {
+    repo = await db.getRepository(repoId);
+  } catch (error) {
+    // Ownership then falls back to the main/master guess for this write only.
+    logTargetSyncFailure('repo-default-branch-read-failed', { repoId }, error);
+  }
+  if (!observed) return repo?.default_branch;
+  if (repo && repo.default_branch !== observed) {
+    try {
+      await db.updateRepositoryDefaultBranch(repoId, observed);
+    } catch (error) {
+      logTargetSyncFailure('repo-default-branch-write-failed', { repoId }, error);
+    }
+  }
+  return observed;
+}
+
+/** Persist findings + Ship Gate meta. Sync the repo projection only when this scan owns the verdict. */
 export async function persistRepoScan(db: DbAdapter, input: PersistRepoScanInput) {
   const errors = input.findings.filter((finding) => finding.severity === 'error').length;
   const warnings = input.findings.length - errors;
@@ -122,6 +175,14 @@ export async function persistRepoScan(db: DbAdapter, input: PersistRepoScanInput
     input.findings,
     input.meta,
   );
+  const scanFields: VerdictOwningScanFields = {
+    branch: input.branch,
+    scan_scope: input.meta.scanScope,
+  };
+  const repoDefaultBranch = await learnRepoDefaultBranch(db, input.repoId, scanFields);
+  if (!scanOwnsRepoVerdict(scanFields, repoDefaultBranch)) {
+    return scan;
+  }
   try {
     await syncRepoTargetVerdict(db, input.repoId, {
       findings: input.findings as ScanFinding[],

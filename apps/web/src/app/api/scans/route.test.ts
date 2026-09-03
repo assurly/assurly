@@ -380,4 +380,45 @@ describe('DELETE /api/scans', () => {
     expect(db.getScanFindings).not.toHaveBeenCalled();
     expect(db.upsertTarget).not.toHaveBeenCalled();
   });
+
+  it('leaves the projection unchanged when deleting a feature-branch scan', async () => {
+    db.getScan.mockResolvedValue({
+      id: newestScanId,
+      repository_id: repoId,
+      created_at: '2026-07-19T12:00:00.000Z',
+      branch: 'feat/login',
+    });
+    db.getRecentScans.mockResolvedValue([
+      { id: olderScanId, created_at: '2026-07-18T12:00:00.000Z', branch: 'feat/other' },
+    ]);
+
+    const response = await deleteScan(newestScanId);
+    expect(response.status).toBe(200);
+    expect(db.deleteScan).toHaveBeenCalledWith(newestScanId);
+    expect(db.getScanFindings).not.toHaveBeenCalled();
+    expect(db.upsertTarget).not.toHaveBeenCalled();
+  });
+
+  it('recomputes from the remaining default-branch scan, not a newer feature branch', async () => {
+    db.getScan.mockResolvedValue({
+      id: newestScanId,
+      repository_id: repoId,
+      created_at: '2026-07-20T12:00:00.000Z',
+      branch: 'main',
+    });
+    db.getRecentScans.mockResolvedValue([
+      { id: 'scan-pr', created_at: '2026-07-21T12:00:00.000Z', branch: 'feat/login' },
+      { id: olderScanId, created_at: '2026-07-18T12:00:00.000Z', branch: 'main' },
+    ]);
+
+    const response = await deleteScan(newestScanId);
+    expect(response.status).toBe(200);
+    expect(db.getScanFindings).toHaveBeenCalledWith(olderScanId);
+    expect(db.upsertTarget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repositoryId: repoId,
+        lastCheckedAt: '2026-07-18T12:00:00.000Z',
+      }),
+    );
+  });
 });

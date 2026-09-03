@@ -384,6 +384,7 @@ function DashboardContent({
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanBranch, setScanBranch] = useState<string | null>(null);
   const [repoBranches, setRepoBranches] = useState<string[]>([]);
+  const [githubDefaultBranch, setGithubDefaultBranch] = useState<string | null>(null);
   const [emptyScanAltBranches, setEmptyScanAltBranches] = useState<string[]>([]);
   const [scanCountsByRepoId, setScanCountsByRepoId] = useState<Record<string, number>>({});
   const [shareUrlsByScanId, setShareUrlsByScanId] = useState<Record<string, string>>({});
@@ -480,6 +481,7 @@ function DashboardContent({
     setScanError(null);
     setScanBranch(null);
     setRepoBranches([]);
+    setGithubDefaultBranch(null);
     setEmptyScanAltBranches([]);
     setDeleteScanError(null);
     setScanLogs([]);
@@ -508,6 +510,7 @@ function DashboardContent({
         const parsed = parseGithubBranchList(await response.json());
         if (controller.signal.aborted) return;
         setRepoBranches(parsed.branches);
+        setGithubDefaultBranch(parsed.default_branch);
         setScanBranch((current) => current ?? parsed.default_branch);
       } catch {
         // Branch picker is best-effort; scans still run against GitHub's default.
@@ -1642,6 +1645,16 @@ function DashboardContent({
       if (treeData.default_branch) {
         defaultBranch = treeData.default_branch;
       }
+      // GitHub's real default (from type=branches), not the scanned ref. Instant
+      // Gate's tree payload sets default_branch to the branch it fetched.
+      let recordedDefaultBranch = githubDefaultBranch;
+      if (
+        !recordedDefaultBranch &&
+        !requestedBranch &&
+        typeof treeData.default_branch === 'string'
+      ) {
+        recordedDefaultBranch = treeData.default_branch;
+      }
       const resolvedCommitSha: string | undefined =
         typeof treeData.commit_sha === 'string' && treeData.commit_sha.length > 0
           ? treeData.commit_sha
@@ -1717,6 +1730,10 @@ function DashboardContent({
         ...(scopeTotals ? { totals: scopeTotals } : {}),
         limit: INSTANT_GATE_MAX_FILES,
       });
+      const persistedScanScope = {
+        ...scanScope,
+        ...(recordedDefaultBranch ? { defaultBranch: recordedDefaultBranch } : {}),
+      };
       setLastScanFileCount(fileSelection.files.length);
       setLastScanScope(scanScope);
 
@@ -1744,7 +1761,7 @@ function DashboardContent({
             scannedFileCount: 0,
             cleanFileCount: 0,
             verdict: 'failed',
-            scanScope: { ...scanScope },
+            scanScope: { ...persistedScanScope },
             failureReason: 'no_eligible_files',
           });
           invalidateRepoScansCache(selectedRepo.id);
@@ -2092,7 +2109,7 @@ function DashboardContent({
         verdict: shipGate.status,
         scanned_file_count: fileSelection.files.length,
         clean_file_count: shipGate.cleanFileCount,
-        scan_scope: { ...scanScope },
+        scan_scope: { ...persistedScanScope },
       };
 
       // The API rejects payloads with more than SAVE_FINDINGS_LIMIT findings and
@@ -2154,7 +2171,7 @@ function DashboardContent({
             cleanFileCount: shipGate.cleanFileCount,
             shipScore: shipGate.shipScore,
             verdict: shipGate.status,
-            scanScope: { ...scanScope },
+            scanScope: { ...persistedScanScope },
           });
           persistMs = Math.round(performance.now() - persistStartedAt);
           if (process.env.NODE_ENV !== 'production') {

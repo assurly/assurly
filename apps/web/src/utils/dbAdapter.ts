@@ -1,5 +1,6 @@
 import type { BillingPlan } from './entitlements';
 import { getSupabaseAdminConfig, getSupabaseConfig } from './env';
+import { indexLatestVerdictOwningSummaries } from './verdictOwningScan';
 
 export type { BillingPlan };
 
@@ -75,6 +76,12 @@ export interface Repository {
   source?: RepositorySource;
   created_at: string;
   scan_capability?: RepositoryScanCapability;
+  /**
+   * The branch this repository ships from, learned at scan time. Undefined on
+   * rows written before the column existed; null until a scan reports it. Only
+   * scans on this branch own the repository verdict.
+   */
+  default_branch?: string | null;
 }
 
 /** Ship Gate status persisted at scan time (source of truth for trend/cards). */
@@ -116,6 +123,8 @@ export interface LatestScanSummary {
   created_at: string;
   verdict?: ScanGateVerdict | null;
   failure_reason?: string | null;
+  branch?: string | null;
+  scan_scope?: Record<string, unknown> | null;
 }
 
 export interface ScanFinding {
@@ -447,6 +456,8 @@ export interface DbAdapter {
     repoId: string,
     capability: RepositoryScanCapability,
   ): Promise<void>;
+  /** Records the branch the repository ships from, learned at scan time. */
+  updateRepositoryDefaultBranch(repoId: string, defaultBranch: string): Promise<void>;
   /**
    * Makes an existing row reachable again through Connect & Scan and hands its
    * lifecycle back to the user, so the next installation sync cannot prune it.
@@ -468,8 +479,16 @@ export interface DbAdapter {
   ): Promise<Scan>;
   getScan(scanId: string): Promise<Scan | null>;
   getRecentScans(repoId: string): Promise<Scan[]>;
-  /** Latest scan id/score per repository — one query for dashboard cards. */
-  getLatestScanSummaries(repoIds: readonly string[]): Promise<Map<string, LatestScanSummary>>;
+  /**
+   * Latest verdict-owning scan per repository — one query for dashboard cards.
+   * Pass each repository's known default branch so feature-branch scans are not
+   * mistaken for the repo verdict; repos absent from the map fall back to the
+   * main/master guess.
+   */
+  getLatestScanSummaries(
+    repoIds: readonly string[],
+    defaultBranchByRepoId?: ReadonlyMap<string, string | null | undefined>,
+  ): Promise<Map<string, LatestScanSummary>>;
   /** Permanently deletes one scan. Findings/probe evidence cascade; fix outcomes null out. */
   deleteScan(scanId: string): Promise<void>;
   getScanFindings(scanId: string): Promise<ScanFinding[]>;
@@ -854,6 +873,13 @@ export class SupabaseDbAdapter implements DbAdapter {
     });
   }
 
+  async updateRepositoryDefaultBranch(repoId: string, defaultBranch: string): Promise<void> {
+    await this.fetchDb(`repositories?id=eq.${eq(repoId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ default_branch: defaultBranch }),
+    });
+  }
+
   async reconnectRepository(repoId: string, name: string): Promise<void> {
     await this.fetchDb(`repositories?id=eq.${eq(repoId)}`, {
       method: 'PATCH',
@@ -943,20 +969,15 @@ export class SupabaseDbAdapter implements DbAdapter {
 
   async getLatestScanSummaries(
     repoIds: readonly string[],
+    defaultBranchByRepoId?: ReadonlyMap<string, string | null | undefined>,
   ): Promise<Map<string, LatestScanSummary>> {
-    const summaries = new Map<string, LatestScanSummary>();
-    if (repoIds.length === 0) return summaries;
+    if (repoIds.length === 0) return new Map();
     const uniqueIds = [...new Set(repoIds)];
     const inList = uniqueIds.map((id) => eq(id)).join(',');
     const rows = await this.fetchDb<LatestScanSummary[]>(
-      `scans?select=id,repository_id,ship_score,created_at,verdict,failure_reason&repository_id=in.(${inList})&order=created_at.desc`,
+      `scans?select=id,repository_id,ship_score,created_at,verdict,failure_reason,branch,scan_scope&repository_id=in.(${inList})&order=created_at.desc`,
     );
-    for (const row of rows) {
-      if (!summaries.has(row.repository_id)) {
-        summaries.set(row.repository_id, row);
-      }
-    }
-    return summaries;
+    return indexLatestVerdictOwningSummaries(rows, defaultBranchByRepoId);
   }
 
   async deleteScan(scanId: string): Promise<void> {

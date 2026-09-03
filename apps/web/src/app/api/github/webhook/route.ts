@@ -76,6 +76,7 @@ const pullRequestWebhookSchema = z
           .max(201)
           .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
         private: z.boolean().optional(),
+        default_branch: z.string().min(1).max(255).optional(),
       })
       .passthrough(),
     pull_request: z
@@ -432,9 +433,28 @@ export async function scanPullRequest(
       verdict: shipGate.status,
       scannedFileCount: selection.files.length,
       cleanFileCount: shipGate.cleanFileCount,
-      scanScope: { ...scanScope },
+      scanScope: {
+        ...scanScope,
+        source: 'pull_request',
+        ...(payload.repository.default_branch
+          ? { defaultBranch: payload.repository.default_branch }
+          : {}),
+      },
     },
   );
+
+  // A pull-request check never owns the repo verdict, but GitHub told us which
+  // branch the repository ships from. Recording it is what lets the dashboard
+  // stop mistaking an old `main` scan for the verdict of a repo that ships from
+  // somewhere else. Best-effort: never fail a check run over a branch name.
+  const observedDefaultBranch = payload.repository.default_branch;
+  if (observedDefaultBranch && repository.default_branch !== observedDefaultBranch) {
+    try {
+      await db.updateRepositoryDefaultBranch(repository.id, observedDefaultBranch);
+    } catch {
+      // Recorded on the next scan instead.
+    }
+  }
 
   const recentScans = await db.getRecentScans(repository.id);
   const previousScan = recentScans.find((scan) => scan.id !== savedScan.id);
