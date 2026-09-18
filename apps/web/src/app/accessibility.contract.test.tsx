@@ -211,6 +211,12 @@ describe('accessibility and responsive UI contracts', () => {
     // Dashboard hamburger overlay matches landing (≤1100px), not the old 768px card stretch.
     expect(globalsCss).toMatch(/DASHBOARD_NAV_OVERLAY_MQ/);
     expect(globalsCss).toMatch(/body\.dashboard-menu-open \.profile-dropdown-toolbar/);
+    // Scroll lock belongs only in the overlay MQ — a global overflow:hidden
+    // unsticks the dashboard chrome and hides the desktop account dropdown.
+    expect(globalsCss).not.toMatch(/^body\.dashboard-menu-open\s*\{/m);
+    expect(globalsCss).toMatch(
+      /@media \(max-width: 1100px\) \{[\s\S]*?body\.dashboard-menu-open\s*\{[^}]*overflow:\s*hidden/,
+    );
     expect(globalsCss).toMatch(
       /\.site-header nav a[\s\S]{0,180}overflow-wrap:\s*normal[\s\S]{0,40}white-space:\s*nowrap/,
     );

@@ -797,26 +797,31 @@ function DashboardContent({
     };
   }, []);
 
-  // Leave overlay mode when the viewport crosses 1100px so dashboard-menu-open
-  // cannot stick with a hidden hamburger (same pattern as HomeHeader).
+  // Overlay scroll-lock is hamburger-only (≤1100px). Adding dashboard-menu-open
+  // on desktop sets overflow:hidden on body, which unsticks .dashboard-chrome
+  // and throws the account dropdown off-screen when the page is scrolled.
   useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return;
+    const syncOverlayLock = (): void => {
+      const overlay =
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia(DASHBOARD_NAV_OVERLAY_MQ).matches;
+      document.body.classList.toggle('dashboard-menu-open', isProfileOpen && overlay);
+    };
+
+    syncOverlayLock();
+
+    if (typeof window.matchMedia !== 'function') {
+      return () => document.body.classList.remove('dashboard-menu-open');
+    }
+
     const media = window.matchMedia(DASHBOARD_NAV_OVERLAY_MQ);
     const onChange = (): void => {
       if (!media.matches) setIsProfileOpen(false);
+      syncOverlayLock();
     };
     media.addEventListener('change', onChange);
-    return () => media.removeEventListener('change', onChange);
-  }, []);
-
-  // Body scroll lock and layout toggling when mobile/profile menu is open
-  useEffect(() => {
-    if (isProfileOpen) {
-      document.body.classList.add('dashboard-menu-open');
-    } else {
-      document.body.classList.remove('dashboard-menu-open');
-    }
     return () => {
+      media.removeEventListener('change', onChange);
       document.body.classList.remove('dashboard-menu-open');
     };
   }, [isProfileOpen]);

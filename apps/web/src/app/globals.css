@@ -9878,12 +9878,14 @@ button.dashboard-repo-selector-item {
 }
 
 /* Dashboard hamburger overlay. Keep in sync with DASHBOARD_NAV_OVERLAY_MQ.
-   Layout (cards, padding) stays at 768px — this block is chrome + overlay only. */
-body.dashboard-menu-open {
-  overflow: hidden;
-}
-
+   Layout (cards, padding) stays at 768px — this block is chrome + overlay only.
+   overflow:hidden must stay inside this query: globally it unsticks
+   .dashboard-chrome and hides the desktop account dropdown while scrolled. */
 @media (max-width: 1100px) {
+  body.dashboard-menu-open {
+    overflow: hidden;
+  }
+
   .profile-trigger-btn {
     display: none !important;
   }

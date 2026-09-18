@@ -111,6 +111,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  document.body.classList.remove('dashboard-menu-open');
   Reflect.deleteProperty(window, 'location');
   (window as { location: Location }).location = originalLocation;
 });
@@ -165,6 +166,38 @@ const freeSession: SessionResult = {
   },
   repositories: [],
 };
+
+describe('account menu overlay lock', () => {
+  it('does not lock body scroll when the desktop dropdown opens', () => {
+    render(<DashboardClient initialSession={proSession} />);
+    fireEvent.click(screen.getByRole('button', { name: ACCOUNT_MENU_TRIGGER }));
+
+    expect(screen.getByRole('dialog', { name: 'Account menu' })).toBeTruthy();
+    expect(document.body.classList.contains('dashboard-menu-open')).toBe(false);
+  });
+
+  it('locks body scroll only in the hamburger overlay', () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query === '(max-width: 1100px)',
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+
+    render(<DashboardClient initialSession={proSession} />);
+    fireEvent.click(screen.getByRole('button', { name: ACCOUNT_MENU_TRIGGER }));
+
+    expect(screen.getByRole('dialog', { name: 'Account menu' })).toBeTruthy();
+    expect(document.body.classList.contains('dashboard-menu-open')).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close account menu for Pro User' }));
+    expect(document.body.classList.contains('dashboard-menu-open')).toBe(false);
+  });
+});
 
 describe('Upgrade checkout when a subscription already exists', () => {
   it('opens the billing portal instead of a second Checkout Session', async () => {
