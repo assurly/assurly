@@ -44,20 +44,16 @@ test.describe('Landing page', () => {
     await expect(pricing.getByText(/scan rules/i)).toHaveCount(0);
   });
 
-  test('EUR prices differ from USD — not a 1:1 copy', async ({ page }) => {
+  // Stripe holds only EUR prices, so the page quotes euros and offers no
+  // currency choice — a dollar figure would advertise a price checkout cannot
+  // charge. Guards the decision in f6df228, which removed the toggle.
+  test('pricing is quoted in euros only, with no currency toggle', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    const guardPrice = page.locator('#pricing .pricing-card.featured .pricing-amount');
-    await expect(guardPrice).toHaveText('$19');
-
-    const eurToggle = page.getByRole('button', { name: 'EUR (€)' }).first();
-    await expect(eurToggle).toBeVisible();
-
-    // Client hydration can lag under parallel E2E load — retry click until prices update.
-    await expect(async () => {
-      await eurToggle.click();
-      await expect(guardPrice).toHaveText('€17');
-    }).toPass();
+    const pricing = page.locator('#pricing');
+    await expect(pricing.locator('.pricing-card.featured .pricing-amount')).toHaveText('€17');
+    await expect(pricing).not.toContainText('$');
+    await expect(page.getByRole('button', { name: /EUR|USD/ })).toHaveCount(0);
   });
 
   test('footer does not mention exit readiness', async ({ page }) => {
