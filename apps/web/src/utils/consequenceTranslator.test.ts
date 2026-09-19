@@ -28,6 +28,8 @@ describe('getCuratedConsequence', () => {
       'ai-pii-to-model-context',
       'ai-prompt-injection-surface',
       'ai-route-missing-authz',
+      'api-route-unvalidated-input',
+      'auth-route-handler-mutates-unguarded',
       'auth-route-handler-unprotected',
       'auth-server-action-no-check',
       'auth-service-role-bypass',

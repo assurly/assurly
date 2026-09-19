@@ -202,6 +202,14 @@ export const CONSEQUENCE_MAP: Record<string, ConsequenceEntry> = {
     consequence:
       'An API endpoint runs without checking who is calling it — strangers can trigger it directly and reach data or actions meant for signed-in users only.',
   },
+  'auth-route-handler-mutates-unguarded': {
+    consequence:
+      'An endpoint writes to your database without checking who is calling it — anyone can create, change, or delete records straight from the internet.',
+  },
+  'api-route-unvalidated-input': {
+    consequence:
+      'An endpoint trusts whatever is sent to it. Malformed or hostile payloads reach your database and business logic, causing corrupt records and crashes.',
+  },
   'auth-server-action-no-check': {
     consequence:
       'A server action skips the login check, so anyone can invoke it and perform actions as if they were an authorized user.',

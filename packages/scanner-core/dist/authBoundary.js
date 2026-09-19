@@ -58,21 +58,52 @@ const AUTH_GUARD_PATTERNS = [
     /\bUnauthorized\b/,
     /\bstatus:\s*401\b/,
     /\bNextResponse\.json\([^)]*401/,
+    // A `secureRoute` wrapper only counts as a guard when it actually authenticates
+    // the caller — `auth: 'none'` and `auth: 'optional'` do not.
+    /\bauth:\s*['"](?:required|apiKey)['"]/,
 ];
+const CRON_GUARD_PATTERNS = [/\bCRON_SECRET\b/, /\bverifyCron\b/i];
+const STRIPE_WEBHOOK_PATTERNS = [/\bconstructEvent(?:Async)?\s*\(/, /\bwebhooks\.constructEvent/];
 const SERVICE_ROLE_GUARD_PATTERNS = [
     ...AUTH_GUARD_PATTERNS,
     /\bgetSupabaseAdminConfig\s*\(/,
     /\bgetAdminDbAdapter\s*\(/,
     /\btrusted system operations\b/i,
-    /\bCRON_SECRET\b/,
-    /\bverifyCron\b/i,
+    ...CRON_GUARD_PATTERNS,
     /\brequireAdmin\s*\(/,
     /\bisAdmin\s*\(/,
     /\bassertAdmin\b/i,
-    /\bconstructEvent(?:Async)?\s*\(/,
-    /\bwebhooks\.constructEvent/,
+    ...STRIPE_WEBHOOK_PATTERNS,
     /\bfrom\s+['"]server-only['"]/,
 ];
+// A provider webhook authenticates its caller — and validates its body — by
+// checking a signature over the raw payload. Reading `request.text()` there is
+// the correct thing to do, not an unvalidated read.
+const SIGNATURE_VERIFICATION_PATTERNS = [
+    ...STRIPE_WEBHOOK_PATTERNS,
+    /x-hub-signature/i,
+    /\bsvix\b/i,
+    /\bverifySignature\s*\(/,
+    /\btimingSafeEqual\s*\(/,
+];
+// Entry points that legitimately mutate without a session: the caller is
+// authenticated by a signature, a provider callback, or a cron secret rather
+// than by a logged-in user.
+const PUBLIC_MUTATION_PATTERNS = [...SIGNATURE_VERIFICATION_PATTERNS, ...CRON_GUARD_PATTERNS];
+const PUBLIC_MUTATION_PATH_PATTERNS = [/\/auth\/callback(?:\/|$)/, /\/api\/auth\//];
+const REQUEST_BODY_READ_PATTERNS = [
+    /\b(?:request|req)\.(?:json|formData|text)\s*\(/,
+    /\b(?:request|req)\.body\b/,
+];
+const SCHEMA_VALIDATION_PATTERNS = [
+    /\.(?:parse|safeParse|parseAsync)\s*\(/,
+    /\bz\.object\b/,
+    /\byup\./,
+    /\bvalibot\b/,
+    /\bjoi\./,
+    /\bajv\b/,
+];
+const HTTP_HANDLER_EXPORTS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 const MUTATION_PATTERNS = [
     /\.insert\s*\(/,
     /\.update\s*\(/,
@@ -127,6 +158,47 @@ function hasServiceRoleGuard(content) {
 function usesServiceRole(content) {
     return CLIENT_CONSTRUCTION.test(content) && SERVICE_ROLE_KEY_REFERENCE.test(content);
 }
+function isPublicMutationRoute(content, file) {
+    const normalized = file.replace(/\\/g, '/').toLowerCase();
+    return (PUBLIC_MUTATION_PATTERNS.some((pattern) => pattern.test(content)) ||
+        PUBLIC_MUTATION_PATH_PATTERNS.some((pattern) => pattern.test(normalized)));
+}
+function readsRequestBody(content) {
+    return REQUEST_BODY_READ_PATTERNS.some((pattern) => pattern.test(content));
+}
+function hasSchemaValidation(content) {
+    // `JSON.parse` decodes; it validates nothing. Blank it out so the generic
+    // `.parse(` pattern cannot mistake it for a schema call.
+    const withoutJsonParse = content.replace(/\bJSON\.parse\s*\(/g, '');
+    return SCHEMA_VALIDATION_PATTERNS.some((pattern) => pattern.test(withoutJsonParse));
+}
+function hasSignatureVerification(content) {
+    return SIGNATURE_VERIFICATION_PATTERNS.some((pattern) => pattern.test(content));
+}
+/** Line of the first exported HTTP handler, so findings point at the entry point. */
+function handlerExportLine(ast) {
+    let earliest;
+    walk(ast, (node) => {
+        if (node.type !== 'ExportNamedDeclaration')
+            return;
+        const declaration = node.declaration;
+        if (!declaration)
+            return;
+        const named = declaration.type === 'VariableDeclaration'
+            ? (declaration.declarations ?? [])
+            : [declaration];
+        const exportsHandler = named.some((candidate) => {
+            const id = candidate.id;
+            return typeof id?.name === 'string' && HTTP_HANDLER_EXPORTS.has(id.name);
+        });
+        if (!exportsHandler)
+            return;
+        const line = lineOf(node);
+        if (line !== undefined && (earliest === undefined || line < earliest))
+            earliest = line;
+    });
+    return earliest ?? 1;
+}
 function scanServerActionAuth(content, file = 'actions.ts') {
     const findings = [];
     let ast;
@@ -153,9 +225,8 @@ function scanServerActionAuth(content, file = 'actions.ts') {
 }
 function scanRouteHandlerAuth(content, file = 'route.ts') {
     const findings = [];
-    if (!isRouteHandlerFile(file) || !isProtectedRoutePath(file)) {
+    if (!isRouteHandlerFile(file))
         return result(findings);
-    }
     let ast;
     try {
         ast = parseCode(content);
@@ -163,12 +234,24 @@ function scanRouteHandlerAuth(content, file = 'route.ts') {
     catch {
         return result(findings);
     }
-    void ast;
-    if (hasAuthGuard(content))
-        return result(findings);
-    return result([
-        finding('auth-route-handler-unprotected', 'error', 'medium', file, 1, 'Route handler under a protected path has no session or authorization check.', 'Require an authenticated session (requireUser, getSession, or authorization helper) before handling the request.'),
-    ]);
+    const line = handlerExportLine(ast);
+    const guarded = hasAuthGuard(content);
+    if (isProtectedRoutePath(file) && !guarded) {
+        findings.push(finding('auth-route-handler-unprotected', 'error', 'medium', file, line, 'Route handler under a protected path has no session or authorization check.', 'Require an authenticated session (requireUser, getSession, or authorization helper) before handling the request.'));
+    }
+    if (hasMutation(content) && !guarded && !isPublicMutationRoute(content, file)) {
+        findings.push(finding('auth-route-handler-mutates-unguarded', 'error', 
+        // Heuristic → review, not a hard blocker: public forms (contact,
+        // waitlist) legitimately write without a session, so a mutating route
+        // with no visible guard cannot be high-confidence.
+        'medium', file, line, 'Route handler writes to the database without an authentication or session guard.', 'Require an authenticated session (requireUser, getSession, or an authorization helper) before persisting changes, or verify a webhook signature if the caller is a provider.'));
+    }
+    if (readsRequestBody(content) &&
+        !hasSchemaValidation(content) &&
+        !hasSignatureVerification(content)) {
+        findings.push(finding('api-route-unvalidated-input', 'warning', 'medium', file, line, 'Route handler reads the request body without validating it against a schema.', 'Parse the body with a schema (zod, yup, valibot, joi) and reject invalid input before using it.'));
+    }
+    return result(findings);
 }
 function scanServiceRoleBypass(content, file = 'server.ts') {
     const findings = [];
