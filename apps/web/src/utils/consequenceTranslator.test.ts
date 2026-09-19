@@ -39,6 +39,7 @@ describe('getCuratedConsequence', () => {
       'github-actions-integration',
       'public-secret',
       'rsc-data-leaks',
+      'runtime-api-endpoint-open',
       'runtime-missing-security-headers',
       'runtime-secret-in-bundle',
       'runtime-supabase-anon-write-implied',

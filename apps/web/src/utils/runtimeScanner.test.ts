@@ -571,6 +571,53 @@ describe('runtimeScanner', () => {
         expect(apiRecorded).toEqual([]);
         expect(findings.some((f) => f.ruleId === 'runtime-api-endpoint-open')).toBe(false);
       });
+
+      // Both plans share one time budget. The Supabase probe is the older,
+      // higher-signal one (a live data breach, not a warning), so a slow set of
+      // /api routes must not starve it — it keeps the head of the queue it had
+      // before endpoint probing existed.
+      it('runs the Supabase plan ahead of the endpoint plan when both apply', async () => {
+        vi.stubEnv('ANTHROPIC_API_KEY', '');
+        const probeOrder: string[] = [];
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url === 'https://myapp.example/') {
+            const html = `<html><body><script>window.__ENV = { NEXT_PUBLIC_SUPABASE_URL: "https://demo.supabase.co", NEXT_PUBLIC_SUPABASE_ANON_KEY: "${makeJwt(
+              { role: 'anon' },
+            )}" }; fetch("/api/ledger")</script></body></html>`;
+            return new Response(html, { status: 200, headers: { 'content-type': 'text/html' } });
+          }
+          if (url.includes('supabase.co')) {
+            probeOrder.push('supabase');
+            return new Response(JSON.stringify([{ id: 1 }]), {
+              status: 200,
+              headers: { 'content-type': 'application/json', 'content-range': '0-0/1' },
+            });
+          }
+          if (url.includes('/api/')) {
+            probeOrder.push('endpoint');
+            return new Response(JSON.stringify([{ id: 1 }]), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            });
+          }
+          return new Response('', { status: 404 });
+        }) as typeof fetch;
+
+        const { findings } = await scanLiveUrlWithEvidence(
+          'https://myapp.example/',
+          fetchMock,
+          fakeLookup(),
+          { activeProbe: true },
+        );
+
+        expect(findings.some((f) => f.ruleId === 'runtime-supabase-rls-open')).toBe(true);
+        expect(findings.some((f) => f.ruleId === 'runtime-api-endpoint-open')).toBe(true);
+        const firstEndpoint = probeOrder.indexOf('endpoint');
+        const lastSupabase = probeOrder.lastIndexOf('supabase');
+        expect(firstEndpoint).toBeGreaterThan(-1);
+        expect(lastSupabase).toBeLessThan(firstEndpoint);
+      });
     });
 
     it('emits a high-confidence blocker when the live target returns 404', async () => {

@@ -22,6 +22,32 @@ const PII_KEY_PARTS = new Set(['email', 'phone', 'password', 'token', 'secret', 
 const EMAIL_SHAPED = /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/;
 const MAX_PII_SCAN_DEPTH = 6;
 
+/**
+ * Keys of a status envelope — `{ error: 'Unauthorized' }`, `{ ok: true }`. An
+ * object made only of these (with scalar values) is the app talking about the
+ * request, not handing over a record. AI-built apps routinely send such a
+ * refusal with a 200, and that is not what this rule proves.
+ */
+const ENVELOPE_KEYS = new Set([
+  'error',
+  'errors',
+  'message',
+  'ok',
+  'success',
+  'status',
+  'code',
+  'statusCode',
+  'detail',
+]);
+
+function isScalar(value: unknown): boolean {
+  return value === null || (typeof value !== 'object' && typeof value !== 'function');
+}
+
+function isStatusEnvelope(payload: Record<string, unknown>): boolean {
+  return Object.entries(payload).every(([key, value]) => ENVELOPE_KEYS.has(key) && isScalar(value));
+}
+
 function nothing(): ProbeStepResult {
   return { findings: [], evidence: [] };
 }
@@ -47,13 +73,16 @@ function containsPii(value: unknown, depth = 0): boolean {
 
 /**
  * Normalises a JSON payload to the records it exposes. A non-empty array is its
- * entries; a non-empty object is a single record. Anything else (`[]`, `{}`,
- * `null`, a primitive) proves nothing and is not a finding.
+ * entries; a non-empty object is a single record unless it is only a status
+ * envelope. Anything else (`[]`, `{}`, `null`, a primitive) proves nothing and
+ * is not a finding.
  */
 function toRecords(payload: unknown): unknown[] | null {
   if (Array.isArray(payload)) return payload.length > 0 ? payload : null;
   if (payload && typeof payload === 'object') {
-    return Object.keys(payload as Record<string, unknown>).length > 0 ? [payload] : null;
+    const record = payload as Record<string, unknown>;
+    if (Object.keys(record).length === 0 || isStatusEnvelope(record)) return null;
+    return [record];
   }
   return null;
 }

@@ -911,10 +911,12 @@ export async function scanLiveUrlWithEvidence(
     }
 
     // Each plan keeps its own step budget; sanitising the union drops any
-    // endpoint step the planner duplicated so nothing is probed twice.
+    // endpoint step the planner duplicated so nothing is probed twice. The
+    // Supabase plan goes first: both share one time budget, and a proven open
+    // table outranks an open route — slow /api routes must not starve it.
     const maxSteps = endpointPlan.length + PROBE_MAX_STEPS;
     const probeResult = await executeProbePlan(
-      sanitizeProbePlan([...endpointPlan, ...supabasePlan], maxSteps),
+      sanitizeProbePlan([...supabasePlan, ...endpointPlan], maxSteps),
       {
         targetOrigin: pageUrl.origin,
         ...(supabaseConfig.supabaseUrl ? { supabaseUrl: supabaseConfig.supabaseUrl } : {}),

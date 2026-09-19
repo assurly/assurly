@@ -154,6 +154,37 @@ describe('executeAppEndpointUnauthenticatedRead — classification table', () =>
     const result = await executeAppEndpointUnauthenticatedRead({ path: '/api/export' }, ctx);
     expect(result.findings).toHaveLength(1);
   });
+
+  // AI-built apps often write `NextResponse.json({ error: 'Unauthorized' })` and
+  // forget the status — a 200 that carries a refusal, not a record. Reporting it
+  // as "handed back real records" would be false, and it costs the app 4 points.
+  const envelopes: Array<[string, unknown]> = [
+    ['{ error }', { error: 'Unauthorized' }],
+    ['{ message, status }', { message: 'Unauthorized', status: 401 }],
+    ['{ ok }', { ok: true }],
+    ['{ success, code }', { success: false, code: 'UNAUTHENTICATED' }],
+  ];
+  for (const [label, body] of envelopes) {
+    it(`reports nothing for a 200 whose body is only a status envelope ${label}`, async () => {
+      const ctx = ctxFor(() => jsonResponse(body));
+      const result = await executeAppEndpointUnauthenticatedRead({ path: '/api/me' }, ctx);
+      expect(result.findings).toEqual([]);
+      expect(result.evidence).toEqual([]);
+    });
+  }
+
+  it('still reports an envelope that carries a record alongside its status', async () => {
+    const ctx = ctxFor(() => jsonResponse({ ok: true, user: { id: 7, name: 'Ada' } }));
+    const result = await executeAppEndpointUnauthenticatedRead({ path: '/api/me' }, ctx);
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]?.severity).toBe('warning');
+  });
+
+  it('still escalates an envelope-shaped object that leaks PII', async () => {
+    const ctx = ctxFor(() => jsonResponse({ message: 'hello', email: 'ada@example.com' }));
+    const result = await executeAppEndpointUnauthenticatedRead({ path: '/api/me' }, ctx);
+    expect(result.findings[0]?.severity).toBe('error');
+  });
 });
 
 describe('executeAppEndpointUnauthenticatedRead — same-origin rail', () => {
