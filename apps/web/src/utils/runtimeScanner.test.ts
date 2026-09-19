@@ -516,6 +516,63 @@ describe('runtimeScanner', () => {
       expect(findings.some((f) => f.ruleId === 'runtime-supabase-key-exposed')).toBe(false);
     });
 
+    describe('unauthenticated endpoint probe', () => {
+      const noSupabaseHtml = '<html><body><script>fetch("/api/ledger")</script></body></html>';
+
+      /** Records every request the scanner makes so we can assert the probe scope. */
+      function endpointFetchMock(apiRecorded: string[]) {
+        return vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url === 'https://myapp.example/') {
+            return new Response(noSupabaseHtml, {
+              status: 200,
+              headers: { 'content-type': 'text/html' },
+            });
+          }
+          if (url.includes('/api/')) {
+            apiRecorded.push(url);
+            return new Response(JSON.stringify([{ id: 1 }, { id: 2 }]), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            });
+          }
+          return new Response('', { status: 404 });
+        }) as typeof fetch;
+      }
+
+      it('runs the endpoint plan with activeProbe and no Supabase config at all', async () => {
+        vi.stubEnv('ANTHROPIC_API_KEY', '');
+        const apiRecorded: string[] = [];
+
+        const { findings, evidence } = await scanLiveUrlWithEvidence(
+          'https://myapp.example/',
+          endpointFetchMock(apiRecorded),
+          fakeLookup(),
+          { activeProbe: true },
+        );
+
+        expect(apiRecorded.length).toBeGreaterThan(0);
+        // Discovered path leads, curated defaults follow — same origin only.
+        expect(apiRecorded[0]).toBe('https://myapp.example/api/ledger');
+        expect(apiRecorded.every((url) => url.startsWith('https://myapp.example/api/'))).toBe(true);
+        expect(findings.some((f) => f.ruleId === 'runtime-api-endpoint-open')).toBe(true);
+        expect(evidence.some((e) => e.kind === 'open_endpoint')).toBe(true);
+      });
+
+      it('never probes an endpoint without activeProbe', async () => {
+        const apiRecorded: string[] = [];
+
+        const { findings } = await scanLiveUrlWithEvidence(
+          'https://myapp.example/',
+          endpointFetchMock(apiRecorded),
+          fakeLookup(),
+        );
+
+        expect(apiRecorded).toEqual([]);
+        expect(findings.some((f) => f.ruleId === 'runtime-api-endpoint-open')).toBe(false);
+      });
+    });
+
     it('emits a high-confidence blocker when the live target returns 404', async () => {
       const fetchMock = vi.fn(async () => {
         return new Response('DEPLOYMENT_NOT_FOUND', {

@@ -7,9 +7,20 @@ import {
 } from '@assurly/scanner-core';
 import type { WebFinding } from './browserScanner';
 import type { ClaudeClientDeps } from './ai/claudeClient';
-import { extractHeuristicTableNames, planRedTeamProbes } from './ai/redTeamPlanner';
+import {
+  buildDeterministicEndpointPlan,
+  extractHeuristicApiPaths,
+  extractHeuristicTableNames,
+  planRedTeamProbes,
+} from './ai/redTeamPlanner';
 import { readLimitedResponseText } from './githubApp';
-import { DEFAULT_SENSITIVE_SUPABASE_TABLES, executeProbePlan, type ProbePlanStep } from './probes';
+import {
+  DEFAULT_SENSITIVE_SUPABASE_TABLES,
+  executeProbePlan,
+  PROBE_MAX_STEPS,
+  sanitizeProbePlan,
+  type ProbePlanStep,
+} from './probes';
 import {
   SCANNER_IDENTITY_HEADER,
   type BlockedScan,
@@ -864,14 +875,27 @@ export async function scanLiveUrlWithEvidence(
   // may probe this target (ownership gate). Passive scans skip it — and the planner
   // never runs outside this branch.
   if (options.activeProbe) {
-    if (supabaseConfig.supabaseUrl && supabaseConfig.anonKey) {
-      const heuristicTables = extractHeuristicTableNames(bundleTextAccum);
+    const hasSupabase = Boolean(supabaseConfig.supabaseUrl && supabaseConfig.anonKey);
+    const heuristicApiPaths = extractHeuristicApiPaths(bundleTextAccum);
+
+    // The endpoint plan needs no credentials and no detected backend, so it runs
+    // for every ownership-verified target. The Supabase plan only runs when the
+    // page actually revealed a Supabase config.
+    const endpointPlan = buildDeterministicEndpointPlan({
+      targetOrigin: pageUrl.origin,
+      hasSupabase,
+      heuristicApiPaths,
+    });
+
+    let supabasePlan: ProbePlanStep[] = [];
+    if (hasSupabase && supabaseConfig.supabaseUrl) {
       const { plan, source } = await planRedTeamProbes(
         {
           targetOrigin: pageUrl.origin,
           hasSupabase: true,
           supabaseHost: new URL(supabaseConfig.supabaseUrl).host,
-          heuristicTables,
+          heuristicTables: extractHeuristicTableNames(bundleTextAccum),
+          heuristicApiPaths,
           scannedSnippet: bundleTextAccum.slice(0, 4_000),
         },
         {
@@ -880,19 +904,29 @@ export async function scanLiveUrlWithEvidence(
           deps: options.aiDeps,
         },
       );
+      supabasePlan = plan;
       planSource = source;
+    } else {
+      planSource = 'deterministic';
+    }
 
-      const probeResult = await executeProbePlan(plan, {
+    // Each plan keeps its own step budget; sanitising the union drops any
+    // endpoint step the planner duplicated so nothing is probed twice.
+    const maxSteps = endpointPlan.length + PROBE_MAX_STEPS;
+    const probeResult = await executeProbePlan(
+      sanitizeProbePlan([...endpointPlan, ...supabasePlan], maxSteps),
+      {
         targetOrigin: pageUrl.origin,
-        supabaseUrl: supabaseConfig.supabaseUrl,
-        anonKey: supabaseConfig.anonKey,
+        ...(supabaseConfig.supabaseUrl ? { supabaseUrl: supabaseConfig.supabaseUrl } : {}),
+        ...(supabaseConfig.anonKey ? { anonKey: supabaseConfig.anonKey } : {}),
         fetchImpl,
         lookupImpl,
         safeFetch,
-      });
-      findings.push(...probeResult.findings);
-      evidence.push(...(probeResult.evidence as ProbeEvidence[]));
-    }
+        maxSteps,
+      },
+    );
+    findings.push(...probeResult.findings);
+    evidence.push(...(probeResult.evidence as ProbeEvidence[]));
   } else if (supabaseConfig.supabaseUrl && supabaseConfig.anonKey) {
     // Passive preview: we can see the database is reachable but must NOT probe it
     // without proven ownership. Surface the honest "verify to test the lock" hook.

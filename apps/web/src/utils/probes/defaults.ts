@@ -31,6 +31,34 @@ export const DEFAULT_SENSITIVE_SUPABASE_TABLES = [
 
 export type DefaultSensitiveTable = (typeof DEFAULT_SENSITIVE_SUPABASE_TABLES)[number];
 
+/**
+ * Deterministic Layer-1 fallback API paths — the routes an AI-built SaaS almost
+ * always generates, ordered most-sensitive first. Same contract as the table
+ * list above: discovered (`/api/…` literal) paths are probed first, then this
+ * list fills the remaining budget.
+ */
+export const DEFAULT_SENSITIVE_API_PATHS = [
+  '/api/users',
+  '/api/me',
+  '/api/admin',
+  '/api/export',
+  '/api/customers',
+  '/api/orders',
+  '/api/keys',
+  '/api/settings',
+] as const;
+
+export type DefaultSensitiveApiPath = (typeof DEFAULT_SENSITIVE_API_PATHS)[number];
+
 /** Hard caps — independent of the LLM. */
 export const PROBE_MAX_STEPS = 12;
 export const PROBE_MAX_DURATION_MS = 30_000;
+/** Cap on discovered API paths kept from one bundle, before the step budget applies. */
+export const PROBE_MAX_DISCOVERED_PATHS = 20;
+/**
+ * Byte ceiling for a probe response body. Must stay equal to
+ * `RUNTIME_MAX_RESPONSE_BYTES`; duplicated here so `probes/` never imports
+ * runtimeScanner (which imports this module). `defaults.test.ts` locks the two
+ * together.
+ */
+export const PROBE_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;

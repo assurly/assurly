@@ -44,6 +44,19 @@ describe('ProofEvidence', () => {
     expect(screen.getByText(/missing 2 protective headers/i)).toBeTruthy();
   });
 
+  it('renders an open_endpoint summary with no change to the component', () => {
+    const evidence: ProofEvidenceItem[] = [
+      {
+        findingRuleId: 'runtime-api-endpoint-open',
+        kind: 'open_endpoint',
+        summary: 'GET /api/orders answered with 3 record(s) without a session.',
+        redactedSample: { rowCount: 3, columns: ['id', 'title'], sampleCell: 'A***' },
+      },
+    ];
+    render(<ProofEvidence evidence={evidence} />);
+    expect(screen.getByText(/GET \/api\/orders answered with 3 record\(s\)/i)).toBeTruthy();
+  });
+
   it('renders a masked secret without exposing the raw value', () => {
     const evidence: ProofEvidenceItem[] = [
       {

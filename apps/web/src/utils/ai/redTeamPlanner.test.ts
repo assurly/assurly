@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clearAiCache, MODELS } from '../ai/claudeClient';
 import {
+  buildDeterministicEndpointPlan,
   buildDeterministicProbePlan,
+  extractHeuristicApiPaths,
   extractHeuristicTableNames,
   planRedTeamProbes,
 } from '../ai/redTeamPlanner';
+import { DEFAULT_SENSITIVE_API_PATHS, PROBE_MAX_STEPS } from '../probes';
 
 describe('redTeamPlanner', () => {
   afterEach(() => {
@@ -167,5 +170,109 @@ describe('redTeamPlanner', () => {
     expect(tables[0]).toBe('ledger');
     expect(tables[1]).toBe('shipments');
     expect(tables).toContain('users');
+  });
+});
+
+describe('API endpoint discovery', () => {
+  it('extractHeuristicApiPaths finds /api literals and normalises them', () => {
+    const bundle = `
+      fetch("/api/orders");
+      await fetch('/api/admin/users/');
+      const u = "/api/customers?page=2";
+      axios.get("/api/orders");
+    `;
+    expect(extractHeuristicApiPaths(bundle)).toEqual([
+      '/api/orders',
+      '/api/admin/users',
+      '/api/customers',
+    ]);
+  });
+
+  it('extractHeuristicApiPaths drops dynamic segments and non-/api literals', () => {
+    const bundle = [
+      'fetch(`/api/users/${userId}`)',
+      'fetch("/api/posts/[slug]")',
+      'fetch("/admin/panel")',
+      'fetch("/api/")',
+      'fetch("/api/settings")',
+    ].join('\n');
+    expect(extractHeuristicApiPaths(bundle)).toEqual(['/api/settings']);
+  });
+
+  it('extractHeuristicApiPaths caps the list at 20 paths', () => {
+    const bundle = Array.from({ length: 40 }, (_, i) => `fetch("/api/resource${i}")`).join('\n');
+    expect(extractHeuristicApiPaths(bundle)).toHaveLength(20);
+  });
+
+  it('buildDeterministicEndpointPlan probes discovered paths before the curated defaults', () => {
+    const plan = buildDeterministicEndpointPlan({
+      targetOrigin: 'https://app.example',
+      hasSupabase: false,
+      heuristicApiPaths: ['/api/ledger', '/api/shipments'],
+    });
+    const paths = plan.map((step) => step.params.path);
+    expect(plan.every((step) => step.primitive === 'app_endpoint_unauthenticated_read')).toBe(true);
+    expect(paths[0]).toBe('/api/ledger');
+    expect(paths[1]).toBe('/api/shipments');
+    expect(paths).toContain('/api/users');
+    expect(plan.length).toBeLessThanOrEqual(PROBE_MAX_STEPS);
+  });
+
+  it('buildDeterministicEndpointPlan works with no discovery and no Supabase at all', () => {
+    const plan = buildDeterministicEndpointPlan({
+      targetOrigin: 'https://app.example',
+      hasSupabase: false,
+    });
+    expect(plan.map((step) => step.params.path)).toEqual([...DEFAULT_SENSITIVE_API_PATHS]);
+  });
+
+  it('buildDeterministicEndpointPlan rejects planner-shaped junk paths', () => {
+    const plan = buildDeterministicEndpointPlan({
+      targetOrigin: 'https://app.example',
+      hasSupabase: false,
+      heuristicApiPaths: ['/api/../etc/passwd', '//evil.example/api/x', '/api/good'],
+    });
+    expect(plan.map((step) => step.params.path)[0]).toBe('/api/good');
+    expect(plan.some((step) => String(step.params.path).includes('evil'))).toBe(false);
+  });
+
+  it('passes discovered API paths to the AI planner so it can select endpoints', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify([
+                  { primitive: 'app_endpoint_unauthenticated_read', params: { path: '/api/dues' } },
+                ]),
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    ) as unknown as typeof fetch;
+
+    const { plan, source } = await planRedTeamProbes(
+      {
+        targetOrigin: 'https://app.example',
+        hasSupabase: true,
+        heuristicApiPaths: ['/api/dues'],
+      },
+      { deps: { fetchImpl } },
+    );
+
+    const body = JSON.parse(String(vi.mocked(fetchImpl).mock.calls[0]?.[1]?.body)) as {
+      system: string;
+      messages: Array<{ content: string }>;
+    };
+    expect(body.system).toContain('app_endpoint_unauthenticated_read');
+    expect(body.messages[0]?.content).toContain('heuristicApiPaths: /api/dues');
+    expect(source).toBe('ai');
+    expect(plan).toEqual([
+      { primitive: 'app_endpoint_unauthenticated_read', params: { path: '/api/dues' } },
+    ]);
   });
 });

@@ -6,7 +6,10 @@ import type { WebFinding } from '../browserScanner';
  * never invent new names, never emit raw HTTP. Adding a primitive requires a
  * code change here + a registry entry with a zod schema and a safe executor.
  */
-export const PROBE_PRIMITIVE_NAMES = ['supabase_rls_table_read'] as const;
+export const PROBE_PRIMITIVE_NAMES = [
+  'supabase_rls_table_read',
+  'app_endpoint_unauthenticated_read',
+] as const;
 
 export type ProbePrimitiveName = (typeof PROBE_PRIMITIVE_NAMES)[number];
 
@@ -24,6 +27,25 @@ export const supabaseRlsTableReadParamsSchema = z
   .strip(); // drop unknown keys (method, url, …) — never forward them to the handler
 
 export type SupabaseRlsTableReadParams = z.infer<typeof supabaseRlsTableReadParamsSchema>;
+
+/**
+ * Same-origin `/api/…` path. No scheme, no host, no query string, no traversal —
+ * the executor resolves it against the owned target origin and nothing else.
+ */
+export const API_PATH_SCHEMA = z
+  .string()
+  .regex(/^\/api\/[A-Za-z0-9/_.-]{1,120}$/, 'Path must be a plain /api/… path')
+  .refine((value) => !value.includes('..'), 'Path must not contain ".."');
+
+export const appEndpointUnauthenticatedReadParamsSchema = z
+  .object({
+    path: API_PATH_SCHEMA,
+  })
+  .strip(); // drop unknown keys (method, url, headers, …) — never forward them
+
+export type AppEndpointUnauthenticatedReadParams = z.infer<
+  typeof appEndpointUnauthenticatedReadParamsSchema
+>;
 
 /**
  * One planner step. `params` are validated against the primitive's schema before

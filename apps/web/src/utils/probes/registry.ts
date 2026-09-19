@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { executeAppEndpointUnauthenticatedRead } from './appEndpoint';
 import { executeSupabaseRlsTableRead } from './supabaseRls';
 import {
+  appEndpointUnauthenticatedReadParamsSchema,
   PROBE_PRIMITIVE_NAMES,
   supabaseRlsTableReadParamsSchema,
   type ProbeExecutionContext,
@@ -33,6 +35,14 @@ export const PROBE_REGISTRY: Readonly<Record<ProbePrimitiveName, ProbePrimitiveD
       return executeSupabaseRlsTableRead(parsed, ctx);
     },
   },
+  app_endpoint_unauthenticated_read: {
+    name: 'app_endpoint_unauthenticated_read',
+    paramsSchema: appEndpointUnauthenticatedReadParamsSchema,
+    execute: async (params, ctx) => {
+      const parsed = appEndpointUnauthenticatedReadParamsSchema.parse(params);
+      return executeAppEndpointUnauthenticatedRead(parsed, ctx);
+    },
+  },
 };
 
 export function isProbePrimitiveName(value: unknown): value is ProbePrimitiveName {
@@ -45,6 +55,8 @@ export function describeWhitelistedPrimitives(): string {
     switch (name) {
       case 'supabase_rls_table_read':
         return `${name}: read one Supabase table via the anon key (params: { table: string })`;
+      case 'app_endpoint_unauthenticated_read':
+        return `${name}: GET one same-origin /api/… path on the target with no session (params: { path: string })`;
       default: {
         const exhaustive: never = name;
         return exhaustive;

@@ -1,15 +1,22 @@
+export { appEndpointLocation, executeAppEndpointUnauthenticatedRead } from './appEndpoint';
 export {
+  DEFAULT_SENSITIVE_API_PATHS,
   DEFAULT_SENSITIVE_SUPABASE_TABLES,
+  PROBE_MAX_DISCOVERED_PATHS,
   PROBE_MAX_DURATION_MS,
+  PROBE_MAX_RESPONSE_BYTES,
   PROBE_MAX_STEPS,
 } from './defaults';
 export { executeProbePlan, sanitizeProbePlan } from './executor';
 export { describeWhitelistedPrimitives, isProbePrimitiveName, PROBE_REGISTRY } from './registry';
 export { buildAnonWriteImpliedFindings, executeSupabaseRlsTableRead } from './supabaseRls';
 export {
+  API_PATH_SCHEMA,
+  appEndpointUnauthenticatedReadParamsSchema,
   PROBE_PRIMITIVE_NAMES,
   supabaseRlsTableReadParamsSchema,
   TABLE_NAME_SCHEMA,
+  type AppEndpointUnauthenticatedReadParams,
   type ProbeExecutionContext,
   type ProbePlanResult,
   type ProbePlanStep,

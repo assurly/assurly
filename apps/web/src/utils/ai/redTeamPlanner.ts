@@ -8,7 +8,10 @@ import {
   type ClaudeClientDeps,
 } from './claudeClient';
 import {
+  API_PATH_SCHEMA,
+  DEFAULT_SENSITIVE_API_PATHS,
   DEFAULT_SENSITIVE_SUPABASE_TABLES,
+  PROBE_MAX_DISCOVERED_PATHS,
   PROBE_MAX_STEPS,
   describeWhitelistedPrimitives,
   sanitizeProbePlan,
@@ -33,6 +36,8 @@ export interface RedTeamSignals {
   scannedSnippet?: string;
   /** Deterministic `.from('…')` / `.from("…")` hits extracted without AI. */
   heuristicTables?: string[];
+  /** Deterministic `/api/…` literals extracted from the bundle without AI. */
+  heuristicApiPaths?: string[];
 }
 
 export interface PlanRedTeamOptions {
@@ -58,7 +63,9 @@ function buildPlannerSystemPrompt(): string {
     `- At most ${PROBE_MAX_STEPS} steps.`,
     '- INFER the likely database tables from the product described on the scanned page. The business entities a SaaS manages — its records, billing objects, and user-owned data — usually map one-to-one to snake_case tables. Probe those you infer this way even when they are NOT in the heuristic list; this is where you add value over a fixed checklist.',
     '- Always include the provided heuristic table names and the obviously-sensitive common tables (users, accounts, and anything holding customer or payment data).',
-    '- Use lowercase snake_case table names. Prefer supabase_rls_table_read when Supabase is present; otherwise return [].',
+    '- Use lowercase snake_case table names. Use supabase_rls_table_read only when Supabase is present.',
+    '- Use app_endpoint_unauthenticated_read for same-origin /api/… paths the app appears to expose — the provided heuristicApiPaths first, then routes the product implies (listing, export, admin, account). Paths must start with /api/ and carry no query string.',
+    '- If neither primitive applies, return [].',
   ].join('\n');
 }
 
@@ -85,6 +92,29 @@ export function buildDeterministicProbePlan(signals: RedTeamSignals): ProbePlanS
   }));
 
   return sanitizeProbePlan(steps);
+}
+
+/**
+ * Builds the deterministic endpoint plan. Unlike the Supabase plan this needs no
+ * credentials and no detected backend, so it runs for every ownership-verified
+ * target — including apps with no Supabase at all.
+ *
+ * Discovered paths lead (they are the app's real routes); the curated list fills
+ * the remaining step budget.
+ */
+export function buildDeterministicEndpointPlan(signals: RedTeamSignals): ProbePlanStep[] {
+  const paths = new Set<string>();
+  for (const path of signals.heuristicApiPaths ?? []) {
+    if (API_PATH_SCHEMA.safeParse(path).success) paths.add(path);
+  }
+  for (const path of DEFAULT_SENSITIVE_API_PATHS) paths.add(path);
+
+  return sanitizeProbePlan(
+    [...paths].slice(0, PROBE_MAX_STEPS).map((path) => ({
+      primitive: 'app_endpoint_unauthenticated_read' as const,
+      params: { path },
+    })),
+  );
 }
 
 function extractJsonArray(text: string): unknown {
@@ -142,6 +172,9 @@ export async function planRedTeamProbes(
       signals.heuristicTables?.length
         ? `heuristicTables: ${signals.heuristicTables.join(', ')}`
         : null,
+      signals.heuristicApiPaths?.length
+        ? `heuristicApiPaths: ${signals.heuristicApiPaths.join(', ')}`
+        : null,
     ]
       .filter(Boolean)
       .join('\n');
@@ -196,4 +229,25 @@ export function extractHeuristicTableNames(text: string): string[] {
     if (name) found.add(name);
   }
   return [...found].slice(0, PROBE_MAX_STEPS);
+}
+
+/**
+ * Extracts the app's own `/api/…` routes from client code without AI. Only
+ * quoted literals count, and a path with a dynamic segment (`${…}`, `[slug]`) is
+ * dropped rather than guessed — probing a made-up id proves nothing.
+ */
+export function extractHeuristicApiPaths(text: string): string[] {
+  const found = new Set<string>();
+  // The character class is deliberately wider than API_PATH_SCHEMA so dynamic
+  // segments are captured and can be recognised, then dropped.
+  const pattern = /['"`](\/api\/[A-Za-z0-9/_.\-$[\]{}?#&=%]*)['"`]/g;
+  for (const match of text.matchAll(pattern)) {
+    const literal = match[1];
+    if (!literal || literal.includes('${') || literal.includes('[')) continue;
+    const normalized = literal.split(/[?#]/)[0].replace(/\/+$/, '');
+    if (!API_PATH_SCHEMA.safeParse(normalized).success) continue;
+    found.add(normalized);
+    if (found.size >= PROBE_MAX_DISCOVERED_PATHS) break;
+  }
+  return [...found];
 }
