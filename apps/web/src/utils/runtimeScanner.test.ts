@@ -760,6 +760,68 @@ describe('runtimeScanner', () => {
         expect(firstEndpoint).toBeGreaterThan(-1);
         expect(lastSupabase).toBeLessThan(firstEndpoint);
       });
+
+      // The AI may list an endpoint before a table. The ordering invariant is
+      // the scanner's, not the planner's: whatever the plan says, every
+      // Supabase step runs before the first endpoint step.
+      it('keeps Supabase steps ahead of endpoint steps even when the AI lists them the other way', async () => {
+        vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+        const probeOrder: string[] = [];
+        const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url === 'https://myapp.example/') {
+            const html = `<html><body><script>window.__ENV = { NEXT_PUBLIC_SUPABASE_URL: "https://demo.supabase.co", NEXT_PUBLIC_SUPABASE_ANON_KEY: "${makeJwt(
+              { role: 'anon' },
+            )}" };</script></body></html>`;
+            return new Response(html, { status: 200, headers: { 'content-type': 'text/html' } });
+          }
+          if (url.includes('supabase.co')) {
+            probeOrder.push('supabase');
+            return new Response(JSON.stringify([{ id: 1 }]), {
+              status: 200,
+              headers: { 'content-type': 'application/json', 'content-range': '0-0/1' },
+            });
+          }
+          if (url.includes('/api/')) {
+            probeOrder.push('endpoint');
+            return new Response(JSON.stringify([{ id: 1 }]), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            });
+          }
+          return new Response('', { status: 404 });
+        }) as typeof fetch;
+        const claudeFetch = vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify([
+                      {
+                        primitive: 'app_endpoint_unauthenticated_read',
+                        params: { path: '/api/invoices' },
+                      },
+                      { primitive: 'supabase_rls_table_read', params: { table: 'invoices' } },
+                    ]),
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+        ) as unknown as typeof fetch;
+
+        await scanLiveUrlWithEvidence('https://myapp.example/', fetchMock, fakeLookup(), {
+          activeProbe: true,
+          useAiPlanner: true,
+          aiDeps: { fetchImpl: claudeFetch },
+        });
+
+        expect(claudeFetch).toHaveBeenCalled();
+        expect(probeOrder).toContain('supabase');
+        expect(probeOrder.lastIndexOf('supabase')).toBeLessThan(probeOrder.indexOf('endpoint'));
+      });
     });
 
     it('emits a high-confidence blocker when the live target returns 404', async () => {

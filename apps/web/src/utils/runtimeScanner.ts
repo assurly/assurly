@@ -1030,14 +1030,23 @@ export async function scanLiveUrlWithEvidence(
     planSource = source;
 
     // Each plan keeps its own step budget; sanitising the union drops any
-    // endpoint step the planner duplicated so nothing is probed twice. The
-    // planner result goes first (Supabase steps when present, then any AI
-    // endpoint picks); the deterministic endpoint plan fills the rest. Both
+    // endpoint step the planner duplicated so nothing is probed twice. Both
     // share one time budget, and a proven open table outranks an open route —
-    // slow /api routes must not starve it.
+    // slow /api routes must not starve it — so the ordering is the scanner's,
+    // not the planner's: every Supabase step first (AI picks in their order),
+    // then AI endpoint picks, then the deterministic endpoint plan.
+    const isSupabaseStep = (step: ProbePlanStep): boolean =>
+      step.primitive === 'supabase_rls_table_read';
     const maxSteps = endpointPlan.length + PROBE_MAX_STEPS;
     const probeResult = await executeProbePlan(
-      sanitizeProbePlan([...plan, ...endpointPlan], maxSteps),
+      sanitizeProbePlan(
+        [
+          ...plan.filter(isSupabaseStep),
+          ...plan.filter((s) => !isSupabaseStep(s)),
+          ...endpointPlan,
+        ],
+        maxSteps,
+      ),
       {
         targetOrigin: pageUrl.origin,
         ...(supabaseConfig.supabaseUrl ? { supabaseUrl: supabaseConfig.supabaseUrl } : {}),
