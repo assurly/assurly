@@ -103,11 +103,6 @@ export function filterCardsByKind(cards: TargetCard[], filter: AppsKindFilter): 
   }
 }
 
-/** Unscanned means never scanned AND still browser-scannable (not CLI-only / invalid). */
-export function isBrowserUnscannedCard(card: TargetCard): boolean {
-  return card.verdict === 'unknown' && (card.scanCapability ?? 'browser') === 'browser';
-}
-
 /**
  * Honest coverage label for cards — Instant (browser) vs Full (CLI) vs incomplete.
  * Capability describes browser eligibility; a cli_only repo can still show a Full Gate score.
@@ -135,11 +130,14 @@ export function fullGateCliCommand(repoName?: string | null): string {
   return `ASSURLY_API_KEY=ask_… npx assurly scan --submit --repo ${repo}`;
 }
 
+/**
+ * The verdict chips partition the cards: each card is in exactly one bucket and
+ * the four counts add up to "All". "Unscanned" is every card without a verdict
+ * — how it gets scanned (browser, CLI, or not at all) is the card's coverage
+ * label, not a reason to drop it from every chip.
+ */
 export function filterCardsByVerdict(cards: TargetCard[], filter: AppsVerdictFilter): TargetCard[] {
   if (filter === 'all') return cards;
-  if (filter === 'unknown') {
-    return cards.filter(isBrowserUnscannedCard);
-  }
   return cards.filter((card) => card.verdict === filter);
 }
 
@@ -212,6 +210,6 @@ export function countByVerdict(
     blocked: cards.filter((card) => card.verdict === 'blocked').length,
     review: cards.filter((card) => card.verdict === 'review').length,
     ready: cards.filter((card) => card.verdict === 'ready').length,
-    unknown: cards.filter(isBrowserUnscannedCard).length,
+    unknown: cards.filter((card) => card.verdict === 'unknown').length,
   };
 }

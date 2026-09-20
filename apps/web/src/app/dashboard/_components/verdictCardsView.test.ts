@@ -6,7 +6,6 @@ import {
   countByVerdict,
   coverageLabelForCard,
   filterCardsByVerdict,
-  isBrowserUnscannedCard,
   readVerdictCardsPrefs,
   VERDICT_CARDS_PREFS_KEY,
   writeVerdictCardsPrefs,
@@ -52,18 +51,52 @@ function card(partial: Partial<TargetCard> & Pick<TargetCard, 'id' | 'verdict'>)
   };
 }
 
-describe('Unscanned hygiene', () => {
-  it('excludes cli_only and invalid repos from Unscanned filter/count', () => {
-    const cards = [
-      card({ id: 'a', verdict: 'unknown', scanCapability: 'browser' }),
-      card({ id: 'b', verdict: 'unknown', scanCapability: 'cli_only' }),
-      card({ id: 'c', verdict: 'unknown', scanCapability: 'invalid' }),
-      card({ id: 'd', verdict: 'ready', shipScore: 100, scanCapability: 'browser' }),
-    ];
+describe('verdict filters partition the cards', () => {
+  // Every card must be reachable through exactly one verdict chip, and the four
+  // chip counts must add up to "All". Capability (browser / cli_only / invalid)
+  // is how a card gets scanned, not whether it has a verdict — it belongs on
+  // the card's coverage label, never in the bucket. This regressed once: three
+  // cli_only repos with no verdict fell out of every chip and All showed 25
+  // while the chips summed to 22.
+  const cards = [
+    card({ id: 'blocked-browser', verdict: 'blocked', shipScore: 40 }),
+    card({ id: 'review-browser', verdict: 'review', shipScore: 80 }),
+    card({ id: 'review-cli', verdict: 'review', shipScore: 84, scanCapability: 'cli_only' }),
+    card({ id: 'ready-browser', verdict: 'ready', shipScore: 100 }),
+    card({ id: 'unscanned-browser', verdict: 'unknown' }),
+    card({ id: 'unscanned-failed', verdict: 'unknown', lastScanFailed: true }),
+    card({ id: 'unscanned-cli', verdict: 'unknown', scanCapability: 'cli_only' }),
+    card({ id: 'unscanned-invalid', verdict: 'unknown', scanCapability: 'invalid' }),
+  ];
 
-    expect(filterCardsByVerdict(cards, 'unknown').map((item) => item.id)).toEqual(['a']);
-    expect(countByVerdict(cards).unknown).toBe(1);
-    expect(isBrowserUnscannedCard(cards[1]!)).toBe(false);
+  it('counts every card in exactly one bucket, so the chips add up to All', () => {
+    const counts = countByVerdict(cards);
+    expect(counts).toEqual({ blocked: 1, review: 2, ready: 1, unknown: 4 });
+    expect(counts.blocked + counts.review + counts.ready + counts.unknown).toBe(cards.length);
+  });
+
+  it('reaches a cli_only or invalid repo with no verdict through the Unscanned chip', () => {
+    expect(filterCardsByVerdict(cards, 'unknown').map((item) => item.id)).toEqual([
+      'unscanned-browser',
+      'unscanned-failed',
+      'unscanned-cli',
+      'unscanned-invalid',
+    ]);
+  });
+
+  it('keeps a cli_only repo that submitted a Full Gate verdict in its verdict bucket', () => {
+    expect(filterCardsByVerdict(cards, 'review').map((item) => item.id)).toEqual([
+      'review-browser',
+      'review-cli',
+    ]);
+  });
+
+  it('filters and counts agree for every chip', () => {
+    const counts = countByVerdict(cards);
+    for (const filter of ['blocked', 'review', 'ready', 'unknown'] as const) {
+      expect(filterCardsByVerdict(cards, filter)).toHaveLength(counts[filter]);
+    }
+    expect(filterCardsByVerdict(cards, 'all')).toHaveLength(cards.length);
   });
 
   it('labels Instant incomplete vs Full Gate coverage honestly', () => {
