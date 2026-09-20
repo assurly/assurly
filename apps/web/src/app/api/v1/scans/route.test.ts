@@ -61,7 +61,18 @@ describe('POST /api/v1/scans', () => {
     });
   });
 
-  it('persists submitted Ship Gate SoT for a connected repo', async () => {
+  it('persists the server-computed Ship Gate for a connected repo, not a claim the findings contradict', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    // One scan-completeness warning persisted, nothing truncated: the incomplete
+    // coverage cap makes 79/review what the findings prove; 72 is a drift and is
+    // logged, not stored.
+    db.saveScan.mockResolvedValue({
+      id: '22000000-0000-4000-8000-000000000002',
+      repository_id: '11000000-0000-4000-8000-000000000001',
+      created_at: '2026-08-10T00:00:00.000Z',
+      ship_score: 79,
+      verdict: 'review',
+    });
     const response = await POST(
       new Request('http://localhost/api/v1/scans', {
         method: 'POST',
@@ -89,7 +100,8 @@ describe('POST /api/v1/scans', () => {
 
     expect(response.status).toBe(201);
     const payload = (await response.json()) as { shipScore: number; verdict: string };
-    expect(payload.shipScore).toBe(72);
+    // The response echoes what was stored — never the claim.
+    expect(payload.shipScore).toBe(79);
     expect(payload.verdict).toBe('review');
     expect(db.saveScan).toHaveBeenCalledWith(
       '11000000-0000-4000-8000-000000000001',
@@ -99,8 +111,89 @@ describe('POST /api/v1/scans', () => {
       0,
       1,
       expect.any(Array),
-      expect.objectContaining({ shipScore: 72, verdict: 'review', scannedFileCount: 400 }),
+      expect.objectContaining({ shipScore: 79, verdict: 'review', scannedFileCount: 400 }),
     );
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(warn.mock.calls[0]?.[0]))).toMatchObject({
+      event: 'ship-gate-claim-rejected',
+      route: 'v1:scans:create',
+      reason: 'differs-without-truncation',
+    });
+    warn.mockRestore();
+  });
+
+  it('keeps a worse CLI gate when the submitted slice is truncated at the limit', async () => {
+    db.saveScan.mockResolvedValue({
+      id: '22000000-0000-4000-8000-000000000002',
+      repository_id: '11000000-0000-4000-8000-000000000001',
+      created_at: '2026-08-10T00:00:00.000Z',
+      ship_score: 12,
+      verdict: 'review',
+    });
+    const response = await POST(
+      new Request('http://localhost/api/v1/scans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer assurly_test' },
+        body: JSON.stringify({
+          repo: 'acme/saas',
+          shipScore: 12,
+          verdict: 'review',
+          scannedFileCount: 900,
+          findings: Array.from({ length: 100 }, (_, i) => ({
+            ruleId: 'undocumented-env',
+            severity: 'warning',
+            message: `Env ${i}`,
+            file: `src/${i}.ts`,
+          })),
+        }),
+      }),
+    );
+    expect(response.status).toBe(201);
+    expect(db.saveScan).toHaveBeenCalledWith(
+      expect.any(String),
+      'cli',
+      'local',
+      'success',
+      0,
+      100,
+      expect.any(Array),
+      expect.objectContaining({ shipScore: 12, verdict: 'review' }),
+    );
+  });
+
+  it('stores a failed CLI scan with no score, like the browser route', async () => {
+    db.saveScan.mockResolvedValue({
+      id: '22000000-0000-4000-8000-000000000002',
+      repository_id: '11000000-0000-4000-8000-000000000001',
+      created_at: '2026-08-10T00:00:00.000Z',
+      ship_score: null,
+      verdict: 'failed',
+    });
+    const response = await POST(
+      new Request('http://localhost/api/v1/scans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer assurly_test' },
+        body: JSON.stringify({
+          repo: 'acme/saas',
+          shipScore: 0,
+          verdict: 'failed',
+          scannedFileCount: 0,
+          findings: [],
+        }),
+      }),
+    );
+    expect(response.status).toBe(201);
+    expect(db.saveScan).toHaveBeenCalledWith(
+      expect.any(String),
+      'cli',
+      'local',
+      'failed',
+      0,
+      0,
+      [],
+      expect.objectContaining({ shipScore: null, verdict: 'failed' }),
+    );
+    expect(((await response.json()) as { shipScore: number | null }).shipScore).toBeNull();
   });
 
   it('rejects unknown repositories in the key org', async () => {

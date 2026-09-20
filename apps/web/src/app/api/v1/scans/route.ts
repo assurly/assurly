@@ -5,6 +5,11 @@ import { getAdminDbAdapter } from '../../../../utils/dbAdapter';
 import { isGitHubRepositoryName } from '../../../../utils/githubApp';
 import { persistRepoScan } from '../../../../utils/persistRepoScan';
 import { resolveVerdictFromScanFindings } from '../../../../utils/shipGate';
+import {
+  logRejectedGateClaim,
+  PERSISTED_FINDINGS_LIMIT,
+  resolveAuthoritativeGate,
+} from '../../../../utils/scanGateAuthority';
 
 const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
@@ -61,7 +66,7 @@ const submitBody = z
       })
       .passthrough()
       .optional(),
-    findings: z.array(findingSchema).max(100),
+    findings: z.array(findingSchema).max(PERSISTED_FINDINGS_LIMIT),
   })
   .strict();
 
@@ -111,18 +116,35 @@ export const POST = secureRoute(
       scannedFileCount: body.scannedFileCount,
       cleanFileCount: body.cleanFileCount,
     });
+    // Same authority as the browser route: the CLI scored every finding but
+    // submits at most PERSISTED_FINDINGS_LIMIT, so its number is kept only when
+    // that slice is truncated and the claim is no better than the slice proves.
+    const gate = resolveAuthoritativeGate({
+      computed,
+      claim: { shipScore: body.shipScore, verdict: body.verdict },
+      persistedFindingCount: persistedFindings.length,
+    });
+    logRejectedGateClaim({
+      route: 'v1:scans:create',
+      repoId: repo.id,
+      gate,
+      computed,
+      persistedFindingCount: persistedFindings.length,
+    });
+    // A failed scan has no gate — mirrors POST /api/scans, which stores null.
+    const scanFailed = body.verdict === 'failed';
+    const shipScore = scanFailed ? null : gate.shipScore;
+    const verdict = scanFailed ? 'failed' : gate.verdict;
 
     const scan = await persistRepoScan(db, {
       repoId: repo.id,
       commitSha: body.commitSha ?? 'cli',
       branch: body.branch ?? 'local',
-      status:
-        body.status ??
-        (body.verdict === 'blocked' || body.verdict === 'failed' ? 'failed' : 'success'),
+      status: body.status ?? (scanFailed || verdict === 'blocked' ? 'failed' : 'success'),
       findings: persistedFindings,
       meta: {
-        shipScore: body.shipScore,
-        verdict: body.verdict,
+        shipScore,
+        verdict,
         scannedFileCount: body.scannedFileCount,
         cleanFileCount: body.cleanFileCount ?? computed.cleanFileCount,
         scanScope: body.scanScope ?? null,
@@ -134,8 +156,9 @@ export const POST = secureRoute(
       {
         id: scan.id,
         repositoryId: repo.id,
-        shipScore: body.shipScore,
-        verdict: body.verdict,
+        // What was stored — never the claim.
+        shipScore: scan.ship_score ?? shipScore,
+        verdict: scan.verdict ?? verdict,
         scannedFileCount: body.scannedFileCount,
       },
       { status: 201 },

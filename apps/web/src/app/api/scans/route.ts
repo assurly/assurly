@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { ApiError, RATE_LIMITS, requireRouteUser, secureRoute } from '../../../utils/apiSecurity';
 import { requireRepositoryAccess, requireScanAccess } from '../../../utils/authorization';
 import { resolveVerdictFromScanFindings } from '../../../utils/shipGate';
+import {
+  logRejectedGateClaim,
+  PERSISTED_FINDINGS_LIMIT,
+  resolveAuthoritativeGate,
+} from '../../../utils/scanGateAuthority';
 import { GENERATOR_FINGERPRINTS } from '../../../utils/generatorFingerprint';
 import type { ScanFinding, ScanShipGateMeta } from '../../../utils/dbAdapter';
 import {
@@ -42,9 +47,9 @@ const saveScanBody = z
       .regex(/^[A-Za-z0-9._-]+$/),
     branch: z.string().min(1).max(255),
     status: z.enum(['success', 'failed']),
-    errors: z.number().int().nonnegative().max(100).optional(),
-    warnings: z.number().int().nonnegative().max(100).optional(),
-    findings: z.array(findingSchema).max(100),
+    errors: z.number().int().nonnegative().max(PERSISTED_FINDINGS_LIMIT).optional(),
+    warnings: z.number().int().nonnegative().max(PERSISTED_FINDINGS_LIMIT).optional(),
+    findings: z.array(findingSchema).max(PERSISTED_FINDINGS_LIMIT),
     // The AI builder that produced this app (Phase 0 detector, computed client-side
     // from the repo tree). Persisted on the target to seed the corpus moat.
     generatorFingerprint: z.enum(GENERATOR_FINGERPRINTS).optional(),
@@ -131,12 +136,28 @@ export const POST = secureRoute(
     }
     const computed = resolveVerdictFromScanFindings(body.findings as unknown as ScanFinding[], {
       scannedFileCount: body.scannedFileCount,
+      cleanFileCount: body.cleanFileCount,
     });
     const scanFailed = body.verdict === 'failed' || Boolean(body.failureReason);
+    // The stored gate is the server's computation over the persisted findings;
+    // the client's number survives only when truncation hides evidence and it
+    // is no better than the findings prove (see scanGateAuthority).
+    const gate = resolveAuthoritativeGate({
+      computed,
+      claim: { shipScore: body.shipScore, verdict: body.verdict },
+      persistedFindingCount: body.findings.length,
+    });
+    logRejectedGateClaim({
+      route: 'scans:create',
+      repoId: body.repoId,
+      gate,
+      computed,
+      persistedFindingCount: body.findings.length,
+    });
 
     const meta: ScanShipGateMeta = {
-      shipScore: scanFailed ? null : (body.shipScore ?? computed.shipScore),
-      verdict: scanFailed ? 'failed' : (body.verdict ?? computed.status),
+      shipScore: scanFailed ? null : gate.shipScore,
+      verdict: scanFailed ? 'failed' : gate.verdict,
       scannedFileCount: body.scannedFileCount ?? computed.scannedFileCount,
       cleanFileCount: body.cleanFileCount ?? computed.cleanFileCount,
       scanScope: body.scanScope ?? null,

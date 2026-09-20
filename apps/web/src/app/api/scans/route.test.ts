@@ -211,6 +211,102 @@ describe('/api/scans persistence contract', () => {
     );
   });
 
+  // The stored Ship Gate is the server's own computation from the persisted
+  // findings. A client number is taken only when truncation hides evidence
+  // the server cannot see, and only if it is no better than the evidence.
+  describe('Ship Gate authority', () => {
+    function savedMeta(): { shipScore: number | null; verdict: string } {
+      const call = db.saveScan.mock.calls[0] as unknown[];
+      return call[7] as { shipScore: number | null; verdict: string };
+    }
+
+    it('stores the computed gate, not a client claim that is better than the findings', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      try {
+        // One warning: the findings prove 96/review at best, never 100/ready.
+        const response = await postScan({
+          repoId,
+          commitSha: 'abcdef1',
+          branch: 'main',
+          status: 'success',
+          findings: [finding('warning', 0)],
+          scannedFileCount: 10,
+          shipScore: 100,
+          verdict: 'ready',
+        });
+        expect(response.status).toBe(201);
+        expect(savedMeta()).toMatchObject({ shipScore: 96, verdict: 'review' });
+        expect(warn).toHaveBeenCalledTimes(1);
+        const logged = JSON.parse(String(warn.mock.calls[0]?.[0])) as Record<string, unknown>;
+        expect(logged).toMatchObject({
+          event: 'ship-gate-claim-rejected',
+          reason: 'better-than-evidence',
+          repoId,
+          claimedShipScore: 100,
+          computedShipScore: 96,
+        });
+        const body = (await response.json()) as { ship_score?: number };
+        expect(body.ship_score ?? savedMeta().shipScore).toBe(96);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('stores a client claim that matches the computation without logging anything', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      try {
+        await postScan({
+          repoId,
+          commitSha: 'abcdef1',
+          branch: 'main',
+          status: 'success',
+          findings: [finding('warning', 0)],
+          scannedFileCount: 10,
+          shipScore: 96,
+          verdict: 'review',
+        });
+        expect(savedMeta()).toMatchObject({ shipScore: 96, verdict: 'review' });
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('keeps a worse client gate when the persisted slice is truncated at the limit', async () => {
+      // 100 warnings persisted out of many more scored client-side: the extra
+      // findings can only lower the score, so the client number is the truth.
+      const findings = Array.from({ length: 100 }, (_, i) => finding('warning', i));
+      await postScan({
+        repoId,
+        commitSha: 'abcdef1',
+        branch: 'main',
+        status: 'success',
+        findings,
+        scannedFileCount: 500,
+        shipScore: 12,
+        verdict: 'review',
+      });
+      expect(savedMeta()).toMatchObject({ shipScore: 12, verdict: 'review' });
+    });
+
+    it('rejects a better client gate even when the slice is truncated', async () => {
+      const findings = Array.from({ length: 100 }, (_, i) => finding('error', i));
+      await postScan({
+        repoId,
+        commitSha: 'abcdef1',
+        branch: 'main',
+        status: 'failed',
+        findings,
+        scannedFileCount: 500,
+        shipScore: 90,
+        verdict: 'ready',
+      });
+      const meta = savedMeta();
+      expect(meta.verdict).toBe('blocked');
+      expect(meta.shipScore).toBeLessThanOrEqual(59);
+    });
+  });
+
   it('rejects payloads exceeding the 100 findings limit without touching the database', async () => {
     const findings = Array.from({ length: 101 }, (_, i) => finding('error', i));
     const response = await postScan({
