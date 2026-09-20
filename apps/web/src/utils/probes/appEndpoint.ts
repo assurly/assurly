@@ -23,10 +23,10 @@ const EMAIL_SHAPED = /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/;
 const MAX_PII_SCAN_DEPTH = 6;
 
 /**
- * Keys of a status envelope — `{ error: 'Unauthorized' }`, `{ ok: true }`. An
- * object made only of these (with scalar values) is the app talking about the
- * request, not handing over a record. AI-built apps routinely send such a
- * refusal with a 200, and that is not what this rule proves.
+ * Keys of a status envelope — `{ error: 'Unauthorized' }`, `{ ok: true }`.
+ * Whatever sits under these is the app talking about the request, not a
+ * record. AI-built apps routinely send such a refusal with a 200, and that is
+ * not what this rule proves.
  */
 const ENVELOPE_KEYS = new Set([
   'error',
@@ -39,13 +39,29 @@ const ENVELOPE_KEYS = new Set([
   'statusCode',
   'detail',
 ]);
+const MAX_DATA_SCAN_DEPTH = 6;
 
-function isScalar(value: unknown): boolean {
-  return value === null || (typeof value !== 'object' && typeof value !== 'function');
+/** True when some leaf is an actual value — not null, '', `[]` or `{}`. */
+function hasData(value: unknown, depth = 0): boolean {
+  if (depth > MAX_DATA_SCAN_DEPTH || value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.length > 0;
+  if (typeof value === 'number' || typeof value === 'boolean') return true;
+  if (Array.isArray(value)) return value.some((entry) => hasData(entry, depth + 1));
+  if (typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).some((entry) =>
+      hasData(entry, depth + 1),
+    );
+  }
+  return false;
 }
 
-function isStatusEnvelope(payload: Record<string, unknown>): boolean {
-  return Object.entries(payload).every(([key, value]) => ENVELOPE_KEYS.has(key) && isScalar(value));
+/**
+ * A single object is a record only when a key outside the status envelope
+ * holds data. `{ user: null, repositories: [] }` — a session route with nobody
+ * signed in — has the shape of a record and none of the substance.
+ */
+function carriesData(record: Record<string, unknown>): boolean {
+  return Object.entries(record).some(([key, value]) => !ENVELOPE_KEYS.has(key) && hasData(value));
 }
 
 function nothing(): ProbeStepResult {
@@ -72,17 +88,16 @@ function containsPii(value: unknown, depth = 0): boolean {
 }
 
 /**
- * Normalises a JSON payload to the records it exposes. A non-empty array is its
- * entries; a non-empty object is a single record unless it is only a status
- * envelope. Anything else (`[]`, `{}`, `null`, a primitive) proves nothing and
- * is not a finding.
+ * Normalises a JSON payload to the records it exposes. An array with data in
+ * it is its entries; an object that carries data is a single record. Anything
+ * else — `[]`, `{}`, `null`, a primitive, a status envelope, a record of
+ * nulls — proves nothing and is not a finding.
  */
 function toRecords(payload: unknown): unknown[] | null {
-  if (Array.isArray(payload)) return payload.length > 0 ? payload : null;
+  if (Array.isArray(payload)) return hasData(payload) ? payload : null;
   if (payload && typeof payload === 'object') {
     const record = payload as Record<string, unknown>;
-    if (Object.keys(record).length === 0 || isStatusEnvelope(record)) return null;
-    return [record];
+    return carriesData(record) ? [record] : null;
   }
   return null;
 }
@@ -119,14 +134,18 @@ export async function executeAppEndpointUnauthenticatedRead(
   if (probeUrl.origin !== origin) return nothing();
   if (probeUrl.search || probeUrl.hash) return nothing();
 
+  // A login route 307s into an OAuth provider; following it would start a
+  // flow on a third party in the scanner's name. Same-origin hops only.
   const { response, finalUrl } = await safeFetch(
     probeUrl.toString(),
     { method: 'GET', headers: { Accept: 'application/json' } },
     fetchImpl,
     lookupImpl,
+    { redirects: 'same-origin' },
   );
 
-  // safeFetch follows redirects, so the body may have come from elsewhere.
+  // Defence in depth behind the redirect policy: never classify a body that
+  // came from another origin.
   if (finalUrl.origin !== origin) return nothing();
   if (response.status !== 200 && response.status !== 206) return nothing();
 

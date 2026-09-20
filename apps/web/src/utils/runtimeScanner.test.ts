@@ -303,6 +303,52 @@ describe('runtimeScanner', () => {
       expect(lookups).toEqual(['example.com', 'example.org']);
     });
 
+    it('with redirects: same-origin, hands back a cross-origin 3xx instead of following it', async () => {
+      const requested: string[] = [];
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        requested.push(String(input));
+        if (String(input) === 'https://example.com/api/auth/login') {
+          return new Response('', {
+            status: 307,
+            headers: { location: 'https://accounts.example.org/authorize?state=abc' },
+          });
+        }
+        return new Response('landed', { status: 200 });
+      }) as typeof fetch;
+
+      const { response, finalUrl } = await safeFetch(
+        'https://example.com/api/auth/login',
+        {},
+        fetchMock,
+        fakeLookup(),
+        { redirects: 'same-origin' },
+      );
+
+      expect(requested).toEqual(['https://example.com/api/auth/login']);
+      expect(response.status).toBe(307);
+      expect(finalUrl.toString()).toBe('https://example.com/api/auth/login');
+    });
+
+    it('with redirects: same-origin, still follows a redirect that stays on the origin', async () => {
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) === 'https://example.com/api/users') {
+          return new Response('', { status: 308, headers: { location: '/api/users/' } });
+        }
+        return new Response('landed', { status: 200 });
+      }) as typeof fetch;
+
+      const { response, finalUrl } = await safeFetch(
+        'https://example.com/api/users',
+        {},
+        fetchMock,
+        fakeLookup(),
+        { redirects: 'same-origin' },
+      );
+
+      expect(response.status).toBe(200);
+      expect(finalUrl.toString()).toBe('https://example.com/api/users/');
+    });
+
     it('rejects a redirect that points at a private/internal address, without following it', async () => {
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
         if (String(input) === 'https://example.com/start') {

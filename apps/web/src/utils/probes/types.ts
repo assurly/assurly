@@ -61,12 +61,18 @@ export type ProbeLookupImpl = (
   hostname: string,
 ) => Promise<Array<{ address: string; family: number }>>;
 
+/** Redirect policy (mirrors runtimeScanner.SafeFetchOptions; kept local to avoid cycles). */
+export interface ProbeSafeFetchOptions {
+  redirects?: 'any' | 'same-origin';
+}
+
 /** SSRF-safe fetch signature — injected by the scanner (never supplied by the LLM). */
 export type ProbeSafeFetch = (
   rawUrl: string,
   init?: RequestInit,
   fetchImpl?: typeof fetch,
   lookupImpl?: ProbeLookupImpl,
+  options?: ProbeSafeFetchOptions,
 ) => Promise<{ response: Response; finalUrl: URL }>;
 
 /**

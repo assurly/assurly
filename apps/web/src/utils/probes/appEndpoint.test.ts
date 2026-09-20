@@ -19,6 +19,8 @@ interface RecordedRequest {
   headers: Record<string, string>;
   hasBody: boolean;
   credentials?: RequestCredentials;
+  /** The redirect policy the executor asked safeFetch for. */
+  redirects?: string;
 }
 
 function ctxFor(
@@ -40,11 +42,13 @@ function ctxFor(
     targetOrigin: TARGET_ORIGIN,
     fetchImpl,
     lookupImpl: async () => [{ address: '203.0.113.10', family: 4 }],
-    safeFetch: async (rawUrl, init, impl = fetchImpl) => {
+    safeFetch: async (rawUrl, init, impl = fetchImpl, _lookup, options) => {
       const response = await (impl ?? fetchImpl)(rawUrl, {
         ...init,
         method: init?.method ?? 'GET',
       });
+      const last = recorded[recorded.length - 1];
+      if (last && options?.redirects) last.redirects = options.redirects;
       return { response, finalUrl: new URL(rawUrl) };
     },
   };
@@ -110,6 +114,9 @@ describe('executeAppEndpointUnauthenticatedRead — exposure', () => {
     expect(recorded[0]?.headers).toEqual({ Accept: 'application/json' });
     expect(recorded[0]?.hasBody).toBe(false);
     expect(recorded[0]?.credentials).toBeUndefined();
+    // A login route 307s to an identity provider; following it would start an
+    // OAuth flow on a third party. The request must never leave the origin.
+    expect(recorded[0]?.redirects).toBe('same-origin');
   });
 });
 
@@ -178,6 +185,36 @@ describe('executeAppEndpointUnauthenticatedRead — classification table', () =>
     const result = await executeAppEndpointUnauthenticatedRead({ path: '/api/me' }, ctx);
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0]?.severity).toBe('warning');
+  });
+
+  // A session route with nobody signed in answers `{ user: null, … }` — a
+  // shape with no data in it. Seen live on assurly.dev's own /api/auth/session.
+  const empties: Array<[string, unknown]> = [
+    [
+      '{ user: null, organization: null, repositories: [] }',
+      { user: null, organization: null, repositories: [] },
+    ],
+    ['{ data: {} }', { data: {} }],
+    ['{ status: "ok", data: [] }', { status: 'ok', data: [] }],
+    ['[null, {}]', [null, {}]],
+    ['[{ user: null }]', [{ user: null }]],
+  ];
+  for (const [label, body] of empties) {
+    it(`reports nothing for a 200 whose body carries no data ${label}`, async () => {
+      const ctx = ctxFor(() => jsonResponse(body));
+      const result = await executeAppEndpointUnauthenticatedRead(
+        { path: '/api/auth/session' },
+        ctx,
+      );
+      expect(result.findings).toEqual([]);
+      expect(result.evidence).toEqual([]);
+    });
+  }
+
+  it('still reports a session route that answers with a real user', async () => {
+    const ctx = ctxFor(() => jsonResponse({ user: { id: 7, name: 'Ada' }, organization: null }));
+    const result = await executeAppEndpointUnauthenticatedRead({ path: '/api/auth/session' }, ctx);
+    expect(result.findings).toHaveLength(1);
   });
 
   it('still escalates an envelope-shaped object that leaks PII', async () => {

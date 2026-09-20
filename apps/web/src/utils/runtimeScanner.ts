@@ -522,6 +522,16 @@ function createPinnedDispatcher(resolved: ResolvedSafeHost): Agent {
   });
 }
 
+export interface SafeFetchOptions {
+  /**
+   * `'any'` (default) follows every safe redirect. `'same-origin'` hands a
+   * redirect that leaves the starting origin back to the caller as the 3xx
+   * it is, unfollowed — an active probe of an owned app must never carry the
+   * scanner onto a third party (a login route 307s into an OAuth provider).
+   */
+  redirects?: 'any' | 'same-origin';
+}
+
 /**
  * The single entry point every runtime-scan fetch must go through. Validates
  * the URL, resolves + pins DNS to the validated address, and follows
@@ -534,8 +544,10 @@ export async function safeFetch(
   init: RequestInit = {},
   fetchImpl: typeof fetch = fetch,
   lookupImpl: LookupImpl = defaultLookup,
+  options: SafeFetchOptions = {},
 ): Promise<{ response: Response; finalUrl: URL }> {
   let currentUrl = assertScannableUrl(rawUrl);
+  const startOrigin = currentUrl.origin;
 
   for (let hop = 0; hop <= RUNTIME_MAX_REDIRECTS; hop += 1) {
     const resolved = await resolveSafeHost(currentUrl.hostname, lookupImpl);
@@ -552,7 +564,11 @@ export async function safeFetch(
       return { response, finalUrl: currentUrl };
     }
 
-    currentUrl = assertScannableUrl(new URL(location, currentUrl).toString());
+    const nextUrl = assertScannableUrl(new URL(location, currentUrl).toString());
+    if (options.redirects === 'same-origin' && nextUrl.origin !== startOrigin) {
+      return { response, finalUrl: currentUrl };
+    }
+    currentUrl = nextUrl;
   }
 
   throw new Error('Too many redirects while scanning the target URL.');
