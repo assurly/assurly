@@ -167,14 +167,74 @@ describe('VerdictCard', () => {
     ).toBeTruthy();
   });
 
-  it('disables open when a repo card has no linked repositoryId', () => {
+  // A cli_only repo that submitted a Full Gate verdict IS scanned. "Use CLI"
+  // is the instruction for getting a verdict; once one exists the card must
+  // show it — a Review card hiding as "Use CLI" reads as unscanned.
+  it('shows the verdict, not "Use CLI", once a cli_only repo has a Full Gate verdict', () => {
     render(
       <VerdictCard
-        card={card({ repositoryId: null, scanCapability: 'cli_only' })}
+        card={card({
+          displayName: 'vercel/next.js',
+          identifier: 'vercel/next.js',
+          scanCapability: 'cli_only',
+          verdict: 'review',
+          shipScore: 84,
+          topIssue: {
+            key: 'undocumented-env',
+            label: 'Undocumented env',
+            severity: 'warning',
+            sampleMessage: 'Environment variable DATABASE_URL is used but not documented.',
+            affectedFileCount: 2,
+            occurrenceCount: 3,
+          },
+        })}
         onOpen={vi.fn()}
       />,
     );
-    expect(screen.getByRole('button', { name: /acme\/api: Use CLI/i })).toHaveProperty(
+
+    const open = screen.getByRole('button', { name: /vercel\/next\.js: Review recommended/i });
+    expect(open).toBeTruthy();
+    expect(screen.queryByText('Use CLI')).toBeNull();
+    expect(screen.queryByText(/Too large for in-browser Instant Gate/)).toBeNull();
+    // The real top issue, not the capability copy.
+    expect(screen.getByText(/DATABASE_URL|undocumented/i)).toBeTruthy();
+    // Coverage stays honest and the Full Gate command stays one click away.
+    expect(screen.getByText('Full Gate')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /Copy Full Gate command for vercel\/next\.js/i }),
+    ).toBeTruthy();
+  });
+
+  it('keeps "Use CLI" on a cli_only repo that has no verdict yet', () => {
+    render(
+      <VerdictCard
+        card={card({
+          scanCapability: 'cli_only',
+          verdict: 'unknown',
+          shipScore: null,
+          topIssue: null,
+        })}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /acme\/api: Use CLI/i })).toBeTruthy();
+    expect(screen.getByText(/Too large for in-browser Instant Gate/)).toBeTruthy();
+    expect(screen.getByText('Full Gate · CLI')).toBeTruthy();
+  });
+
+  it('keeps "Needs attention" on an invalid repo even if a stale verdict is stored', () => {
+    render(
+      <VerdictCard
+        card={card({ scanCapability: 'invalid', verdict: 'review', shipScore: 80 })}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /acme\/api: Needs attention/i })).toBeTruthy();
+  });
+
+  it('disables open when a repo card has no linked repositoryId', () => {
+    render(<VerdictCard card={card({ repositoryId: null })} onOpen={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /acme\/api: Not ready to ship/i })).toHaveProperty(
       'disabled',
       true,
     );

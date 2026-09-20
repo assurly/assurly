@@ -42,7 +42,10 @@ function capabilityPresentation(card: TargetCard): {
   issueText: string;
 } | null {
   if (card.kind !== 'repo') return null;
-  if (card.scanCapability === 'cli_only') {
+  // "Use CLI" is how a too-large repo GETS a verdict. Once it has one (Full
+  // Gate submitted from the CLI), the verdict is what the card is about; the
+  // coverage chip and the copy button keep saying how it was scanned.
+  if (card.scanCapability === 'cli_only' && card.verdict === 'unknown') {
     return {
       label: 'Use CLI',
       emoji: '⌘',
