@@ -13,6 +13,7 @@ import { GET as githubDiscover } from './github/discover/route';
 import { GET as githubPublicScan } from './github/public-scan/route';
 import { POST as githubWebhook } from './github/webhook/route';
 import { POST as repositories } from './repositories/route';
+import { GET as repositoryScanCounts } from './repositories/scan-counts/route';
 import {
   DELETE as repositoriesDelete,
   PATCH as repositoriesPatch,
@@ -73,6 +74,13 @@ const routes: RouteContract[] = [
   },
   { name: 'GitHub webhook', method: 'POST', auth: 'none', csrf: false, handler: githubWebhook },
   { name: 'repositories', method: 'POST', auth: 'required', csrf: true, handler: repositories },
+  {
+    name: 'repositories scan counts',
+    method: 'GET',
+    auth: 'required',
+    csrf: false,
+    handler: repositoryScanCounts,
+  },
   {
     name: 'repositories patch',
     method: 'PATCH',

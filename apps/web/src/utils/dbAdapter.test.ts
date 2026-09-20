@@ -29,6 +29,64 @@ describe('user database adapter', () => {
     expect(JSON.stringify(init.headers)).not.toContain('service-role-secret');
   });
 
+  describe('listScanHistoryRows', () => {
+    function stubPagedScans(totalRows: number): ReturnType<typeof vi.fn> {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
+      const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+        const params = new URL(String(url)).searchParams;
+        const offset = Number(params.get('offset') ?? 0);
+        const limit = Number(params.get('limit'));
+        const page = Array.from(
+          { length: Math.max(0, Math.min(limit, totalRows - offset)) },
+          (_, i) => ({
+            repository_id: `repo-${(offset + i) % 3}`,
+            failure_reason: null,
+          }),
+        );
+        return new Response(JSON.stringify(page), { status: 200 });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
+
+    it('asks for only the two columns the count needs, scoped to the given repositories', async () => {
+      const fetchMock = stubPagedScans(2);
+      const rows = await getUserDbAdapter('jwt').listScanHistoryRows(['repo-0', 'repo-1']);
+      const url = new URL(String(fetchMock.mock.calls[0][0]));
+      expect(url.pathname).toBe('/rest/v1/scans');
+      expect(url.searchParams.get('select')).toBe('repository_id,failure_reason');
+      expect(url.searchParams.get('repository_id')).toBe('in.(repo-0,repo-1)');
+      expect(rows).toHaveLength(2);
+    });
+
+    // Supabase caps a PostgREST response at max-rows (1000 by default) and
+    // truncates silently. The adapter pages, so a count is never quietly short.
+    it('pages past the PostgREST row cap until a short page arrives', async () => {
+      const fetchMock = stubPagedScans(1001);
+      const rows = await getUserDbAdapter('jwt').listScanHistoryRows(['repo-0']);
+      expect(rows).toHaveLength(1001);
+      const offsets = fetchMock.mock.calls.map(([url]) =>
+        new URL(String(url)).searchParams.get('offset'),
+      );
+      expect(offsets).toEqual(['0', '1000']);
+      // Stable order is what makes offset paging correct.
+      expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('order')).toBe('id.asc');
+    });
+
+    it('stops after one request when the first page is already short', async () => {
+      const fetchMock = stubPagedScans(5);
+      await getUserDbAdapter('jwt').listScanHistoryRows(['repo-0']);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('makes no request for an empty repository list', async () => {
+      const fetchMock = stubPagedScans(5);
+      expect(await getUserDbAdapter('jwt').listScanHistoryRows([])).toEqual([]);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
   describe('saveScan', () => {
     function stubSupabase(): ReturnType<typeof vi.fn> {
       process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';

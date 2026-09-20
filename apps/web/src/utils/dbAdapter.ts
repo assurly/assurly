@@ -103,6 +103,9 @@ export interface ScanShipGateMeta {
   failureReason?: string | null;
 }
 
+/** The two scan columns a per-repository history count needs. */
+export type ScanHistoryRow = Pick<Scan, 'repository_id' | 'failure_reason'>;
+
 export interface Scan {
   id: string;
   repository_id: string;
@@ -490,6 +493,12 @@ export interface DbAdapter {
   getScan(scanId: string): Promise<Scan | null>;
   getRecentScans(repoId: string): Promise<Scan[]>;
   /**
+   * `repository_id` + `failure_reason` of every scan of the given repositories,
+   * in one pass — the input for per-repository history counts. Pages past the
+   * PostgREST row cap, so the caller never receives a silently truncated set.
+   */
+  listScanHistoryRows(repoIds: readonly string[]): Promise<ScanHistoryRow[]>;
+  /**
    * Latest verdict-owning scan per repository — one query for dashboard cards.
    * Pass each repository's known default branch so feature-branch scans are not
    * mistaken for the repo verdict; repos absent from the map fall back to the
@@ -633,6 +642,9 @@ const CANARY_TOKEN_SAFE_COLUMNS =
   'id,organization_id,target_id,token_prefix,label,last_hit_at,hit_count,revoked_at,created_at';
 
 /** Scan columns the dashboard history rail and card derivation need. */
+/** One PostgREST page for the scan-history count read; must not exceed Supabase max-rows (1000). */
+const SCAN_HISTORY_PAGE_SIZE = 1000;
+
 const SCAN_LIST_COLUMNS =
   'id,repository_id,commit_sha,branch,status,error_count,warning_count,share_token,created_at,ship_score,verdict,scanned_file_count,clean_file_count,scan_scope,failure_reason';
 
@@ -986,6 +998,23 @@ export class SupabaseDbAdapter implements DbAdapter {
     return this.fetchDb(
       `scans?select=${SCAN_LIST_COLUMNS}&repository_id=eq.${eq(repoId)}&order=created_at.desc&limit=50`,
     );
+  }
+
+  async listScanHistoryRows(repoIds: readonly string[]): Promise<ScanHistoryRow[]> {
+    if (repoIds.length === 0) return [];
+    const ids = repoIds.map((id) => eq(id)).join(',');
+    const rows: ScanHistoryRow[] = [];
+    // Supabase truncates any response longer than max-rows (1000 by default)
+    // without an error. A stable order plus offset paging keeps the count
+    // exact however many scans an organization accumulates.
+    for (let offset = 0; ; offset += SCAN_HISTORY_PAGE_SIZE) {
+      const page = await this.fetchDb<ScanHistoryRow[]>(
+        `scans?select=repository_id,failure_reason&repository_id=in.(${ids})&order=id.asc&limit=${SCAN_HISTORY_PAGE_SIZE}&offset=${offset}`,
+      );
+      rows.push(...page);
+      if (page.length < SCAN_HISTORY_PAGE_SIZE) break;
+    }
+    return rows;
   }
 
   async getLatestScanSummaries(

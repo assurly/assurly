@@ -1,4 +1,4 @@
-import type { Scan } from './dbAdapter';
+import type { Scan, ScanHistoryRow } from './dbAdapter';
 
 /** Git commit SHAs we collapse on. Placeholders like `unknown` stay unique. */
 const HEX_COMMIT_SHA = /^[0-9a-f]{7,40}$/i;
@@ -46,7 +46,9 @@ function commitIdentityKey(scan: Scan): string {
 }
 
 /** Failed Instant Gate size checks are not real scans — hide them from the history rail. */
-export function excludeTooLargeFailedScans(scans: readonly Scan[]): Scan[] {
+export function excludeTooLargeFailedScans<T extends Pick<Scan, 'failure_reason'>>(
+  scans: readonly T[],
+): T[] {
   return scans.filter((scan) => scan.failure_reason !== 'too_large');
 }
 
@@ -88,6 +90,20 @@ export function selectLatestScanPerCommit(scans: readonly Scan[]): Scan[] {
 /** Header / list counts must match the history rail (one chip per saved scan). */
 export function countVisibleScanHistory(scans: readonly Scan[]): number {
   return excludeTooLargeFailedScans(scans).length;
+}
+
+/**
+ * One visible-history count per repository, under the same rule as
+ * `countVisibleScanHistory`. Repositories with no visible scan are absent.
+ */
+export function countVisibleScanHistoryByRepository(
+  rows: readonly ScanHistoryRow[],
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const row of excludeTooLargeFailedScans(rows)) {
+    counts[row.repository_id] = (counts[row.repository_id] ?? 0) + 1;
+  }
+  return counts;
 }
 
 export function formatScanHistoryChipLabel(scan: Scan): string {

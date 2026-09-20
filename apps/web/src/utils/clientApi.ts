@@ -112,6 +112,9 @@ const sessionSchema = z.object({
   repositories: z.array(repositorySchema),
 });
 const scansSchema = z.object({ scans: z.array(scanSchema) });
+const repositoryScanCountsSchema = z.object({
+  counts: z.record(z.string(), z.number().int().nonnegative()),
+});
 const findingsSchema = z.object({ findings: z.array(findingSchema) });
 const urlSchema = z.object({ url: z.string().url() });
 const fixSchema = z.object({
@@ -390,6 +393,9 @@ export const clientApi = {
     ),
   scans: (repositoryId: string): Promise<{ scans: Scan[] }> =>
     requestJson(`/api/scans?repoId=${encodeURIComponent(repositoryId)}`, scansSchema),
+  /** Visible scan-history count per repository of the organization, one request. */
+  repositoryScanCounts: (): Promise<{ counts: Record<string, number> }> =>
+    requestJson('/api/repositories/scan-counts', repositoryScanCountsSchema),
   targets: (): Promise<{ targets: TargetCard[] }> => requestJson('/api/targets', targetsSchema),
   /** Explicitly guard a live URL (create target; ownership verify follows in UI). */
   createUrlTarget: (

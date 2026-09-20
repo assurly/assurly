@@ -8,7 +8,8 @@
  * account that is 24 concurrent reads on the critical path, and it is the
  * contention that forced the Supabase read budget up to 30s.
  *
- * These tests pin where that work is allowed to happen.
+ * Two rules, pinned here: the counts load only when Settings is open, and
+ * they load as ONE request for the whole organization — never one per repo.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -43,6 +44,7 @@ vi.mock('../../utils/clientApi', async (importOriginal) => {
       targets: vi.fn(async () => ({ targets: [] })),
       scans: vi.fn(),
       findings: vi.fn(),
+      repositoryScanCounts: vi.fn(),
     },
   };
 });
@@ -50,6 +52,7 @@ vi.mock('../../utils/clientApi', async (importOriginal) => {
 const { clientApi } = clientApiModule;
 const scansMock = vi.mocked(clientApi.scans);
 const findingsMock = vi.mocked(clientApi.findings);
+const scanCountsMock = vi.mocked(clientApi.repositoryScanCounts);
 
 function repo(id: string, name: string, githubRepoId: number) {
   return {
@@ -105,6 +108,11 @@ beforeEach(() => {
     scans: [scanFor(repositoryId)],
   }));
   findingsMock.mockResolvedValue({ findings: [] });
+  scanCountsMock.mockReset();
+  // Only THIRD's number can come from the batch: its history is never loaded.
+  scanCountsMock.mockResolvedValue({
+    counts: { [SELECTED_ID]: 1, [OTHER_ID]: 1, [THIRD_ID]: 3 },
+  });
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -125,18 +133,19 @@ describe('scan-count prefetch', () => {
     expect(fetchedRepoIds()).not.toContain(THIRD_ID);
   });
 
-  it('reads every repository only once Settings, which shows the counts, is open', async () => {
+  it('loads the counts as one organization-wide request, only once Settings is open', async () => {
     render(<DashboardClient initialSession={session} />);
     expect(await screen.findByRole('button', { name: 'Back to Apps' })).toBeTruthy();
     await waitFor(() => expect(fetchedRepoIds()).toContain(SELECTED_ID));
+    expect(scanCountsMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: /^settings$/i }));
     await screen.findByTestId('repo-list-panel');
 
-    await waitFor(() => {
-      expect(fetchedRepoIds()).toContain(OTHER_ID);
-      expect(fetchedRepoIds()).toContain(THIRD_ID);
-    });
+    await waitFor(() => expect(scanCountsMock).toHaveBeenCalledTimes(1));
+    // Opening Settings must not fan out into per-repository history reads.
+    expect(fetchedRepoIds()).not.toContain(OTHER_ID);
+    expect(fetchedRepoIds()).not.toContain(THIRD_ID);
   });
 
   it('still shows each repository real scan count in the Settings list', async () => {
@@ -144,10 +153,24 @@ describe('scan-count prefetch', () => {
     fireEvent.click(screen.getByRole('button', { name: /^settings$/i }));
     await screen.findByTestId('repo-list-panel');
 
-    // Would read "No scans" if gating the prefetch had starved the list.
+    // Would read "No scans" if the batched counts never reached the list.
     await waitFor(() => {
       const row = screen.getByRole('button', { name: /select repository react-client-leaks/i });
       expect(row.textContent).toContain('1 scan');
     });
+    const third = screen.getByRole('button', { name: /select repository tibco87\/Portfolio/i });
+    expect(third.textContent).toContain('3 scans');
+    expect(fetchedRepoIds()).not.toContain(THIRD_ID);
+  });
+
+  it('keeps the list usable when the counts request fails', async () => {
+    scanCountsMock.mockRejectedValue(new Error('network down'));
+    render(<DashboardClient initialSession={session} />);
+    fireEvent.click(screen.getByRole('button', { name: /^settings$/i }));
+    await screen.findByTestId('repo-list-panel');
+    await waitFor(() => expect(scanCountsMock).toHaveBeenCalled());
+    expect(
+      screen.getByRole('button', { name: /select repository react-client-leaks/i }),
+    ).toBeTruthy();
   });
 });

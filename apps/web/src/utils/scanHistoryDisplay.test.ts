@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Scan } from './dbAdapter';
 import {
   countVisibleScanHistory,
+  countVisibleScanHistoryByRepository,
   excludeTooLargeFailedScans,
   formatCommitShaShort,
   formatScanDateTime,
@@ -168,6 +169,32 @@ describe('scanHistoryDisplay', () => {
       }),
     ];
     expect(countVisibleScanHistory(scans)).toBe(1);
+  });
+
+  // The Settings repo list needs one number per repository. The server sends
+  // only `repository_id` + `failure_reason` per scan and this applies the same
+  // visibility rule as the single-repo count, so the two can never disagree.
+  it('counts visible history per repository from the minimal rows the server sends', () => {
+    const rows = [
+      { repository_id: 'repo-a', failure_reason: null },
+      { repository_id: 'repo-a', failure_reason: undefined },
+      { repository_id: 'repo-a', failure_reason: 'no_eligible_files' },
+      { repository_id: 'repo-a', failure_reason: 'too_large' },
+      { repository_id: 'repo-b', failure_reason: 'too_large' },
+      { repository_id: 'repo-c', failure_reason: null },
+    ];
+    expect(countVisibleScanHistoryByRepository(rows)).toEqual({ 'repo-a': 3, 'repo-c': 1 });
+  });
+
+  it('agrees with the single-repository count for the same scans', () => {
+    const scans = [
+      buildScan({ id: 's1', repository_id: 'repo-a' }),
+      buildScan({ id: 's2', repository_id: 'repo-a', failure_reason: 'too_large' }),
+      buildScan({ id: 's3', repository_id: 'repo-a', failure_reason: 'no_eligible_files' }),
+    ];
+    expect(countVisibleScanHistoryByRepository(scans)['repo-a']).toBe(
+      countVisibleScanHistory(scans),
+    );
   });
 
   it('drops too-large Instant Gate failures from the history rail', () => {

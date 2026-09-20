@@ -928,32 +928,24 @@ function DashboardContent({
 
   // The Settings repo list is the only place a per-repository scan count is
   // rendered, so the counts are loaded when Settings is open rather than on
-  // every dashboard load. Loading them eagerly put one `/api/scans` read per
-  // connected repository on the critical path — 24 concurrent reads on a
-  // 24-repo account, each pulling full scan rows — for a number no other view
-  // shows. Deduped via loadRepoScans so Strict Mode and the selected-repo load
-  // still share one network trip.
+  // every dashboard load, and as ONE organization-wide request. This used to
+  // be one `/api/scans` read per connected repository, each pulling full scan
+  // rows — 24 concurrent reads on a 24-repo account — for a number no other
+  // view shows. A failed load keeps whatever counts are already known.
   useEffect(() => {
     if (!repoIdsKey || dashboardView !== 'settings') return;
-    const ids = repoIdsKey.split(',').filter(Boolean);
     let cancelled = false;
 
-    void Promise.all(
-      ids.map(async (repoId) => {
-        try {
-          const { scans: repoScans } = await loadRepoScans(repoId);
-          return [repoId, countVisibleScanHistory(repoScans)] as const;
-        } catch {
-          return [repoId, 0] as const;
-        }
-      }),
-    ).then((entries) => {
-      if (cancelled) return;
-      setScanCountsByRepoId((prev) => {
-        const next = { ...prev, ...Object.fromEntries(entries) };
-        return next;
+    void clientApi
+      .repositoryScanCounts()
+      .then(({ counts }) => {
+        if (cancelled) return;
+        setScanCountsByRepoId((prev) => ({ ...prev, ...counts }));
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        console.error('Failed to load repository scan counts:', error);
       });
-    });
 
     return () => {
       cancelled = true;
