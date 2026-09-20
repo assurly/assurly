@@ -174,6 +174,11 @@ describe('redTeamPlanner', () => {
 });
 
 describe('API endpoint discovery', () => {
+  afterEach(() => {
+    clearAiCache();
+    vi.unstubAllEnvs();
+  });
+
   it('extractHeuristicApiPaths finds /api literals and normalises them', () => {
     const bundle = `
       fetch("/api/orders");
@@ -274,5 +279,115 @@ describe('API endpoint discovery', () => {
     expect(plan).toEqual([
       { primitive: 'app_endpoint_unauthenticated_read', params: { path: '/api/dues' } },
     ]);
+  });
+
+  it('calls the planner without Supabase and returns AI endpoint steps', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify([
+                  {
+                    primitive: 'app_endpoint_unauthenticated_read',
+                    params: { path: '/api/invoices' },
+                  },
+                ]),
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    ) as unknown as typeof fetch;
+
+    const { plan, source } = await planRedTeamProbes(
+      {
+        targetOrigin: 'https://app.example',
+        hasSupabase: false,
+        heuristicApiPaths: ['/api/ledger'],
+      },
+      { deps: { fetchImpl } },
+    );
+
+    expect(fetchImpl).toHaveBeenCalled();
+    expect(source).toBe('ai');
+    expect(plan).toEqual([
+      { primitive: 'app_endpoint_unauthenticated_read', params: { path: '/api/invoices' } },
+    ]);
+  });
+
+  it('drops supabase_rls_table_read from an AI plan when the target has no Supabase', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify([
+                  { primitive: 'supabase_rls_table_read', params: { table: 'users' } },
+                  {
+                    primitive: 'app_endpoint_unauthenticated_read',
+                    params: { path: '/api/invoices' },
+                  },
+                ]),
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    ) as unknown as typeof fetch;
+
+    const { plan, source } = await planRedTeamProbes(
+      { targetOrigin: 'https://app.example', hasSupabase: false },
+      { deps: { fetchImpl } },
+    );
+
+    expect(source).toBe('ai');
+    expect(plan).toEqual([
+      { primitive: 'app_endpoint_unauthenticated_read', params: { path: '/api/invoices' } },
+    ]);
+    expect(plan.some((step) => step.primitive === 'supabase_rls_table_read')).toBe(false);
+  });
+
+  it('deterministic plan without Supabase equals the endpoint plan exactly', async () => {
+    const signals = {
+      targetOrigin: 'https://app.example',
+      hasSupabase: false as const,
+      heuristicApiPaths: ['/api/ledger'],
+    };
+    const { plan, source } = await planRedTeamProbes(signals, { useAi: false });
+    expect(source).toBe('deterministic');
+    expect(plan).toEqual(buildDeterministicEndpointPlan(signals));
+  });
+
+  it('system prompt forbids supabase primitives when hasSupabase is false', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ content: [{ type: 'text', text: '[]' }] }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    await planRedTeamProbes(
+      {
+        targetOrigin: 'https://app.example',
+        hasSupabase: false,
+        scannedSnippet: 'invoices dashboard',
+      },
+      { deps: { fetchImpl } },
+    );
+
+    expect(fetchImpl).toHaveBeenCalled();
+    const body = JSON.parse(String(vi.mocked(fetchImpl).mock.calls[0]?.[1]?.body)) as {
+      system: string;
+    };
+    expect(body.system).toContain('Use supabase_rls_table_read only when Supabase is present');
+    expect(body.system).toContain(
+      'When hasSupabase: false the ONLY valid primitive is app_endpoint_unauthenticated_read.',
+    );
   });
 });

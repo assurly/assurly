@@ -225,6 +225,91 @@ describe('executeAppEndpointUnauthenticatedRead — classification table', () =>
   });
 });
 
+describe('executeAppEndpointUnauthenticatedRead — enveloped collections', () => {
+  it('unwraps { data: [records] } into the inner row count and columns', async () => {
+    const ctx = ctxFor(() =>
+      jsonResponse({
+        data: [
+          { id: 1, title: 'Alpha' },
+          { id: 2, title: 'Beta' },
+          { id: 3, title: 'Gamma' },
+        ],
+      }),
+    );
+
+    const result = await executeAppEndpointUnauthenticatedRead({ path: '/api/orders' }, ctx);
+
+    expect(result.findings).toHaveLength(1);
+    expect(result.evidence[0]?.summary).toBe(
+      'GET /api/orders answered with 3 record(s) without a session.',
+    );
+    expect(result.evidence[0]?.redactedSample?.rowCount).toBe(3);
+    expect(result.evidence[0]?.redactedSample?.columns).toEqual(['id', 'title']);
+    expect(JSON.stringify(result.evidence[0])).not.toContain('Alpha');
+  });
+
+  it('unwraps { items: [...] } the same way', async () => {
+    const ctx = ctxFor(() => jsonResponse({ items: [{ id: 1, name: 'Ada' }] }));
+    const result = await executeAppEndpointUnauthenticatedRead({ path: '/api/items' }, ctx);
+    expect(result.evidence[0]?.redactedSample?.rowCount).toBe(1);
+    expect(result.evidence[0]?.redactedSample?.columns).toEqual(['id', 'name']);
+  });
+
+  it('unwraps { results: [...] } the same way', async () => {
+    const ctx = ctxFor(() =>
+      jsonResponse({
+        results: [
+          { id: 1, sku: 'A' },
+          { id: 2, sku: 'B' },
+        ],
+      }),
+    );
+    const result = await executeAppEndpointUnauthenticatedRead({ path: '/api/search' }, ctx);
+    expect(result.evidence[0]?.redactedSample?.rowCount).toBe(2);
+    expect(result.evidence[0]?.redactedSample?.columns).toEqual(['id', 'sku']);
+  });
+
+  it('unwraps Relay { edges: [{ node }] } into the nodes', async () => {
+    const ctx = ctxFor(() =>
+      jsonResponse({
+        edges: [{ node: { id: 1, name: 'Ada' } }, { node: { id: 2, name: 'Bob' } }],
+      }),
+    );
+    const result = await executeAppEndpointUnauthenticatedRead({ path: '/api/graphql' }, ctx);
+    expect(result.evidence[0]?.redactedSample?.rowCount).toBe(2);
+    expect(result.evidence[0]?.redactedSample?.columns).toEqual(['id', 'name']);
+  });
+
+  it('reports nothing for { data: [], meta: {} }', async () => {
+    const ctx = ctxFor(() => jsonResponse({ data: [], meta: {} }));
+    const result = await executeAppEndpointUnauthenticatedRead({ path: '/api/orders' }, ctx);
+    expect(result.findings).toEqual([]);
+    expect(result.evidence).toEqual([]);
+  });
+
+  it('treats an ambiguous dual collection as one record, as today', async () => {
+    const ctx = ctxFor(() =>
+      jsonResponse({
+        data: [{ id: 1 }],
+        items: [{ id: 2 }],
+      }),
+    );
+    const result = await executeAppEndpointUnauthenticatedRead({ path: '/api/mixed' }, ctx);
+    expect(result.findings).toHaveLength(1);
+    expect(result.evidence[0]?.redactedSample?.rowCount).toBe(1);
+    expect(result.evidence[0]?.redactedSample?.columns).toEqual(['data', 'items']);
+  });
+
+  it('escalates an unwrapped collection that leaks PII', async () => {
+    const ctx = ctxFor(() => jsonResponse({ ok: true, data: [{ id: 1, email: 'a@b.c' }] }));
+    const result = await executeAppEndpointUnauthenticatedRead({ path: '/api/users' }, ctx);
+    expect(result.findings[0]?.severity).toBe('error');
+    expect(result.evidence[0]?.redactedSample?.rowCount).toBe(1);
+    expect(result.evidence[0]?.redactedSample?.columns).toEqual(['id', 'email']);
+    expect(JSON.stringify(result.evidence)).not.toContain('a@b.c');
+  });
+});
+
 describe('executeAppEndpointUnauthenticatedRead — same-origin rail', () => {
   it('refuses a path that resolves off-origin before issuing any fetch', async () => {
     const recorded: RecordedRequest[] = [];

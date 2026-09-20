@@ -39,6 +39,12 @@ const ENVELOPE_KEYS = new Set([
   'statusCode',
   'detail',
 ]);
+/**
+ * Keys that commonly wrap a list of records. Unwrapped only when exactly one
+ * of them holds a non-empty array — two populated keys is ambiguous, so the
+ * object stays one record.
+ */
+const COLLECTION_KEYS = ['data', 'items', 'results', 'records', 'rows', 'edges', 'nodes'] as const;
 const MAX_DATA_SCAN_DEPTH = 6;
 
 /** True when some leaf is an actual value — not null, '', `[]` or `{}`. */
@@ -87,13 +93,43 @@ function containsPii(value: unknown, depth = 0): boolean {
   return false;
 }
 
+function isRelayEdge(entry: unknown): entry is { node: unknown } {
+  return Boolean(entry && typeof entry === 'object' && !Array.isArray(entry) && 'node' in entry);
+}
+
+/**
+ * If the payload is a one-key collection envelope, return that array (Relay
+ * `edges[].node` unwrapped). Ambiguous or empty envelopes return null so the
+ * caller keeps today's object-as-one-record behaviour.
+ */
+function unwrapEnvelopedCollection(payload: unknown): unknown[] | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const record = payload as Record<string, unknown>;
+  const hits: string[] = [];
+  for (const key of COLLECTION_KEYS) {
+    const value = record[key];
+    if (Array.isArray(value) && value.length > 0) hits.push(key);
+  }
+  if (hits.length !== 1) return null;
+  const key = hits[0];
+  if (!key) return null;
+  const values = record[key] as unknown[];
+  if (key === 'edges' && values.every(isRelayEdge)) {
+    return values.map((entry) => entry.node);
+  }
+  return values;
+}
+
 /**
  * Normalises a JSON payload to the records it exposes. An array with data in
- * it is its entries; an object that carries data is a single record. Anything
- * else — `[]`, `{}`, `null`, a primitive, a status envelope, a record of
- * nulls — proves nothing and is not a finding.
+ * it is its entries; a one-key collection envelope unwraps to that array; an
+ * object that carries data is a single record. Anything else — `[]`, `{}`,
+ * `null`, a primitive, a status envelope, a record of nulls — proves nothing
+ * and is not a finding.
  */
 function toRecords(payload: unknown): unknown[] | null {
+  const enveloped = unwrapEnvelopedCollection(payload);
+  if (enveloped) return hasData(enveloped) ? enveloped : null;
   if (Array.isArray(payload)) return hasData(payload) ? payload : null;
   if (payload && typeof payload === 'object') {
     const record = payload as Record<string, unknown>;

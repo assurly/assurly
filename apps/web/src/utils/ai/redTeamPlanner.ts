@@ -64,6 +64,7 @@ function buildPlannerSystemPrompt(): string {
     '- INFER the likely database tables from the product described on the scanned page. The business entities a SaaS manages — its records, billing objects, and user-owned data — usually map one-to-one to snake_case tables. Probe those you infer this way even when they are NOT in the heuristic list; this is where you add value over a fixed checklist.',
     '- Always include the provided heuristic table names and the obviously-sensitive common tables (users, accounts, and anything holding customer or payment data).',
     '- Use lowercase snake_case table names. Use supabase_rls_table_read only when Supabase is present.',
+    '- When hasSupabase: false the ONLY valid primitive is app_endpoint_unauthenticated_read.',
     '- Use app_endpoint_unauthenticated_read for same-origin /api/… paths the app appears to expose — the provided heuristicApiPaths first, then routes the product implies (listing, export, admin, account). Paths must start with /api/ and carry no query string.',
     '- If neither primitive applies, return [].',
   ].join('\n');
@@ -148,11 +149,10 @@ export async function planRedTeamProbes(
   signals: RedTeamSignals,
   options: PlanRedTeamOptions = {},
 ): Promise<{ plan: ProbePlanStep[]; source: 'ai' | 'deterministic' }> {
-  const fallback = buildDeterministicProbePlan(signals);
-
-  if (!signals.hasSupabase) {
-    return { plan: [], source: 'deterministic' };
-  }
+  const fallback = sanitizeProbePlan([
+    ...buildDeterministicProbePlan(signals),
+    ...buildDeterministicEndpointPlan(signals),
+  ]);
 
   if (options.useAi === false) {
     return { plan: fallback, source: 'deterministic' };
@@ -204,7 +204,9 @@ export async function planRedTeamProbes(
     }
 
     const parsed = extractJsonArray(text);
-    const plan = sanitizeProbePlan(parsed);
+    const plan = sanitizeProbePlan(parsed).filter(
+      (step) => signals.hasSupabase || step.primitive === 'app_endpoint_unauthenticated_read',
+    );
     if (plan.length === 0) {
       return { plan: fallback, source: 'deterministic' };
     }

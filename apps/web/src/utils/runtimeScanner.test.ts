@@ -23,6 +23,7 @@ import {
   scanBundleForCanaryInClient,
   type LookupImpl,
 } from './runtimeScanner';
+import { DEFAULT_SENSITIVE_API_PATHS } from './probes';
 import { SCANNER_IDENTITY_HEADER } from './scannerBlocked';
 import { buildShipGateFromWebFindings } from './shipGate';
 
@@ -621,6 +622,98 @@ describe('runtimeScanner', () => {
         expect(findings.some((f) => f.ruleId === 'runtime-api-endpoint-open')).toBe(false);
       });
 
+      it('never probes an endpoint without activeProbe even when the planner is wired', async () => {
+        vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+        const apiRecorded: string[] = [];
+        const claudeFetch = vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify([
+                      {
+                        primitive: 'app_endpoint_unauthenticated_read',
+                        params: { path: '/api/invoices' },
+                      },
+                    ]),
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+        ) as unknown as typeof fetch;
+
+        const { findings } = await scanLiveUrlWithEvidence(
+          'https://myapp.example/',
+          endpointFetchMock(apiRecorded),
+          fakeLookup(),
+          { useAiPlanner: true, aiDeps: { fetchImpl: claudeFetch } },
+        );
+
+        expect(apiRecorded).toEqual([]);
+        expect(claudeFetch).not.toHaveBeenCalled();
+        expect(findings.some((f) => f.ruleId === 'runtime-api-endpoint-open')).toBe(false);
+      });
+
+      it('probes an AI-planned path first on a non-Supabase page, then discovered and default paths', async () => {
+        vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+        const apiRecorded: string[] = [];
+        const claudeFetch = vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify([
+                      {
+                        primitive: 'app_endpoint_unauthenticated_read',
+                        params: { path: '/api/invoices' },
+                      },
+                    ]),
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+        ) as unknown as typeof fetch;
+
+        const { planSource } = await scanLiveUrlWithEvidence(
+          'https://myapp.example/',
+          endpointFetchMock(apiRecorded),
+          fakeLookup(),
+          { activeProbe: true, aiDeps: { fetchImpl: claudeFetch } },
+        );
+
+        expect(claudeFetch).toHaveBeenCalled();
+        expect(planSource).toBe('ai');
+        expect(apiRecorded[0]).toBe('https://myapp.example/api/invoices');
+        expect(apiRecorded).toContain('https://myapp.example/api/ledger');
+        for (const path of DEFAULT_SENSITIVE_API_PATHS) {
+          expect(apiRecorded).toContain(`https://myapp.example${path}`);
+        }
+      });
+
+      it('with AI off, a non-Supabase page keeps the deterministic request list', async () => {
+        vi.stubEnv('ANTHROPIC_API_KEY', '');
+        const apiRecorded: string[] = [];
+
+        const { planSource } = await scanLiveUrlWithEvidence(
+          'https://myapp.example/',
+          endpointFetchMock(apiRecorded),
+          fakeLookup(),
+          { activeProbe: true, useAiPlanner: false },
+        );
+
+        expect(planSource).toBe('deterministic');
+        expect(apiRecorded).toEqual([
+          'https://myapp.example/api/ledger',
+          ...DEFAULT_SENSITIVE_API_PATHS.map((path) => `https://myapp.example${path}`),
+        ]);
+      });
+
       // Both plans share one time budget. The Supabase probe is the older,
       // higher-signal one (a live data breach, not a warning), so a slow set of
       // /api routes must not starve it — it keeps the head of the queue it had
@@ -922,6 +1015,92 @@ describe('runtimeScanner', () => {
 
       expect(result.findings.some((f) => f.ruleId === 'runtime-secret-in-bundle')).toBe(true);
       expect(result.bundleCoverage).toEqual({ scripts: 2, fetched: 1, failed: 1 });
+    });
+
+    it('reads modulepreload hrefs, including reversed attributes, token rel, and single quotes', async () => {
+      const html = `<html><head>
+        <link rel="modulepreload" href="/chunk-0.js">
+        <link href="/chunk-1.js" rel="modulepreload">
+        <link rel="preload modulepreload" href="/chunk-2.js">
+        <link rel='modulepreload' href='/chunk-3.js'>
+      </head><body></body></html>`;
+      const { fetchMock, fetched } = bundleFetchMock(html, (i) => `// chunk ${i}`);
+
+      const result = await scanLiveUrlWithEvidence(`${ORIGIN}/`, fetchMock, fakeLookup());
+
+      expect(fetched).toEqual([0, 1, 2, 3]);
+      expect(result.bundleCoverage).toEqual({ scripts: 4, fetched: 4, failed: 0 });
+    });
+
+    it('preserves page order across script and modulepreload tags', async () => {
+      const html = `<html><head>
+        <script src="/chunk-0.js"></script>
+        <link rel="modulepreload" href="/chunk-1.js">
+        <script src="/chunk-2.js"></script>
+      </head><body></body></html>`;
+      const { fetchMock, fetched } = bundleFetchMock(html, (i) => `MARK_${i}`);
+
+      const { pageText } = await scanLiveUrlWithEvidence(`${ORIGIN}/`, fetchMock, fakeLookup());
+
+      expect(fetched).toEqual([0, 1, 2]);
+      expect(pageText.indexOf('MARK_0')).toBeLessThan(pageText.indexOf('MARK_1'));
+      expect(pageText.indexOf('MARK_1')).toBeLessThan(pageText.indexOf('MARK_2'));
+    });
+
+    it('skips data: and canary modulepreload hrefs', async () => {
+      const canaryUrl = `https://assurly.dev/api/canary/ask_canary_${'a'.repeat(32)}`;
+      const html = `<html><head>
+        <link rel="modulepreload" href="data:text/javascript,foo">
+        <link rel="modulepreload" href="${canaryUrl}">
+        <link rel="modulepreload" href="/chunk-0.js">
+      </head><body></body></html>`;
+      const { fetchMock, fetched } = bundleFetchMock(html, () => '// ok');
+
+      await scanLiveUrlWithEvidence(`${ORIGIN}/`, fetchMock, fakeLookup());
+
+      const requested = (fetchMock as ReturnType<typeof vi.fn>).mock.calls.map((call) =>
+        String(call[0]),
+      );
+      expect(requested.some((url) => url.startsWith('data:'))).toBe(false);
+      expect(requested.some((url) => url.includes('/api/canary/'))).toBe(false);
+      expect(fetched).toEqual([0]);
+    });
+
+    it('reads twelve modulepreloads with no script tags and reports them as scripts', async () => {
+      const tags = Array.from(
+        { length: 12 },
+        (_, i) => `<link rel="modulepreload" href="/chunk-${i}.js">`,
+      ).join('');
+      const html = `<html><head>${tags}</head><body></body></html>`;
+      const { fetchMock, fetched } = bundleFetchMock(html, (i) => `// chunk ${i}`);
+
+      const result = await scanLiveUrlWithEvidence(`${ORIGIN}/`, fetchMock, fakeLookup());
+
+      expect(fetched).toHaveLength(12);
+      expect(result.bundleCoverage).toEqual({ scripts: 12, fetched: 12, failed: 0 });
+    });
+
+    it('applies the count cap to the combined script and modulepreload list', async () => {
+      const scripts = Array.from(
+        { length: 10 },
+        (_, i) => `<script src="/chunk-${i}.js"></script>`,
+      ).join('');
+      const preloads = Array.from(
+        { length: BUNDLE_MAX_SCRIPTS },
+        (_, i) => `<link rel="modulepreload" href="/chunk-${10 + i}.js">`,
+      ).join('');
+      const html = `<html><head>${scripts}${preloads}</head><body></body></html>`;
+      const { fetchMock, fetched } = bundleFetchMock(html, (i) => `// chunk ${i}`);
+
+      const result = await scanLiveUrlWithEvidence(`${ORIGIN}/`, fetchMock, fakeLookup());
+
+      expect(fetched).toHaveLength(BUNDLE_MAX_SCRIPTS);
+      expect(result.bundleCoverage).toEqual({
+        scripts: 10 + BUNDLE_MAX_SCRIPTS,
+        fetched: BUNDLE_MAX_SCRIPTS,
+        failed: 0,
+        truncatedBy: 'count',
+      });
     });
 
     it('a script on a private host is never fetched and does not fail the scan', async () => {

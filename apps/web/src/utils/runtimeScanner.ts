@@ -40,13 +40,13 @@ export const RUNTIME_MAX_REDIRECTS = 5;
  */
 export const VISIBILITY_AUDIT_BUDGET_MS = 4_000;
 /**
- * Bundle-fetch phase — how much of a page's `<script src>` tree the scanner
- * reads. Next.js/Turbopack pages ship 10–20 chunks and put the app's own code
- * (its `/api/…` literals, env leaks, Supabase config) LAST, so a small count
- * cap reads polyfills and nothing else. Bounded three ways so a page with 200
- * script tags, 5 MB chunks, or a stalling CDN cannot stretch a scan: count,
- * total bytes, wall-clock. One script failing is skipped, never fatal — the
- * page itself already loaded.
+ * Bundle-fetch phase — how much of a page's `<script src>` and
+ * `<link rel="modulepreload">` tree the scanner reads. Next.js/Turbopack pages
+ * ship 10–20 chunks and put the app's own code (its `/api/…` literals, env leaks,
+ * Supabase config) LAST, so a small count cap reads polyfills and nothing else.
+ * Bounded three ways so a page with 200 script tags, 5 MB chunks, or a stalling
+ * CDN cannot stretch a scan: count, total bytes, wall-clock. One script failing
+ * is skipped, never fatal — the page itself already loaded.
  */
 export const BUNDLE_MAX_SCRIPTS = 24;
 export const BUNDLE_MAX_TOTAL_BYTES = 12 * 1024 * 1024;
@@ -578,13 +578,22 @@ export async function safeFetch(
 
 function extractScriptUrls(html: string, pageUrl: URL): string[] {
   const urls = new Set<string>();
-  const scriptSrcPattern = /<script[^>]*\ssrc=["']([^"']+)["'][^>]*>/gi;
-  for (const match of html.matchAll(scriptSrcPattern)) {
-    const src = match[1];
-    if (!src || src.startsWith('data:')) continue;
-    if (containsAssurlyCanaryCallbackPath(src) || containsAssurlyCanaryToken(src)) continue;
+  const tagPattern = /<(script|link)\b[^>]*>/gi;
+  for (const match of html.matchAll(tagPattern)) {
+    const tag = match[0];
+    const kind = match[1]?.toLowerCase();
+    let href: string | null = null;
+    if (kind === 'script') {
+      href = getHtmlTagAttr(tag, 'src');
+    } else if (kind === 'link') {
+      const rel = getHtmlTagAttr(tag, 'rel');
+      if (!rel || !rel.toLowerCase().split(/\s+/).includes('modulepreload')) continue;
+      href = getHtmlTagAttr(tag, 'href');
+    }
+    if (!href || href.startsWith('data:')) continue;
+    if (containsAssurlyCanaryCallbackPath(href) || containsAssurlyCanaryToken(href)) continue;
     try {
-      urls.add(new URL(src, pageUrl).toString());
+      urls.add(new URL(href, pageUrl).toString());
     } catch {
       // Ignore malformed script URLs.
     }
@@ -849,7 +858,7 @@ export interface ScanLiveUrlOptions {
 
 /** How much of the page's script tree the scan actually read. */
 export interface BundleCoverage {
-  /** `<script src>` tags found on the page. */
+  /** `<script src>` and `<link rel="modulepreload">` URLs found on the page. */
   scripts: number;
   /** Scripts whose body was read into the bundle text. */
   fetched: number;
@@ -991,45 +1000,44 @@ export async function scanLiveUrlWithEvidence(
     const hasSupabase = Boolean(supabaseConfig.supabaseUrl && supabaseConfig.anonKey);
     const heuristicApiPaths = extractHeuristicApiPaths(bundleTextAccum);
 
-    // The endpoint plan needs no credentials and no detected backend, so it runs
-    // for every ownership-verified target. The Supabase plan only runs when the
-    // page actually revealed a Supabase config.
+    // The planner runs for every ownership-verified target. Supabase-only
+    // fields are passed only when a config was observed; the deterministic
+    // endpoint plan is always merged in so an empty/failed AI plan still
+    // yields today's /api/… checklist.
     const endpointPlan = buildDeterministicEndpointPlan({
       targetOrigin: pageUrl.origin,
       hasSupabase,
       heuristicApiPaths,
     });
 
-    let supabasePlan: ProbePlanStep[] = [];
-    if (hasSupabase && supabaseConfig.supabaseUrl) {
-      const { plan, source } = await planRedTeamProbes(
-        {
-          targetOrigin: pageUrl.origin,
-          hasSupabase: true,
-          supabaseHost: new URL(supabaseConfig.supabaseUrl).host,
-          heuristicTables: extractHeuristicTableNames(bundleTextAccum),
-          heuristicApiPaths,
-          scannedSnippet: bundleTextAccum.slice(0, 4_000),
-        },
-        {
-          organizationId: options.organizationId,
-          useAi: options.useAiPlanner !== false,
-          deps: options.aiDeps,
-        },
-      );
-      supabasePlan = plan;
-      planSource = source;
-    } else {
-      planSource = 'deterministic';
-    }
+    const { plan, source } = await planRedTeamProbes(
+      {
+        targetOrigin: pageUrl.origin,
+        hasSupabase,
+        ...(hasSupabase && supabaseConfig.supabaseUrl
+          ? { supabaseHost: new URL(supabaseConfig.supabaseUrl).host }
+          : {}),
+        ...(hasSupabase ? { heuristicTables: extractHeuristicTableNames(bundleTextAccum) } : {}),
+        heuristicApiPaths,
+        scannedSnippet: bundleTextAccum.slice(0, 4_000),
+      },
+      {
+        organizationId: options.organizationId,
+        useAi: options.useAiPlanner !== false,
+        deps: options.aiDeps,
+      },
+    );
+    planSource = source;
 
     // Each plan keeps its own step budget; sanitising the union drops any
     // endpoint step the planner duplicated so nothing is probed twice. The
-    // Supabase plan goes first: both share one time budget, and a proven open
-    // table outranks an open route — slow /api routes must not starve it.
+    // planner result goes first (Supabase steps when present, then any AI
+    // endpoint picks); the deterministic endpoint plan fills the rest. Both
+    // share one time budget, and a proven open table outranks an open route —
+    // slow /api routes must not starve it.
     const maxSteps = endpointPlan.length + PROBE_MAX_STEPS;
     const probeResult = await executeProbePlan(
-      sanitizeProbePlan([...supabasePlan, ...endpointPlan], maxSteps),
+      sanitizeProbePlan([...plan, ...endpointPlan], maxSteps),
       {
         targetOrigin: pageUrl.origin,
         ...(supabaseConfig.supabaseUrl ? { supabaseUrl: supabaseConfig.supabaseUrl } : {}),
