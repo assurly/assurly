@@ -80,6 +80,51 @@ describe('POST /api/scan-url', () => {
     );
   });
 
+  // The bundle budgets were sized from a handful of real apps. A page that
+  // outgrows them silently would hide exactly the class of bug the budgets
+  // replaced (a cap of 8 scripts that read nothing but polyfills), so an
+  // incomplete read is logged where Vercel keeps it — and a complete one is not.
+  it('logs when the scan could not read the whole bundle, and stays quiet when it could', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      scanLiveUrlMock.mockResolvedValue({
+        findings: [],
+        evidence: [],
+        pageText: '',
+        bundleCoverage: { scripts: 31, fetched: 24, failed: 2, truncatedBy: 'count' },
+      });
+      const request = () =>
+        new Request('http://localhost/api/scan-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: 'https://myapp.lovable.app' }),
+        });
+
+      expect((await POST(request())).status).toBe(200);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toContain('bundle coverage incomplete');
+      expect(warn.mock.calls[0]?.[1]).toMatchObject({
+        url: 'https://myapp.lovable.app/',
+        scripts: 31,
+        fetched: 24,
+        failed: 2,
+        truncatedBy: 'count',
+      });
+
+      warn.mockClear();
+      scanLiveUrlMock.mockResolvedValue({
+        findings: [],
+        evidence: [],
+        pageText: '',
+        bundleCoverage: { scripts: 12, fetched: 12, failed: 0 },
+      });
+      expect((await POST(request())).status).toBe(200);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('returns an honest unknown — no Ship Gate — when the target refused the scanner', async () => {
     scanLiveUrlMock.mockResolvedValue({
       findings: [],

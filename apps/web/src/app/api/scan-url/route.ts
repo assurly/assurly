@@ -210,13 +210,23 @@ export const POST = secureRoute(
     // point — the UI cannot bypass it. The planner never runs around this gate.
     const gate = auth ? await resolveUrlTargetGate(auth, parsedUrl.toString()) : PASSIVE_GATE;
 
-    const { findings, evidence, planSource, pageText, visibility, blocked } =
+    const { findings, evidence, planSource, pageText, visibility, blocked, bundleCoverage } =
       await scanLiveUrlWithEvidence(parsedUrl.toString(), fetch, undefined, {
         activeProbe: gate.activeProbe,
         organizationId: gate.organizationId ?? undefined,
         // Always run — free users get the headline (conversion); paid get checks.
         visibilityAudit: true,
       });
+
+    // Findings that live in an unread chunk were never looked for. The bundle
+    // budgets were sized from real apps; this is how we learn when one outgrows
+    // them, instead of a silent cap hiding it again.
+    if (bundleCoverage && (bundleCoverage.truncatedBy || bundleCoverage.failed > 0)) {
+      console.warn('[Assurly] bundle coverage incomplete:', {
+        url: parsedUrl.toString(),
+        ...bundleCoverage,
+      });
+    }
 
     // The target refused the probe, so we never saw the app. No Ship Gate, no
     // persisted verdict, no fix outcomes — an honest "unknown" is the only

@@ -39,6 +39,18 @@ export const RUNTIME_MAX_REDIRECTS = 5;
  * site must never meaningfully extend the main security scan.
  */
 export const VISIBILITY_AUDIT_BUDGET_MS = 4_000;
+/**
+ * Bundle-fetch phase — how much of a page's `<script src>` tree the scanner
+ * reads. Next.js/Turbopack pages ship 10–20 chunks and put the app's own code
+ * (its `/api/…` literals, env leaks, Supabase config) LAST, so a small count
+ * cap reads polyfills and nothing else. Bounded three ways so a page with 200
+ * script tags, 5 MB chunks, or a stalling CDN cannot stretch a scan: count,
+ * total bytes, wall-clock. One script failing is skipped, never fatal — the
+ * page itself already loaded.
+ */
+export const BUNDLE_MAX_SCRIPTS = 24;
+export const BUNDLE_MAX_TOTAL_BYTES = 12 * 1024 * 1024;
+export const BUNDLE_FETCH_BUDGET_MS = 10_000;
 
 const MUTATING_HTTP_METHODS = new Set(['POST', 'PATCH', 'DELETE', 'PUT']);
 const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
@@ -690,6 +702,79 @@ async function fetchVisibilitySupplementary(
   return { robotsTxt, llmsTxt, sitemapXml, ogImage };
 }
 
+interface FetchedBundle {
+  /** Script bodies in page order — order matters to `extractSupabaseConfig`'s first-match. */
+  texts: string[];
+  coverage: BundleCoverage;
+}
+
+/**
+ * Reads the page's external scripts, in page order, under the bundle budgets.
+ * A script that cannot be read is skipped: a stalled third-party CDN, an
+ * oversized chunk, or a `<script src>` pointing at a private host must not turn
+ * a reachable page into "Scan failed". The private-host case is refused by
+ * `safeFetch` before any request goes out and simply counts as failed.
+ */
+async function fetchBundleScripts(
+  scriptUrls: readonly string[],
+  fetchImpl: typeof fetch,
+  lookupImpl?: LookupImpl,
+): Promise<FetchedBundle> {
+  const deadline = Date.now() + BUNDLE_FETCH_BUDGET_MS;
+  const texts: string[] = [];
+  let failed = 0;
+  let totalBytes = 0;
+  let truncatedBy: BundleCoverage['truncatedBy'];
+
+  for (const [index, scriptUrl] of scriptUrls.entries()) {
+    if (index >= BUNDLE_MAX_SCRIPTS) {
+      truncatedBy = 'count';
+      break;
+    }
+    if (totalBytes >= BUNDLE_MAX_TOTAL_BYTES) {
+      truncatedBy = 'bytes';
+      break;
+    }
+    const budgetLeft = deadline - Date.now();
+    if (budgetLeft <= 0) {
+      truncatedBy = 'time';
+      break;
+    }
+
+    try {
+      const { response } = await safeFetch(
+        scriptUrl,
+        {
+          method: 'GET',
+          signal: AbortSignal.timeout(Math.min(budgetLeft, RUNTIME_FETCH_TIMEOUT_MS)),
+        },
+        fetchImpl,
+        lookupImpl,
+      );
+      if (!response.ok) {
+        failed += 1;
+        continue;
+      }
+      const text = await readRuntimeResponseText(response);
+      totalBytes += Buffer.byteLength(text, 'utf8');
+      texts.push(text);
+    } catch {
+      // Timeout, oversize body, unsafe URL, DNS failure — this script only.
+      failed += 1;
+    }
+  }
+
+  return {
+    texts,
+    coverage: {
+      scripts: scriptUrls.length,
+      fetched: texts.length,
+      failed,
+      ...(truncatedBy ? { truncatedBy } : {}),
+    },
+  };
+}
+
 /**
  * Runs the Phase 1 visibility scorer. Failures degrade to `undefined` so the
  * security scan always completes. The report must NEVER enter `findings`.
@@ -744,11 +829,29 @@ export interface ScanLiveUrlOptions {
   aiDeps?: ClaudeClientDeps;
 }
 
+/** How much of the page's script tree the scan actually read. */
+export interface BundleCoverage {
+  /** `<script src>` tags found on the page. */
+  scripts: number;
+  /** Scripts whose body was read into the bundle text. */
+  fetched: number;
+  /** Scripts attempted but not read — non-2xx, timeout, oversize, unsafe URL. */
+  failed: number;
+  /** Set when scripts were left unfetched because a budget ran out. */
+  truncatedBy?: 'count' | 'bytes' | 'time';
+}
+
 export interface ScanLiveUrlResult {
   findings: WebFinding[];
   evidence: ProbeEvidence[];
   /** Whether the active plan came from AI or the deterministic fallback. */
   planSource?: 'ai' | 'deterministic';
+  /**
+   * Script coverage of a completed scan. Absent when the target was dead or
+   * blocked (no bundle phase ran). A truncated or partly failed bundle means
+   * findings that live in the unread chunks were not looked for.
+   */
+  bundleCoverage?: BundleCoverage;
   /**
    * HTML + fetched bundle text captured during the scan. Used server-side for
    * generator fingerprinting only — never include this in a client JSON response.
@@ -849,17 +952,9 @@ export async function scanLiveUrlWithEvidence(
   findings.push(...htmlSecrets.findings);
   evidence.push(...htmlSecrets.evidence);
 
-  const scriptUrls = extractScriptUrls(html, pageUrl).slice(0, 8);
+  const bundle = await fetchBundleScripts(extractScriptUrls(html, pageUrl), fetchImpl, lookupImpl);
   let bundleTextAccum = html;
-  for (const scriptUrl of scriptUrls) {
-    const { response: scriptResponse } = await safeFetch(
-      scriptUrl,
-      { method: 'GET' },
-      fetchImpl,
-      lookupImpl,
-    );
-    if (!scriptResponse.ok) continue;
-    const bundleText = await readRuntimeResponseText(scriptResponse);
+  for (const bundleText of bundle.texts) {
     bundleTextAccum += `\n${bundleText}`;
     const bundleSecrets = scanBundleForSecretsWithEvidence(bundleText);
     findings.push(...bundleSecrets.findings);
@@ -950,6 +1045,7 @@ export async function scanLiveUrlWithEvidence(
     findings,
     evidence,
     pageText: bundleTextAccum,
+    bundleCoverage: bundle.coverage,
     ...(planSource ? { planSource } : {}),
     ...(visibility ? { visibility } : {}),
   };

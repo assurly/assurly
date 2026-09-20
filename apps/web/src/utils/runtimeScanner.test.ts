@@ -14,6 +14,9 @@ import {
   RUNTIME_FETCH_TIMEOUT_MS,
   RUNTIME_MAX_REDIRECTS,
   RUNTIME_MAX_RESPONSE_BYTES,
+  BUNDLE_FETCH_BUDGET_MS,
+  BUNDLE_MAX_SCRIPTS,
+  BUNDLE_MAX_TOTAL_BYTES,
   VISIBILITY_AUDIT_BUDGET_MS,
   scanBundleForSecrets,
   scanBundleForSecretsWithEvidence,
@@ -704,6 +707,193 @@ describe('runtimeScanner', () => {
           );
         }
       });
+    });
+  });
+
+  describe('bundle fetch phase', () => {
+    const ORIGIN = 'https://myapp.example';
+
+    /** A page whose N `<script src>` tags each resolve to `/chunk-<i>.js`. */
+    function pageWithScripts(count: number): string {
+      const tags = Array.from(
+        { length: count },
+        (_, i) => `<script src="/chunk-${i}.js"></script>`,
+      ).join('');
+      return `<html><head>${tags}</head><body></body></html>`;
+    }
+
+    /**
+     * Serves the page and each chunk. `chunkBody(i)` is the chunk's text;
+     * `chunkResponse(i)` may override the whole Response for one index.
+     */
+    function bundleFetchMock(
+      html: string,
+      chunkBody: (index: number) => string,
+      chunkResponse?: (index: number) => Response | Promise<Response> | undefined,
+    ): { fetchMock: typeof fetch; fetched: number[] } {
+      const fetched: number[] = [];
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === `${ORIGIN}/` || url === ORIGIN) {
+          return new Response(html, { status: 200, headers: { 'content-type': 'text/html' } });
+        }
+        const chunk = url.match(/\/chunk-(\d+)\.js$/);
+        if (chunk) {
+          const index = Number(chunk[1]);
+          fetched.push(index);
+          const override = await chunkResponse?.(index);
+          if (override) return override;
+          return new Response(chunkBody(index), {
+            status: 200,
+            headers: { 'content-type': 'application/javascript' },
+          });
+        }
+        return new Response('', { status: 404 });
+      }) as typeof fetch;
+      return { fetchMock, fetched };
+    }
+
+    it('reads every script the page loads, not only the first eight', async () => {
+      // Turbopack/Next.js emit framework chunks first and the app's own code
+      // last — on assurly.dev the `/api/…` literals sit in chunks #9–#11, so a
+      // cap of 8 read nothing but polyfills.
+      const html = pageWithScripts(12);
+      const { fetchMock, fetched } = bundleFetchMock(html, (i) =>
+        i === 9 ? 'const key = "sk_live_abc123def456";' : `// chunk ${i}`,
+      );
+
+      const result = await scanLiveUrlWithEvidence(`${ORIGIN}/`, fetchMock, fakeLookup());
+
+      expect(fetched).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+      expect(result.findings.some((f) => f.ruleId === 'runtime-secret-in-bundle')).toBe(true);
+      expect(result.pageText).toContain('// chunk 11');
+      expect(result.bundleCoverage).toEqual({ scripts: 12, fetched: 12, failed: 0 });
+    });
+
+    it('accumulates chunk text in page order so config extraction stays deterministic', async () => {
+      const html = pageWithScripts(3);
+      const { fetchMock } = bundleFetchMock(html, (i) => `MARK_${i}`);
+
+      const { pageText } = await scanLiveUrlWithEvidence(`${ORIGIN}/`, fetchMock, fakeLookup());
+
+      expect(pageText.indexOf('MARK_0')).toBeLessThan(pageText.indexOf('MARK_1'));
+      expect(pageText.indexOf('MARK_1')).toBeLessThan(pageText.indexOf('MARK_2'));
+    });
+
+    it('stops at BUNDLE_MAX_SCRIPTS and reports the truncation', async () => {
+      const html = pageWithScripts(BUNDLE_MAX_SCRIPTS + 6);
+      const { fetchMock, fetched } = bundleFetchMock(html, (i) => `// chunk ${i}`);
+
+      const result = await scanLiveUrlWithEvidence(`${ORIGIN}/`, fetchMock, fakeLookup());
+
+      expect(fetched).toHaveLength(BUNDLE_MAX_SCRIPTS);
+      expect(result.bundleCoverage).toEqual({
+        scripts: BUNDLE_MAX_SCRIPTS + 6,
+        fetched: BUNDLE_MAX_SCRIPTS,
+        failed: 0,
+        truncatedBy: 'count',
+      });
+    });
+
+    it('stops reading once the total byte budget is spent', async () => {
+      const chunkBytes = 1024 * 1024;
+      const chunksThatFit = Math.floor(BUNDLE_MAX_TOTAL_BYTES / chunkBytes);
+      const html = pageWithScripts(chunksThatFit + 3);
+      const { fetchMock, fetched } = bundleFetchMock(html, () => 'a'.repeat(chunkBytes));
+
+      const result = await scanLiveUrlWithEvidence(`${ORIGIN}/`, fetchMock, fakeLookup());
+
+      expect(fetched).toHaveLength(chunksThatFit);
+      expect(result.bundleCoverage).toEqual({
+        scripts: chunksThatFit + 3,
+        fetched: chunksThatFit,
+        failed: 0,
+        truncatedBy: 'bytes',
+      });
+    });
+
+    it('stops fetching once the wall-clock budget is spent', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        const html = pageWithScripts(6);
+        const { fetchMock, fetched } = bundleFetchMock(
+          html,
+          (i) => `// chunk ${i}`,
+          () => {
+            // Each chunk "takes" more than half the budget: two fit, the rest do not.
+            vi.setSystemTime(Date.now() + BUNDLE_FETCH_BUDGET_MS / 2 + 1);
+            return undefined;
+          },
+        );
+
+        const result = await scanLiveUrlWithEvidence(`${ORIGIN}/`, fetchMock, fakeLookup());
+
+        expect(fetched).toEqual([0, 1]);
+        expect(result.bundleCoverage).toEqual({
+          scripts: 6,
+          fetched: 2,
+          failed: 0,
+          truncatedBy: 'time',
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('a script that fails to load is skipped and the scan still completes', async () => {
+      const html = pageWithScripts(3);
+      const { fetchMock, fetched } = bundleFetchMock(
+        html,
+        (i) => (i === 2 ? 'const key = "sk_live_abc123def456";' : `// chunk ${i}`),
+        (i) => {
+          if (i === 1) throw new Error('The operation was aborted due to timeout');
+          return undefined;
+        },
+      );
+
+      const result = await scanLiveUrlWithEvidence(`${ORIGIN}/`, fetchMock, fakeLookup());
+
+      expect(fetched).toEqual([0, 1, 2]);
+      expect(result.findings.some((f) => f.ruleId === 'runtime-secret-in-bundle')).toBe(true);
+      expect(result.bundleCoverage).toEqual({ scripts: 3, fetched: 2, failed: 1 });
+    });
+
+    it('an oversized script is skipped without losing the ones after it', async () => {
+      const html = pageWithScripts(2);
+      const { fetchMock } = bundleFetchMock(
+        html,
+        (i) => (i === 1 ? 'const key = "sk_live_abc123def456";' : ''),
+        (i) =>
+          i === 0
+            ? new Response('x', {
+                status: 200,
+                headers: { 'content-length': String(RUNTIME_MAX_RESPONSE_BYTES + 1) },
+              })
+            : undefined,
+      );
+
+      const result = await scanLiveUrlWithEvidence(`${ORIGIN}/`, fetchMock, fakeLookup());
+
+      expect(result.findings.some((f) => f.ruleId === 'runtime-secret-in-bundle')).toBe(true);
+      expect(result.bundleCoverage).toEqual({ scripts: 2, fetched: 1, failed: 1 });
+    });
+
+    it('a script on a private host is never fetched and does not fail the scan', async () => {
+      const html =
+        '<html><head><script src="http://169.254.169.254/latest/meta-data.js"></script>' +
+        '<script src="/chunk-0.js"></script></head><body></body></html>';
+      const { fetchMock, fetched } = bundleFetchMock(
+        html,
+        () => 'const key = "sk_live_abc123def456";',
+      );
+
+      const result = await scanLiveUrlWithEvidence(`${ORIGIN}/`, fetchMock, fakeLookup());
+
+      const requested = (fetchMock as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+      expect(requested.some((u) => u.includes('169.254.169.254'))).toBe(false);
+      expect(fetched).toEqual([0]);
+      expect(result.findings.some((f) => f.ruleId === 'runtime-secret-in-bundle')).toBe(true);
+      expect(result.bundleCoverage).toEqual({ scripts: 2, fetched: 1, failed: 1 });
     });
   });
 
