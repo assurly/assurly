@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SUPABASE_MUTATION_TIMEOUT_MS } from './dbAdapter';
 import { persistRepoScan } from './persistRepoScan';
+import { resolveVerdictFromScanFindings } from './shipGate';
 
 describe('persistRepoScan', () => {
   it('writes Ship Gate SoT meta and syncs the target card score', async () => {
@@ -294,5 +295,156 @@ describe('persistRepoScan default-branch learning', () => {
     );
     expect(scan.id).toBe('scan-1');
     expect(db.upsertTarget).toHaveBeenCalled();
+  });
+});
+
+describe('persistRepoScan live confirmation', () => {
+  const origin = 'https://app.example.com';
+  const routeFinding = {
+    rule_id: 'auth-route-handler-unprotected',
+    severity: 'error' as const,
+    confidence: 'medium' as const,
+    file_path: 'src/app/api/orders/route.ts',
+    message: 'Route handler under a protected path has no session or authorization check.',
+  };
+  const routeEvidence = {
+    id: 'ev-1',
+    organization_id: 'org-1',
+    scan_id: null,
+    finding_rule_id: 'runtime-api-endpoint-open',
+    kind: 'open_endpoint' as const,
+    summary: 'GET /api/orders answered with 3 record(s) without a session.',
+    redacted_sample: { path: '/api/orders', rowCount: 3 },
+    created_at: '2026-09-20T00:00:00.000Z',
+  };
+
+  function dbDouble(
+    options: {
+      homepageUrl?: string | null;
+      urlTarget?: { ownership_verified: boolean } | null;
+      evidence?: unknown;
+      evidenceError?: Error;
+    } = {},
+  ) {
+    const urlTarget =
+      options.urlTarget === undefined
+        ? { id: 'url-target-1', identifier: origin, ownership_verified: true, kind: 'url' }
+        : options.urlTarget === null
+          ? null
+          : {
+              id: 'url-target-1',
+              identifier: origin,
+              kind: 'url',
+              ...options.urlTarget,
+            };
+    return {
+      saveScan: vi.fn().mockResolvedValue({
+        id: 'scan-1',
+        repository_id: 'repo-1',
+        created_at: '2026-09-20T00:00:00.000Z',
+      }),
+      getRepository: vi.fn().mockResolvedValue({
+        id: 'repo-1',
+        organization_id: 'org-1',
+        name: 'acme/saas',
+        homepage_url: options.homepageUrl === undefined ? origin : options.homepageUrl,
+      }),
+      getTargetByIdentifier: vi.fn(async (_org: string, kind: string) => {
+        if (kind === 'url') return urlTarget;
+        return null;
+      }),
+      getLatestProbeEvidenceForTarget: options.evidenceError
+        ? vi.fn().mockRejectedValue(options.evidenceError)
+        : vi.fn().mockResolvedValue(options.evidence ?? [routeEvidence]),
+      updateRepositoryDefaultBranch: vi.fn().mockResolvedValue(undefined),
+      upsertTarget: vi.fn().mockResolvedValue({}),
+    };
+  }
+
+  const scanInput = {
+    repoId: 'repo-1',
+    commitSha: 'abc',
+    branch: 'main',
+    status: 'success' as const,
+    findings: [routeFinding],
+    meta: {
+      shipScore: 80,
+      verdict: 'review' as const,
+      scannedFileCount: 12,
+      cleanFileCount: 11,
+    },
+  };
+
+  it('confirms bound findings and recomputes the stored Ship Gate', async () => {
+    const db = dbDouble();
+    await persistRepoScan(db as never, scanInput);
+
+    const savedFindings = db.saveScan.mock.calls[0]?.[6] as Array<typeof routeFinding>;
+    expect(savedFindings[0]?.confidence).toBe('high');
+    expect(savedFindings[0]?.message).toContain(
+      `Confirmed live on ${origin}: ${routeEvidence.summary}`,
+    );
+    const expected = resolveVerdictFromScanFindings(savedFindings as never, {
+      scannedFileCount: 12,
+    });
+    expect(expected.status).toBe('blocked');
+    expect(db.saveScan.mock.calls[0]?.[7]).toEqual(
+      expect.objectContaining({
+        shipScore: expected.shipScore,
+        verdict: expected.status,
+      }),
+    );
+    expect(db.upsertTarget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentShipScore: expected.shipScore,
+        currentVerdict: expected.status,
+      }),
+    );
+  });
+
+  it('leaves findings untouched when the url target is not ownership-verified', async () => {
+    const db = dbDouble({ urlTarget: { ownership_verified: false } });
+    await persistRepoScan(db as never, scanInput);
+    expect(db.saveScan.mock.calls[0]?.[6]).toEqual([routeFinding]);
+    expect(db.saveScan.mock.calls[0]?.[7]).toEqual(
+      expect.objectContaining({ shipScore: 80, verdict: 'review' }),
+    );
+  });
+
+  it('does not look up a url target when the repository has no homepage', async () => {
+    const db = dbDouble({ homepageUrl: null, evidence: [] });
+    await persistRepoScan(db as never, scanInput);
+    expect(db.getTargetByIdentifier).not.toHaveBeenCalledWith('org-1', 'url', expect.anything());
+    expect(db.getLatestProbeEvidenceForTarget).not.toHaveBeenCalled();
+    expect(db.saveScan.mock.calls[0]?.[6]).toEqual([routeFinding]);
+  });
+
+  it('keeps the scan and logs once when live confirmation throws', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const db = dbDouble({ evidenceError: new Error('db down') });
+    const scan = await persistRepoScan(db as never, scanInput);
+    expect(scan.id).toBe('scan-1');
+    expect(db.saveScan.mock.calls[0]?.[6]).toEqual([routeFinding]);
+    const logged = errorSpy.mock.calls.map((args) => args.join(' ')).join('\n');
+    expect(logged).toContain('live-confirmation-failed');
+    expect((logged.match(/live-confirmation-failed/g) ?? []).length).toBe(1);
+    errorSpy.mockRestore();
+  });
+
+  it('does not recompute Ship Gate meta for a failed scan', async () => {
+    const db = dbDouble();
+    await persistRepoScan(db as never, {
+      ...scanInput,
+      status: 'failed',
+      meta: {
+        shipScore: null,
+        verdict: 'failed',
+        scannedFileCount: 12,
+        failureReason: 'scanner_error',
+      },
+    });
+    expect(db.saveScan.mock.calls[0]?.[7]).toEqual(
+      expect.objectContaining({ shipScore: null, verdict: 'failed' }),
+    );
   });
 });

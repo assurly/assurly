@@ -88,6 +88,7 @@ describe('executeAppEndpointUnauthenticatedRead — exposure', () => {
     );
     expect(result.evidence[0]?.redactedSample?.rowCount).toBe(3);
     expect(result.evidence[0]?.redactedSample?.columns).toEqual(['id', 'title']);
+    expect(result.evidence[0]?.redactedSample?.path).toBe('/api/orders');
     // Sample values are redacted — raw body content never leaves the executor.
     expect(JSON.stringify(result.evidence[0])).not.toContain('Alpha');
   });

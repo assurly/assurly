@@ -1,6 +1,7 @@
 import type { ScannerFinding } from '@assurly/scanner-core';
 import type { DbAdapter, FixOutcomeInput, Target } from './dbAdapter';
 import { isActiveProbeAllowed } from './ownership';
+import { replaceProbeEvidenceForTarget } from './probeEvidence';
 import { scanLiveUrlWithEvidence, type ProbeEvidence } from './runtimeScanner';
 import {
   classifyReprobeOutcomes,
@@ -92,6 +93,12 @@ export async function reprobeTargetAndRecord(context: ReprobeContext): Promise<R
     // record — verification requires proven ownership.
     return { activeProbe, probed: false, probeUrl, outcomes: [], findings, evidence };
   }
+
+  await replaceProbeEvidenceForTarget(
+    db,
+    { organizationId: target.organization_id, targetId: target.id },
+    evidence,
+  );
 
   const outcomes = await recordReprobeOutcomes({
     db,

@@ -26,6 +26,7 @@ const db = {
   getRepository: vi.fn(),
   getOrganization: vi.fn(),
   getMembership: vi.fn(),
+  updateRepositoryHomepageUrl: vi.fn(),
 };
 
 function treeRequest(): Request {
@@ -162,6 +163,64 @@ describe('GitHub installation proxy error classification (GET /api/github/proxy)
     expect(data.tree[0].sha).toBeUndefined();
     expect(data.commit_sha).toBe(sha);
     expect(res.headers.get('cache-control')).toContain('max-age=60');
+  });
+
+  it('learns homepage_url from the GitHub repository metadata', async () => {
+    mocks.getInstallationAccessToken.mockResolvedValue('installation-token');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.endsWith('/repos/owner/repo')) {
+          return new Response(
+            JSON.stringify({ default_branch: 'src', homepage: 'https://app.example.com/docs' }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          );
+        }
+        if (url.includes('/branches?per_page=100')) {
+          return new Response(JSON.stringify([{ name: 'src' }]), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response('not found', { status: 404 });
+      }),
+    );
+
+    const res = await GET(
+      new Request(`http://localhost/api/github/proxy?repoId=${REPO_ID}&type=branches`),
+    );
+    expect(res.status).toBe(200);
+    expect(db.updateRepositoryHomepageUrl).toHaveBeenCalledWith(REPO_ID, 'https://app.example.com');
+  });
+
+  it('does not write a homepage when GitHub omits the field', async () => {
+    mocks.getInstallationAccessToken.mockResolvedValue('installation-token');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.endsWith('/repos/owner/repo')) {
+          return new Response(JSON.stringify({ default_branch: 'src' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (url.includes('/branches?per_page=100')) {
+          return new Response(JSON.stringify([{ name: 'src' }]), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response('not found', { status: 404 });
+      }),
+    );
+
+    const res = await GET(
+      new Request(`http://localhost/api/github/proxy?repoId=${REPO_ID}&type=branches`),
+    );
+    expect(res.status).toBe(200);
+    expect(db.updateRepositoryHomepageUrl).not.toHaveBeenCalled();
   });
 
   it('returns branch names for type=branches', async () => {

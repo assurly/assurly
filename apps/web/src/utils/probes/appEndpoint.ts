@@ -189,6 +189,7 @@ export async function executeAppEndpointUnauthenticatedRead(
       kind: 'open_endpoint',
       summary: `GET ${path} answered with ${records.length} record(s) without a session.`,
       redactedSample: {
+        path,
         rowCount: records.length,
         columns: Object.keys(firstRecord),
         ...(sampleCell ? { sampleCell } : {}),

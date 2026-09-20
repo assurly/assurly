@@ -48,6 +48,7 @@ import {
 } from '../../../../utils/browserScanner';
 import { scanPrNewDependencies } from '../../../../utils/prDependencyScan';
 import { createDbNpmCacheStore } from '../../../../utils/dependencyProvenanceLookup';
+import { learnRepositoryHomepage } from '../../../../utils/repoHomepage';
 import { attachSecretExposureWindows } from '../../../../utils/secretExposureWindow';
 
 export const maxDuration = 60;
@@ -77,6 +78,7 @@ const pullRequestWebhookSchema = z
           .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
         private: z.boolean().optional(),
         default_branch: z.string().min(1).max(255).optional(),
+        homepage: z.string().nullable().optional(),
       })
       .passthrough(),
     pull_request: z
@@ -455,6 +457,7 @@ export async function scanPullRequest(
       // Recorded on the next scan instead.
     }
   }
+  await learnRepositoryHomepage(db, repository, payload.repository.homepage);
 
   const recentScans = await db.getRecentScans(repository.id);
   const previousScan = recentScans.find((scan) => scan.id !== savedScan.id);

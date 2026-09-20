@@ -34,6 +34,8 @@ const db = {
   getScanFindings: vi.fn(),
   getNpmPackageCache: vi.fn().mockResolvedValue(null),
   upsertNpmPackageCache: vi.fn().mockResolvedValue(undefined),
+  updateRepositoryHomepageUrl: vi.fn(),
+  updateRepositoryDefaultBranch: vi.fn(),
 };
 
 function request(overrides: { body?: string; secret?: string; delivery?: string } = {}) {
@@ -238,5 +240,48 @@ describe('GitHub webhook security and idempotency', () => {
     await work();
 
     expect(notifyIfRegressionBlockers).not.toHaveBeenCalled();
+  });
+
+  it('learns homepage_url from the GitHub repository payload', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 99 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ tree: [] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const body = JSON.stringify({
+      action: 'opened',
+      installation: { id: 456 },
+      repository: {
+        id: 42,
+        full_name: 'owner/private-repo',
+        homepage: 'https://app.example.com/docs',
+      },
+      pull_request: { head: { sha: 'a'.repeat(40), ref: 'feature/a' } },
+    });
+    expect((await POST(request({ body }))).status).toBe(202);
+    const work = mocks.after.mock.calls[0][0] as () => Promise<void>;
+    await work();
+
+    expect(db.updateRepositoryHomepageUrl).toHaveBeenCalledWith(
+      'repo-uuid',
+      'https://app.example.com',
+    );
+  });
+
+  it('does not write a homepage when the payload omits the field', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 99 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ tree: [] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect((await POST(request())).status).toBe(202);
+    const work = mocks.after.mock.calls[0][0] as () => Promise<void>;
+    await work();
+
+    expect(db.updateRepositoryHomepageUrl).not.toHaveBeenCalled();
   });
 });

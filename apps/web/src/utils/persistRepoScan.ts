@@ -1,5 +1,12 @@
-import type { DbAdapter, Repository, ScanFinding, ScanShipGateMeta } from './dbAdapter';
+import type {
+  DbAdapter,
+  ProbeEvidenceRow,
+  Repository,
+  ScanFinding,
+  ScanShipGateMeta,
+} from './dbAdapter';
 import { generateBadgeToken } from './guardian';
+import { confirmFindingsLive, type LiveProofEvidence } from './liveConfirmation';
 import { resolveVerdictFromScanFindings } from './shipGate';
 import {
   recordedDefaultBranch,
@@ -38,7 +45,8 @@ function logTargetSyncFailure(
     | 'target-reset-failed'
     | 'target-sync-stale-mark-failed'
     | 'repo-default-branch-read-failed'
-    | 'repo-default-branch-write-failed',
+    | 'repo-default-branch-write-failed'
+    | 'live-confirmation-failed',
   details: Record<string, unknown>,
   error: unknown,
 ): void {
@@ -161,10 +169,66 @@ async function learnRepoDefaultBranch(
   return observed;
 }
 
+function redactedSampleFromRow(sample: unknown): LiveProofEvidence['redactedSample'] {
+  if (!sample || typeof sample !== 'object' || Array.isArray(sample)) return undefined;
+  const record = sample as Record<string, unknown>;
+  const table = typeof record.table === 'string' ? record.table : undefined;
+  const path = typeof record.path === 'string' ? record.path : undefined;
+  if (!table && !path) return undefined;
+  return { table, path };
+}
+
+function evidenceFromRows(rows: ProbeEvidenceRow[]): LiveProofEvidence[] {
+  return rows.map((row) => ({
+    kind: row.kind,
+    summary: row.summary,
+    redactedSample: redactedSampleFromRow(row.redacted_sample),
+  }));
+}
+
+/**
+ * If this repository is bound to a verified url target, raise confidence on
+ * static findings whose subject the latest probe already proved. Read-only —
+ * never probes. Failures leave findings untouched.
+ */
+async function confirmScanFindingsLive(
+  db: Pick<
+    DbAdapter,
+    'getRepository' | 'getTargetByIdentifier' | 'getLatestProbeEvidenceForTarget'
+  >,
+  repoId: string,
+  findings: PersistRepoScanInput['findings'],
+): Promise<{ findings: PersistRepoScanInput['findings']; confirmed: number }> {
+  try {
+    const repo = await db.getRepository(repoId);
+    if (!repo?.homepage_url) return { findings, confirmed: 0 };
+    const target = await db.getTargetByIdentifier(repo.organization_id, 'url', repo.homepage_url);
+    if (!target || !target.ownership_verified) return { findings, confirmed: 0 };
+    const rows = await db.getLatestProbeEvidenceForTarget(target.id);
+    return confirmFindingsLive(findings, evidenceFromRows(rows), target.identifier);
+  } catch (error) {
+    logTargetSyncFailure('live-confirmation-failed', { repoId }, error);
+    return { findings, confirmed: 0 };
+  }
+}
+
 /** Persist findings + Ship Gate meta. Sync the repo projection only when this scan owns the verdict. */
 export async function persistRepoScan(db: DbAdapter, input: PersistRepoScanInput) {
-  const errors = input.findings.filter((finding) => finding.severity === 'error').length;
-  const warnings = input.findings.length - errors;
+  const live = await confirmScanFindingsLive(db, input.repoId, input.findings);
+  const findings = live.findings;
+  let meta = input.meta;
+  if (live.confirmed > 0 && input.status !== 'failed') {
+    const verdict = resolveVerdictFromScanFindings(findings as ScanFinding[], {
+      scannedFileCount: input.meta.scannedFileCount ?? undefined,
+    });
+    meta = {
+      ...input.meta,
+      shipScore: verdict.shipScore,
+      verdict: verdict.status,
+    };
+  }
+  const errors = findings.filter((finding) => finding.severity === 'error').length;
+  const warnings = findings.length - errors;
   const scan = await db.saveScan(
     input.repoId,
     input.commitSha,
@@ -172,8 +236,8 @@ export async function persistRepoScan(db: DbAdapter, input: PersistRepoScanInput
     input.status,
     errors,
     warnings,
-    input.findings,
-    input.meta,
+    findings,
+    meta,
   );
   const scanFields: VerdictOwningScanFields = {
     branch: input.branch,
@@ -185,12 +249,12 @@ export async function persistRepoScan(db: DbAdapter, input: PersistRepoScanInput
   }
   try {
     await syncRepoTargetVerdict(db, input.repoId, {
-      findings: input.findings as ScanFinding[],
-      scannedFileCount: input.meta.scannedFileCount ?? undefined,
+      findings: findings as ScanFinding[],
+      scannedFileCount: meta.scannedFileCount ?? undefined,
       generatorFingerprint: input.generatorFingerprint,
       lastCheckedAt: scan.created_at ?? null,
-      shipScoreOverride: input.meta.shipScore ?? undefined,
-      verdictOverride: input.meta.verdict ?? undefined,
+      shipScoreOverride: meta.shipScore ?? undefined,
+      verdictOverride: meta.verdict ?? undefined,
     });
   } catch (error) {
     logTargetSyncFailure('target-sync-failed', { repoId: input.repoId, scanId: scan.id }, error);

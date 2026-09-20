@@ -188,6 +188,8 @@ export interface RedactedSample {
   secretLabel?: string;
   maskedSecret?: string;
   headers?: string[];
+  /** Same-origin API path. Never the origin — the url target already knows it. */
+  path?: string;
 }
 
 /** A single, already-redacted proof artifact tied to a finding by rule id. */

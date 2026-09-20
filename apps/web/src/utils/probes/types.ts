@@ -107,6 +107,7 @@ export interface ProbeStepEvidence {
     secretLabel?: string;
     maskedSecret?: string;
     headers?: string[];
+    path?: string;
   };
 }
 

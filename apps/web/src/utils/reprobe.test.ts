@@ -50,9 +50,13 @@ function makeDb(history: FixOutcomeRow[]) {
   return {
     getFixOutcomesForTarget: vi.fn().mockResolvedValue(history),
     insertFixOutcomes: vi.fn().mockResolvedValue(undefined),
+    deleteProbeEvidenceForTarget: vi.fn().mockResolvedValue(undefined),
+    insertProbeEvidence: vi.fn().mockResolvedValue(undefined),
   } as unknown as DbAdapter & {
     getFixOutcomesForTarget: ReturnType<typeof vi.fn>;
     insertFixOutcomes: ReturnType<typeof vi.fn>;
+    deleteProbeEvidenceForTarget: ReturnType<typeof vi.fn>;
+    insertProbeEvidence: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -212,5 +216,46 @@ describe('reprobeTargetAndRecord (gate)', () => {
     expect(result.outcomes).toEqual([]);
     expect(db.getFixOutcomesForTarget).not.toHaveBeenCalled();
     expect(db.insertFixOutcomes).not.toHaveBeenCalled();
+    expect(db.deleteProbeEvidenceForTarget).not.toHaveBeenCalled();
+    expect(db.insertProbeEvidence).not.toHaveBeenCalled();
+  });
+
+  it('replaces probe evidence after a probed run', async () => {
+    const db = makeDb([]);
+    const evidence = [
+      {
+        findingRuleId: 'runtime-supabase-rls-open',
+        kind: 'rls_rows' as const,
+        summary: 'We read 5 rows from your `users` table using only the public key.',
+        redactedSample: { table: 'users', rowCount: 5 },
+      },
+    ];
+    const scanImpl = vi.fn().mockResolvedValue({ findings: [rlsFinding()], evidence });
+    await reprobeTargetAndRecord({
+      target: target(),
+      db,
+      scanImpl: scanImpl as never,
+    });
+
+    expect(db.deleteProbeEvidenceForTarget).toHaveBeenCalledWith('target-1');
+    expect(db.insertProbeEvidence).toHaveBeenCalledWith([
+      expect.objectContaining({
+        organizationId: 'org-1',
+        targetId: 'target-1',
+        findingRuleId: 'runtime-supabase-rls-open',
+      }),
+    ]);
+  });
+
+  it('does not replace probe evidence when the ownership gate is closed', async () => {
+    const db = makeDb([]);
+    const scanImpl = vi.fn().mockResolvedValue({ findings: [], evidence: [] });
+    await reprobeTargetAndRecord({
+      target: target({ ownership_verified: false }),
+      db,
+      scanImpl: scanImpl as never,
+    });
+    expect(db.deleteProbeEvidenceForTarget).not.toHaveBeenCalled();
+    expect(db.insertProbeEvidence).not.toHaveBeenCalled();
   });
 });

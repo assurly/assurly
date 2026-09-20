@@ -229,6 +229,7 @@ describe('POST /api/scan-url', () => {
 
   it('runs the active probe and persists evidence for an authenticated scan on a verified URL target', async () => {
     const insertProbeEvidence = vi.fn().mockResolvedValue(undefined);
+    const deleteProbeEvidenceForTarget = vi.fn().mockResolvedValue(undefined);
     const getOrganizationByUserId = vi
       .fn()
       .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
@@ -244,6 +245,7 @@ describe('POST /api/scan-url', () => {
       db: {
         getOrganizationByUserId,
         insertProbeEvidence,
+        deleteProbeEvidenceForTarget,
         upsertTarget,
         getTargetByIdentifier,
         getTargets,
@@ -297,6 +299,7 @@ describe('POST /api/scan-url', () => {
         kind: 'rls_rows',
       }),
     ]);
+    expect(deleteProbeEvidenceForTarget).toHaveBeenCalledWith('target-1');
     expect(json.target).toEqual({ id: 'target-1', ownershipVerified: true });
     expect(upsertTarget).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -326,6 +329,7 @@ describe('POST /api/scan-url', () => {
       db: {
         getOrganizationByUserId,
         insertProbeEvidence: vi.fn(),
+        deleteProbeEvidenceForTarget: vi.fn().mockResolvedValue(undefined),
         upsertTarget,
         getTargetByIdentifier,
         getTargets,
@@ -415,6 +419,7 @@ describe('POST /api/scan-url', () => {
 
   it('does NOT create a target for a one-off authenticated scan (no existing URL target)', async () => {
     const insertProbeEvidence = vi.fn().mockResolvedValue(undefined);
+    const deleteProbeEvidenceForTarget = vi.fn().mockResolvedValue(undefined);
     const getOrganizationByUserId = vi
       .fn()
       .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
@@ -426,6 +431,7 @@ describe('POST /api/scan-url', () => {
       db: {
         getOrganizationByUserId,
         insertProbeEvidence,
+        deleteProbeEvidenceForTarget,
         upsertTarget,
         getTargetByIdentifier,
       },
@@ -450,6 +456,57 @@ describe('POST /api/scan-url', () => {
     );
     expect(json.target).toBeNull();
     expect(upsertTarget).not.toHaveBeenCalled();
+    expect(deleteProbeEvidenceForTarget).not.toHaveBeenCalled();
+  });
+
+  it('keeps the org-only insert for a one-off scan that produced evidence', async () => {
+    const insertProbeEvidence = vi.fn().mockResolvedValue(undefined);
+    const deleteProbeEvidenceForTarget = vi.fn().mockResolvedValue(undefined);
+    const getOrganizationByUserId = vi
+      .fn()
+      .mockResolvedValue({ id: 'org-1', billing_plan: 'free' });
+    const getTargetByIdentifier = vi.fn().mockResolvedValue(null);
+    requireUserMock.mockResolvedValue({
+      user: { id: 'user-1' },
+      accessToken: 'token',
+      db: {
+        getOrganizationByUserId,
+        insertProbeEvidence,
+        deleteProbeEvidenceForTarget,
+        upsertTarget: vi.fn(),
+        getTargetByIdentifier,
+      },
+    });
+    scanLiveUrlMock.mockResolvedValue({
+      findings: [],
+      evidence: [
+        {
+          findingRuleId: 'runtime-missing-security-headers',
+          kind: 'missing_header',
+          summary: 'Missing HSTS.',
+        },
+      ],
+    });
+
+    const response = await POST(
+      new Request('http://localhost/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://not-mine.lovable.app' }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(deleteProbeEvidenceForTarget).not.toHaveBeenCalled();
+    expect(insertProbeEvidence).toHaveBeenCalledWith([
+      expect.objectContaining({
+        organizationId: 'org-1',
+        scanId: null,
+        findingRuleId: 'runtime-missing-security-headers',
+        kind: 'missing_header',
+      }),
+    ]);
+    expect(insertProbeEvidence.mock.calls[0]?.[0][0]).not.toHaveProperty('targetId');
   });
 
   it('attaches an existing UNVERIFIED guarded URL without running the active probe', async () => {

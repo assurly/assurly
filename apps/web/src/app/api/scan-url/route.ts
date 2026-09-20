@@ -8,6 +8,7 @@ import { persistUrlTargetShipGateVerdict } from '../../../utils/guardian';
 import { scanLiveUrlWithEvidence, type ProbeEvidence } from '../../../utils/runtimeScanner';
 import { assertScannableUrl, UrlSafetyError } from '../../../utils/urlSafety';
 import { isActiveProbeAllowed, normalizeUrlIdentifier } from '../../../utils/ownership';
+import { replaceProbeEvidenceForTarget } from '../../../utils/probeEvidence';
 import { recordReprobeOutcomes } from '../../../utils/reprobe';
 import { entitlementsForPlan } from '../../../utils/entitlements';
 import type { AuthContext } from '../../../utils/auth';
@@ -135,7 +136,19 @@ async function resolveUrlTargetGate(auth: AuthContext, scanUrl: string): Promise
   }
 }
 
-async function persistEvidence(auth: AuthContext, evidence: ProbeEvidence[]): Promise<void> {
+async function persistEvidence(
+  auth: AuthContext,
+  evidence: ProbeEvidence[],
+  gate: UrlTargetGate,
+): Promise<void> {
+  if (gate.targetRow && gate.organizationId) {
+    await replaceProbeEvidenceForTarget(
+      auth.db,
+      { organizationId: gate.organizationId, targetId: gate.targetRow.id },
+      evidence,
+    );
+    return;
+  }
   if (evidence.length === 0) return;
   try {
     const organization = await auth.db.getOrganizationByUserId(auth.user.id);
@@ -241,7 +254,7 @@ export const POST = secureRoute(
     });
     const gatedVisibility = gateVisibilityReport(visibility, gate.visibilityReportEnabled);
 
-    if (auth) await persistEvidence(auth, evidence);
+    if (auth) await persistEvidence(auth, evidence, gate);
 
     // Project the Ship Gate verdict onto an EXISTING url target only. One-off
     // probes leave gate.targetRow null and never touch "Your apps".

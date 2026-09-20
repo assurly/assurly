@@ -82,6 +82,12 @@ export interface Repository {
    * scans on this branch own the repository verdict.
    */
   default_branch?: string | null;
+  /**
+   * Public origin GitHub reports as the repository homepage, learned from the
+   * GitHub App metadata/webhook. Normalized origin or null when cleared / never
+   * set. Binds to a verified `url` target of the same origin.
+   */
+  homepage_url?: string | null;
 }
 
 /** Ship Gate status persisted at scan time (source of truth for trend/cards). */
@@ -229,6 +235,7 @@ export interface ProbeEvidenceRow {
   id: string;
   organization_id: string;
   scan_id: string | null;
+  target_id?: string | null;
   finding_rule_id: string;
   kind: ProbeEvidenceKind;
   summary: string;
@@ -240,6 +247,7 @@ export interface ProbeEvidenceRow {
 export interface ProbeEvidenceInput {
   organizationId: string;
   scanId?: string | null;
+  targetId?: string | null;
   findingRuleId: string;
   kind: ProbeEvidenceKind;
   summary: string;
@@ -458,6 +466,8 @@ export interface DbAdapter {
   ): Promise<void>;
   /** Records the branch the repository ships from, learned at scan time. */
   updateRepositoryDefaultBranch(repoId: string, defaultBranch: string): Promise<void>;
+  /** Records the public origin GitHub reports as the repository homepage. */
+  updateRepositoryHomepageUrl(repoId: string, homepageUrl: string | null): Promise<void>;
   /**
    * Makes an existing row reachable again through Connect & Scan and hands its
    * lifecycle back to the user, so the next installation sync cannot prune it.
@@ -517,6 +527,10 @@ export interface DbAdapter {
   setTargetOwnership(id: string, input: SetTargetOwnershipInput): Promise<Target>;
   insertProbeEvidence(rows: ProbeEvidenceInput[]): Promise<void>;
   getProbeEvidenceForScan(scanId: string): Promise<ProbeEvidenceRow[]>;
+  /** Current proof artifacts for a url target (latest probe run only). */
+  getLatestProbeEvidenceForTarget(targetId: string): Promise<ProbeEvidenceRow[]>;
+  /** Clears current proof for a url target so the next insert is the latest run. */
+  deleteProbeEvidenceForTarget(targetId: string): Promise<void>;
   findVerifiedUrlTargetByOrigin(origin: string): Promise<Target | null>;
   /** All ownership-verified url targets for the guardian cron (admin/service role). */
   listVerifiedUrlTargets(): Promise<Target[]>;
@@ -880,6 +894,13 @@ export class SupabaseDbAdapter implements DbAdapter {
     });
   }
 
+  async updateRepositoryHomepageUrl(repoId: string, homepageUrl: string | null): Promise<void> {
+    await this.fetchDb(`repositories?id=eq.${eq(repoId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ homepage_url: homepageUrl }),
+    });
+  }
+
   async reconnectRepository(repoId: string, name: string): Promise<void> {
     await this.fetchDb(`repositories?id=eq.${eq(repoId)}`, {
       method: 'PATCH',
@@ -1170,6 +1191,7 @@ export class SupabaseDbAdapter implements DbAdapter {
     const payload = rows.map((row) => ({
       organization_id: row.organizationId,
       scan_id: row.scanId ?? null,
+      target_id: row.targetId ?? null,
       finding_rule_id: row.findingRuleId,
       kind: row.kind,
       summary: row.summary,
@@ -1184,6 +1206,20 @@ export class SupabaseDbAdapter implements DbAdapter {
 
   getProbeEvidenceForScan(scanId: string): Promise<ProbeEvidenceRow[]> {
     return this.fetchDb(`probe_evidence?select=*&scan_id=eq.${eq(scanId)}&order=created_at.asc`);
+  }
+
+  getLatestProbeEvidenceForTarget(targetId: string): Promise<ProbeEvidenceRow[]> {
+    return this.fetchDb(
+      `probe_evidence?select=*&target_id=eq.${eq(targetId)}&order=created_at.desc`,
+    );
+  }
+
+  async deleteProbeEvidenceForTarget(targetId: string): Promise<void> {
+    // Zero matching rows is a successful no-op (first probe, or already empty).
+    await this.fetchDb(`probe_evidence?target_id=eq.${eq(targetId)}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
+    });
   }
 
   findVerifiedUrlTargetByOrigin(origin: string): Promise<Target | null> {

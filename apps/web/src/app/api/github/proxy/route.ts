@@ -23,6 +23,7 @@ import {
   loadInstantGateTree,
   REPOSITORY_TOO_LARGE_MESSAGE,
 } from '../../../../utils/instantGateTree';
+import { learnRepositoryHomepage } from '../../../../utils/repoHomepage';
 import { INSTANT_GATE_MAX_FILES } from '@assurly/scanner-core';
 
 const branchSchema = z
@@ -56,7 +57,12 @@ const batchBody = z
     paths: z.array(filePathSchema).min(1).max(INSTANT_GATE_MAX_FILES),
   })
   .strict();
-const metadataSchema = z.object({ default_branch: z.string().min(1).max(255) }).passthrough();
+const metadataSchema = z
+  .object({
+    default_branch: z.string().min(1).max(255),
+    homepage: z.string().nullable().optional(),
+  })
+  .passthrough();
 
 interface PrivateRepoContext {
   repositoryName: string;
@@ -99,7 +105,11 @@ async function resolvePrivateRepoContext(
       headers: githubHeaders(token),
     });
     if (!response.ok) throw new ApiError(502, 'github_unavailable', 'GitHub is unavailable.');
-    branch = metadataSchema.parse(await response.json()).default_branch;
+    const metadata = metadataSchema.parse(await response.json());
+    branch = metadata.default_branch;
+    // Public-scan-path repos (no GitHub App installation) never reach this
+    // metadata fetch, so they do not learn a homepage in 1B.
+    await learnRepositoryHomepage(context.db, repository, metadata.homepage);
   }
 
   return { repositoryName: repository.name, token, branch };
