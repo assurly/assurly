@@ -189,6 +189,22 @@ describe('McpPage', () => {
     expect(MCP_LIMITS.scansPerTarget.windowSeconds).toBe(600);
   });
 
+  it('puts an "Add to Claude" button in the hero, styled like the other one-click buttons', async () => {
+    const html = await renderMcpPageHtml();
+    const hero = html.match(/<section class="mcp-hero"[\s\S]*?<\/section>/)?.[0] ?? '';
+    const href = CLAUDE_ADD_CONNECTOR_HREF.replaceAll('&', '&amp;');
+
+    expect(hero).toContain(`<a href="${href}" class="mcp-one-click-btn">Add to Claude</a>`);
+    // The section's call to action is a button too, not a link lost in a paragraph.
+    expect(html).toContain(`<a href="${href}" class="mcp-one-click-btn">Add Assurly to Claude</a>`);
+    // The Install section is about the local npm server, so it offers no Claude button.
+    const install = html.match(
+      /<section class="mcp-section" id="install">[\s\S]*?<\/section>/,
+    )?.[0];
+    expect(install).toBeDefined();
+    expect(install).not.toContain('Add to Claude');
+  });
+
   it('states that Pro starts with a 3-day trial', async () => {
     const html = await renderMcpPageHtml();
     expect(html).toContain(PRO_TRIAL_COPY.sectionHint);

@@ -101,11 +101,11 @@ export default async function McpPage(): Promise<ReactElement> {
         <section className="mcp-hero" aria-labelledby="mcp-hero-heading">
           <h1 id="mcp-hero-heading">Assurly MCP Server</h1>
           <p className="mcp-hero-lead">
-            A ship gate AI agents call before deploy — expose Assurly scans to Cursor, Claude Code,
-            and other MCP clients via <code>@assurly/mcp-server</code>.
+            A ship gate AI agents call before deploy — add it to Claude in one click, or run{' '}
+            <code>@assurly/mcp-server</code> in Cursor, Claude Code and other MCP clients.
           </p>
           <CodeBlock code={MCP_INSTALL_COMMAND} label="Install command" />
-          <OneClickInstall />
+          <OneClickInstall includeClaude />
           <p className="mcp-hero-meta">
             free · {MCP_TOOL_COUNT} tools · MIT ·{' '}
             <a href={MCP_NPM_PACKAGE_URL} rel="noopener noreferrer">
@@ -123,12 +123,14 @@ export default async function McpPage(): Promise<ReactElement> {
             ship verdict, a Ship Score and a fix for each problem.
           </p>
           <CodeBlock code={CLAUDE_CONNECTOR_URL} label="Connector URL" />
-          <p>
-            <a href={CLAUDE_ADD_CONNECTOR_HREF} rel="noopener noreferrer">
+          <div className="mcp-one-click">
+            <a href={CLAUDE_ADD_CONNECTOR_HREF} className="mcp-one-click-btn">
               Add Assurly to Claude
-            </a>{' '}
-            opens <strong>Customize → Connectors → Add custom connector</strong> with the URL filled
-            in. No account is needed.
+            </a>
+          </div>
+          <p>
+            The button opens <strong>Customize → Connectors → Add custom connector</strong> with the
+            URL filled in; you confirm it there. No Assurly account is needed.
           </p>
           <p>
             The check is passive: it loads the public page and its scripts like a browser and never
