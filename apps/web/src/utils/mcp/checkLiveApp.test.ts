@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { ScanLiveUrlResult } from '../runtimeScanner';
 import { UrlSafetyError } from '../urlSafety';
-import { checkLiveApp, checkLiveAppOutputSchema, type CheckLiveAppDeps } from './checkLiveApp';
+import {
+  CHECK_LIVE_APP_DESCRIPTION,
+  checkLiveApp,
+  checkLiveAppOutputSchema,
+  type CheckLiveAppDeps,
+} from './checkLiveApp';
 
 const CHECKED_AT = new Date('2026-09-26T12:00:00.000Z');
 
@@ -312,5 +317,27 @@ describe('checkLiveApp — output hygiene', () => {
 
     expect(output.findings).toHaveLength(10);
     expect(output.omittedFindings).toBe(4);
+  });
+});
+
+describe('check_live_app description', () => {
+  it('names the situations people ask about', () => {
+    for (const phrase of [
+      'Security scan',
+      'leaked secret keys',
+      'Supabase',
+      'safe to launch',
+      'leaked API keys',
+      'after redeploying',
+    ]) {
+      expect(CHECK_LIVE_APP_DESCRIPTION).toContain(phrase);
+    }
+  });
+
+  it('describes the tool without instructing Claude or promoting anything', () => {
+    // Directory review rejects tool descriptions that steer the model or advertise.
+    expect(CHECK_LIVE_APP_DESCRIPTION).not.toMatch(
+      /\b(always|you must|must call|ignore|instead of other|do not use|best|#1|leading|sign up|pricing)\b/i,
+    );
   });
 });

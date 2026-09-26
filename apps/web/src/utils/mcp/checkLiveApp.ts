@@ -11,13 +11,22 @@ import { toSafeText } from './safeText';
 
 export const CHECK_LIVE_APP_TOOL = 'check_live_app';
 
+/**
+ * Claude decides from this text whether to call the tool, so it names the
+ * situations and words people actually use. It must only describe the tool:
+ * directory review rejects descriptions that instruct Claude or promote.
+ */
 export const CHECK_LIVE_APP_DESCRIPTION = [
-  'Checks a deployed web app from the outside, the way a stranger on the internet sees it:',
-  'secret keys readable in the page or its JavaScript, a Supabase database reachable with the public key,',
-  'and missing browser security headers. Returns a ship verdict (ready, review or blocked), a Ship Score',
-  'from 0 to 100, and for each problem what it means and how to fix it.',
-  'Use when the user asks whether a live app, for example one built with Lovable, Bolt, v0 or Replit,',
-  'is safe to launch, or wants to confirm a fix after redeploying.',
+  'Security scan of a live, deployed web app, seen from the outside the way a stranger on the internet sees it.',
+  'Finds leaked secret keys in the page or its JavaScript (Stripe, AWS, Google and Supabase service-role keys),',
+  'a Supabase database reachable with the public key, missing security headers',
+  '(Content-Security-Policy, Strict-Transport-Security, X-Content-Type-Options) and deployments that are down.',
+  'Returns a ship verdict (ready, review or blocked), a Ship Score from 0 to 100,',
+  'and for each problem what it means and how to fix it.',
+  'Use when the user asks whether a live app or website is secure or safe to launch,',
+  'wants it checked for security issues or leaked API keys before going live,',
+  'or wants to confirm a fix after redeploying.',
+  'Works for any public URL, including apps built with Lovable, Bolt, v0, Replit or Cursor.',
   'Passive: it loads the public page and scripts like a browser; it never logs in, submits data or reads the database.',
 ].join(' ');
 
