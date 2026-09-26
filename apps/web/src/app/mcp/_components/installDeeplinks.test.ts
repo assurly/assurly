@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CLAUDE_ADD_CONNECTOR_HREF,
+  CLAUDE_DIRECTORY_LISTING_HREF,
   CLAUDE_CONNECTOR_URL,
   CURSOR_MCP_INSTALL_HREF,
   MCP_INSTALL_COMMAND,
@@ -21,12 +21,8 @@ describe('installDeeplinks', () => {
     );
   });
 
-  it('prefills Claude’s add-connector dialog with the hosted connector URL', () => {
-    const link = new URL(CLAUDE_ADD_CONNECTOR_HREF);
-    expect(link.origin + link.pathname).toBe('https://claude.ai/customize/connectors');
-    expect(link.searchParams.get('modal')).toBe('add-custom-connector');
-    expect(link.searchParams.get('connectorName')).toBe('Assurly');
-    expect(link.searchParams.get('connectorUrl')).toBe(CLAUDE_CONNECTOR_URL);
+  it('links to the Claude directory listing and names the hosted connector URL', () => {
+    expect(CLAUDE_DIRECTORY_LISTING_HREF).toBe('https://claude.ai/directory/connectors/assurly');
     expect(CLAUDE_CONNECTOR_URL).toBe('https://assurly.dev/api/mcp');
   });
 

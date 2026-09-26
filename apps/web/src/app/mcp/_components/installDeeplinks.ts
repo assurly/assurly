@@ -16,9 +16,8 @@ export const MCP_INSTALL_COMMAND = 'npx -y @assurly/mcp-server';
 export const CLAUDE_CONNECTOR_URL = 'https://assurly.dev/api/mcp';
 
 /**
- * Opens Claude's "Add custom connector" dialog with the name and URL filled in
- * (format documented at claude.com/docs/connectors/building/directory-vs-custom).
- * The user still reviews and confirms before anything is added.
+ * Assurly's listing in the Claude Connectors Directory (published 2026-09-26).
+ * Its Connect button adds the reviewed connector — no "external link" warning,
+ * and every connection counts toward the directory rank. The slug is permanent.
  */
-export const CLAUDE_ADD_CONNECTOR_HREF =
-  'https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Assurly&connectorUrl=https%3A%2F%2Fassurly.dev%2Fapi%2Fmcp';
+export const CLAUDE_DIRECTORY_LISTING_HREF = 'https://claude.ai/directory/connectors/assurly';

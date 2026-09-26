@@ -12,7 +12,7 @@ import { StructuredData } from '../_components/StructuredData';
 import { AgentLoop } from './_components/AgentLoop';
 import { CodeBlock } from './_components/CodeBlock';
 import {
-  CLAUDE_ADD_CONNECTOR_HREF,
+  CLAUDE_DIRECTORY_LISTING_HREF,
   CLAUDE_CONNECTOR_URL,
   MCP_INSTALL_COMMAND,
   MCP_NPM_PACKAGE_URL,
@@ -117,20 +117,21 @@ export default async function McpPage(): Promise<ReactElement> {
         <section className="mcp-section" aria-labelledby="mcp-claude-heading">
           <h2 id="mcp-claude-heading">Use it in Claude — no install</h2>
           <p>
-            Add Assurly as a connector in Claude on the web, desktop or mobile, then ask{' '}
-            <em>“Is my app safe to launch? https://my-app.lovable.app”</em>. Its one tool,{' '}
+            Assurly is in the Claude connectors directory. Connect it on the web, desktop or mobile,
+            then ask <em>“Is my app safe to launch? https://my-app.lovable.app”</em>. Its one tool,{' '}
             <code>check_live_app</code>, checks the deployed app from the outside and answers with a
             ship verdict, a Ship Score and a fix for each problem.
           </p>
           <CodeBlock code={CLAUDE_CONNECTOR_URL} label="Connector URL" />
           <div className="mcp-one-click">
-            <a href={CLAUDE_ADD_CONNECTOR_HREF} className="mcp-one-click-btn">
+            <a href={CLAUDE_DIRECTORY_LISTING_HREF} className="mcp-one-click-btn">
               Add Assurly to Claude
             </a>
           </div>
           <p>
-            The button opens <strong>Customize → Connectors → Add custom connector</strong> with the
-            URL filled in; you confirm it there. No Assurly account is needed.
+            The button opens Assurly in the Claude connectors directory — click{' '}
+            <strong>Connect</strong>. No Assurly account is needed. Other MCP clients, such as
+            Claude Code, can connect to the URL above directly.
           </p>
           <p>
             The check is passive: it loads the public page and its scripts like a browser and never

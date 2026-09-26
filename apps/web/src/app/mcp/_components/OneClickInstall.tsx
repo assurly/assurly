@@ -1,13 +1,13 @@
 import type { ReactElement } from 'react';
 import {
-  CLAUDE_ADD_CONNECTOR_HREF,
+  CLAUDE_DIRECTORY_LISTING_HREF,
   CURSOR_MCP_INSTALL_HREF,
   VSCODE_MCP_INSTALL_HREF,
 } from './installDeeplinks';
 
 interface OneClickInstallProps {
   /**
-   * Adds the hosted Claude connector next to the npm-server deeplinks. Off in
+   * Adds the Claude directory listing next to the npm-server deeplinks. Off in
    * the Install section, which is about running `@assurly/mcp-server` locally.
    */
   includeClaude?: boolean;
@@ -26,7 +26,7 @@ export function OneClickInstall({ includeClaude = false }: OneClickInstallProps)
   return (
     <div className="mcp-one-click" role="group" aria-label="One-click install">
       {includeClaude ? (
-        <a href={CLAUDE_ADD_CONNECTOR_HREF} className="mcp-one-click-btn">
+        <a href={CLAUDE_DIRECTORY_LISTING_HREF} className="mcp-one-click-btn">
           Add to Claude
         </a>
       ) : null}

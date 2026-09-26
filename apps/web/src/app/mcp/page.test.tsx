@@ -30,7 +30,10 @@ import McpPage from './page';
 import { PRO_TRIAL_COPY } from '../../utils/pricing';
 import { CHECK_LIVE_APP_TOOL } from '../../utils/mcp/checkLiveApp';
 import { MCP_LIMITS } from '../../utils/mcp/limits';
-import { CLAUDE_ADD_CONNECTOR_HREF, CLAUDE_CONNECTOR_URL } from './_components/installDeeplinks';
+import {
+  CLAUDE_CONNECTOR_URL,
+  CLAUDE_DIRECTORY_LISTING_HREF,
+} from './_components/installDeeplinks';
 
 /**
  * The tool names the MCP server actually registers, read from the package source
@@ -183,7 +186,7 @@ describe('McpPage', () => {
     const html = await renderMcpPageHtml();
     expect(html).toContain('Use it in Claude — no install');
     expect(html).toContain(CLAUDE_CONNECTOR_URL);
-    expect(html).toContain(`href="${CLAUDE_ADD_CONNECTOR_HREF.replaceAll('&', '&amp;')}"`);
+    expect(html).toContain(`href="${CLAUDE_DIRECTORY_LISTING_HREF}"`);
     expect(html).toContain(CHECK_LIVE_APP_TOOL);
     expect(html).toContain(`${MCP_LIMITS.scansPerTarget.limit} times per 10`);
     expect(MCP_LIMITS.scansPerTarget.windowSeconds).toBe(600);
@@ -192,7 +195,7 @@ describe('McpPage', () => {
   it('puts an "Add to Claude" button in the hero, styled like the other one-click buttons', async () => {
     const html = await renderMcpPageHtml();
     const hero = html.match(/<section class="mcp-hero"[\s\S]*?<\/section>/)?.[0] ?? '';
-    const href = CLAUDE_ADD_CONNECTOR_HREF.replaceAll('&', '&amp;');
+    const href = CLAUDE_DIRECTORY_LISTING_HREF;
 
     expect(hero).toContain(`<a href="${href}" class="mcp-one-click-btn">Add to Claude</a>`);
     // The section's call to action is a button too, not a link lost in a paragraph.
