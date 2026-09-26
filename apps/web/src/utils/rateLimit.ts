@@ -94,6 +94,19 @@ export async function enforceApiKeyRateLimit(
   return consume(hashIdentity(`apikey:${apiKeyId}`), `${routeId}:apikey`, policy);
 }
 
+/**
+ * Rate limit on an identity that is neither a caller nor a key — a scanned
+ * host, or one shared budget for a whole route. The identity is HMAC-hashed
+ * like every other key, so it is never stored in the clear.
+ */
+export async function enforceKeyedRateLimit(
+  routeId: string,
+  policy: RateLimitPolicy,
+  identity: string,
+): Promise<RateLimitResult> {
+  return consume(hashIdentity(`key:${identity}`), routeId, policy);
+}
+
 export function resetRateLimitsForTests(): void {
   if (process.env.NODE_ENV === 'test') memoryBuckets.clear();
 }

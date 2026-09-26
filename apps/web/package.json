@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@assurly/scanner-core": "1.2.2",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.1",
     "jszip": "^3.10.1",
@@ -37,9 +38,9 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "chrome-launcher": "^1.2.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
-    "chrome-launcher": "^1.2.0",
     "jsdom": "^25.0.1",
     "lighthouse": "^12.8.2",
     "typescript": "^5",

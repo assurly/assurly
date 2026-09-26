@@ -28,6 +28,9 @@ vi.mock('next/navigation', () => ({
 
 import McpPage from './page';
 import { PRO_TRIAL_COPY } from '../../utils/pricing';
+import { CHECK_LIVE_APP_TOOL } from '../../utils/mcp/checkLiveApp';
+import { MCP_LIMITS } from '../../utils/mcp/limits';
+import { CLAUDE_ADD_CONNECTOR_HREF, CLAUDE_CONNECTOR_URL } from './_components/installDeeplinks';
 
 /**
  * The tool names the MCP server actually registers, read from the package source
@@ -174,6 +177,16 @@ describe('McpPage', () => {
     expect(html).toContain('mcp-agent-loop');
     expect(html).toContain('READY TO SHIP');
     expect(html).toContain('assurly_explain_rule');
+  });
+
+  it('documents the hosted Claude connector and its tool', async () => {
+    const html = await renderMcpPageHtml();
+    expect(html).toContain('Use it in Claude — no install');
+    expect(html).toContain(CLAUDE_CONNECTOR_URL);
+    expect(html).toContain(`href="${CLAUDE_ADD_CONNECTOR_HREF.replaceAll('&', '&amp;')}"`);
+    expect(html).toContain(CHECK_LIVE_APP_TOOL);
+    expect(html).toContain(`${MCP_LIMITS.scansPerTarget.limit} times per 10`);
+    expect(MCP_LIMITS.scansPerTarget.windowSeconds).toBe(600);
   });
 
   it('states that Pro starts with a 3-day trial', async () => {

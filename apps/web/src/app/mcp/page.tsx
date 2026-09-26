@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
 import mcpServerPackage from '../../../../../packages/mcp-server/package.json';
+import { MCP_LIMITS } from '../../utils/mcp/limits';
 import { MCP_TOOL_COUNT } from '../../utils/productFacts';
 import { resolveSiteNavAuth } from '../../utils/siteNavAuth';
 import { PRO_TRIAL_COPY, PRO_TRIAL_PERIOD_DAYS } from '../../utils/pricing';
@@ -10,7 +11,12 @@ import { SiteFooter } from '../_components/SiteFooter';
 import { StructuredData } from '../_components/StructuredData';
 import { AgentLoop } from './_components/AgentLoop';
 import { CodeBlock } from './_components/CodeBlock';
-import { MCP_INSTALL_COMMAND, MCP_NPM_PACKAGE_URL } from './_components/installDeeplinks';
+import {
+  CLAUDE_ADD_CONNECTOR_HREF,
+  CLAUDE_CONNECTOR_URL,
+  MCP_INSTALL_COMMAND,
+  MCP_NPM_PACKAGE_URL,
+} from './_components/installDeeplinks';
 import { InstallTabs } from './_components/InstallTabs';
 import { McpHeader } from './_components/McpHeader';
 import { OneClickInstall } from './_components/OneClickInstall';
@@ -105,6 +111,30 @@ export default async function McpPage(): Promise<ReactElement> {
             <a href={MCP_NPM_PACKAGE_URL} rel="noopener noreferrer">
               v{MCP_SERVER_VERSION}
             </a>
+          </p>
+        </section>
+
+        <section className="mcp-section" aria-labelledby="mcp-claude-heading">
+          <h2 id="mcp-claude-heading">Use it in Claude — no install</h2>
+          <p>
+            Add Assurly as a connector in Claude on the web, desktop or mobile, then ask{' '}
+            <em>“Is my app safe to launch? https://my-app.lovable.app”</em>. Its one tool,{' '}
+            <code>check_live_app</code>, checks the deployed app from the outside and answers with a
+            ship verdict, a Ship Score and a fix for each problem.
+          </p>
+          <CodeBlock code={CLAUDE_CONNECTOR_URL} label="Connector URL" />
+          <p>
+            <a href={CLAUDE_ADD_CONNECTOR_HREF} rel="noopener noreferrer">
+              Add Assurly to Claude
+            </a>{' '}
+            opens <strong>Customize → Connectors → Add custom connector</strong> with the URL filled
+            in. No account is needed.
+          </p>
+          <p>
+            The check is passive: it loads the public page and its scripts like a browser and never
+            logs in, submits data or reads your database. Each site can be checked{' '}
+            {MCP_LIMITS.scansPerTarget.limit} times per{' '}
+            {MCP_LIMITS.scansPerTarget.windowSeconds / 60} minutes.
           </p>
         </section>
 

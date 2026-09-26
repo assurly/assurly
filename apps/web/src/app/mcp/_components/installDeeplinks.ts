@@ -11,3 +11,14 @@ export const VSCODE_MCP_INSTALL_HREF =
 export const MCP_NPM_PACKAGE_URL = 'https://www.npmjs.com/package/@assurly/mcp-server';
 
 export const MCP_INSTALL_COMMAND = 'npx -y @assurly/mcp-server';
+
+/** The hosted connector for Claude (web, desktop, mobile) — see app/api/mcp/route.ts. */
+export const CLAUDE_CONNECTOR_URL = 'https://assurly.dev/api/mcp';
+
+/**
+ * Opens Claude's "Add custom connector" dialog with the name and URL filled in
+ * (format documented at claude.com/docs/connectors/building/directory-vs-custom).
+ * The user still reviews and confirms before anything is added.
+ */
+export const CLAUDE_ADD_CONNECTOR_HREF =
+  'https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Assurly&connectorUrl=https%3A%2F%2Fassurly.dev%2Fapi%2Fmcp';
