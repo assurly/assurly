@@ -16,8 +16,9 @@ export const MCP_INSTALL_COMMAND = 'npx -y @assurly/mcp-server';
 export const CLAUDE_CONNECTOR_URL = 'https://assurly.dev/api/mcp';
 
 /**
- * Assurly's listing in the Claude Connectors Directory (published 2026-09-26).
+ * Assurly's listing in the Claude Connectors Directory (published 2026-09-26),
+ * copied from the listing's "Copy link" — the docs' /directory/connectors/SLUG form is not it.
  * Its Connect button adds the reviewed connector — no "external link" warning,
  * and every connection counts toward the directory rank. The slug is permanent.
  */
-export const CLAUDE_DIRECTORY_LISTING_HREF = 'https://claude.ai/directory/connectors/assurly';
+export const CLAUDE_DIRECTORY_LISTING_HREF = 'https://claude.ai/directory/assurly';

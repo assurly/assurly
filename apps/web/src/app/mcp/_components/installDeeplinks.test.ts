@@ -22,7 +22,7 @@ describe('installDeeplinks', () => {
   });
 
   it('links to the Claude directory listing and names the hosted connector URL', () => {
-    expect(CLAUDE_DIRECTORY_LISTING_HREF).toBe('https://claude.ai/directory/connectors/assurly');
+    expect(CLAUDE_DIRECTORY_LISTING_HREF).toBe('https://claude.ai/directory/assurly');
     expect(CLAUDE_CONNECTOR_URL).toBe('https://assurly.dev/api/mcp');
   });
 
