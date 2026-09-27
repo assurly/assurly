@@ -55,7 +55,7 @@ export default async function PrivacyPage(): Promise<ReactElement> {
 
       <main className="legal-content">
         <h1>Privacy Policy</h1>
-        <p className="last-updated">Last updated: September 26, 2026</p>
+        <p className="last-updated">Last updated: September 27, 2026</p>
 
         <section className="legal-section">
           <h2>1. Who we are and how to reach us</h2>
@@ -147,11 +147,11 @@ export default async function PrivacyPage(): Promise<ReactElement> {
               on. We store a summary and a redacted sample, not full responses.
             </li>
             <li>
-              <strong>Claude connector:</strong> when you ask Claude to check an app, Claude sends
-              us only that app&apos;s URL — never your conversation. We load the public page and its
-              scripts once, passively, and return the result to Claude. We do not store the URL, the
-              page, or the result; our operational logs record the site&apos;s host name and the
-              outcome of the check.
+              <strong>Claude connector and ChatGPT plugin:</strong> when you ask Claude or ChatGPT
+              to check an app, the assistant sends us only that app&apos;s URL — never your
+              conversation. We load the public page and its scripts once, passively, and return the
+              result to the assistant. We do not store the URL, the page, or the result; our
+              operational logs record the site&apos;s host name and the outcome of the check.
             </li>
           </ul>
           <p>

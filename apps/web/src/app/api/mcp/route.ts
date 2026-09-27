@@ -6,13 +6,14 @@ import { getClientIp } from '../../../utils/rateLimit';
 import { scanLiveUrlWithEvidence } from '../../../utils/runtimeScanner';
 
 /**
- * Public MCP endpoint for the Claude Connectors Directory (Streamable HTTP,
- * stateless, JSON responses). Anonymous by design: it exposes only the passive
- * live-app check, and every scan is bounded by the budgets in utils/mcp/limits.
+ * Public MCP endpoint for the Claude Connectors Directory and the ChatGPT
+ * plugin directory (Streamable HTTP, stateless, JSON responses). Anonymous by
+ * design: it exposes only the passive live-app check, and every scan is
+ * bounded by the budgets in utils/mcp/limits.
  *
- * Not built on secureRoute: its per-IP limit would put every Claude user into
- * one bucket (they share Anthropic's egress addresses), and MCP clients need
- * JSON-RPC error bodies, not the API error envelope.
+ * Not built on secureRoute: its per-IP limit would put every Claude or ChatGPT
+ * user into one bucket (each platform's users share its egress addresses), and
+ * MCP clients need JSON-RPC error bodies, not the API error envelope.
  */
 
 // One scan reads the page and up to 24 scripts under an 8s + 10s budget.
@@ -105,7 +106,6 @@ export async function POST(request: Request): Promise<Response> {
     clientIp,
     scan: scanLiveUrlWithEvidence,
     allowScan,
-    now: () => new Date(),
   });
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,

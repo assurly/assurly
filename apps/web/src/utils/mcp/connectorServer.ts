@@ -11,8 +11,9 @@ import {
 export const CONNECTOR_VERSION = '1.0.0';
 
 /**
- * The public Claude connector. Stateless: one server per HTTP request, no
- * sessions, no sign-in, and only tools that are safe for an anonymous caller.
+ * The public connector for Claude and ChatGPT. Stateless: one server per HTTP
+ * request, no sessions, no sign-in, and only tools that are safe for an
+ * anonymous caller.
  */
 export function createConnectorServer(deps: CheckLiveAppDeps): McpServer {
   const server = new McpServer({

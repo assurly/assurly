@@ -1,16 +1,17 @@
 import { isIP } from 'node:net';
 import { enforceKeyedRateLimit, type RateLimitPolicy, type RateLimitResult } from '../rateLimit';
+import { isOpenAiConnectorAddress } from './openaiEgress';
 
 /**
- * Budgets for the public MCP connector. Every Claude user reaches us from
- * Anthropic's published egress range, so a per-address limit there would let
- * one busy minute lock out all of them at once. Those addresses skip the
- * per-address buckets; the per-site and global budgets bound them instead.
+ * Budgets for the public MCP connector. Every Claude or ChatGPT user reaches us
+ * from their platform's published egress addresses, so a per-address limit
+ * there would let one busy minute lock out all of them at once. Those addresses
+ * skip the per-address buckets; the per-site and global budgets bound them instead.
  */
 export const MCP_LIMITS = {
-  /** Any MCP message from one address outside Anthropic's range. */
+  /** Any MCP message from one address outside the platforms' ranges. */
   requestsPerClient: { limit: 120, windowSeconds: 60 },
-  /** Scans from one address outside Anthropic's range — the website's scan limit. */
+  /** Scans from one address outside the platforms' ranges — the website's scan limit. */
   scansPerClient: { limit: 5, windowSeconds: 60 },
   /** Scans of one site by everyone together: nobody can aim Assurly at a site repeatedly. */
   scansPerTarget: { limit: 6, windowSeconds: 600 },
@@ -49,6 +50,14 @@ export function isAnthropicEgressAddress(ip: string): boolean {
   return a === 160 && b === 79 && c >= 104 && c <= 111;
 }
 
+/**
+ * An address shared by every user of Claude or ChatGPT. Both lists rely on the
+ * same unforgeable client address as isAnthropicEgressAddress.
+ */
+async function isSharedPlatformAddress(ip: string): Promise<boolean> {
+  return isAnthropicEgressAddress(ip) || (await isOpenAiConnectorAddress(ip));
+}
+
 /** `www.`, letter case and a trailing dot all name the same site. */
 export function targetKey(hostname: string): string {
   return hostname
@@ -66,7 +75,7 @@ export async function allowMcpRequest(
   clientIp: string,
   consume: Consume = enforceKeyedRateLimit,
 ): Promise<Allowance> {
-  if (isAnthropicEgressAddress(clientIp)) return { allowed: true };
+  if (await isSharedPlatformAddress(clientIp)) return { allowed: true };
   const result = await consume(
     'mcp:request:client',
     MCP_LIMITS.requestsPerClient,
@@ -84,7 +93,7 @@ export async function allowScan(
   hostname: string,
   consume: Consume = enforceKeyedRateLimit,
 ): Promise<Allowance> {
-  const clientChecks: LimitCheck[] = isAnthropicEgressAddress(clientIp)
+  const clientChecks: LimitCheck[] = (await isSharedPlatformAddress(clientIp))
     ? []
     : [['client', 'mcp:scan:client', MCP_LIMITS.scansPerClient, `ip:${clientIp}`]];
   const checks: LimitCheck[] = [

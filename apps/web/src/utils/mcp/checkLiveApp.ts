@@ -12,9 +12,9 @@ import { toSafeText } from './safeText';
 export const CHECK_LIVE_APP_TOOL = 'check_live_app';
 
 /**
- * Claude decides from this text whether to call the tool, so it names the
- * situations and words people actually use. It must only describe the tool:
- * directory review rejects descriptions that instruct Claude or promote.
+ * Claude and ChatGPT decide from this text whether to call the tool, so it names
+ * the situations and words people actually use. It must only describe the tool:
+ * both directories reject descriptions that instruct the model or promote.
  */
 export const CHECK_LIVE_APP_DESCRIPTION = [
   'Security scan of a live, deployed web app, seen from the outside the way a stranger on the internet sees it.',
@@ -62,9 +62,12 @@ const findingSchema = z.object({
   fix: z.string().optional(),
 });
 
+/**
+ * Only what answers the user. ChatGPT's review rejects results carrying
+ * diagnostic metadata such as timestamps or request ids.
+ */
 export const checkLiveAppOutputSchema = z.object({
   url: z.string(),
-  checkedAt: z.string(),
   verdict: z.enum(['ready', 'review', 'blocked', 'no_verdict']),
   shipScore: z.number().int().min(0).max(100).nullable(),
   summary: z.string(),
@@ -86,7 +89,6 @@ export interface CheckLiveAppDeps {
     options: { activeProbe: false; visibilityAudit: false; useAiPlanner: false },
   ) => Promise<ScanLiveUrlResult>;
   allowScan: (clientIp: string, hostname: string) => Promise<Allowance>;
-  now: () => Date;
 }
 
 const VERDICT_LABEL: Record<ShipGateReport['status'], string> = {
@@ -230,10 +232,9 @@ function result(output: CheckLiveAppOutput): CallToolResult {
   };
 }
 
-function noVerdict(url: string, checkedAt: string, summary: string): CallToolResult {
+function noVerdict(url: string, summary: string): CallToolResult {
   return result({
     url,
-    checkedAt,
     verdict: 'no_verdict',
     shipScore: null,
     summary: toSafeText(summary, MAX_TEXT),
@@ -282,7 +283,6 @@ export async function checkLiveApp(
       useAiPlanner: false,
     });
   } catch (error) {
-    const checkedAt = deps.now().toISOString();
     if (error instanceof UrlSafetyError) {
       log({ host: target.hostname, outcome: 'refused:private' });
       return failure(`Cannot check ${target.hostname}: it resolves to a private network address.`);
@@ -290,11 +290,7 @@ export async function checkLiveApp(
     const reason = unreachableReason(error, target.hostname);
     if (reason) {
       log({ host: target.hostname, outcome: 'unreachable', durationMs: Date.now() - startedAt });
-      return noVerdict(
-        url,
-        checkedAt,
-        `${reason} Check that the app is deployed and public, then try again.`,
-      );
+      return noVerdict(url, `${reason} Check that the app is deployed and public, then try again.`);
     }
     console.error(
       JSON.stringify({
@@ -310,11 +306,10 @@ export async function checkLiveApp(
     );
   }
 
-  const checkedAt = deps.now().toISOString();
   if (scanned.blocked) {
     const copy = describeBlockedScan(scanned.blocked);
     log({ host: target.hostname, outcome: `blocked:${scanned.blocked.source}` });
-    return noVerdict(url, checkedAt, `${copy.title}. ${copy.detail}`);
+    return noVerdict(url, `${copy.title}. ${copy.detail}`);
   }
 
   const report = buildShipGateFromWebFindings(scanned.findings, {
@@ -324,7 +319,6 @@ export async function checkLiveApp(
   const listed = listFindings(scanned.findings, report);
   const output: CheckLiveAppOutput = {
     url,
-    checkedAt,
     verdict: report.status,
     shipScore: report.shipScore,
     summary: summarize(listed),

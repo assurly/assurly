@@ -1,5 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetRateLimitsForTests } from '../rateLimit';
+
+vi.mock('./openaiEgress', () => ({
+  isOpenAiConnectorAddress: vi.fn(async (ip: string) => ip === '104.210.139.200'),
+}));
+
 import {
   allowMcpRequest,
   allowScan,
@@ -9,6 +14,7 @@ import {
 } from './limits';
 
 const CLAUDE_IP = '160.79.106.12';
+const CHATGPT_IP = '104.210.139.200';
 const PERSON_IP = '203.0.113.7';
 
 async function exhaust(times: number, run: () => Promise<{ allowed: boolean }>): Promise<void> {
@@ -53,6 +59,12 @@ describe('allowScan', () => {
     );
   });
 
+  it('does not let ChatGPT users share one per-address bucket', async () => {
+    await exhaust(MCP_LIMITS.scansPerClient.limit + 3, () =>
+      allowScan(CHATGPT_IP, `site-${Math.random()}.example.com`),
+    );
+  });
+
   it('caps scans of one site across every caller', async () => {
     await exhaust(MCP_LIMITS.scansPerTarget.limit, () =>
       allowScan(CLAUDE_IP, 'victim.example.com'),
@@ -81,5 +93,9 @@ describe('allowMcpRequest', () => {
 
   it('never limits Claude’s shared addresses per address', async () => {
     await exhaust(MCP_LIMITS.requestsPerClient.limit + 5, () => allowMcpRequest(CLAUDE_IP));
+  });
+
+  it('never limits ChatGPT’s shared addresses per address', async () => {
+    await exhaust(MCP_LIMITS.requestsPerClient.limit + 5, () => allowMcpRequest(CHATGPT_IP));
   });
 });

@@ -5,6 +5,12 @@ import { DELETE, GET, POST } from './route';
 
 const scanMock = vi.hoisted(() => vi.fn());
 
+// The real check downloads OpenAI's address list; these tests only use
+// Anthropic's range and documentation addresses.
+vi.mock('../../../utils/mcp/openaiEgress', () => ({
+  isOpenAiConnectorAddress: vi.fn(async () => false),
+}));
+
 vi.mock('../../../utils/runtimeScanner', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../utils/runtimeScanner')>();
   return { ...actual, scanLiveUrlWithEvidence: scanMock };
