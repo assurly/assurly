@@ -5,6 +5,7 @@ import { getCuratedConsequence, ruleIdFromGroupKey } from '../consequenceMap';
 import type { ScanLiveUrlResult } from '../runtimeScanner';
 import { describeBlockedScan } from '../scannerBlocked';
 import { buildShipGateFromWebFindings, type ShipGateReport } from '../shipGate';
+import { unreachableReason } from '../unreachableTarget';
 import { assertScannableUrl, UrlSafetyError } from '../urlSafety';
 import type { Allowance } from './limits';
 import { toSafeText } from './safeText';
@@ -139,35 +140,6 @@ function refusalMessage(allowance: Extract<Allowance, { allowed: false }>): stri
     case 'capacity':
       return `Assurly's public check is at capacity. Try again in ${wait}.`;
   }
-}
-
-/**
- * Why the page itself could not be loaded, or null when the error is not a
- * network failure (and so is ours to report as an internal error).
- */
-function unreachableReason(error: unknown, host: string): string | null {
-  if (!(error instanceof Error)) return null;
-  const { code, syscall } = error as Error & { code?: unknown; syscall?: unknown };
-  if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-    return `${host} did not answer within 8 seconds.`;
-  }
-  // Vercel's resolver reports a domain that does not exist as EBUSY, not
-  // ENOTFOUND, so every failed DNS lookup counts.
-  if (
-    code === 'ENOTFOUND' ||
-    code === 'EAI_AGAIN' ||
-    syscall === 'getaddrinfo' ||
-    error.message === 'Target host could not be resolved.'
-  ) {
-    return `The domain ${host} does not resolve to a server.`;
-  }
-  if (error.message.startsWith('Too many redirects')) {
-    return `${host} redirects too many times to reach a page.`;
-  }
-  if (error instanceof TypeError && error.message === 'fetch failed') {
-    return `Could not connect to ${host} (connection refused or a TLS certificate problem).`;
-  }
-  return null;
 }
 
 function coverageOf(result: ScanLiveUrlResult): CheckLiveAppOutput['coverage'] {
