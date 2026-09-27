@@ -82,6 +82,12 @@ describe('runtimeScanner', () => {
         scanBundleForSecrets(bundle).some((f) => f.ruleId === 'runtime-secret-in-bundle'),
       ).toBe(false);
     });
+
+    it('ignores code that only builds tripwire URLs, like Assurly’s own dashboard', () => {
+      const bundle =
+        'function u(o,t){return o.replace(/\\/$/,"")+"/api/canary/"+encodeURIComponent(t)}';
+      expect(scanBundleForCanaryInClient(bundle)).toEqual([]);
+    });
   });
 
   describe('checkSecurityHeaders', () => {

@@ -43,6 +43,21 @@ const SCOPE = toSafeText(
 const NO_VERDICT_SCOPE =
   'No verdict: Assurly never saw the app, so this result says nothing about its security.';
 
+/**
+ * Findings whose website copy asks the reader to verify ownership on
+ * assurly.dev. In a chat that reads as an advertisement — ChatGPT's review
+ * rejects promotion in tool results — so the connector says what to check instead.
+ */
+const CONNECTOR_COPY: Partial<Record<string, Pick<ListedFinding, 'issue' | 'impact' | 'fix'>>> = {
+  'runtime-supabase-key-exposed': {
+    issue:
+      "The app's public code contains its Supabase URL and public (anon) key, so its database is reachable from any browser. That is safe only if every table has row-level security (RLS).",
+    impact:
+      'If a single table is missing row-level security, anyone can read it — customer emails, orders, messages.',
+    fix: 'The anon key being public is normal; an open RLS policy is what turns it into a breach. Enable RLS with a policy on every table that holds user data, then confirm in Supabase’s Security Advisor that no table is flagged.',
+  },
+};
+
 export const checkLiveAppInputSchema = z
   .object({
     url: z
@@ -132,13 +147,16 @@ function refusalMessage(allowance: Extract<Allowance, { allowed: false }>): stri
  */
 function unreachableReason(error: unknown, host: string): string | null {
   if (!(error instanceof Error)) return null;
-  const code = (error as Error & { code?: unknown }).code;
+  const { code, syscall } = error as Error & { code?: unknown; syscall?: unknown };
   if (error.name === 'TimeoutError' || error.name === 'AbortError') {
     return `${host} did not answer within 8 seconds.`;
   }
+  // Vercel's resolver reports a domain that does not exist as EBUSY, not
+  // ENOTFOUND, so every failed DNS lookup counts.
   if (
     code === 'ENOTFOUND' ||
     code === 'EAI_AGAIN' ||
+    syscall === 'getaddrinfo' ||
     error.message === 'Target host could not be resolved.'
   ) {
     return `The domain ${host} does not resolve to a server.`;
@@ -174,14 +192,16 @@ function listFindings(findings: WebFinding[], report: ShipGateReport): ListedFin
     ...unique.filter((finding) => finding.severity !== 'error'),
   ];
   return ordered.map((finding) => {
-    const impact = getCuratedConsequence(finding.ruleId)?.consequence;
+    const copy = CONNECTOR_COPY[finding.ruleId];
+    const impact = copy?.impact ?? getCuratedConsequence(finding.ruleId)?.consequence;
+    const fix = copy?.fix ?? finding.suggestion;
     return {
       rule: toSafeText(finding.ruleId, 80),
       severity: finding.severity === 'error' ? 'error' : 'warning',
       blocksShip: blockerRules.has(finding.ruleId),
-      issue: toSafeText(finding.message, MAX_TEXT),
+      issue: toSafeText(copy?.issue ?? finding.message, MAX_TEXT),
       ...(impact ? { impact: toSafeText(impact, MAX_TEXT) } : {}),
-      ...(finding.suggestion ? { fix: toSafeText(finding.suggestion, MAX_TEXT) } : {}),
+      ...(fix ? { fix: toSafeText(fix, MAX_TEXT) } : {}),
     };
   });
 }

@@ -300,13 +300,13 @@ export function scanBundleForSecrets(bundleText: string): WebFinding[] {
 }
 
 /**
- * Canary token or `/api/canary/` path in public HTML/JS. Warning only — not a
- * new blocker. Must never HTTP-fetch the callback (self-hit).
+ * Canary token in public HTML/JS. Warning only — not a new blocker. Must never
+ * HTTP-fetch the callback (self-hit). A bare `/api/canary/` path is not enough:
+ * code that builds tripwire URLs contains it (Assurly's own dashboard does), and
+ * a planted tripwire URL always carries the token.
  */
 export function scanBundleForCanaryInClient(bundleText: string): WebFinding[] {
-  if (!containsAssurlyCanaryToken(bundleText) && !containsAssurlyCanaryCallbackPath(bundleText)) {
-    return [];
-  }
+  if (!containsAssurlyCanaryToken(bundleText)) return [];
   return [
     {
       ruleId: 'assurly-canary-in-client',

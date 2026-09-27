@@ -228,6 +228,13 @@ describe('checkLiveApp — verdicts', () => {
       'resolve',
     ],
     [new Error('Target host could not be resolved.'), 'resolve'],
+    [
+      Object.assign(new Error('getaddrinfo EBUSY no-such-app.example.com'), {
+        code: 'EBUSY',
+        syscall: 'getaddrinfo',
+      }),
+      'resolve',
+    ],
     [new TypeError('fetch failed'), 'connect'],
     [new Error('Too many redirects while scanning the target URL.'), 'redirect'],
   ])('reports an unreachable site as a result, not a tool failure (%s)', async (error, phrase) => {
@@ -238,6 +245,36 @@ describe('checkLiveApp — verdicts', () => {
     expect(result.isError).toBeFalsy();
     expect(output.verdict).toBe('no_verdict');
     expect(output.summary.toLowerCase()).toContain(phrase);
+  });
+
+  it('explains an exposed Supabase key without the website’s verify-ownership pitch', async () => {
+    const d = deps({
+      scan: vi.fn(
+        async (): Promise<ScanLiveUrlResult> => ({
+          findings: [
+            {
+              ruleId: 'runtime-supabase-key-exposed',
+              severity: 'warning',
+              message:
+                "Your Supabase database is reachable directly from the browser. Verify you own this app and we'll prove exactly which tables are exposed.",
+              suggestion: 'Verify ownership to run the full data-exfiltration test.',
+            },
+          ],
+          evidence: [],
+          pageText: '',
+        }),
+      ),
+    });
+    const [finding] = structured(await checkLiveApp({ url: 'https://db.example.com' }, d)).findings;
+
+    expect(`${finding?.issue} ${finding?.impact} ${finding?.fix}`).not.toMatch(
+      /verify|we'll|we’ll/i,
+    );
+    expect(finding).toMatchObject({
+      rule: 'runtime-supabase-key-exposed',
+      issue: expect.stringContaining('row-level security'),
+      fix: expect.stringContaining('Enable RLS'),
+    });
   });
 
   it('refuses a host that resolves to a private address', async () => {
