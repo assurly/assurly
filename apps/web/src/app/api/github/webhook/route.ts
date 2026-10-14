@@ -50,6 +50,8 @@ import { scanPrNewDependencies } from '../../../../utils/prDependencyScan';
 import { createDbNpmCacheStore } from '../../../../utils/dependencyProvenanceLookup';
 import { learnRepositoryHomepage } from '../../../../utils/repoHomepage';
 import { attachSecretExposureWindows } from '../../../../utils/secretExposureWindow';
+import { deleteClosedFixBranch } from '../../../../utils/githubFixBranchCleanup';
+import { isAssurlyFixBranch } from '../../../../utils/scanBranch';
 
 export const maxDuration = 60;
 
@@ -83,7 +85,14 @@ const pullRequestWebhookSchema = z
       .passthrough(),
     pull_request: z
       .object({
-        head: gitRefSchema,
+        head: gitRefSchema.extend({
+          // Null when the fork behind the pull request was deleted.
+          repo: z
+            .object({ full_name: z.string().max(201) })
+            .passthrough()
+            .nullable()
+            .optional(),
+        }),
         base: gitRefSchema.optional(),
       })
       .passthrough(),
@@ -232,6 +241,22 @@ export function getScannerFileLimit(value = process.env.SCANNER_MAX_FILES): numb
  * Runs the PR check. Exported for degradation tests — production callers use
  * the webhook `after()` path only.
  */
+async function cleanUpFixBranch(payload: PullRequestWebhook): Promise<void> {
+  const token = await getInstallationAccessToken(
+    String(payload.installation.id),
+    payload.repository.id,
+  );
+  await deleteClosedFixBranch(
+    {
+      repositoryName: payload.repository.full_name,
+      headRepositoryName: payload.pull_request.head.repo?.full_name ?? null,
+      branch: payload.pull_request.head.ref,
+      headSha: payload.pull_request.head.sha,
+    },
+    token,
+  );
+}
+
 export async function scanPullRequest(
   db: DbAdapter,
   repository: Repository,
@@ -508,7 +533,9 @@ export const POST = secureRoute(
     }
 
     const payload = pullRequestWebhookSchema.parse(rawPayload);
-    if (!['opened', 'synchronize'].includes(payload.action)) {
+    const isClosedFixPullRequest =
+      payload.action === 'closed' && isAssurlyFixBranch(payload.pull_request.head.ref);
+    if (!['opened', 'synchronize'].includes(payload.action) && !isClosedFixPullRequest) {
       return NextResponse.json({ message: 'Action ignored.' });
     }
 
@@ -534,7 +561,8 @@ export const POST = secureRoute(
 
     after(async () => {
       try {
-        await scanPullRequest(db, repository, payload);
+        if (isClosedFixPullRequest) await cleanUpFixBranch(payload);
+        else await scanPullRequest(db, repository, payload);
         await db.finishGitHubDelivery(deliveryId, true);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

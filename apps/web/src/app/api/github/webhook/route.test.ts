@@ -76,6 +76,47 @@ describe('GitHub webhook security and idempotency', () => {
     mocks.getInstallationAccessToken.mockResolvedValue('installation-token');
   });
 
+  function closedPullRequest(ref: string) {
+    return JSON.stringify({
+      action: 'closed',
+      installation: { id: 456 },
+      repository: { id: 42, full_name: 'owner/private-repo' },
+      pull_request: {
+        merged: true,
+        head: { sha: 'a'.repeat(40), ref, repo: { full_name: 'owner/private-repo' } },
+      },
+    });
+  }
+
+  it('deletes Assurly’s fix branch when its pull request closes, without scanning', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ object: { sha: 'a'.repeat(40) } }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await POST(request({ body: closedPullRequest('assurly-fix-0123456789ab') }));
+    expect(response.status).toBe(202);
+    const work = mocks.after.mock.calls[0][0] as () => Promise<void>;
+    await work();
+
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      'https://api.github.com/repos/owner/private-repo/git/refs/heads/assurly-fix-0123456789ab',
+    );
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'DELETE' });
+    expect(db.saveScan).not.toHaveBeenCalled();
+    expect(db.finishGitHubDelivery).toHaveBeenCalledWith('delivery-1', true);
+  });
+
+  it('ignores the user’s own pull requests closing', async () => {
+    const response = await POST(request({ body: closedPullRequest('feature/login') }));
+    expect(response.status).toBe(200);
+    expect(db.claimGitHubDelivery).not.toHaveBeenCalled();
+    expect(mocks.after).not.toHaveBeenCalled();
+  });
+
   it('uses a bounded configurable scanner budget', () => {
     expect(getScannerFileLimit('250')).toBe(250);
     expect(getScannerFileLimit('0')).toBe(1);
