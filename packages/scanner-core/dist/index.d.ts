@@ -67,6 +67,14 @@ export interface SqlMigrationScanOptions {
 export declare function scanSqlMigrations(sources: readonly SourceInput[], options?: SqlMigrationScanOptions): ScanResult;
 export declare function scanSqlMigration(content: string, file?: string): ScanResult;
 export declare function scanSupabaseClientLeaks(content: string, file?: string): ScanResult;
+export declare function isNextConfigPath(filePath: string): boolean;
+/**
+ * Keys a `next.config.*` assigns in its `env: { ... }` block. Next.js inlines
+ * them at build time from the config itself, so nobody sets them in the
+ * deploy environment and they do not belong in `.env.example`. vercel/chatbot
+ * derives NEXT_PUBLIC_BASE_PATH this way and got 25 "undocumented" warnings.
+ */
+export declare function collectNextConfigEnvKeys(sources: readonly SourceInput[]): Set<string>;
 /**
  * CLI env-docs surface: application source, not tooling packages (`packages/cli`).
  * Matches `packages/cli/src/rules/envRules.ts` path prefixes exactly.
@@ -89,6 +97,8 @@ export interface ScanEnvOptions {
      * Callers that invoke `scanEnvVariables` in a loop should emit it once.
      */
     emitMissingCanary?: boolean;
+    /** Keys a `next.config.*` `env` block defines — see `collectNextConfigEnvKeys`. */
+    configDefinedKeys?: ReadonlySet<string>;
 }
 /**
  * Propose the package-local `.env.example` path for a code file when no ancestor
@@ -126,7 +136,7 @@ export interface DeeperStackScanOptions {
 /** Runs Phase 3 deeper-stack scanners over the supplied project sources. */
 export declare function runDeeperStackScans(sources: readonly SourceInput[], options?: DeeperStackScanOptions): ScanResult;
 export { BLOCKED_SCORE_CAP, RLS_SCORE_GROUP_CAP, buildIssueGroups, buildShipGateReport, countCleanScannedFiles, formatShipGateMarkdown, formatShipGatePlainText, getFindingGroupKey, isShipGateBlocked, resolveGroupAction, type ShipGateAction, type ShipGateActionKind, type ShipGateFindingInput, type ShipGateGroup, type ShipGateMarkdownOptions, type ShipGateOptions, type ShipGateReport, type ShipGateStatus, } from './shipGate';
-export { findingKind, isCiWorkflowSuggestion, isIssueFinding, type FindingKind, } from './findingKind';
+export { findingKind, isCiWorkflowSuggestion, isDatabaseSafetyNetAdvisory, isIssueFinding, type FindingKind, } from './findingKind';
 export { excludeGitIgnoredFiles, isAssurlyEnvExamplePath, isGitIgnorePath, isGitIgnored, parseGitIgnoreSources, type GitIgnoreFileInput, type GitIgnoreSource, } from './gitIgnore';
-export { GITHUB_ACTIONS_EXISTING_CI_MESSAGE, GITHUB_ACTIONS_INIT_SUGGESTION, GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE, githubActionsIntegrationMessage, scanGithubActionsIntegration, scanHardcodedStripeSecrets, scanTsconfigStrict, scanWorkspaceFiles, } from './workspaceScan';
+export { GITHUB_ACTIONS_EXISTING_CI_MESSAGE, GITHUB_ACTIONS_INIT_SUGGESTION, GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE, githubActionsIntegrationMessage, isProjectTsconfigPath, scanGithubActionsIntegration, scanHardcodedStripeSecrets, scanTsconfigStrict, scanWorkspaceFiles, } from './workspaceScan';
 export { detectSqlDialect, isPostgresSqlSource, type SqlDialect, type SqlDialectInput, } from './sqlDialect';

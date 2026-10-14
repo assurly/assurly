@@ -42,6 +42,7 @@ const path = __importStar(require("path"));
 const scanner_core_1 = require("@assurly/scanner-core");
 const detector_1 = require("./detector");
 const rules_1 = require("./rules");
+const languageCoverageRules_1 = require("./rules/languageCoverageRules");
 const shipGateReporter_1 = require("./shipGateReporter");
 function ruleErrorMessage(error) {
     if (error instanceof Error)
@@ -61,7 +62,9 @@ function selectRules(options) {
     return rules_1.allRules;
 }
 async function runAllRules(context, options = {}) {
-    const rules = selectRules(options);
+    const focused = options.agentOnly || options.supplyOnly;
+    // Coverage, not a rule area: a full scan always says what it could not read.
+    const rules = focused ? selectRules(options) : [...selectRules(options), languageCoverageRules_1.languageCoverageRules];
     const findings = [];
     for (const rule of rules) {
         try {

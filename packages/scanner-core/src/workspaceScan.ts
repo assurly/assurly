@@ -65,7 +65,9 @@ function projectUsesStripe(files: readonly SourceInput[]): boolean {
   });
 }
 
-const WORKSPACE_TSCONFIG = /^(apps|packages)\/[^/]+\/tsconfig\.json$/;
+// An app one directory down counts too: Attesta keeps its Next.js app in `web/`
+// next to a Go backend, and was told it had no tsconfig.json at all.
+const WORKSPACE_TSCONFIG = /^(?:(?:apps|packages)\/[^/]+|[^/]+)\/tsconfig\.json$/;
 
 const MISSING_ROOT_TSCONFIG: ScannerFinding = {
   ruleId: 'typescript-strict-mode',
@@ -77,6 +79,11 @@ const MISSING_ROOT_TSCONFIG: ScannerFinding = {
 
 function isWorkspacePackageTsconfig(filePath: string): boolean {
   return WORKSPACE_TSCONFIG.test(posixPath(filePath));
+}
+
+/** The tsconfig.json files `scanTsconfigStrict` reads: the root one or an app's. */
+export function isProjectTsconfigPath(filePath: string): boolean {
+  return posixPath(filePath) === 'tsconfig.json' || isWorkspacePackageTsconfig(filePath);
 }
 
 function evaluateTsconfigStrict(file: SourceInput): ScannerFinding[] {

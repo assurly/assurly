@@ -144,6 +144,7 @@ const PLAIN_RULE_TITLES = {
     'stripe-webhook-no-idempotency': 'Your Stripe webhook may process the same event twice',
     'supabase-storage-public-default': 'A storage bucket is public by default',
     'supabase-service-role-leak': 'Your Supabase admin key may reach the browser',
+    'supply-install-scripts-unreviewed': 'Packages run install scripts nobody approved',
 };
 function issueGroupLabel(key, sampleMessage) {
     if (key.startsWith('env:')) {

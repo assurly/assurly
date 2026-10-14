@@ -147,10 +147,15 @@ exports.envRules = {
                 return content ? [{ file, content }] : [];
             }),
         ]);
+        const configDefinedKeys = (0, scanner_core_1.collectNextConfigEnvKeys)(context.files.filter(scanner_core_1.isNextConfigPath).flatMap((file) => {
+            const content = readFileContent(rootPath, file);
+            return content ? [{ file, content }] : [];
+        }));
         for (const source of codeSources) {
             findings.push(...(0, scanner_core_1.scanEnvVariables)(rootExampleContent, source.content, rootExamplePath, source.file, {
                 allExamples,
                 testOnlyKeys,
+                configDefinedKeys,
             }).findings.filter((finding) => finding.ruleId === 'undocumented-env'));
         }
         return findings;

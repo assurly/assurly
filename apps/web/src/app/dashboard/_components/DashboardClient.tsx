@@ -4,8 +4,10 @@ import React, { useState, useEffect, useEffectEvent, useRef, Suspense, useMemo }
 import { useSearchParams } from 'next/navigation';
 import {
   collectDependencyNames,
+  collectNextConfigEnvKeys,
   countCleanScannedFiles,
   isIssueFinding,
+  isNextConfigPath,
   parsePackageJsonDependencies,
   type SourceInput,
 } from '@assurly/scanner-core';
@@ -1971,6 +1973,12 @@ function DashboardContent({
         if (allExamples.length > 0) {
           const rootExample =
             allExamples.find((example) => example.file === '.env.example') ?? allExamples[0];
+          const nextConfigs: Array<{ file: string; content: string }> = [];
+          for (const configPath of codeFiles.filter(isNextConfigPath)) {
+            const content = await loadFileContent(configPath);
+            if (content !== null) nextConfigs.push({ file: configPath, content });
+          }
+          const configDefinedKeys = collectNextConfigEnvKeys(nextConfigs);
 
           for (const codePath of codeToScan) {
             const codeContent = await loadFileContent(codePath);
@@ -1980,7 +1988,7 @@ function DashboardContent({
               codeContent,
               rootExample.file,
               codePath,
-              { allExamples },
+              { allExamples, configDefinedKeys },
             );
             allFindings.push(
               ...scan.findings.filter((finding) => finding.ruleId === 'undocumented-env'),

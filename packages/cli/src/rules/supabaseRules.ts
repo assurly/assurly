@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {
+  isDatabaseSafetyNetAdvisory,
   scanEnvVariables,
   scanSqlMigrations,
   scanSupabaseClientLeaks,
@@ -13,13 +14,19 @@ export const supabaseRules: Rule = {
   description: 'Checks RLS configuration and service-role exposure in client code.',
   severity: 'error',
   async run(context: ProjectContext): Promise<Finding[]> {
-    if (context.detectedStack.database !== 'supabase') return [];
     const read = (file: string): string =>
       fs.readFileSync(path.join(context.projectPath, file), 'utf8');
-    const findings: Finding[] = [];
     const sql = context.files
       .filter((file) => file.endsWith('.sql'))
       .map((file) => ({ file, content: read(file) }));
+    if (context.detectedStack.database !== 'supabase') {
+      // Tables no browser can reach: the unscored "Good to know" note the
+      // dashboard shows, so both channels report the same database.
+      return scanSqlMigrations(sql, { usesSupabase: false }).findings.filter(
+        isDatabaseSafetyNetAdvisory,
+      );
+    }
+    const findings: Finding[] = [];
     findings.push(
       // This rule only runs on Supabase projects.
       ...scanSqlMigrations(sql, { usesSupabase: true })

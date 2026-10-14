@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isAgentStackFile = exports.isAgentMcpConfigFile = exports.isAgentInstructionFile = exports.isHighConfidenceBlockerRuleId = exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = exports.scanStripeWebhookIdempotencyForProject = exports.scanStripeWebhookIdempotency = exports.scanStripeMissingSubscriptionEvents = exports.scanStripeLiveKeyInDev = exports.scanStripeLifecycle = exports.scanSupabaseStorage = exports.scanSupabasePolicies = exports.scanSupabaseDeepPolicies = exports.scanAuthLinkedMigrationNoRls = exports.scanServiceRoleBypass = exports.scanServerActionAuth = exports.scanRouteHandlerAuth = exports.scanAuthBoundary = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.selectPackageManifestPaths = exports.detectStackFromManifests = exports.describeDetectedStack = exports.MAX_PACKAGE_MANIFESTS = exports.unanalyzedSourceFinding = exports.unanalyzedLanguageForPath = exports.unanalyzedLanguageCounts = exports.summarizeUnanalyzedSource = exports.isSecuritySurfacePath = exports.isAnalyzedSourceFile = exports.isAnalyzedCodeFile = exports.formatUnanalyzedLogLine = exports.UNANALYZED_SOURCE_LANGUAGES = exports.SCAN_LANGUAGE_COVERAGE_RULE_ID = exports.rankFilesByRelevance = exports.measureScanScopeTotals = exports.isTextScanSurface = exports.isScannableFile = exports.instantGateSurfaceFiles = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = exports.INSTANT_GATE_MAX_FILES = exports.RLS_GENERIC_TABLE_LABEL = exports.RLS_SUPABASE_TABLE_LABEL = void 0;
 exports.isAssurlyCanaryBody = exports.extractAssurlyCanaryToken = exports.containsAssurlyCanaryToken = exports.containsAssurlyCanaryCallbackPath = exports.ASSURLY_CANARY_PREFIX = exports.ASSURLY_CANARY_IN_TEXT = exports.ASSURLY_CANARY_ENV_KEY = exports.ASSURLY_CANARY_CALLBACK_PATH = exports.findNearestCorpusMatch = exports.damerauLevenshtein = exports.tokenizePackageName = exports.scopeOwnsBorrowedName = exports.parsePackageJsonDependencies = exports.isAbandonedShape = exports.getTopNpmPackageCorpus = exports.findBorrowedCorpusName = exports.evaluateNewDependencies = exports.evaluateDependencyProvenance = exports.diffAddedDependencies = exports.contiguousTokenRuns = exports.collectDependencyNames = exports.DEP_YOUNG_AGE_DAYS = exports.DEP_TYPOSQUAT_SUSPECT = exports.DEP_SLOPSQUAT_SUSPECT = exports.DEP_SCAN_CAPPED = exports.DEP_REGISTRY_UNAVAILABLE = exports.DEP_PROXIMITY_MAX_DISTANCE = exports.DEP_NONEXISTENT_PACKAGE = exports.DEP_NEW_UNVETTED = exports.DEP_LOW_DOWNLOADS = exports.DEP_DEFAULT_EVAL_CAP = exports.scanSupplyChain = exports.readIgnoreScriptsFromNpmrc = exports.parsePackageManagerNpmMajor = exports.packageNameFromLockKey = exports.isSupplyChainRuleId = exports.enginesNpmPermitsBelow12 = exports.classifyAllowScriptsKey = exports.SUPPLY_NPM_BELOW_V12 = exports.SUPPLY_NON_REGISTRY_DEPENDENCY = exports.SUPPLY_INSTALL_SCRIPTS_UNREVIEWED = exports.SUPPLY_CHAIN_RULE_IDS = exports.SUPPLY_ALLOWSCRIPTS_UNPINNED = exports.SUPPLY_ALLOWSCRIPTS_STALE = exports.SUPPLY_ALLOWSCRIPTS_INVALID = exports.SUPPLY_ALLOWSCRIPTS_IN_WORKSPACE = exports.scanAgentStack = exports.scanAgentMcpConfig = exports.scanAgentInstructionFile = exports.redactEnvKey = void 0;
-exports.isPostgresSqlSource = exports.detectSqlDialect = exports.scanWorkspaceFiles = exports.scanTsconfigStrict = exports.scanHardcodedStripeSecrets = exports.scanGithubActionsIntegration = exports.githubActionsIntegrationMessage = exports.GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE = exports.GITHUB_ACTIONS_INIT_SUGGESTION = exports.GITHUB_ACTIONS_EXISTING_CI_MESSAGE = exports.parseGitIgnoreSources = exports.isGitIgnored = exports.isGitIgnorePath = exports.isAssurlyEnvExamplePath = exports.excludeGitIgnoredFiles = exports.isIssueFinding = exports.isCiWorkflowSuggestion = exports.findingKind = exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.countCleanScannedFiles = exports.buildShipGateReport = exports.buildIssueGroups = exports.RLS_SCORE_GROUP_CAP = exports.BLOCKED_SCORE_CAP = exports.mergeCanaryPlantIntoEnvExample = exports.isAssurlyCanaryToken = exports.isAssurlyCanaryPlantLine = exports.isAssurlyCanaryMcpUrl = exports.isAssurlyCanaryEnvKey = void 0;
+exports.isPostgresSqlSource = exports.detectSqlDialect = exports.scanWorkspaceFiles = exports.scanTsconfigStrict = exports.scanHardcodedStripeSecrets = exports.scanGithubActionsIntegration = exports.isProjectTsconfigPath = exports.githubActionsIntegrationMessage = exports.GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE = exports.GITHUB_ACTIONS_INIT_SUGGESTION = exports.GITHUB_ACTIONS_EXISTING_CI_MESSAGE = exports.parseGitIgnoreSources = exports.isGitIgnored = exports.isGitIgnorePath = exports.isAssurlyEnvExamplePath = exports.excludeGitIgnoredFiles = exports.isIssueFinding = exports.isDatabaseSafetyNetAdvisory = exports.isCiWorkflowSuggestion = exports.findingKind = exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.countCleanScannedFiles = exports.buildShipGateReport = exports.buildIssueGroups = exports.RLS_SCORE_GROUP_CAP = exports.BLOCKED_SCORE_CAP = exports.mergeCanaryPlantIntoEnvExample = exports.isAssurlyCanaryToken = exports.isAssurlyCanaryPlantLine = exports.isAssurlyCanaryMcpUrl = exports.isAssurlyCanaryEnvKey = void 0;
 exports.isSupabaseRlsMessage = isSupabaseRlsMessage;
 exports.subsumeRlsFindings = subsumeRlsFindings;
 exports.selectFiles = selectFiles;
@@ -17,6 +17,8 @@ exports.scanMaxDuration = scanMaxDuration;
 exports.scanSqlMigrations = scanSqlMigrations;
 exports.scanSqlMigration = scanSqlMigration;
 exports.scanSupabaseClientLeaks = scanSupabaseClientLeaks;
+exports.isNextConfigPath = isNextConfigPath;
+exports.collectNextConfigEnvKeys = collectNextConfigEnvKeys;
 exports.isAppEnvSourceFile = isAppEnvSourceFile;
 exports.collectProcessEnvKeysFromCode = collectProcessEnvKeysFromCode;
 exports.proposeEnvExamplePath = proposeEnvExamplePath;
@@ -657,6 +659,50 @@ function isEnvKeyDocumented(key, keys) {
     const aliases = DOCUMENTED_ENV_ALIASES[key];
     return aliases?.some((alias) => keys.has(alias)) ?? false;
 }
+const NEXT_CONFIG_PATH = /(?:^|\/)next\.config\.(?:js|mjs|cjs|ts|mts)$/;
+function isNextConfigPath(filePath) {
+    return NEXT_CONFIG_PATH.test(filePath.replace(/\\/g, '/'));
+}
+/**
+ * Keys a `next.config.*` assigns in its `env: { ... }` block. Next.js inlines
+ * them at build time from the config itself, so nobody sets them in the
+ * deploy environment and they do not belong in `.env.example`. vercel/chatbot
+ * derives NEXT_PUBLIC_BASE_PATH this way and got 25 "undocumented" warnings.
+ */
+function collectNextConfigEnvKeys(sources) {
+    const keys = new Set();
+    for (const source of sources) {
+        if (!isNextConfigPath(source.file))
+            continue;
+        const block = nextConfigEnvBlock(source.content);
+        if (!block)
+            continue;
+        for (const match of block.matchAll(/(?:^|[{,])\s*['"]?([A-Z][A-Z0-9_]*)['"]?\s*(?=[:,}])/g)) {
+            keys.add(match[1]);
+        }
+    }
+    return keys;
+}
+/** Top-level body of the first `env: { ... }` object, nested objects removed. */
+function nextConfigEnvBlock(content) {
+    const start = /\benv\s*:\s*\{/.exec(content);
+    if (!start)
+        return null;
+    let depth = 0;
+    let body = '';
+    for (let index = start.index + start[0].length - 1; index < content.length; index += 1) {
+        const char = content[index];
+        if (char === '{')
+            depth += 1;
+        else if (char === '}')
+            depth -= 1;
+        if (depth === 0)
+            return body;
+        if (depth === 1 && char !== '{')
+            body += char;
+    }
+    return null;
+}
 /**
  * CLI env-docs surface: application source, not tooling packages (`packages/cli`).
  * Matches `packages/cli/src/rules/envRules.ts` path prefixes exactly.
@@ -900,6 +946,8 @@ function scanEnvVariables(exampleContent, codeContent, exampleFile = '.env.examp
             continue;
         if (options.testOnlyKeys?.has(key))
             continue;
+        if (options.configDefinedKeys?.has(key))
+            continue;
         if (!isEnvKeyDocumented(key, keys)) {
             const docPath = activeExample.file;
             findings.push({
@@ -1063,6 +1111,7 @@ Object.defineProperty(exports, "resolveGroupAction", { enumerable: true, get: fu
 var findingKind_1 = require("./findingKind");
 Object.defineProperty(exports, "findingKind", { enumerable: true, get: function () { return findingKind_1.findingKind; } });
 Object.defineProperty(exports, "isCiWorkflowSuggestion", { enumerable: true, get: function () { return findingKind_1.isCiWorkflowSuggestion; } });
+Object.defineProperty(exports, "isDatabaseSafetyNetAdvisory", { enumerable: true, get: function () { return findingKind_1.isDatabaseSafetyNetAdvisory; } });
 Object.defineProperty(exports, "isIssueFinding", { enumerable: true, get: function () { return findingKind_1.isIssueFinding; } });
 var gitIgnore_1 = require("./gitIgnore");
 Object.defineProperty(exports, "excludeGitIgnoredFiles", { enumerable: true, get: function () { return gitIgnore_1.excludeGitIgnoredFiles; } });
@@ -1075,6 +1124,7 @@ Object.defineProperty(exports, "GITHUB_ACTIONS_EXISTING_CI_MESSAGE", { enumerabl
 Object.defineProperty(exports, "GITHUB_ACTIONS_INIT_SUGGESTION", { enumerable: true, get: function () { return workspaceScan_1.GITHUB_ACTIONS_INIT_SUGGESTION; } });
 Object.defineProperty(exports, "GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE", { enumerable: true, get: function () { return workspaceScan_1.GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE; } });
 Object.defineProperty(exports, "githubActionsIntegrationMessage", { enumerable: true, get: function () { return workspaceScan_1.githubActionsIntegrationMessage; } });
+Object.defineProperty(exports, "isProjectTsconfigPath", { enumerable: true, get: function () { return workspaceScan_1.isProjectTsconfigPath; } });
 Object.defineProperty(exports, "scanGithubActionsIntegration", { enumerable: true, get: function () { return workspaceScan_1.scanGithubActionsIntegration; } });
 Object.defineProperty(exports, "scanHardcodedStripeSecrets", { enumerable: true, get: function () { return workspaceScan_1.scanHardcodedStripeSecrets; } });
 Object.defineProperty(exports, "scanTsconfigStrict", { enumerable: true, get: function () { return workspaceScan_1.scanTsconfigStrict; } });

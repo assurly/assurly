@@ -8,6 +8,7 @@ import {
 } from '@assurly/scanner-core';
 import { buildContext } from './detector';
 import { allRules } from './rules';
+import { languageCoverageRules } from './rules/languageCoverageRules';
 import { buildCliShipGateReport } from './shipGateReporter';
 import type { Finding, ProjectContext } from './types';
 
@@ -57,7 +58,9 @@ export async function runAllRules(
   context: ProjectContext,
   options: RunRulesOptions = {},
 ): Promise<Finding[]> {
-  const rules = selectRules(options);
+  const focused = options.agentOnly || options.supplyOnly;
+  // Coverage, not a rule area: a full scan always says what it could not read.
+  const rules = focused ? selectRules(options) : [...selectRules(options), languageCoverageRules];
   const findings: Finding[] = [];
   for (const rule of rules) {
     try {

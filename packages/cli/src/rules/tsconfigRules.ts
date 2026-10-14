@@ -1,19 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { scanTsconfigStrict, type SourceInput } from '@assurly/scanner-core';
+import { isProjectTsconfigPath, scanTsconfigStrict, type SourceInput } from '@assurly/scanner-core';
 import { Rule, Finding, ProjectContext } from '../types';
 
 function posixPath(filePath: string): string {
   return filePath.replace(/\\/g, '/');
 }
 
-function isTsconfigScanPath(relativePath: string): boolean {
-  const posix = posixPath(relativePath);
-  return posix === 'tsconfig.json' || /^(apps|packages)\/[^/]+\/tsconfig\.json$/.test(posix);
-}
-
 function readTsconfigSources(projectPath: string, files: readonly string[]): SourceInput[] {
-  const listed = files.filter(isTsconfigScanPath).map(posixPath);
+  const listed = files.filter(isProjectTsconfigPath).map(posixPath);
   if (!listed.includes('tsconfig.json')) {
     const rootFull = path.join(projectPath, 'tsconfig.json');
     if (fs.existsSync(rootFull)) listed.unshift('tsconfig.json');

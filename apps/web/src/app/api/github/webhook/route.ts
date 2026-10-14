@@ -24,6 +24,8 @@ import {
 import {
   buildScanScope,
   buildShipGateReport,
+  collectNextConfigEnvKeys,
+  isNextConfigPath,
   countCleanScannedFiles,
   formatShipGateMarkdown,
   type ScanScope,
@@ -343,7 +345,14 @@ export async function scanPullRequest(
     const codeContent = (
       await Promise.all(codeFiles.filter((file) => selected.has(file)).map((path) => getFile(path)))
     ).join('\n');
-    const result = scanEnvVariables(envContent, codeContent, envExample, 'code');
+    const nextConfigs = await Promise.all(
+      codeFiles
+        .filter(isNextConfigPath)
+        .map(async (file) => ({ file, content: await getFile(file) })),
+    );
+    const result = scanEnvVariables(envContent, codeContent, envExample, 'code', {
+      configDefinedKeys: collectNextConfigEnvKeys(nextConfigs),
+    });
     findings.push(...result.findings.map((finding) => ({ ...finding, path: envExample })));
   }
 

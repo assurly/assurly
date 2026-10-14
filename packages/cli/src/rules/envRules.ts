@@ -1,6 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { collectTestOnlyEnvKeys, scanEnvVariables, type SourceInput } from '@assurly/scanner-core';
+import {
+  collectNextConfigEnvKeys,
+  collectTestOnlyEnvKeys,
+  isNextConfigPath,
+  scanEnvVariables,
+  type SourceInput,
+} from '@assurly/scanner-core';
 import { Rule, ProjectContext, Finding } from '../types';
 
 /**
@@ -134,11 +140,19 @@ export const envRules: Rule = {
         }),
     ]);
 
+    const configDefinedKeys = collectNextConfigEnvKeys(
+      context.files.filter(isNextConfigPath).flatMap((file) => {
+        const content = readFileContent(rootPath, file);
+        return content ? [{ file, content }] : [];
+      }),
+    );
+
     for (const source of codeSources) {
       findings.push(
         ...scanEnvVariables(rootExampleContent, source.content, rootExamplePath, source.file, {
           allExamples,
           testOnlyKeys,
+          configDefinedKeys,
         }).findings.filter((finding) => finding.ruleId === 'undocumented-env'),
       );
     }

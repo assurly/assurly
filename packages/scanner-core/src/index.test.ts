@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  collectNextConfigEnvKeys,
   collectTestOnlyEnvKeys,
   incompleteScanFinding,
   isAppEnvSourceFile,
@@ -472,5 +473,41 @@ describe('scanEnvVariables monorepo matching', () => {
       severity: 'warning',
       confidence: 'high',
     });
+  });
+});
+
+describe('next.config env keys', () => {
+  const nextConfig = {
+    file: 'next.config.ts',
+    content: `const nextConfig = {
+  basePath,
+  env: {
+    NEXT_PUBLIC_BASE_PATH: basePath,
+    'NEXT_PUBLIC_BUILD_ID': process.env.VERCEL_GIT_COMMIT_SHA ?? DEFAULT_ID,
+    NEXT_PUBLIC_REGION,
+    nested: { NOT_A_KEY: 1 },
+  },
+  experimental: { FAKE_FLAG: true },
+};`,
+  };
+
+  it('collects the keys a next.config env block defines, and nothing else', () => {
+    expect([...collectNextConfigEnvKeys([nextConfig])].sort()).toEqual([
+      'NEXT_PUBLIC_BASE_PATH',
+      'NEXT_PUBLIC_BUILD_ID',
+      'NEXT_PUBLIC_REGION',
+    ]);
+  });
+
+  it('ignores env blocks outside next.config', () => {
+    expect(collectNextConfigEnvKeys([{ ...nextConfig, file: 'src/config.ts' }]).size).toBe(0);
+  });
+
+  it('does not ask to document a key the config defines (vercel/chatbot)', () => {
+    const code = 'const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";';
+    const flagged = scanEnvVariables('AUTH_SECRET=', code, '.env.example', 'app/layout.tsx', {
+      configDefinedKeys: collectNextConfigEnvKeys([nextConfig]),
+    }).findings.filter((finding) => finding.ruleId === 'undocumented-env');
+    expect(flagged).toEqual([]);
   });
 });

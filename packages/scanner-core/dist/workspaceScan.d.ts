@@ -3,6 +3,8 @@ export declare const GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE = "GitHub Actions wo
 export declare const GITHUB_ACTIONS_EXISTING_CI_MESSAGE = "GitHub Actions workflows exist, but none runs the Assurly scan.";
 export declare const GITHUB_ACTIONS_INIT_SUGGESTION = "Run \"npx assurly init\" to automatically generate the .github/workflows/assurly.yml workflow file.";
 export declare function githubActionsIntegrationMessage(existingWorkflowCount: number): string;
+/** The tsconfig.json files `scanTsconfigStrict` reads: the root one or an app's. */
+export declare function isProjectTsconfigPath(filePath: string): boolean;
 export declare function scanTsconfigStrict(files: readonly SourceInput[]): ScanResult;
 export declare function scanGithubActionsIntegration(files: readonly SourceInput[]): ScanResult;
 export declare function scanHardcodedStripeSecrets(files: readonly SourceInput[]): ScanResult;

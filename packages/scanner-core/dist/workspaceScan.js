@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GITHUB_ACTIONS_INIT_SUGGESTION = exports.GITHUB_ACTIONS_EXISTING_CI_MESSAGE = exports.GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE = void 0;
 exports.githubActionsIntegrationMessage = githubActionsIntegrationMessage;
+exports.isProjectTsconfigPath = isProjectTsconfigPath;
 exports.scanTsconfigStrict = scanTsconfigStrict;
 exports.scanGithubActionsIntegration = scanGithubActionsIntegration;
 exports.scanHardcodedStripeSecrets = scanHardcodedStripeSecrets;
@@ -45,7 +46,9 @@ function projectUsesStripe(files) {
         return false;
     });
 }
-const WORKSPACE_TSCONFIG = /^(apps|packages)\/[^/]+\/tsconfig\.json$/;
+// An app one directory down counts too: Attesta keeps its Next.js app in `web/`
+// next to a Go backend, and was told it had no tsconfig.json at all.
+const WORKSPACE_TSCONFIG = /^(?:(?:apps|packages)\/[^/]+|[^/]+)\/tsconfig\.json$/;
 const MISSING_ROOT_TSCONFIG = {
     ruleId: 'typescript-strict-mode',
     severity: 'warning',
@@ -54,6 +57,10 @@ const MISSING_ROOT_TSCONFIG = {
 };
 function isWorkspacePackageTsconfig(filePath) {
     return WORKSPACE_TSCONFIG.test(posixPath(filePath));
+}
+/** The tsconfig.json files `scanTsconfigStrict` reads: the root one or an app's. */
+function isProjectTsconfigPath(filePath) {
+    return posixPath(filePath) === 'tsconfig.json' || isWorkspacePackageTsconfig(filePath);
 }
 function evaluateTsconfigStrict(file) {
     try {

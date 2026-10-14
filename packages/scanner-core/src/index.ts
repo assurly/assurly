@@ -735,6 +735,47 @@ function isEnvKeyDocumented(key: string, keys: Set<string>): boolean {
   return aliases?.some((alias) => keys.has(alias)) ?? false;
 }
 
+const NEXT_CONFIG_PATH = /(?:^|\/)next\.config\.(?:js|mjs|cjs|ts|mts)$/;
+
+export function isNextConfigPath(filePath: string): boolean {
+  return NEXT_CONFIG_PATH.test(filePath.replace(/\\/g, '/'));
+}
+
+/**
+ * Keys a `next.config.*` assigns in its `env: { ... }` block. Next.js inlines
+ * them at build time from the config itself, so nobody sets them in the
+ * deploy environment and they do not belong in `.env.example`. vercel/chatbot
+ * derives NEXT_PUBLIC_BASE_PATH this way and got 25 "undocumented" warnings.
+ */
+export function collectNextConfigEnvKeys(sources: readonly SourceInput[]): Set<string> {
+  const keys = new Set<string>();
+  for (const source of sources) {
+    if (!isNextConfigPath(source.file)) continue;
+    const block = nextConfigEnvBlock(source.content);
+    if (!block) continue;
+    for (const match of block.matchAll(/(?:^|[{,])\s*['"]?([A-Z][A-Z0-9_]*)['"]?\s*(?=[:,}])/g)) {
+      keys.add(match[1]!);
+    }
+  }
+  return keys;
+}
+
+/** Top-level body of the first `env: { ... }` object, nested objects removed. */
+function nextConfigEnvBlock(content: string): string | null {
+  const start = /\benv\s*:\s*\{/.exec(content);
+  if (!start) return null;
+  let depth = 0;
+  let body = '';
+  for (let index = start.index + start[0].length - 1; index < content.length; index += 1) {
+    const char = content[index];
+    if (char === '{') depth += 1;
+    else if (char === '}') depth -= 1;
+    if (depth === 0) return body;
+    if (depth === 1 && char !== '{') body += char;
+  }
+  return null;
+}
+
 /**
  * CLI env-docs surface: application source, not tooling packages (`packages/cli`).
  * Matches `packages/cli/src/rules/envRules.ts` path prefixes exactly.
@@ -818,6 +859,8 @@ export interface ScanEnvOptions {
    * Callers that invoke `scanEnvVariables` in a loop should emit it once.
    */
   emitMissingCanary?: boolean;
+  /** Keys a `next.config.*` `env` block defines — see `collectNextConfigEnvKeys`. */
+  configDefinedKeys?: ReadonlySet<string>;
 }
 
 function parseExampleKeys(content: string): Set<string> {
@@ -1028,6 +1071,7 @@ export function scanEnvVariables(
   for (const { key, line } of collectProcessEnvKeysFromCode(codeContent)) {
     if (FRAMEWORK_ENV_KEYS.has(key)) continue;
     if (options.testOnlyKeys?.has(key)) continue;
+    if (options.configDefinedKeys?.has(key)) continue;
     if (!isEnvKeyDocumented(key, keys)) {
       const docPath = activeExample.file;
       findings.push({
@@ -1287,6 +1331,7 @@ export {
 export {
   findingKind,
   isCiWorkflowSuggestion,
+  isDatabaseSafetyNetAdvisory,
   isIssueFinding,
   type FindingKind,
 } from './findingKind';
@@ -1306,6 +1351,7 @@ export {
   GITHUB_ACTIONS_INIT_SUGGESTION,
   GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE,
   githubActionsIntegrationMessage,
+  isProjectTsconfigPath,
   scanGithubActionsIntegration,
   scanHardcodedStripeSecrets,
   scanTsconfigStrict,

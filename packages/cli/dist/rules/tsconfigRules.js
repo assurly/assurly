@@ -40,12 +40,8 @@ const scanner_core_1 = require("@assurly/scanner-core");
 function posixPath(filePath) {
     return filePath.replace(/\\/g, '/');
 }
-function isTsconfigScanPath(relativePath) {
-    const posix = posixPath(relativePath);
-    return posix === 'tsconfig.json' || /^(apps|packages)\/[^/]+\/tsconfig\.json$/.test(posix);
-}
 function readTsconfigSources(projectPath, files) {
-    const listed = files.filter(isTsconfigScanPath).map(posixPath);
+    const listed = files.filter(scanner_core_1.isProjectTsconfigPath).map(posixPath);
     if (!listed.includes('tsconfig.json')) {
         const rootFull = path.join(projectPath, 'tsconfig.json');
         if (fs.existsSync(rootFull))

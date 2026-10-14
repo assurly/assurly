@@ -43,13 +43,16 @@ exports.supabaseRules = {
     description: 'Checks RLS configuration and service-role exposure in client code.',
     severity: 'error',
     async run(context) {
-        if (context.detectedStack.database !== 'supabase')
-            return [];
         const read = (file) => fs.readFileSync(path.join(context.projectPath, file), 'utf8');
-        const findings = [];
         const sql = context.files
             .filter((file) => file.endsWith('.sql'))
             .map((file) => ({ file, content: read(file) }));
+        if (context.detectedStack.database !== 'supabase') {
+            // Tables no browser can reach: the unscored "Good to know" note the
+            // dashboard shows, so both channels report the same database.
+            return (0, scanner_core_1.scanSqlMigrations)(sql, { usesSupabase: false }).findings.filter(scanner_core_1.isDatabaseSafetyNetAdvisory);
+        }
+        const findings = [];
         findings.push(
         // This rule only runs on Supabase projects.
         ...(0, scanner_core_1.scanSqlMigrations)(sql, { usesSupabase: true })
