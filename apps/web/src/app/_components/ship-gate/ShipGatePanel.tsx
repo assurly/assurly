@@ -29,6 +29,8 @@ interface ShipGatePanelProps {
    *  visually) — used for anonymous, pre-sign-in previews where only the
    *  verdict and score should be free. */
   redactFindings?: boolean;
+  /** Problems the previous commit had and this one no longer has. */
+  resolvedSincePrevious?: { previousCommit: string; labels: readonly string[] } | null;
 }
 
 function fileSuffix(count: number): string {
@@ -56,6 +58,7 @@ export function ShipGatePanel({
   isSharing = false,
   shareError = null,
   redactFindings = false,
+  resolvedSincePrevious = null,
 }: ShipGatePanelProps): ReactElement {
   const hint = actionHint ?? getShipGateActionHint(report);
   const coverageNotes = report.coverageNotes ?? [];
@@ -108,6 +111,21 @@ export function ShipGatePanel({
               : ''}
             {formatScanScopeSummary(report.scanScope)}
           </p>
+        </div>
+      ) : null}
+
+      {!redactFindings && resolvedSincePrevious && resolvedSincePrevious.labels.length > 0 ? (
+        <div className="ship-gate-group ship-gate-group--resolved" data-testid="ship-gate-resolved">
+          <h4 className="ship-gate-group-title">
+            No longer found since commit {resolvedSincePrevious.previousCommit}
+          </h4>
+          <ul className="ship-gate-list">
+            {resolvedSincePrevious.labels.map((label) => (
+              <li key={label} className="ship-gate-list-item ship-gate-resolved-item">
+                <span aria-hidden="true">✓</span> {label}
+              </li>
+            ))}
+          </ul>
         </div>
       ) : null}
 

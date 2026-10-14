@@ -12026,3 +12026,9 @@ body {
   font-size: 0.92rem;
   font-weight: 500;
 }
+
+/* Problems the previous commit had and this one no longer has. */
+.ship-gate-group--resolved .ship-gate-group-title,
+.ship-gate-resolved-item span {
+  color: var(--color-success-text, var(--color-success));
+}

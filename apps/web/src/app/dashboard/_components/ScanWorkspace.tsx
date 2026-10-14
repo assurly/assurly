@@ -3,6 +3,7 @@
 import { useState, type ReactElement } from 'react';
 import type { Organization, Repository, Scan, ScanFinding } from '../../../utils/dbAdapter';
 import type { ScanFixSummary } from '../../../utils/fixSummary';
+import type { ResolvedSincePrevious } from '../../../utils/scanResolved';
 import type { ShipGateReport } from '../../../utils/shipGate';
 import { ShipScoreTrendChart } from './ShipScoreTrendChart';
 import { ScanDetailsPanel } from './ScanDetailsPanel';
@@ -47,6 +48,7 @@ export interface ScanWorkspaceProps {
   deleteScanError: string | null;
   shipGateReport: ShipGateReport | null;
   fixSummary: ScanFixSummary | null;
+  resolvedSincePrevious?: ResolvedSincePrevious | null;
   displayedFindings: ScanFinding[];
   findingsLimit: number;
   fetchTrend: (
@@ -111,6 +113,7 @@ export function ScanWorkspace({
   deleteScanError,
   shipGateReport,
   fixSummary,
+  resolvedSincePrevious = null,
   displayedFindings,
   findingsLimit,
   fetchTrend,
@@ -355,6 +358,7 @@ export function ScanWorkspace({
                 repositoryName={selectedRepo.name}
                 shipGateReport={shipGateReport}
                 fixSummary={fixSummary}
+                resolvedSincePrevious={resolvedSincePrevious}
                 displayedFindings={displayedFindings}
                 findingsLimit={findingsLimit}
                 billingPlan={billingPlan}

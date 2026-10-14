@@ -59,6 +59,11 @@ import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
 import { dedupeRepositoriesByGithubId } from '../../../utils/repositories';
 import { isAutoFixableFinding } from '../../../utils/githubAutoFix';
 import { summarizeScanFixes } from '../../../utils/fixSummary';
+import {
+  findResolvedSincePrevious,
+  pickPreviousScan,
+  type ResolvedSincePrevious,
+} from '../../../utils/scanResolved';
 import { isGitHubRepositoryName } from '../../../utils/githubApp';
 import { parsePublicRepoInput } from '../../../utils/publicRepoInput';
 import { preferPublicScanForRepository } from '../../../utils/scanProxy';
@@ -1050,6 +1055,37 @@ function DashboardContent({
     () => (selectedScan ? summarizeScanFixes(issueFindings, selectedScan.error_count) : null),
     [issueFindings, selectedScan],
   );
+
+  // What the previous commit had and this one no longer has. Best effort: a
+  // failed fetch just leaves the section out.
+  const previousScan = useMemo(
+    () => (selectedScan ? pickPreviousScan(displayedScans, selectedScan) : null),
+    [displayedScans, selectedScan],
+  );
+  const [previousFindings, setPreviousFindings] = useState<{
+    scanId: string;
+    findings: ScanFinding[];
+  } | null>(null);
+  useEffect(() => {
+    if (!previousScan || previousFindings?.scanId === previousScan.id) return;
+    let cancelled = false;
+    clientApi
+      .findings(previousScan.id)
+      .then(({ findings: rows }) => {
+        if (!cancelled) setPreviousFindings({ scanId: previousScan.id, findings: rows });
+      })
+      .catch(() => {
+        // Optional context; the verdict does not depend on it.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [previousScan, previousFindings]);
+  const resolvedSincePrevious = useMemo<ResolvedSincePrevious | null>(() => {
+    if (!previousScan || previousFindings?.scanId !== previousScan.id) return null;
+    if (displayedFindings.length === 0 && repoDetailStatus !== 'ready') return null;
+    return findResolvedSincePrevious(previousScan, previousFindings.findings, displayedFindings);
+  }, [previousScan, previousFindings, displayedFindings, repoDetailStatus]);
 
   const shipGateReport = useMemo(() => {
     if (!selectedScan) return null;
@@ -2424,6 +2460,7 @@ function DashboardContent({
       deleteScanError={deleteScanError}
       shipGateReport={shipGateReport}
       fixSummary={fixSummary}
+      resolvedSincePrevious={resolvedSincePrevious}
       displayedFindings={issueFindings}
       findingsLimit={SAVE_FINDINGS_LIMIT}
       selectedShareUrl={selectedShareUrl}

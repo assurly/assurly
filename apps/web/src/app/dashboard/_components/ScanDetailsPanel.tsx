@@ -6,6 +6,7 @@ import type { Scan, ScanFinding } from '../../../utils/dbAdapter';
 import { buildAiFixPrompt } from '../../../utils/aiFixPrompt';
 import { formatCount, pluralize } from '../../../utils/pluralize';
 import type { ScanFixSummary } from '../../../utils/fixSummary';
+import type { ResolvedSincePrevious } from '../../../utils/scanResolved';
 import type { ShipGateReport } from '../../../utils/shipGate';
 import { DashboardToast, type DashboardToastData } from './DashboardToast';
 import { ScanFindingsDetails } from './ScanFindingsDetails';
@@ -26,6 +27,8 @@ export interface ScanDetailsPanelProps {
   repositoryName?: string;
   shipGateReport: ShipGateReport;
   fixSummary: ScanFixSummary | null;
+  /** Problems the previous commit had and this one no longer has. */
+  resolvedSincePrevious?: ResolvedSincePrevious | null;
   displayedFindings: ScanFinding[];
   findingsLimit?: number;
   billingPlan?: ShipGateBillingPlan;
@@ -62,6 +65,7 @@ export function ScanDetailsPanel({
   repositoryName,
   shipGateReport,
   fixSummary,
+  resolvedSincePrevious = null,
   displayedFindings,
   findingsLimit = 100,
   billingPlan,
@@ -138,6 +142,7 @@ export function ScanDetailsPanel({
           onShare={onShare}
           isSharing={isSharing}
           shareError={shareError}
+          resolvedSincePrevious={resolvedSincePrevious}
         />
       </section>
 

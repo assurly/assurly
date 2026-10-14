@@ -268,3 +268,22 @@ describe('ShipGatePanel redactFindings', () => {
     expect(screen.queryByTestId('ship-gate-redacted-hint')).toBeNull();
   });
 });
+
+describe('ShipGatePanel progress since the previous commit', () => {
+  it('lists the problems the previous commit had and this one does not', () => {
+    const report = buildShipGateReport([], { scannedFileCount: 10, cleanFileCount: 10 });
+    render(
+      <ShipGatePanel
+        report={report}
+        resolvedSincePrevious={{
+          previousCommit: '06b0c6d',
+          labels: ['An API route accepts any input'],
+        }}
+      />,
+    );
+    expect(screen.getByText('No longer found since commit 06b0c6d')).toBeTruthy();
+    expect(screen.getByTestId('ship-gate-resolved').textContent).toContain(
+      'An API route accepts any input',
+    );
+  });
+});
