@@ -158,8 +158,9 @@ export function ScanDetailsPanel({
             </h3>
             <p className="scan-fix-with-ai__hint">
               One prompt for Cursor, Claude Code, Codex or Lovable:{' '}
-              {formatCount(problemCount, 'problem')} in the order they block launch, and the check
-              that proves they are fixed.
+              {problemCount === 1
+                ? 'the problem above and the check that proves it is fixed.'
+                : `${formatCount(problemCount, 'problem')} in the order they block launch, and the check that proves they are fixed.`}
             </p>
           </div>
           <button
