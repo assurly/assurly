@@ -11997,3 +11997,32 @@ body {
   font-size: 0.88rem;
   color: var(--color-text-secondary);
 }
+
+/* How much of the repository the verdict covers, next to the scope line. */
+.ship-gate-coverage {
+  display: grid;
+  gap: 6px;
+}
+
+.ship-gate-coverage-meter {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.ship-gate-coverage-meter__fill {
+  display: block;
+  height: 100%;
+  background: var(--color-info, var(--color-accent));
+}
+
+/* The verdict's to-do list: read before the detail below it. */
+.ship-gate-next-steps__list {
+  margin: 0;
+  padding-left: 1.3rem;
+  display: grid;
+  gap: 4px;
+  font-size: 0.92rem;
+  font-weight: 500;
+}

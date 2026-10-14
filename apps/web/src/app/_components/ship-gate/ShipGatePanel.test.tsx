@@ -36,7 +36,7 @@ describe('ShipGatePanel warning actions', () => {
     render(<ShipGatePanel report={report} />);
 
     // Optional setup, not a warning against the app.
-    expect(screen.queryByText('Warnings (review)')).toBeNull();
+    expect(screen.queryByText('Fix before launch')).toBeNull();
     expect(screen.getByText('Optional setup')).toBeTruthy();
     expect(screen.getByText('Run Assurly on every push')).toBeTruthy();
     expect(screen.getByText('Initialize CI workflow')).toBeTruthy();
@@ -65,7 +65,8 @@ describe('ShipGatePanel warning actions', () => {
 
     render(<ShipGatePanel report={report} />);
 
-    expect(screen.getByText('Table users has no row-level security')).toBeTruthy();
+    // Named once in Next steps and once in the group with its fix.
+    expect(screen.getAllByText('Table users has no row-level security')).toHaveLength(2);
     expect(screen.getByText('Enable RLS on the table.')).toBeTruthy();
   });
 });
@@ -95,8 +96,10 @@ describe('ShipGatePanel warning label layout', () => {
 
     expect(screen.getByText('REVIEW RECOMMENDED')).toBeTruthy();
     expect(screen.queryByText('NOT READY TO SHIP')).toBeNull();
-    expect(screen.getByText('Warnings (review)')).toBeTruthy();
-    expect(screen.getByText('NEXT_PUBLIC_SENTRY_DSN is missing from .env.example')).toBeTruthy();
+    expect(screen.getByText('Fix before launch')).toBeTruthy();
+    expect(screen.getAllByText('NEXT_PUBLIC_SENTRY_DSN is missing from .env.example')).toHaveLength(
+      2,
+    );
     expect(screen.getByText('→ 1 file')).toBeTruthy();
 
     const label = container.querySelector('.ship-gate-list-label');
@@ -244,7 +247,10 @@ describe('ShipGatePanel redactFindings', () => {
   it('renders the full findings list when redactFindings is not set', () => {
     render(<ShipGatePanel report={blockedReport} />);
 
-    expect(screen.getByText(/Supabase table 'profiles' returned rows via anon key/)).toBeTruthy();
+    expect(
+      screen.getAllByText(/Supabase table 'profiles' returned rows via anon key/).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByTestId('ship-gate-next-steps')).toBeTruthy();
     expect(screen.queryByTestId('ship-gate-redacted-hint')).toBeNull();
   });
 

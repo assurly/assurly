@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildNextSteps,
   buildShipGateFromScanFindings,
   getShipGateActionHint,
   resolveVerdict,
   resolveVerdictFromScanFindings,
+  scanCoveragePercent,
 } from './shipGate';
 import { buildShipGateReport } from '@assurly/scanner-core';
 import type { ScanFinding } from './dbAdapter';
@@ -198,5 +200,73 @@ describe('resolveVerdict', () => {
     expect(verdict.blockerCount).toBe(0);
     expect(verdict.warningCount).toBe(1);
     expect(verdict.topIssue?.severity).toBe('warning');
+  });
+});
+
+describe('buildNextSteps', () => {
+  const rls = (table: string) => ({
+    id: table,
+    scan_id: 'scan-1',
+    rule_id: 'supabase-rls',
+    severity: 'error' as const,
+    file_path: 'db/schema.sql',
+    line_number: 1,
+    message: `Supabase table '${table}' is created but Row-Level Security (RLS) is not enabled.`,
+    created_at: '2026-01-01T00:00:00Z',
+  });
+
+  it('lists what to fix in the order it blocks launch, then the unread code', () => {
+    const report = buildShipGateFromScanFindings(
+      [
+        {
+          id: 'w',
+          scan_id: 'scan-1',
+          rule_id: 'api-route-unvalidated-input',
+          severity: 'warning',
+          file_path: 'web/app/api/contact/route.ts',
+          message: 'Route handler reads the request body without validating it against a schema.',
+          created_at: '2026-01-01T00:00:00Z',
+        },
+        {
+          id: 'c',
+          scan_id: 'scan-1',
+          rule_id: 'scan-language-coverage',
+          severity: 'warning',
+          file_path: 'cmd/main.go',
+          message: '53 Go files and 1 Python file were not analysed.',
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      {
+        scannedFileCount: 72,
+        cleanFileCount: 71,
+        scanScope: {
+          scanned: 72,
+          skipped: 54,
+          roots: ['repository'],
+          sourceTotal: 126,
+          unanalyzed: [
+            { language: 'Go', fileCount: 53 },
+            { language: 'Python', fileCount: 1 },
+          ],
+        },
+      },
+    );
+
+    expect(buildNextSteps(report)).toEqual([
+      'An API route accepts any input',
+      'Have the Go and Python code checked by hand: Assurly cannot read it yet',
+    ]);
+    expect(scanCoveragePercent(report)).toBe(57);
+  });
+
+  it('keeps the list short and points to the rest', () => {
+    const report = buildShipGateFromScanFindings(['a', 'b', 'c', 'd', 'e'].map(rls), {
+      scannedFileCount: 1,
+      cleanFileCount: 0,
+    });
+    const steps = buildNextSteps(report);
+    expect(steps).toHaveLength(4);
+    expect(steps[3]).toBe('…and 2 more listed below');
   });
 });

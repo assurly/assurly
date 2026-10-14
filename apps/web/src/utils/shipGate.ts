@@ -135,6 +135,37 @@ export function resolveVerdictFromScanFindings(
   return resolveVerdict(buildShipGateFromScanFindings(findings, options));
 }
 
+const MAX_NEXT_STEPS = 3;
+
+/**
+ * The verdict's to-do list, in the order things block launch: what to fix,
+ * then the code nobody could read. A vibecoder reads this before anything else.
+ */
+export function buildNextSteps(report: ShipGateReport): string[] {
+  const groups = [...report.blockers, ...report.reviews, ...report.warnings];
+  const steps = groups.slice(0, MAX_NEXT_STEPS).map((group) => group.label);
+  const rest = groups.length - steps.length;
+  if (rest > 0) steps.push(`…and ${rest} more listed below`);
+
+  const unread = report.partialCoverage ? (report.scanScope?.unanalyzed ?? []) : [];
+  if (unread.length > 0) {
+    const languages = unread.map((entry) => entry.language);
+    const named =
+      languages.length === 1
+        ? languages[0]
+        : `${languages.slice(0, -1).join(', ')} and ${languages[languages.length - 1]}`;
+    steps.push(`Have the ${named} code checked by hand: Assurly cannot read it yet`);
+  }
+  return steps;
+}
+
+/** Share of the repository's source files this scan read, or null when unknown. */
+export function scanCoveragePercent(report: ShipGateReport): number | null {
+  const scope = report.scanScope;
+  if (!scope?.sourceTotal || scope.sourceTotal <= 0) return null;
+  return Math.min(100, Math.round((scope.scanned / scope.sourceTotal) * 100));
+}
+
 export function getShipGateActionHint(
   report: ShipGateReport,
   options?: { surface?: 'repo' | 'manual'; reason?: 'too_large' },
@@ -155,6 +186,9 @@ export function getShipGateActionHint(
     case 'review':
       if (report.headline.includes('INCOMPLETE')) {
         return 'Coverage is incomplete — run a full local CLI scan before you trust a clean result.';
+      }
+      if (report.partialCoverage && report.blockers.length === 0) {
+        return 'Nothing Assurly read blocks launch. Get the unread code checked before you ship.';
       }
       if (report.blockers.length === 0 && report.reviews.length > 0) {
         return 'No blockers detected. Review heuristic findings and warnings before shipping.';

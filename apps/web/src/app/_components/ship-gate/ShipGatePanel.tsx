@@ -3,7 +3,11 @@
 import type { ReactElement } from 'react';
 import { formatScanScopeSummary } from '../../../utils/browserScanner';
 import type { ShipGateReport } from '../../../utils/shipGate';
-import { getShipGateActionHint } from '../../../utils/shipGate';
+import {
+  buildNextSteps,
+  getShipGateActionHint,
+  scanCoveragePercent,
+} from '../../../utils/shipGate';
 import type { BillingPlan } from '../../../utils/entitlements';
 import { formatCount } from '../../../utils/pluralize';
 import { ShipGateGroupRow } from './ShipGateGroupRow';
@@ -57,6 +61,8 @@ export function ShipGatePanel({
   const coverageNotes = report.coverageNotes ?? [];
   const setup = report.setup ?? [];
   const advisories = report.advisories ?? [];
+  const nextSteps = redactFindings ? [] : buildNextSteps(report);
+  const coveragePercent = scanCoveragePercent(report);
   // Part of the app was not read: the score speaks for the checked part only.
   const scoreLabel = report.partialCoverage ? 'Ship Score · checked part' : 'Ship Score';
 
@@ -83,9 +89,37 @@ export function ShipGatePanel({
       </div>
 
       {report.scanScope ? (
-        <p className="ship-gate-scope" role="status">
-          {formatScanScopeSummary(report.scanScope)}
-        </p>
+        <div className="ship-gate-coverage">
+          {coveragePercent !== null && coveragePercent < 100 ? (
+            <div
+              className="ship-gate-coverage-meter"
+              role="img"
+              aria-label={`${coveragePercent} percent of source files checked`}
+            >
+              <span
+                className="ship-gate-coverage-meter__fill"
+                style={{ width: `${coveragePercent}%` }}
+              />
+            </div>
+          ) : null}
+          <p className="ship-gate-scope" role="status">
+            {coveragePercent !== null && coveragePercent < 100
+              ? `${coveragePercent}% checked · `
+              : ''}
+            {formatScanScopeSummary(report.scanScope)}
+          </p>
+        </div>
+      ) : null}
+
+      {nextSteps.length > 0 ? (
+        <div className="ship-gate-next-steps" data-testid="ship-gate-next-steps">
+          <h4 className="ship-gate-group-title">Next steps</h4>
+          <ol className="ship-gate-next-steps__list">
+            {nextSteps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </div>
       ) : null}
 
       {!redactFindings &&
@@ -93,7 +127,7 @@ export function ShipGatePanel({
           <div className="ship-gate-groups">
             {report.blockers.length > 0 ? (
               <div className="ship-gate-group ship-gate-group--blockers">
-                <h4 className="ship-gate-group-title">Blockers (must fix)</h4>
+                <h4 className="ship-gate-group-title">Blocks launch</h4>
                 <ol className="ship-gate-list">
                   {report.blockers.map((blocker) => (
                     <ShipGateGroupRow
@@ -108,7 +142,7 @@ export function ShipGatePanel({
 
             {report.reviews.length > 0 ? (
               <div className="ship-gate-group ship-gate-group--reviews">
-                <h4 className="ship-gate-group-title">Review (heuristic)</h4>
+                <h4 className="ship-gate-group-title">Check before launch</h4>
                 <ol className="ship-gate-list">
                   {report.reviews.map((review) => (
                     <ShipGateGroupRow
@@ -123,7 +157,7 @@ export function ShipGatePanel({
 
             {report.warnings.length > 0 ? (
               <div className="ship-gate-group ship-gate-group--warnings">
-                <h4 className="ship-gate-group-title">Warnings (review)</h4>
+                <h4 className="ship-gate-group-title">Fix before launch</h4>
                 <ul className="ship-gate-list ship-gate-list--warnings">
                   {report.warnings.map((warning) => (
                     <ShipGateGroupRow

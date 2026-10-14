@@ -161,8 +161,8 @@ describe('DiagnosticTerminal project mode', () => {
     expect(screen.getByText(/^1 Blocker$/i)).toBeTruthy();
     expect(screen.getByText(/2 in file log/i)).toBeTruthy();
     expect(screen.queryByText(/^2 Errors$/i)).toBeNull();
-    expect(screen.getByText('Blockers (must fix)')).toBeTruthy();
-    const blockerList = screen.getByText('Blockers (must fix)').closest('.ship-gate-group');
+    expect(screen.getByText('Blocks launch')).toBeTruthy();
+    const blockerList = screen.getByText('Blocks launch').closest('.ship-gate-group');
     expect(blockerList?.querySelectorAll('.ship-gate-list > li').length).toBe(1);
   });
 
@@ -265,8 +265,8 @@ describe('DiagnosticTerminal project mode', () => {
 
     expect(screen.getByText(/^1 Blocker$/i)).toBeTruthy();
     expect(screen.queryByText(/2 in file log/i)).toBeNull();
-    expect(screen.getByText('Blockers (must fix)')).toBeTruthy();
-    const blockerList = screen.getByText('Blockers (must fix)').closest('.ship-gate-group');
+    expect(screen.getByText('Blocks launch')).toBeTruthy();
+    const blockerList = screen.getByText('Blocks launch').closest('.ship-gate-group');
     expect(blockerList?.querySelectorAll('.ship-gate-list > li').length).toBe(1);
   });
 
