@@ -26,6 +26,7 @@ import {
   type BlockedScan,
   type BlockedScanSource,
 } from './scannerBlocked';
+import { UNRESOLVED_HOST_MESSAGE } from './unreachableTarget';
 import { assertPublicIpAddress, assertScannableUrl } from './urlSafety';
 import { scanVisibility, type VisibilityInput, type VisibilityReport } from './visibilityScan';
 
@@ -502,7 +503,7 @@ async function resolveSafeHost(
 ): Promise<ResolvedSafeHost> {
   const records = await lookupImpl(hostname);
   if (records.length === 0) {
-    throw new Error('Target host could not be resolved.');
+    throw new Error(UNRESOLVED_HOST_MESSAGE);
   }
   for (const record of records) {
     assertPublicIpAddress(record.address);
