@@ -3,6 +3,7 @@ import {
   branchQueryParam,
   parseGithubBranchList,
   suggestAlternateScanBranches,
+  visibleScanBranches,
 } from './scanBranch';
 
 describe('branchQueryParam', () => {
@@ -39,5 +40,19 @@ describe('suggestAlternateScanBranches', () => {
 
   it('returns an empty list when the current branch is the only one', () => {
     expect(suggestAlternateScanBranches('main', ['main'])).toEqual([]);
+  });
+});
+
+describe('visibleScanBranches', () => {
+  it('hides the branches Assurly opened for fix pull requests', () => {
+    const branches = ['main', 'assurly-fix-387069728722', 'shipready-fix-8ed-37c', 'feature/login'];
+    expect(visibleScanBranches(branches, 'main')).toEqual(['main', 'feature/login']);
+  });
+
+  it('keeps a fix branch in the list while it is the one being scanned', () => {
+    expect(visibleScanBranches(['main', 'assurly-fix-abc'], 'assurly-fix-abc')).toEqual([
+      'assurly-fix-abc',
+      'main',
+    ]);
   });
 });

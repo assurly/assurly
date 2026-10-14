@@ -23,6 +23,21 @@ export function parseGithubBranchList(payload: unknown): GithubBranchList {
   };
 }
 
+/**
+ * Branches Assurly opened for fix pull requests (`assurly-fix-<hash>`, and the
+ * `shipready-fix-*` ones from before the rename). They are ours, not the
+ * user's code lines: Attesta's picker listed 33 branches, 33 minus `main`.
+ */
+export function isAssurlyFixBranch(name: string): boolean {
+  return /^(?:assurly|shipready)-fix-/.test(name);
+}
+
+/** The user's branches for the scan picker, plus the one being scanned. */
+export function visibleScanBranches(branches: readonly string[], current: string | null): string[] {
+  const own = branches.filter((name) => !isAssurlyFixBranch(name));
+  return current && !own.includes(current) ? [current, ...own] : own;
+}
+
 const PREFERRED_ALTERNATE_BRANCHES = ['main', 'master', 'develop'] as const;
 
 /**

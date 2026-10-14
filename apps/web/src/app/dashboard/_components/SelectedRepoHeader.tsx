@@ -3,6 +3,7 @@
 import type { ReactElement } from 'react';
 import { DashboardFolderIcon } from './icons/DashboardIcons';
 import type { RepoDetailStatus } from './repoSelection';
+import { visibleScanBranches } from '../../../utils/scanBranch';
 
 export interface SelectedRepoHeaderProps {
   repoName: string;
@@ -40,8 +41,7 @@ export function SelectedRepoHeader({
   branchSelectDisabled = false,
   repoDetailStatus,
 }: SelectedRepoHeaderProps): ReactElement {
-  const branchOptions =
-    scanBranch && !repoBranches.includes(scanBranch) ? [scanBranch, ...repoBranches] : repoBranches;
+  const branchOptions = visibleScanBranches(repoBranches, scanBranch);
   const isLoadingScans = repoDetailStatus === 'loading' && scanCount === 0;
 
   return (
