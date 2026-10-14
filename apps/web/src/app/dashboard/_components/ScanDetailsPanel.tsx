@@ -12,6 +12,7 @@ import { ScanFindingsDetails } from './ScanFindingsDetails';
 
 export const SCAN_DETAILS_SECTION_ORDER = [
   'ship-gate',
+  'fix-with-ai',
   'commit',
   'fix-summary',
   'findings',
@@ -21,6 +22,8 @@ export type ScanDetailsSectionId = (typeof SCAN_DETAILS_SECTION_ORDER)[number];
 
 export interface ScanDetailsPanelProps {
   selectedScan: Scan;
+  /** Named in the fix prompt so the agent knows which project it is in. */
+  repositoryName?: string;
   shipGateReport: ShipGateReport;
   fixSummary: ScanFixSummary | null;
   displayedFindings: ScanFinding[];
@@ -56,6 +59,7 @@ function toWebFinding(finding: ScanFinding) {
 
 export function ScanDetailsPanel({
   selectedScan,
+  repositoryName,
   shipGateReport,
   fixSummary,
   displayedFindings,
@@ -87,7 +91,11 @@ export function ScanDetailsPanel({
       displayedFindings.some((finding) => finding.severity === 'error'));
 
   const handleCopyFixPrompt = async (): Promise<void> => {
-    const prompt = buildAiFixPrompt(displayedFindings.map(toWebFinding));
+    const prompt = buildAiFixPrompt(displayedFindings.map(toWebFinding), {
+      repository: repositoryName,
+      commit: selectedScan.commit_sha,
+      notChecked: shipGateReport.coverageNotes,
+    });
     try {
       await navigator.clipboard.writeText(prompt);
       setCopyToast({
@@ -101,6 +109,10 @@ export function ScanDetailsPanel({
       });
     }
   };
+
+  /** Problems as the Ship Gate groups them — the count the prompt will carry. */
+  const problemCount =
+    shipGateReport.blockers.length + shipGateReport.reviews.length + shipGateReport.warnings.length;
 
   const showPrimaryFixCta =
     fixSummary !== null && fixSummary.remainingCount > 0 && fixingFindingId !== 'batch';
@@ -128,6 +140,35 @@ export function ScanDetailsPanel({
           shareError={shareError}
         />
       </section>
+
+      {problemCount > 0 ? (
+        <section
+          className="scan-fix-with-ai"
+          data-scan-section="fix-with-ai"
+          aria-labelledby="scan-fix-with-ai-title"
+        >
+          <div className="scan-fix-with-ai__copy">
+            <h3 id="scan-fix-with-ai-title" className="scan-fix-with-ai__title">
+              Fix with your AI editor
+            </h3>
+            <p className="scan-fix-with-ai__hint">
+              One prompt for Cursor, Claude Code, Codex or Lovable:{' '}
+              {formatCount(problemCount, 'problem')} in the order they block launch, and the check
+              that proves they are fixed.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="scan-finding-action-btn scan-finding-action-btn--success"
+            onClick={() => {
+              void handleCopyFixPrompt();
+            }}
+            data-testid="scan-copy-fix-prompt"
+          >
+            Copy fix prompt
+          </button>
+        </section>
+      ) : null}
 
       <div className="scan-details-header" data-scan-section="commit">
         <p className="scan-details-commit">
@@ -196,19 +237,6 @@ export function ScanDetailsPanel({
                 ) : (
                   <>Fix these issues</>
                 )}
-              </button>
-            ) : null}
-
-            {displayedFindings.length > 0 ? (
-              <button
-                type="button"
-                className="scan-finding-action-btn scan-finding-action-btn--batch"
-                onClick={() => {
-                  void handleCopyFixPrompt();
-                }}
-                data-testid="scan-copy-fix-prompt"
-              >
-                Copy fix prompt for AI
               </button>
             ) : null}
           </div>

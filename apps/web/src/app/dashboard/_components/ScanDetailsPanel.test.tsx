@@ -81,6 +81,7 @@ describe('ScanDetailsPanel information architecture', () => {
     const container = screen.getByTestId('scan-details-container');
     expect(getScanDetailsSectionOrder(container)).toEqual([
       'ship-gate',
+      'fix-with-ai',
       'commit',
       'fix-summary',
       'findings',
@@ -188,7 +189,13 @@ describe('ScanDetailsPanel information architecture', () => {
   });
 
   it('documents the canonical section order contract', () => {
-    expect(SCAN_DETAILS_SECTION_ORDER).toEqual(['ship-gate', 'commit', 'fix-summary', 'findings']);
+    expect(SCAN_DETAILS_SECTION_ORDER).toEqual([
+      'ship-gate',
+      'fix-with-ai',
+      'commit',
+      'fix-summary',
+      'findings',
+    ]);
   });
 
   it('copies the fix prompt to the clipboard and shows a toast', async () => {
@@ -204,7 +211,8 @@ describe('ScanDetailsPanel information architecture', () => {
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledTimes(1);
     });
-    expect(writeText.mock.calls[0]?.[0]).toContain('Assurly fix prompt');
+    expect(writeText.mock.calls[0]?.[0]).toContain('before launch, in the order listed');
+    expect(writeText.mock.calls[0]?.[0]).toContain('npx assurly scan');
     expect(screen.getByText('Fix prompt copied to clipboard.')).toBeTruthy();
   });
 });

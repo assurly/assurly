@@ -11964,3 +11964,36 @@ body {
     transition: none;
   }
 }
+
+/* One always-visible handoff to the user's AI editor, right under the verdict. */
+.scan-fix-with-ai {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+.scan-fix-with-ai__copy {
+  flex: 999 1 320px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scan-fix-with-ai__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.scan-fix-with-ai__hint {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--color-text-secondary);
+}

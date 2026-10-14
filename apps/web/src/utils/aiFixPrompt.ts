@@ -1,3 +1,9 @@
+import {
+  buildShipGateReport,
+  getFindingGroupKey,
+  isIssueFinding,
+  type ShipGateGroup,
+} from '@assurly/scanner-core';
 import type { WebFinding } from './browserScanner';
 import { getCuratedConsequence } from './consequenceMap';
 
@@ -46,7 +52,23 @@ function deriveWhyItMatters(finding: WebFinding): string | undefined {
   return getCuratedConsequence(finding.ruleId)?.consequence;
 }
 
-function findingSortKey(finding: WebFinding): string {
+export interface AiFixPromptContext {
+  /** Repository the scan read, e.g. `tibco87/Attesta`. */
+  repository?: string;
+  /** Commit the scan read (any length; shortened to 7 characters). */
+  commit?: string;
+  /** What the scan could not check — the Ship Gate report's coverage notes. */
+  notChecked?: readonly string[];
+  /**
+   * Closing rules and the `npx assurly scan` check. Off when another surface
+   * writes its own preamble and closing (the Manual Checker handoff).
+   */
+  includeChecklist?: boolean;
+}
+
+const MAX_LOCATIONS = 5;
+
+function locationSortKey(finding: WebFinding): string {
   return [
     finding.file ?? '',
     String(finding.line ?? 0).padStart(8, '0'),
@@ -55,19 +77,51 @@ function findingSortKey(finding: WebFinding): string {
   ].join('\0');
 }
 
-function formatFindingBlock(finding: WebFinding): string {
-  const file = finding.file ?? 'unknown';
-  const line = finding.line ?? 0;
-  const problem = maskSecrets(finding.message);
-  const instruction = deriveInstruction(finding);
-  const why = deriveWhyItMatters(finding);
-  const lines = [`File ${file}, line ${line}: ${problem} → ${instruction}`];
-  if (why) lines.push(`Why it matters: ${why}`);
-  return lines.join('\n');
+function formatLocations(findings: readonly WebFinding[]): string {
+  const places = [
+    ...new Set(
+      [...findings]
+        .sort((left, right) => locationSortKey(left).localeCompare(locationSortKey(right)))
+        .map((finding) =>
+          finding.line
+            ? `${finding.file ?? 'unknown'}:${finding.line}`
+            : (finding.file ?? 'unknown'),
+        ),
+    ),
+  ];
+  const shown = places.slice(0, MAX_LOCATIONS).join(', ');
+  const more = places.length - MAX_LOCATIONS;
+  return more > 0 ? `${shown} and ${more} more` : shown;
 }
 
-export function buildAiFixPrompt(findings: WebFinding[]): string {
-  if (findings.length === 0) {
+function formatGroup(
+  group: ShipGateGroup,
+  tag: string,
+  index: number,
+  findings: readonly WebFinding[],
+): string {
+  const members = findings.filter((finding) => getFindingGroupKey(finding) === group.id);
+  const sample = members[0];
+  const instruction = sample ? deriveInstruction(sample) : 'Apply a safe, minimal fix.';
+  const why = sample ? deriveWhyItMatters(sample) : undefined;
+  return [
+    `${index}. ${maskSecrets(group.label)} [${tag}]`,
+    `   Where: ${formatLocations(members)}`,
+    `   Problem: ${maskSecrets(sample?.message ?? group.sampleMessage)}`,
+    `   Fix: ${instruction}`,
+    ...(why ? [`   Why it matters: ${why}`] : []),
+  ].join('\n');
+}
+
+/**
+ * The prompt a vibecoder pastes into Cursor, Claude Code, Codex or Lovable.
+ * Problems come in the order they block launch, grouped the way the Ship Gate
+ * shows them; only problems in the app are included (see findingKind), and it
+ * ends with the check that proves the work is done. Deterministic: no LLM call.
+ */
+export function buildAiFixPrompt(findings: WebFinding[], context: AiFixPromptContext = {}): string {
+  const issues = findings.filter((finding) => isIssueFinding(finding));
+  if (issues.length === 0) {
     return [
       'Assurly fix prompt',
       '',
@@ -76,16 +130,45 @@ export function buildAiFixPrompt(findings: WebFinding[]): string {
     ].join('\n');
   }
 
-  const ordered = [...findings].sort((left, right) =>
-    findingSortKey(left).localeCompare(findingSortKey(right)),
-  );
-
+  const report = buildShipGateReport(issues);
+  const ordered: Array<[ShipGateGroup, string]> = [
+    ...report.blockers.map((group): [ShipGateGroup, string] => [group, 'blocks launch']),
+    ...report.reviews.map((group): [ShipGateGroup, string] => [group, 'check before launch']),
+    ...report.warnings.map((group): [ShipGateGroup, string] => [group, 'fix before launch']),
+  ];
+  const count = ordered.length;
+  const target = context.repository ? ` in ${context.repository}` : '';
+  const source = context.commit ? ` in commit ${context.commit.slice(0, 7)}` : '';
   const header = [
-    'Assurly fix prompt',
-    '',
-    'Apply the following deterministic fixes in order. Do not delete unrelated code.',
-    `Findings: ${ordered.length}`,
+    `Fix ${count === 1 ? 'this problem' : `these ${count} problems`}${target} before launch, in the order listed.`,
+    `Found by Assurly${source}.`,
   ].join('\n');
 
-  return [header, ...ordered.map(formatFindingBlock)].join('\n\n');
+  const blocks = ordered.map(([group, tag], index) => formatGroup(group, tag, index + 1, issues));
+  if (context.includeChecklist === false) return [header, ...blocks].join('\n\n');
+
+  const notChecked = context.notChecked ?? [];
+  return [
+    header,
+    ...blocks,
+    [
+      'Rules',
+      '- Change only the files named above, plus a dependency manifest if a fix needs a new package.',
+      '- Keep existing behaviour and do not delete unrelated code.',
+      '- If a fix needs a decision only I can make, stop and ask me.',
+    ].join('\n'),
+    ...(notChecked.length > 0
+      ? [
+          [
+            'Not part of this task: Assurly could not check the following, so do not change it.',
+            ...notChecked.map((note) => `- ${note}`),
+          ].join('\n'),
+        ]
+      : []),
+    [
+      'Check your work',
+      '  npx assurly scan',
+      'Expected: none of the problems above is reported.',
+    ].join('\n'),
+  ].join('\n\n');
 }

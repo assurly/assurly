@@ -22,7 +22,7 @@ describe('getContextualFixExplanation', () => {
     );
     expect(result.whySource).toBe('curated');
     expect(result.whyItMatters.length).toBeGreaterThan(10);
-    expect(result.fixPrompt).toContain('Assurly fix prompt');
+    expect(result.fixPrompt).toContain('Fix this problem before launch');
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 

@@ -18,7 +18,8 @@ export function buildManualCheckerHandoffPrompt(input: ManualCheckerHandoffInput
       ? ['- (none yet)']
       : input.appliedFixes.map((fix) => `- ${fix.afterSummary}`);
 
-  const remainingBody = buildAiFixPrompt([...input.remainingFindings]);
+  // Manual Checker writes its own goal and re-scan step.
+  const remainingBody = buildAiFixPrompt([...input.remainingFindings], { includeChecklist: false });
   // Drop the generic "Assurly fix prompt" header — Manual Checker owns the preamble.
   const remainingSections = remainingBody.split('\n\n');
   const remainingWithoutHeader =

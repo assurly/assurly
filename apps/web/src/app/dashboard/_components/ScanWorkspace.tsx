@@ -352,6 +352,7 @@ export function ScanWorkspace({
             !hideEmptyTooLargeGate ? (
               <ScanDetailsPanel
                 selectedScan={selectedScan}
+                repositoryName={selectedRepo.name}
                 shipGateReport={shipGateReport}
                 fixSummary={fixSummary}
                 displayedFindings={displayedFindings}
