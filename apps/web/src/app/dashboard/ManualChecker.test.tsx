@@ -15,6 +15,6 @@ describe('ManualChecker', () => {
     const html = renderToStaticMarkup(<ManualChecker />);
     expect(html).toContain('Interactive Config Checker');
     expect(html).toContain('NOT READY TO SHIP');
-    expect(html).toContain('Missing RLS on table: profiles');
+    expect(html).toContain('Table profiles has no row-level security');
   });
 });

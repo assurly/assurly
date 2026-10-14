@@ -55,7 +55,7 @@ describe('shipGate web adapter', () => {
     expect(report.blockers).toHaveLength(1);
     expect(report.blockers[0]?.action?.kind).toBe('hint');
     expect(report.warnings).toHaveLength(1);
-    expect(report.warnings[0]?.label).toBe('Undocumented env: STRIPE_SECRET_KEY');
+    expect(report.warnings[0]?.label).toBe('STRIPE_SECRET_KEY is missing from .env.example');
     expect(report.cleanFileCount).toBe(8);
     expect(getShipGateActionHint(report)).toContain('blockers');
   });

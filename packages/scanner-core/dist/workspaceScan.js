@@ -138,7 +138,9 @@ function scanWorkspaceFiles(files) {
     const findings = [];
     const sqlSources = sources.filter((file) => posixPath(file.file).endsWith('.sql'));
     if (sqlSources.length > 0) {
-        findings.push(...(0, index_1.scanSqlMigrations)(sqlSources).findings);
+        const usesSupabase = sources.some((file) => posixPath(file.file).endsWith('package.json') &&
+            /"@supabase\/(?:supabase-js|ssr)"/.test(file.content));
+        findings.push(...(0, index_1.scanSqlMigrations)(sqlSources, { usesSupabase }).findings);
     }
     const codeFiles = sources.filter((file) => /\.(?:[jt]sx?)$/.test(posixPath(file.file)));
     const usesStripe = projectUsesStripe(sources);

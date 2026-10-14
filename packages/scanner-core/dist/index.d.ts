@@ -56,7 +56,15 @@ export declare function scanDbConnectionPooling(content: string, file?: string):
 export declare function scanColdStart(content: string, file?: string): ScanResult;
 export declare function scanEdgeRuntime(content: string, file?: string): ScanResult;
 export declare function scanMaxDuration(content: string, file?: string): ScanResult;
-export declare function scanSqlMigrations(sources: readonly SourceInput[]): ScanResult;
+export interface SqlMigrationScanOptions {
+    /**
+     * The project depends on Supabase (`@supabase/supabase-js` or `@supabase/ssr`).
+     * Migrations alone often carry no Supabase trace, and missing RLS is a leak on
+     * Supabase but only a missing safety net on a database no browser can reach.
+     */
+    usesSupabase?: boolean;
+}
+export declare function scanSqlMigrations(sources: readonly SourceInput[], options?: SqlMigrationScanOptions): ScanResult;
 export declare function scanSqlMigration(content: string, file?: string): ScanResult;
 export declare function scanSupabaseClientLeaks(content: string, file?: string): ScanResult;
 /**

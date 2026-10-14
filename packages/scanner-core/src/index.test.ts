@@ -131,6 +131,15 @@ describe('shared scanner core', () => {
     expect(isSupabaseRlsMessage(scan.findings[0]?.message ?? '')).toBe(false);
   });
 
+  it('treats a project that depends on Supabase as Supabase even when its SQL does not say so', () => {
+    const scan = scanSqlMigrations(
+      [{ file: 'db/001_orders.sql', content: 'create table public.orders(id uuid);' }],
+      { usesSupabase: true },
+    );
+    expect(isSupabaseRlsMessage(scan.findings[0]?.message ?? '')).toBe(true);
+    expect(scan.findings[0]).toMatchObject({ severity: 'error', confidence: 'high' });
+  });
+
   it('emits supabase-rls as a medium warning without a Supabase signal', () => {
     const scan = scanSqlMigrations([
       { file: 'prisma/migrations/0.sql', content: 'CREATE TABLE "User" (id uuid PRIMARY KEY);' },

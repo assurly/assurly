@@ -56,6 +56,9 @@ export function ShipGatePanel({
   const hint = actionHint ?? getShipGateActionHint(report);
   const coverageNotes = report.coverageNotes ?? [];
   const setup = report.setup ?? [];
+  const advisories = report.advisories ?? [];
+  // Part of the app was not read: the score speaks for the checked part only.
+  const scoreLabel = report.partialCoverage ? 'Ship Score · checked part' : 'Ship Score';
 
   return (
     <section
@@ -70,8 +73,11 @@ export function ShipGatePanel({
           </span>
           <span className="ship-gate-headline">{report.headline}</span>
         </div>
-        <div className="ship-gate-score" aria-label={`Ship score ${report.shipScore} out of 100`}>
-          <span className="ship-gate-score-label">Ship Score</span>
+        <div
+          className="ship-gate-score"
+          aria-label={`Ship score ${report.shipScore} out of 100${report.partialCoverage ? ' for the checked part' : ''}`}
+        >
+          <span className="ship-gate-score-label">{scoreLabel}</span>
           <strong className="ship-gate-score-value">{report.shipScore}/100</strong>
         </div>
       </div>
@@ -139,6 +145,23 @@ export function ShipGatePanel({
             {coverageNotes.map((note) => (
               <li key={note} className="ship-gate-list-item ship-gate-coverage-note">
                 {note}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {!redactFindings && advisories.length > 0 ? (
+        <div
+          className="ship-gate-group ship-gate-group--advisory"
+          data-testid="ship-gate-advisories"
+        >
+          <h4 className="ship-gate-group-title">Good to know · not scored</h4>
+          <ul className="ship-gate-list">
+            {advisories.map((item) => (
+              <li key={item.id} className="ship-gate-list-item">
+                <span className="ship-gate-list-label">{item.label}</span>
+                <p className="ship-gate-list-consequence">{item.sampleMessage}</p>
               </li>
             ))}
           </ul>

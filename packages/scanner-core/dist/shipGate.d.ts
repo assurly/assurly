@@ -40,6 +40,13 @@ export interface ShipGateReport {
     coverageNotes?: string[];
     /** Optional Assurly setup (CI workflow, silent alarm). Never findings, never scored. */
     setup?: ShipGateGroup[];
+    /** Worth knowing, not a problem today (see findingKind `advisory`). Never scored. */
+    advisories?: ShipGateGroup[];
+    /**
+     * True when part of the app could not be read (payment or login code in an
+     * unsupported language, or a capped scan): the score covers the checked part.
+     */
+    partialCoverage?: boolean;
 }
 export interface ShipGateOptions {
     scannedFileCount?: number;

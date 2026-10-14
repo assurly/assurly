@@ -466,7 +466,8 @@ describe('Run Secure Scan results rendering', () => {
     );
     expect(payload.generatorFingerprint).toBeDefined();
 
-    expect(await screen.findByText('REVIEW RECOMMENDED')).toBeTruthy();
+    // Payment or login code nobody read: no verdict either way.
+    expect(await screen.findByText('CAN’T CALL IT YET')).toBeTruthy();
     expect(screen.getByText(/3 Go files not analysed/i)).toBeTruthy();
     // Unread code is a limit of the scan, listed apart from the findings.
     expect(screen.getByText('Not checked by this scan')).toBeTruthy();

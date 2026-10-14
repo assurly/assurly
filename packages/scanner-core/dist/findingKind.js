@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.isDatabaseSafetyNetAdvisory = isDatabaseSafetyNetAdvisory;
 exports.isCiWorkflowSuggestion = isCiWorkflowSuggestion;
 exports.findingKind = findingKind;
 exports.isIssueFinding = isIssueFinding;
@@ -14,6 +15,17 @@ const SETUP_RULE_IDS = new Set([
     'assurly-canary-missing',
 ]);
 const INFO_RULE_IDS = new Set(['assurly-canary-planted']);
+/**
+ * `supabase-rls` on a stack with no Supabase signal: the scanner labels the
+ * table "Database table" instead of "Supabase table". Without Supabase or
+ * PostgREST no browser holds a key to the database, so missing RLS is a
+ * missing safety net, not a leak — and the stock fix (`ENABLE ROW LEVEL
+ * SECURITY` with no policy) either does nothing for the owner role or blocks
+ * every query the app makes.
+ */
+function isDatabaseSafetyNetAdvisory(finding) {
+    return finding.ruleId === 'supabase-rls' && /^Database table '/.test(finding.message ?? '');
+}
 /**
  * The CI-workflow nag, including copies persisted before the rename to Assurly
  * under rule `general` that still tell people to run `npx shipready init` —
@@ -32,6 +44,8 @@ function findingKind(finding) {
         return 'setup';
     if (COVERAGE_RULE_IDS.has(ruleId))
         return 'coverage';
+    if (isDatabaseSafetyNetAdvisory(finding))
+        return 'advisory';
     return 'issue';
 }
 function isIssueFinding(finding) {

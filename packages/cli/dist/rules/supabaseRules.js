@@ -50,7 +50,9 @@ exports.supabaseRules = {
         const sql = context.files
             .filter((file) => file.endsWith('.sql'))
             .map((file) => ({ file, content: read(file) }));
-        findings.push(...(0, scanner_core_1.scanSqlMigrations)(sql)
+        findings.push(
+        // This rule only runs on Supabase projects.
+        ...(0, scanner_core_1.scanSqlMigrations)(sql, { usesSupabase: true })
             .findings.filter((finding) => finding.ruleId === 'supabase-rls')
             .map((finding) => ({
             ...finding,

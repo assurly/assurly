@@ -101,7 +101,7 @@ describe('shipGate', () => {
     const groups = buildIssueGroups(envWarnings);
     const envGroup = groups.find((group) => group.id.startsWith('env:'));
     expect(envGroup?.affectedFileCount).toBe(8);
-    expect(envGroup?.label).toBe('Undocumented env: STRIPE_SECRET_KEY');
+    expect(envGroup?.label).toBe('STRIPE_SECRET_KEY is missing from .env.example');
     expect(envGroup?.severity).toBe('warning');
     expect(envGroup?.action?.hint).toBe('Add STRIPE_SECRET_KEY= to .env.example.');
   });
@@ -157,7 +157,7 @@ describe('shipGate', () => {
     expect(report.headline).toBe('REVIEW RECOMMENDED');
     expect(report.blockers).toHaveLength(0);
     expect(report.warnings).toHaveLength(1);
-    expect(report.warnings[0]?.label).toBe('Undocumented env: NEXT_PUBLIC_BASE_PATH');
+    expect(report.warnings[0]?.label).toBe('NEXT_PUBLIC_BASE_PATH is missing from .env.example');
     expect(report.shipScore).toBe(96);
     expect(isShipGateBlocked(report)).toBe(false);
   });
@@ -259,7 +259,7 @@ describe('shipGate', () => {
     expect(report.shipScore).toBe(BLOCKED_SCORE_CAP);
   });
 
-  it('caps RLS family penalty for warnings as well as blockers', () => {
+  it('reports missing RLS on a database no browser can reach as one unscored note', () => {
     const rlsWarnings = Array.from({ length: 5 }, (_, index) => ({
       ruleId: 'supabase-rls',
       severity: 'warning' as const,
@@ -269,9 +269,16 @@ describe('shipGate', () => {
     }));
     const report = buildShipGateReport(rlsWarnings);
 
-    expect(report.status).toBe('review');
-    expect(report.warnings).toHaveLength(5);
-    expect(report.shipScore).toBe(88);
+    expect(report.status).toBe('ready');
+    expect(report.warnings).toEqual([]);
+    expect(report.shipScore).toBe(100);
+    expect(report.advisories).toHaveLength(1);
+    expect(report.advisories?.[0]?.label).toBe(
+      'No row-level safety net in the database · 5 tables',
+    );
+    // The stock fix would break the app here; the note must say so.
+    expect(report.advisories?.[0]?.sampleMessage).toContain('blocks every query');
+    expect(report.advisories?.[0]?.sampleMessage).toContain('table-0, table-1');
   });
 
   it('classifies low-confidence errors as review, not blockers', () => {
@@ -362,7 +369,8 @@ describe('shipGate', () => {
     // Unread code is a limit of the scan, not a problem in the app: it keeps
     // the verdict out of Ready without lowering the score of what was read.
     expect(report.status).toBe('review');
-    expect(report.headline).toBe('REVIEW RECOMMENDED');
+    expect(report.headline).toBe('CAN’T CALL IT YET');
+    expect(report.partialCoverage).toBe(true);
     expect(report.warnings).toEqual([]);
     expect(report.coverageNotes).toEqual([
       expect.stringContaining('53 Go files were not analysed'),
@@ -476,13 +484,18 @@ describe('shipGate', () => {
       { scannedFileCount: 72, cleanFileCount: 68 },
     );
 
-    // Was 76 with 27 findings: −4 for our own registry timeouts and −4 for
-    // the unread backend, which are limits of the scan, not of the app.
-    expect(report.shipScore).toBe(84);
+    // Was 76 with 27 findings. Registry timeouts and the unread backend are
+    // limits of the scan; missing RLS on a Postgres only the Go API reads is a
+    // note. One real problem is left: the contact form's unvalidated input.
+    expect(report.shipScore).toBe(96);
     expect(report.status).toBe('review');
-    expect(report.warnings).toHaveLength(6);
-    expect(report.totalWarningFindings).toBe(6);
+    expect(report.headline).toBe('CAN’T CALL IT YET');
+    expect(report.warnings.map((group) => group.label)).toEqual(['An API route accepts any input']);
+    expect(report.totalWarningFindings).toBe(1);
     expect(report.coverageNotes).toHaveLength(2);
+    expect(report.advisories?.[0]?.label).toBe(
+      'No row-level safety net in the database · 5 tables',
+    );
     expect(report.setup).toEqual([]);
   });
 
@@ -603,12 +616,12 @@ describe('shipGate', () => {
 
     expect(plain).toContain('NOT READY TO SHIP');
     expect(plain).toContain('Ship Score: 59/100');
-    expect(plain).toContain('Missing RLS on table: users');
+    expect(plain).toContain('Table users has no row-level security');
     expect(plain).toContain('✓ 168 files clean');
     expect(plain).toContain('Run: npx assurly init');
 
     expect(markdown).toContain('NOT READY TO SHIP');
-    expect(markdown).toContain('Stripe webhook signature missing');
+    expect(markdown).toContain('Your Stripe webhook does not check signatures');
     expect(markdown).toContain('https://assurly.dev/report/abc123');
     expect(markdown).toContain('`npx assurly init`');
   });

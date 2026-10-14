@@ -9,11 +9,13 @@ import type { ScannerFinding } from './index';
  *   lookup that failed). It limits how much the verdict proves.
  * - `setup`: an optional Assurly setup step (CI workflow, silent alarm).
  * - `info`: a state worth showing that needs no action (a planted canary).
+ * - `advisory`: worth knowing, not a problem today (a database without
+ *   row-level security that no browser can reach). Shown, never scored.
  *
  * Production data showed why this matters: in 14 of 16 repositories the latest
  * scan's findings were about Assurly itself, so no app could ever reach Ready.
  */
-export type FindingKind = 'issue' | 'coverage' | 'setup' | 'info';
+export type FindingKind = 'issue' | 'coverage' | 'setup' | 'info' | 'advisory';
 
 const COVERAGE_RULE_IDS: ReadonlySet<string> = new Set([
   'scan-completeness',
@@ -28,6 +30,20 @@ const SETUP_RULE_IDS: ReadonlySet<string> = new Set([
 ]);
 
 const INFO_RULE_IDS: ReadonlySet<string> = new Set(['assurly-canary-planted']);
+
+/**
+ * `supabase-rls` on a stack with no Supabase signal: the scanner labels the
+ * table "Database table" instead of "Supabase table". Without Supabase or
+ * PostgREST no browser holds a key to the database, so missing RLS is a
+ * missing safety net, not a leak — and the stock fix (`ENABLE ROW LEVEL
+ * SECURITY` with no policy) either does nothing for the owner role or blocks
+ * every query the app makes.
+ */
+export function isDatabaseSafetyNetAdvisory(
+  finding: Pick<ScannerFinding, 'ruleId' | 'message'>,
+): boolean {
+  return finding.ruleId === 'supabase-rls' && /^Database table '/.test(finding.message ?? '');
+}
 
 /**
  * The CI-workflow nag, including copies persisted before the rename to Assurly
@@ -46,6 +62,7 @@ export function findingKind(finding: Pick<ScannerFinding, 'ruleId' | 'message'>)
   if (INFO_RULE_IDS.has(ruleId)) return 'info';
   if (SETUP_RULE_IDS.has(ruleId) || isCiWorkflowSuggestion(finding)) return 'setup';
   if (COVERAGE_RULE_IDS.has(ruleId)) return 'coverage';
+  if (isDatabaseSafetyNetAdvisory(finding)) return 'advisory';
   return 'issue';
 }
 

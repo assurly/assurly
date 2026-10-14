@@ -571,7 +571,19 @@ export function scanMaxDuration(content: string, file = 'route.ts'): ScanResult 
   ]);
 }
 
-export function scanSqlMigrations(sources: readonly SourceInput[]): ScanResult {
+export interface SqlMigrationScanOptions {
+  /**
+   * The project depends on Supabase (`@supabase/supabase-js` or `@supabase/ssr`).
+   * Migrations alone often carry no Supabase trace, and missing RLS is a leak on
+   * Supabase but only a missing safety net on a database no browser can reach.
+   */
+  usesSupabase?: boolean;
+}
+
+export function scanSqlMigrations(
+  sources: readonly SourceInput[],
+  options: SqlMigrationScanOptions = {},
+): ScanResult {
   const findings: ScannerFinding[] = [];
   const created = new Map<string, { file: string; line: number }>();
   const rls = new Set<string>();
@@ -607,13 +619,15 @@ export function scanSqlMigrations(sources: readonly SourceInput[]): ScanResult {
       }
     });
   }
-  const hasSupabaseSignal = postgresSources.some(
-    (source) =>
-      /supabase/i.test(source.file) ||
-      /supabase/i.test(source.content) ||
-      /auth\.uid\(\)/i.test(source.content) ||
-      /auth\.users\b/i.test(source.content),
-  );
+  const hasSupabaseSignal =
+    options.usesSupabase === true ||
+    postgresSources.some(
+      (source) =>
+        /supabase/i.test(source.file) ||
+        /supabase/i.test(source.content) ||
+        /auth\.uid\(\)/i.test(source.content) ||
+        /auth\.users\b/i.test(source.content),
+    );
   const tableLabel = hasSupabaseSignal ? RLS_SUPABASE_TABLE_LABEL : RLS_GENERIC_TABLE_LABEL;
   for (const [table, location] of created) {
     if (

@@ -9159,6 +9159,7 @@ button.dashboard-repo-selector-item {
 }
 
 .ship-gate-group--coverage .ship-gate-group-title,
+.ship-gate-group--advisory .ship-gate-group-title,
 .ship-gate-group--setup .ship-gate-group-title {
   color: var(--color-text-secondary);
 }

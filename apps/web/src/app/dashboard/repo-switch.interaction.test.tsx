@@ -184,7 +184,7 @@ describe('Repository selection state machine', () => {
     fireEvent.click(screen.getByRole('button', { name: /empty-repo/i }));
 
     expect(screen.queryByText('NOT READY TO SHIP')).toBeNull();
-    expect(screen.queryByText(/organizations.*Row-Level Security/i)).toBeNull();
+    expect(screen.queryAllByText(/organizations.*Row-Level Security/i)).toHaveLength(0);
     expect(screen.getByTestId('scan-details-skeleton')).toBeTruthy();
 
     await waitFor(() => {
@@ -202,7 +202,8 @@ describe('Repository selection state machine', () => {
 
     fireEvent.click(screen.getByTestId('scan-findings-details-toggle'));
     expect((screen.getByTestId('scan-details-findings') as HTMLDetailsElement).open).toBe(true);
-    expect(screen.getByText(/organizations.*Row-Level Security/i)).toBeTruthy();
+    // The Ship Gate title and the finding card both name the table.
+    expect(screen.getAllByText(/organizations.*Row-Level Security/i).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: /react-client-leaks/i }));
 
@@ -210,6 +211,6 @@ describe('Repository selection state machine', () => {
     expect(await screen.findByText('NOT READY TO SHIP')).toBeTruthy();
 
     expect((screen.getByTestId('scan-details-findings') as HTMLDetailsElement).open).toBe(false);
-    expect(screen.queryByText(/organizations.*Row-Level Security/i)).toBeNull();
+    expect(screen.queryAllByText(/organizations.*Row-Level Security/i)).toHaveLength(0);
   });
 });

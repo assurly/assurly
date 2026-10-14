@@ -8,11 +8,22 @@ import type { ScannerFinding } from './index';
  *   lookup that failed). It limits how much the verdict proves.
  * - `setup`: an optional Assurly setup step (CI workflow, silent alarm).
  * - `info`: a state worth showing that needs no action (a planted canary).
+ * - `advisory`: worth knowing, not a problem today (a database without
+ *   row-level security that no browser can reach). Shown, never scored.
  *
  * Production data showed why this matters: in 14 of 16 repositories the latest
  * scan's findings were about Assurly itself, so no app could ever reach Ready.
  */
-export type FindingKind = 'issue' | 'coverage' | 'setup' | 'info';
+export type FindingKind = 'issue' | 'coverage' | 'setup' | 'info' | 'advisory';
+/**
+ * `supabase-rls` on a stack with no Supabase signal: the scanner labels the
+ * table "Database table" instead of "Supabase table". Without Supabase or
+ * PostgREST no browser holds a key to the database, so missing RLS is a
+ * missing safety net, not a leak — and the stock fix (`ENABLE ROW LEVEL
+ * SECURITY` with no policy) either does nothing for the owner role or blocks
+ * every query the app makes.
+ */
+export declare function isDatabaseSafetyNetAdvisory(finding: Pick<ScannerFinding, 'ruleId' | 'message'>): boolean;
 /**
  * The CI-workflow nag, including copies persisted before the rename to Assurly
  * under rule `general` that still tell people to run `npx shipready init` —

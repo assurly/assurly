@@ -65,7 +65,7 @@ describe('ShipGatePanel warning actions', () => {
 
     render(<ShipGatePanel report={report} />);
 
-    expect(screen.getByText('Missing RLS on table: users')).toBeTruthy();
+    expect(screen.getByText('Table users has no row-level security')).toBeTruthy();
     expect(screen.getByText('Enable RLS on the table.')).toBeTruthy();
   });
 });
@@ -96,7 +96,7 @@ describe('ShipGatePanel warning label layout', () => {
     expect(screen.getByText('REVIEW RECOMMENDED')).toBeTruthy();
     expect(screen.queryByText('NOT READY TO SHIP')).toBeNull();
     expect(screen.getByText('Warnings (review)')).toBeTruthy();
-    expect(screen.getByText('Undocumented env: NEXT_PUBLIC_SENTRY_DSN')).toBeTruthy();
+    expect(screen.getByText('NEXT_PUBLIC_SENTRY_DSN is missing from .env.example')).toBeTruthy();
     expect(screen.getByText('→ 1 file')).toBeTruthy();
 
     const label = container.querySelector('.ship-gate-list-label');

@@ -169,7 +169,12 @@ export function scanWorkspaceFiles(files: readonly SourceInput[]): ScanResult {
 
   const sqlSources = sources.filter((file) => posixPath(file.file).endsWith('.sql'));
   if (sqlSources.length > 0) {
-    findings.push(...scanSqlMigrations(sqlSources).findings);
+    const usesSupabase = sources.some(
+      (file) =>
+        posixPath(file.file).endsWith('package.json') &&
+        /"@supabase\/(?:supabase-js|ssr)"/.test(file.content),
+    );
+    findings.push(...scanSqlMigrations(sqlSources, { usesSupabase }).findings);
   }
 
   const codeFiles = sources.filter((file) => /\.(?:[jt]sx?)$/.test(posixPath(file.file)));

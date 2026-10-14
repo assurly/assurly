@@ -124,29 +124,52 @@ function getFindingGroupKey(finding) {
         return `rule:${finding.ruleId}`;
     return `msg:${message.replace(/\s+/g, ' ').trim()}`;
 }
+/**
+ * Titles in the words of someone who did not write the code. Each one states
+ * only what its rule checks; the precise message stays under the title.
+ */
+const PLAIN_RULE_TITLES = {
+    'api-route-unvalidated-input': 'An API route accepts any input',
+    'auth-route-handler-unprotected': 'A protected API route has no login check',
+    'auth-route-handler-mutates-unguarded': 'An API route changes data without a login check',
+    'auth-server-action-no-check': 'A server action runs without a login check',
+    'auth-service-role-bypass': 'Admin database access runs without a login check',
+    'ai-llm-key-in-client': 'Your AI provider key is in browser code',
+    'ai-route-missing-authz': 'Anyone can call your AI route',
+    'ai-missing-rate-limit': 'Your AI chat route has no usage limit',
+    'ai-prompt-injection-surface': 'User text goes straight into your AI instructions',
+    'ai-pii-to-model-context': 'Personal data may be sent to the AI model',
+    'stripe-secret-leak': 'Your Stripe secret key is in the code',
+    'stripe-live-key-in-dev': 'A live Stripe key is in a dev or test env file',
+    'stripe-webhook-no-idempotency': 'Your Stripe webhook may process the same event twice',
+    'supabase-storage-public-default': 'A storage bucket is public by default',
+    'supabase-service-role-leak': 'Your Supabase admin key may reach the browser',
+};
 function issueGroupLabel(key, sampleMessage) {
     if (key.startsWith('env:')) {
-        return `Undocumented env: ${key.slice(4)}`;
+        return `${key.slice(4)} is missing from .env.example`;
     }
     if (key === 'rule:assurly-canary-missing') {
         return 'No silent alarm planted';
     }
     if (key.startsWith('rls:')) {
-        return `Missing RLS on table: ${key.slice(4)}`;
+        return `Table ${key.slice(4)} has no row-level security`;
     }
     if (key === 'stripe:webhook-signature')
-        return 'Stripe webhook signature missing';
+        return 'Your Stripe webhook does not check signatures';
     if (key === 'rsc:client-import')
-        return 'Client component imports server module';
+        return 'A client component imports server-only code';
     if (key === 'perf:cold-start')
-        return 'Heavy serverless / cold-start risk';
+        return 'A route loads heavy code on every cold start';
     if (key === 'edge:runtime')
         return 'Edge runtime compatibility';
     if (key === 'rule:scan-language-coverage')
         return 'Backend code not analysed';
     if (key === 'rule:github-actions-integration')
         return 'Run Assurly on every push';
-    return sampleMessage.length > 72 ? `${sampleMessage.slice(0, 69)}…` : sampleMessage;
+    const plain = key.startsWith('rule:') ? PLAIN_RULE_TITLES[key.slice(5)] : undefined;
+    // Never cut a title short: "…against a …" told nobody what was wrong.
+    return plain ?? sampleMessage;
 }
 function extractCommandFromSuggestion(suggestion) {
     const doubleQuoted = suggestion.match(/"((?:npx|npm)\s[^"]+)"/i);
@@ -186,6 +209,34 @@ function canonicalSetupFinding(finding) {
         message: 'GitHub Actions workflow for Assurly is missing.',
         suggestion: CI_WORKFLOW_HINT,
     };
+}
+/**
+ * Missing RLS on a database no browser can reach, all tables in one group:
+ * five identical warnings told the reader nothing five times.
+ */
+function buildAdvisories(advisory) {
+    if (advisory.length === 0)
+        return [];
+    const tables = [
+        ...new Set(advisory
+            .map((finding) => finding.message.match(/table '([^']+)'/i)?.[1])
+            .filter((table) => Boolean(table))),
+    ];
+    const files = new Set(advisory.map((finding) => finding.file ?? '__global__'));
+    const count = tables.length || advisory.length;
+    return [
+        {
+            id: 'advisory:database-safety-net',
+            label: `No row-level safety net in the database · ${count} ${count === 1 ? 'table' : 'tables'}`,
+            severity: 'warning',
+            occurrenceCount: advisory.length,
+            affectedFileCount: files.size,
+            sampleMessage: 'Not a leak: no Supabase or other browser access to this database was found, so only your backend reads these tables. ' +
+                'If you ever expose the database to the browser, turn on row-level security with a policy for each table first — ' +
+                'turning it on without policies blocks every query your app makes.' +
+                (tables.length > 0 ? ` Tables: ${tables.join(', ')}.` : ''),
+        },
+    ];
 }
 /**
  * One line per thing the scan could not check. Registry misses are counted,
@@ -373,6 +424,7 @@ function buildShipGateReport(findings, options = {}) {
     const setupFindings = findings
         .filter((finding) => (0, findingKind_1.findingKind)(finding) === 'setup')
         .map(canonicalSetupFinding);
+    const advisoryFindings = findings.filter((finding) => (0, findingKind_1.findingKind)(finding) === 'advisory');
     const blockerFindings = issues.filter(isBlockerFinding);
     const reviewFindings = issues.filter(isReviewFinding);
     const warningFindings = issues.filter(isWarningFinding);
@@ -408,7 +460,13 @@ function buildShipGateReport(findings, options = {}) {
         hasIncompleteCoverage ||
         hasUnreadSecuritySurface) {
         status = 'review';
-        headline = hasIncompleteCoverage ? 'INCOMPLETE SCAN — REVIEW' : 'REVIEW RECOMMENDED';
+        // Payment or login code nobody read: no verdict either way, whatever the
+        // score of the code that was read.
+        headline = hasIncompleteCoverage
+            ? 'INCOMPLETE SCAN — REVIEW'
+            : hasUnreadSecuritySurface
+                ? 'CAN’T CALL IT YET'
+                : 'REVIEW RECOMMENDED';
         statusEmoji = '⚠️';
     }
     else if (options.scannedFileCount === 0) {
@@ -448,6 +506,8 @@ function buildShipGateReport(findings, options = {}) {
         scanScope: options.scanScope,
         coverageNotes: buildCoverageNotes(coverage),
         setup: buildIssueGroups(setupFindings),
+        advisories: buildAdvisories(advisoryFindings),
+        partialCoverage: hasIncompleteCoverage || hasUnreadSecuritySurface,
     };
 }
 function formatFileSuffix(count) {
@@ -494,6 +554,14 @@ function formatShipGatePlainText(report) {
     if (coverageNotes.length > 0) {
         lines.push('Not checked by this scan:');
         coverageNotes.forEach((note) => lines.push(`  · ${note}`));
+    }
+    const advisories = report.advisories ?? [];
+    if (advisories.length > 0) {
+        lines.push('Good to know (not scored):');
+        advisories.forEach((item) => {
+            lines.push(`  · ${item.label}`);
+            lines.push(`     ${item.sampleMessage}`);
+        });
     }
     const setup = report.setup ?? [];
     if (setup.length > 0) {
@@ -557,6 +625,12 @@ function formatShipGateMarkdown(report, options = {}) {
     if (coverageNotes.length > 0) {
         lines.push('#### Not checked by this scan');
         coverageNotes.forEach((note) => lines.push(`- ${note}`));
+        lines.push('');
+    }
+    const advisories = report.advisories ?? [];
+    if (advisories.length > 0) {
+        lines.push('#### Good to know (not scored)');
+        advisories.forEach((item) => lines.push(`- **${item.label}** — ${item.sampleMessage}`));
         lines.push('');
     }
     const setup = report.setup ?? [];

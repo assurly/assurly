@@ -256,4 +256,23 @@ describe('scanGithubActionsIntegration', () => {
     ]);
     expect(result.findings).toEqual([]);
   });
+
+  it('reads the Supabase dependency from package.json before judging missing RLS', () => {
+    const migration = {
+      file: 'db/001_orders.sql',
+      content: 'create table public.orders(id uuid);',
+    };
+    const withSupabase = scanWorkspaceFiles([
+      migration,
+      { file: 'package.json', content: '{"dependencies":{"@supabase/supabase-js":"^2.45.0"}}' },
+    ]);
+    const without = scanWorkspaceFiles([
+      migration,
+      { file: 'package.json', content: '{"dependencies":{"pg":"^8.11.0"}}' },
+    ]);
+    const rls = (findings: typeof withSupabase.findings) =>
+      findings.find((finding) => finding.ruleId === 'supabase-rls');
+    expect(rls(withSupabase.findings)?.message).toMatch(/^Supabase table 'orders'/);
+    expect(rls(without.findings)?.message).toMatch(/^Database table 'orders'/);
+  });
 });

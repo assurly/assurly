@@ -28,6 +28,23 @@ describe('findingKind', () => {
     }
   });
 
+  it('treats missing RLS as an advisory only when no Supabase was detected', () => {
+    expect(
+      findingKind({
+        ruleId: 'supabase-rls',
+        message:
+          "Database table 'api_keys' is created but Row-Level Security (RLS) is not enabled.",
+      }),
+    ).toBe('advisory');
+    expect(
+      findingKind({
+        ruleId: 'supabase-rls',
+        message:
+          "Supabase table 'profiles' is created but Row-Level Security (RLS) is not enabled.",
+      }),
+    ).toBe('issue');
+  });
+
   it('keeps other `general` findings as issues', () => {
     const finding = { ruleId: 'general', message: 'Hardcoded password in config.' };
     expect(findingKind(finding)).toBe('issue');

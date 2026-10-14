@@ -1889,7 +1889,9 @@ function DashboardContent({
         sqlSources.push({ file: sqlPath, content });
       }
       if (sqlSources.length > 0) {
-        const scan = scanSqlMigrations(sqlSources);
+        const scan = scanSqlMigrations(sqlSources, {
+          usesSupabase: detectedStack.database === 'supabase',
+        });
         allFindings.push(...scan.findings);
         for (const source of sqlSources) {
           const fileFindings = scan.findings.filter((finding) => finding.file === source.file);

@@ -523,7 +523,7 @@ function scanMaxDuration(content, file = 'route.ts') {
         },
     ]);
 }
-function scanSqlMigrations(sources) {
+function scanSqlMigrations(sources, options = {}) {
     const findings = [];
     const created = new Map();
     const rls = new Set();
@@ -554,10 +554,11 @@ function scanSqlMigrations(sources) {
             }
         });
     }
-    const hasSupabaseSignal = postgresSources.some((source) => /supabase/i.test(source.file) ||
-        /supabase/i.test(source.content) ||
-        /auth\.uid\(\)/i.test(source.content) ||
-        /auth\.users\b/i.test(source.content));
+    const hasSupabaseSignal = options.usesSupabase === true ||
+        postgresSources.some((source) => /supabase/i.test(source.file) ||
+            /supabase/i.test(source.content) ||
+            /auth\.uid\(\)/i.test(source.content) ||
+            /auth\.users\b/i.test(source.content));
     const tableLabel = hasSupabaseSignal ? exports.RLS_SUPABASE_TABLE_LABEL : exports.RLS_GENERIC_TABLE_LABEL;
     for (const [table, location] of created) {
         if (!rls.has(table) &&

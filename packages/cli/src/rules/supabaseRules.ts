@@ -21,7 +21,8 @@ export const supabaseRules: Rule = {
       .filter((file) => file.endsWith('.sql'))
       .map((file) => ({ file, content: read(file) }));
     findings.push(
-      ...scanSqlMigrations(sql)
+      // This rule only runs on Supabase projects.
+      ...scanSqlMigrations(sql, { usesSupabase: true })
         .findings.filter((finding) => finding.ruleId === 'supabase-rls')
         .map((finding) => ({
           ...finding,
