@@ -57,7 +57,42 @@ describe('lookupNpmPackage', () => {
     });
     expect(result.exists).toBe(false);
     expect(result.unavailable).toBe(false);
+    // Downloads first, then the registry: only the registry's 404 proves absence.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears a popular package from its download count without the registry document', async () => {
+    // Real registry documents of popular packages run to tens of megabytes
+    // (@clerk/nextjs 26 MB, next 31 MB) and never arrived within the timeout.
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('registry.npmjs.org')) throw new Error('registry must not be fetched');
+      return new Response(JSON.stringify({ downloads: 1_250_000 }), { status: 200 });
+    });
+    const result = await lookupNpmPackage('@clerk/nextjs', {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(result).toMatchObject({
+      exists: true,
+      weeklyDownloads: 1_250_000,
+      unavailable: false,
+    });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not take a missing download count as proof that a package does not exist', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('registry.npmjs.org')) {
+        return new Response(JSON.stringify({ versions: { '0.0.1': {} } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: 'package not found' }), { status: 404 });
+    });
+    const result = await lookupNpmPackage('published-an-hour-ago', {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(result.exists).toBe(true);
+    expect(result.weeklyDownloads).toBeNull();
   });
 
   it('parses created time, version shape, repository presence, and weekly downloads', async () => {
@@ -187,6 +222,26 @@ describe('lookupNpmPackage', () => {
 });
 
 describe('lookupNpmPackages budget', () => {
+  it('checks twenty popular packages within the budget even when registry documents stall', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('registry.npmjs.org')) {
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+          );
+        });
+      }
+      return new Response(JSON.stringify({ downloads: 500_000 }), { status: 200 });
+    });
+    const names = Array.from({ length: 20 }, (_, index) => `popular-${index}`);
+    const results = await lookupNpmPackages(names, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      requestTimeoutMs: 50,
+      totalBudgetMs: 200,
+    });
+    expect(results.every((result) => result.exists === true && !result.unavailable)).toBe(true);
+  });
+
   it('marks remaining packages unavailable when the total budget is exhausted', async () => {
     let calls = 0;
     const fetchImpl = vi.fn(async () => {

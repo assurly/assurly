@@ -20,6 +20,15 @@ export const NPM_REQUEST_TIMEOUT_MS = 3_000;
 export const NPM_TOTAL_BUDGET_MS = 12_000;
 /** Cache TTL for registry metadata and download counts. */
 export const NPM_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * Weekly downloads above which the registry document is not fetched. Every
+ * provenance rule needs a package with under 100 weekly downloads (or a
+ * borrowed name with a single version), so a popular package is cleared by its
+ * download count alone — and the documents of popular packages run to tens of
+ * megabytes (@clerk/nextjs 26 MB, next 31 MB), which never arrived within the
+ * per-request timeout and turned 19 of Attesta's 27 findings into lookup failures.
+ */
+export const NPM_POPULAR_WEEKLY_DOWNLOADS = 10_000;
 
 export interface NpmPackageMetadata {
   packageName: string;
@@ -197,7 +206,42 @@ export async function lookupNpmPackage(
     }
   };
 
-  if (!metadataFresh) {
+  // Weekly downloads first: a few bytes, and enough on their own to clear a
+  // popular package. A 404 here proves nothing (counts lag new packages), so
+  // only the registry decides whether a package exists.
+  if (!downloadsFresh) {
+    try {
+      const response = await timedFetch(buildDownloadsUrl(name));
+      if (!response.ok) {
+        weeklyDownloads = null;
+        unavailable = unavailable || response.status >= 500;
+      } else {
+        const body: unknown = await response.json();
+        const downloads =
+          body && typeof body === 'object' && !Array.isArray(body)
+            ? (body as { downloads?: unknown }).downloads
+            : undefined;
+        weeklyDownloads =
+          typeof downloads === 'number' && Number.isFinite(downloads)
+            ? Math.max(0, Math.floor(downloads))
+            : null;
+        if (weeklyDownloads === null) unavailable = true;
+      }
+    } catch (error) {
+      if (error instanceof BudgetExhaustedError) return emptyUnavailable;
+      weeklyDownloads = null;
+      unavailable = true;
+    }
+  }
+
+  const popular = weeklyDownloads !== null && weeklyDownloads >= NPM_POPULAR_WEEKLY_DOWNLOADS;
+
+  if (!metadataFresh && popular) {
+    exists = true;
+    createdAt = null;
+    versionCount = null;
+    hasRepository = null;
+  } else if (!metadataFresh) {
     try {
       const response = await timedFetch(buildRegistryUrl(name));
       if (response.status === 404) {
@@ -232,37 +276,6 @@ export async function lookupNpmPackage(
         unavailable = true;
       }
       exists = null;
-    }
-  }
-
-  // Downloads are only meaningful for packages that exist.
-  if (exists === true && !downloadsFresh) {
-    try {
-      const response = await timedFetch(buildDownloadsUrl(name));
-      if (!response.ok) {
-        weeklyDownloads = null;
-        unavailable = unavailable || response.status >= 500;
-      } else {
-        const body: unknown = await response.json();
-        const downloads =
-          body && typeof body === 'object' && !Array.isArray(body)
-            ? (body as { downloads?: unknown }).downloads
-            : undefined;
-        weeklyDownloads =
-          typeof downloads === 'number' && Number.isFinite(downloads)
-            ? Math.max(0, Math.floor(downloads))
-            : null;
-        if (weeklyDownloads === null) unavailable = true;
-      }
-    } catch (error) {
-      if (error instanceof BudgetExhaustedError) {
-        // Keep metadata we already have; mark downloads unavailable.
-        weeklyDownloads = null;
-        unavailable = true;
-      } else {
-        weeklyDownloads = null;
-        unavailable = true;
-      }
     }
   }
 
