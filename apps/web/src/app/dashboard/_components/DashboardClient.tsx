@@ -193,7 +193,7 @@ export function renderCanaryPanel(
   lookup: { status: 'loading' | 'ready' | 'error'; byRepoId: Record<string, string> },
   repositoryId: string,
   variant: 'alarm' | 'settings',
-  options?: { hasGitHubInstallation?: boolean },
+  options?: { hasGitHubInstallation?: boolean; plantedInScan?: boolean },
 ): React.ReactElement {
   const targetId = lookup.byRepoId[repositoryId];
   if (targetId) {
@@ -203,6 +203,7 @@ export function renderCanaryPanel(
           <CanarySilentAlarm
             targetId={targetId}
             hasGitHubInstallation={Boolean(options?.hasGitHubInstallation)}
+            plantedInScan={Boolean(options?.plantedInScan)}
           />
         );
       case 'settings':
@@ -2511,6 +2512,9 @@ function DashboardContent({
               selectedRepo ? (
                 renderCanaryPanel(targetLookup, selectedRepo.id, 'alarm', {
                   hasGitHubInstallation: Boolean(org?.github_installation_id),
+                  plantedInScan: displayedFindings.some(
+                    (finding) => finding.rule_id === 'assurly-canary-planted',
+                  ),
                 })
               ) : (
                 <CanaryTokensNotice ariaLabel="Silent alarm">

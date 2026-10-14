@@ -129,6 +129,29 @@ describe('CanarySilentAlarm', () => {
     expect(screen.getByRole('button', { name: 'Copy silent alarm snippet' })).toBeTruthy();
   });
 
+  it('says a tripwire found in the repo is not connected when no alarm is active', async () => {
+    render(<CanarySilentAlarm targetId={TARGET_ID} plantedInScan />);
+    await waitFor(() => {
+      expect(screen.getByText('Silent alarm not connected')).toBeTruthy();
+    });
+    expect(screen.getByTestId('canary-unlinked').textContent).toMatch(/nobody\s+would be alerted/);
+    expect(screen.getByRole('button', { name: 'Add a silent alarm' })).toBeTruthy();
+  });
+
+  it('does not ask to plant again when the scan found the tripwire and an alarm is armed', async () => {
+    listMock.mockResolvedValue({
+      targetId: TARGET_ID,
+      prefix: 'ask_canary_',
+      tokens: [token({ id: 't1', label: CANARY_SILENT_ALARM_LABEL })],
+    });
+    render(<CanarySilentAlarm targetId={TARGET_ID} plantedInScan />);
+    await waitFor(() => {
+      expect(screen.getByText(/Armed · Never used/i)).toBeTruthy();
+    });
+    expect(screen.queryByRole('button', { name: 'Show plant snippet' })).toBeNull();
+    expect(screen.getByText(/is already in \.env\.example/)).toBeTruthy();
+  });
+
   it('shows rotate-real-secrets copy after a hit', async () => {
     listMock.mockResolvedValue({
       targetId: TARGET_ID,

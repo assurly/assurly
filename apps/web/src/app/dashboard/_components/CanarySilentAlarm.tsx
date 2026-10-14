@@ -14,6 +14,8 @@ import { CanaryTokensNotice } from './CanaryTokens';
 export interface CanarySilentAlarmProps {
   targetId: string;
   hasGitHubInstallation?: boolean;
+  /** The latest scan found an Assurly tripwire in the repository's .env.example. */
+  plantedInScan?: boolean;
 }
 
 /**
@@ -23,6 +25,7 @@ export interface CanarySilentAlarmProps {
 export function CanarySilentAlarm({
   targetId,
   hasGitHubInstallation = false,
+  plantedInScan = false,
 }: CanarySilentAlarmProps): ReactElement {
   const [tokens, setTokens] = useState<CanaryTokenSummary[]>([]);
   const [creating, setCreating] = useState(false);
@@ -209,9 +212,18 @@ export function CanarySilentAlarm({
       data-testid="canary-silent-alarm"
     >
       <h4 className="dashboard-public-connect__title">
-        {activeTokens.length > 0 ? 'Silent alarm' : 'Add a silent alarm'}
+        {activeTokens.length > 0
+          ? 'Silent alarm'
+          : plantedInScan
+            ? 'Silent alarm not connected'
+            : 'Add a silent alarm'}
       </h4>
-      {activeTokens.length === 0 ? (
+      {activeTokens.length === 0 && plantedInScan ? (
+        <p className="dashboard-public-connect__copy" data-testid="canary-unlinked">
+          A tripwire is in .env.example, but no active alarm for this app matches it, so nobody
+          would be alerted if it were used. Add a new alarm and replace the old line.
+        </p>
+      ) : activeTokens.length === 0 ? (
         <p className="dashboard-public-connect__copy">
           If someone steals your env, Assurly will let you know. One click. Paste the snippet into
           .env.example as {ASSURLY_CANARY_ENV_KEY} — never as a real Stripe, Supabase, or database
@@ -224,7 +236,7 @@ export function CanarySilentAlarm({
       ) : null}
 
       {activeTokens.length === 0 ||
-      (!freshSnippet && armedNeverUsed && !plantedOnRepo) ||
+      (!freshSnippet && armedNeverUsed && !plantedOnRepo && !plantedInScan) ||
       (hasGitHubInstallation && Boolean(error) && !prUrl) ? (
         <>
           {activeTokens.length > 0 && !freshSnippet ? (
@@ -245,7 +257,7 @@ export function CanarySilentAlarm({
         </>
       ) : null}
 
-      {plantedOnRepo ? (
+      {plantedOnRepo || (plantedInScan && activeTokens.length > 0) ? (
         <p className="dashboard-public-connect__copy" role="status">
           {ASSURLY_CANARY_ENV_KEY} is already in .env.example on the connected repository.
         </p>
