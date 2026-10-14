@@ -11,6 +11,7 @@ exports.formatShipGatePlainText = formatShipGatePlainText;
 exports.formatShipGateMarkdown = formatShipGateMarkdown;
 exports.isShipGateBlocked = isShipGateBlocked;
 const fileRelevance_1 = require("./fileRelevance");
+const findingKind_1 = require("./findingKind");
 const languageCoverage_1 = require("./languageCoverage");
 const BLOCKER_PENALTY = 12;
 const WARNING_PENALTY = 4;
@@ -117,9 +118,8 @@ function getFindingGroupKey(finding) {
     }
     if (message.includes('edge runtime'))
         return 'edge:runtime';
-    if (message.includes('github actions workflow') && message.includes('assurly')) {
+    if ((0, findingKind_1.isCiWorkflowSuggestion)(finding))
         return 'rule:github-actions-integration';
-    }
     if (finding.ruleId)
         return `rule:${finding.ruleId}`;
     return `msg:${message.replace(/\s+/g, ' ').trim()}`;
@@ -144,6 +144,8 @@ function issueGroupLabel(key, sampleMessage) {
         return 'Edge runtime compatibility';
     if (key === 'rule:scan-language-coverage')
         return 'Backend code not analysed';
+    if (key === 'rule:github-actions-integration')
+        return 'Run Assurly on every push';
     return sampleMessage.length > 72 ? `${sampleMessage.slice(0, 69)}…` : sampleMessage;
 }
 function extractCommandFromSuggestion(suggestion) {
@@ -169,6 +171,38 @@ function aggregateGroupSuggestion(key, suggestions) {
     }
     return unique[0];
 }
+const CI_WORKFLOW_HINT = 'Run "npx assurly init" in your repository to automatically configure the CI/CD pipeline.';
+/**
+ * The CI nag in today's words, whatever was persisted. Reports leave the app as
+ * JSON (MCP, API, shared pages), so the old `npx shipready init` text must not
+ * survive even in fields the dashboard does not render.
+ */
+function canonicalSetupFinding(finding) {
+    if (!(0, findingKind_1.isCiWorkflowSuggestion)(finding))
+        return finding;
+    return {
+        ...finding,
+        ruleId: 'github-actions-integration',
+        message: 'GitHub Actions workflow for Assurly is missing.',
+        suggestion: CI_WORKFLOW_HINT,
+    };
+}
+/**
+ * One line per thing the scan could not check. Registry misses are counted,
+ * not listed: nineteen identical lines would bury the one that matters.
+ */
+function buildCoverageNotes(coverage) {
+    const registryMisses = coverage.filter((finding) => finding.ruleId === 'dep-registry-unavailable').length;
+    const notes = coverage
+        .filter((finding) => finding.ruleId !== 'dep-registry-unavailable')
+        .map((finding) => finding.message);
+    if (registryMisses > 0) {
+        const packages = registryMisses === 1 ? '1 npm package' : `${registryMisses} npm packages`;
+        const pronoun = registryMisses === 1 ? 'it was' : 'they were';
+        notes.push(`Could not check ${packages} against the registry, so ${pronoun} not checked for lookalike or invented names.`);
+    }
+    return [...new Set(notes)];
+}
 function resolveGroupAction(key, suggestion, ruleId) {
     if (key === 'rule:github-actions-integration' ||
         ruleId === 'github-actions-integration' ||
@@ -177,7 +211,9 @@ function resolveGroupAction(key, suggestion, ruleId) {
             label: 'Initialize CI workflow',
             kind: 'command',
             command: 'npx assurly init',
-            hint: suggestion,
+            // Never the stored suggestion: scans from before the rename say
+            // `npx shipready init`, and that npm package is someone else's.
+            hint: CI_WORKFLOW_HINT,
         };
     }
     if (key === 'rule:assurly-canary-missing' || ruleId === 'assurly-canary-missing') {
@@ -331,14 +367,22 @@ function resolveFileCounts(findings, options) {
     return { scannedFileCount, cleanFileCount };
 }
 function buildShipGateReport(findings, options = {}) {
-    const blockerFindings = findings.filter(isBlockerFinding);
-    const reviewFindings = findings.filter(isReviewFinding);
-    const warningFindings = findings.filter(isWarningFinding);
+    // Only problems in the app are scored and listed; see findingKind.
+    const issues = findings.filter((finding) => (0, findingKind_1.findingKind)(finding) === 'issue');
+    const coverage = findings.filter((finding) => (0, findingKind_1.findingKind)(finding) === 'coverage');
+    const setupFindings = findings
+        .filter((finding) => (0, findingKind_1.findingKind)(finding) === 'setup')
+        .map(canonicalSetupFinding);
+    const blockerFindings = issues.filter(isBlockerFinding);
+    const reviewFindings = issues.filter(isReviewFinding);
+    const warningFindings = issues.filter(isWarningFinding);
     const blockers = buildIssueGroups(blockerFindings);
     const reviews = buildIssueGroups(reviewFindings);
     const warnings = buildIssueGroups(warningFindings);
-    const { scannedFileCount, cleanFileCount } = resolveFileCounts(findings, options);
+    const { scannedFileCount, cleanFileCount } = resolveFileCounts(issues, options);
     const hasIncompleteCoverage = findings.some((finding) => finding.ruleId === 'scan-completeness');
+    /** Payment or login code in a language Assurly cannot read: never Ready. */
+    const hasUnreadSecuritySurface = findings.some((finding) => finding.ruleId === 'scan-language-coverage');
     /** Incomplete browser scans must never look "production ready". */
     const INCOMPLETE_SCORE_CAP = 79;
     /**
@@ -359,7 +403,10 @@ function buildShipGateReport(findings, options = {}) {
         headline = 'NOT READY TO SHIP';
         statusEmoji = '🚫';
     }
-    else if (warnings.length > 0 || reviews.length > 0 || hasIncompleteCoverage) {
+    else if (warnings.length > 0 ||
+        reviews.length > 0 ||
+        hasIncompleteCoverage ||
+        hasUnreadSecuritySurface) {
         status = 'review';
         headline = hasIncompleteCoverage ? 'INCOMPLETE SCAN — REVIEW' : 'REVIEW RECOMMENDED';
         statusEmoji = '⚠️';
@@ -396,9 +443,11 @@ function buildShipGateReport(findings, options = {}) {
         warnings,
         cleanFileCount,
         scannedFileCount,
-        totalErrorFindings: findings.filter((finding) => finding.severity === 'error').length,
-        totalWarningFindings: findings.filter((finding) => finding.severity === 'warning').length,
+        totalErrorFindings: issues.filter((finding) => finding.severity === 'error').length,
+        totalWarningFindings: issues.filter(isWarningFinding).length,
         scanScope: options.scanScope,
+        coverageNotes: buildCoverageNotes(coverage),
+        setup: buildIssueGroups(setupFindings),
     };
 }
 function formatFileSuffix(count) {
@@ -439,6 +488,20 @@ function formatShipGatePlainText(report) {
             if (warning.action) {
                 lines.push(`     ↳ ${formatActionPlainText(warning.action)}`);
             }
+        });
+    }
+    const coverageNotes = report.coverageNotes ?? [];
+    if (coverageNotes.length > 0) {
+        lines.push('Not checked by this scan:');
+        coverageNotes.forEach((note) => lines.push(`  · ${note}`));
+    }
+    const setup = report.setup ?? [];
+    if (setup.length > 0) {
+        lines.push('Optional setup:');
+        setup.forEach((item) => {
+            lines.push(`  · ${item.label}`);
+            if (item.action)
+                lines.push(`     ↳ ${formatActionPlainText(item.action)}`);
         });
     }
     if (report.cleanFileCount > 0) {
@@ -487,6 +550,22 @@ function formatShipGateMarkdown(report, options = {}) {
             if (warning.action) {
                 lines.push(`  - Action: ${formatActionMarkdown(warning.action)}`);
             }
+        });
+        lines.push('');
+    }
+    const coverageNotes = report.coverageNotes ?? [];
+    if (coverageNotes.length > 0) {
+        lines.push('#### Not checked by this scan');
+        coverageNotes.forEach((note) => lines.push(`- ${note}`));
+        lines.push('');
+    }
+    const setup = report.setup ?? [];
+    if (setup.length > 0) {
+        lines.push('#### Optional setup');
+        setup.forEach((item) => {
+            lines.push(`- ${item.label}`);
+            if (item.action)
+                lines.push(`  - Action: ${formatActionMarkdown(item.action)}`);
         });
         lines.push('');
     }

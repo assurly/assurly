@@ -162,7 +162,7 @@ describe('shipGate', () => {
     expect(isShipGateBlocked(report)).toBe(false);
   });
 
-  it('treats a missing silent alarm as a warning CTA, never a blocker', () => {
+  it('offers a missing silent alarm as optional setup, never as a finding', () => {
     const report = buildShipGateReport(
       [
         {
@@ -179,13 +179,14 @@ describe('shipGate', () => {
       { scannedFileCount: 12, cleanFileCount: 11 },
     );
 
-    expect(report.status).toBe('review');
+    expect(report.status).toBe('ready');
     expect(report.blockers).toHaveLength(0);
+    expect(report.warnings).toHaveLength(0);
     expect(isShipGateBlocked(report)).toBe(false);
-    expect(report.warnings[0]?.label).toBe('No silent alarm planted');
-    expect(report.warnings[0]?.action?.kind).toBe('link');
-    expect(report.warnings[0]?.action?.href).toBe('#canary-silent-alarm');
-    expect(report.warnings[0]?.action?.label).toBe('Add a silent alarm');
+    expect(report.setup?.[0]?.label).toBe('No silent alarm planted');
+    expect(report.setup?.[0]?.action?.kind).toBe('link');
+    expect(report.setup?.[0]?.action?.href).toBe('#canary-silent-alarm');
+    expect(report.setup?.[0]?.action?.label).toBe('Add a silent alarm');
   });
 
   it('does not let a planted canary change the ship verdict', () => {
@@ -215,12 +216,14 @@ describe('shipGate', () => {
       cleanFileCount: 168,
     });
 
-    // 2 real blockers × 12 + 3 warning groups × 4 = 24 + 12 = 36 → 64, then blocked cap
+    // 2 real blockers × 12 + 2 warning groups × 4 = 24 + 8 = 32 → 68, then blocked cap.
+    // The missing CI workflow is optional setup, not a warning.
     expect(report.status).toBe('blocked');
     expect(report.headline).toBe('NOT READY TO SHIP');
     expect(report.blockers).toHaveLength(2);
     expect(report.reviews).toHaveLength(0);
-    expect(report.warnings).toHaveLength(3);
+    expect(report.warnings).toHaveLength(2);
+    expect(report.setup?.map((group) => group.id)).toEqual(['rule:github-actions-integration']);
     expect(report.shipScore).toBe(BLOCKED_SCORE_CAP);
     expect(report.cleanFileCount).toBe(168);
     expect(isShipGateBlocked(report)).toBe(true);
@@ -356,11 +359,131 @@ describe('shipGate', () => {
       ],
       { scannedFileCount: 71, cleanFileCount: 70 },
     );
+    // Unread code is a limit of the scan, not a problem in the app: it keeps
+    // the verdict out of Ready without lowering the score of what was read.
     expect(report.status).toBe('review');
     expect(report.headline).toBe('REVIEW RECOMMENDED');
-    expect(report.warnings[0]?.label).toBe('Backend code not analysed');
-    expect(report.shipScore).toBe(96);
+    expect(report.warnings).toEqual([]);
+    expect(report.coverageNotes).toEqual([
+      expect.stringContaining('53 Go files were not analysed'),
+    ]);
+    expect(report.shipScore).toBe(100);
     expect(isShipGateBlocked(report)).toBe(false);
+  });
+
+  it('keeps Assurly setup suggestions out of the verdict, including the old ShipReady wording', () => {
+    const report = buildShipGateReport(
+      [
+        {
+          ruleId: 'github-actions-integration',
+          severity: 'warning',
+          file: 'Global Configs',
+          message: 'GitHub Actions workflow for Assurly is missing.',
+          suggestion:
+            'Run "npx assurly init" in your repository to automatically configure the CI/CD pipeline.',
+        },
+        {
+          ruleId: 'general',
+          severity: 'warning',
+          file: 'Global Configs',
+          message: 'GitHub Actions workflow for ShipReady is missing.',
+          suggestion:
+            'Run "npx shipready init" in your repository to automatically configure the CI/CD pipeline.',
+        },
+        {
+          ruleId: 'assurly-canary-missing',
+          severity: 'warning',
+          file: '.env.example',
+          message: 'No Assurly silent alarm in .env.example.',
+        },
+      ],
+      { scannedFileCount: 15, cleanFileCount: 15 },
+    );
+
+    expect(report.status).toBe('ready');
+    expect(report.shipScore).toBe(100);
+    expect(report.warnings).toEqual([]);
+    expect(report.totalWarningFindings).toBe(0);
+    expect(report.setup?.map((group) => group.label)).toEqual([
+      'Run Assurly on every push',
+      'No silent alarm planted',
+    ]);
+    // `shipready` on npm belongs to someone else: never hand that command out.
+    expect(JSON.stringify(report)).not.toMatch(/shipready/i);
+    expect(report.setup?.[0]?.action).toMatchObject({
+      kind: 'command',
+      command: 'npx assurly init',
+    });
+  });
+
+  it('reports registry lookups that failed as one coverage note, not as findings', () => {
+    const registryMisses = Array.from({ length: 19 }, (_, index) => ({
+      ruleId: 'dep-registry-unavailable',
+      severity: 'warning' as const,
+      confidence: 'medium' as const,
+      file: 'package.json',
+      message: `Could not verify npm registry metadata for 'pkg-${index}' (lookup failed or timed out).`,
+    }));
+    const report = buildShipGateReport(registryMisses, {
+      scannedFileCount: 72,
+      cleanFileCount: 72,
+    });
+
+    expect(report.status).toBe('ready');
+    expect(report.shipScore).toBe(100);
+    expect(report.warnings).toEqual([]);
+    expect(report.coverageNotes).toEqual([
+      'Could not check 19 npm packages against the registry, so they were not checked for lookalike or invented names.',
+    ]);
+  });
+
+  it('scores the Attesta scan on its real problems only', () => {
+    const rls = (table: string) => ({
+      ruleId: 'supabase-rls',
+      severity: 'warning' as const,
+      file: 'db/migrations/003_create_auth_schema.up.sql',
+      message: `Database table '${table}' is created but Row-Level Security (RLS) is not enabled.`,
+    });
+    const report = buildShipGateReport(
+      [
+        {
+          ruleId: 'scan-language-coverage',
+          severity: 'warning',
+          confidence: 'high',
+          file: 'cmd/test_webhook/main.go',
+          message: '53 Go files and 1 Python file were not analysed.',
+        },
+        ...['organizations', 'api_keys', 'user_consents', 'alert_rules', 'alert_history'].map(rls),
+        {
+          ruleId: 'assurly-canary-planted',
+          severity: 'warning',
+          file: '.env.example',
+          message: 'Assurly canary token detected.',
+        },
+        {
+          ruleId: 'api-route-unvalidated-input',
+          severity: 'warning',
+          file: 'web/app/api/contact/route.ts',
+          message: 'Route handler reads the request body without validating it against a schema.',
+        },
+        ...Array.from({ length: 19 }, (_, index) => ({
+          ruleId: 'dep-registry-unavailable',
+          severity: 'warning' as const,
+          file: 'package.json',
+          message: `Could not verify npm registry metadata for 'pkg-${index}'.`,
+        })),
+      ],
+      { scannedFileCount: 72, cleanFileCount: 68 },
+    );
+
+    // Was 76 with 27 findings: −4 for our own registry timeouts and −4 for
+    // the unread backend, which are limits of the scan, not of the app.
+    expect(report.shipScore).toBe(84);
+    expect(report.status).toBe('review');
+    expect(report.warnings).toHaveLength(6);
+    expect(report.totalWarningFindings).toBe(6);
+    expect(report.coverageNotes).toHaveLength(2);
+    expect(report.setup).toEqual([]);
   });
 
   it('caps incomplete coverage scans as review with score ≤ 79', () => {

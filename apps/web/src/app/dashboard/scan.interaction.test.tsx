@@ -59,7 +59,8 @@ function assertRlsFindingInDetails(): void {
   const panel = screen.getByTestId('scan-details-findings');
   expect(within(panel).getByText(RLS_FINDING_TEXT)).toBeTruthy();
 }
-const CI_FINDING_TEXT = /GitHub Actions workflow for Assurly is missing/i;
+/** A missing CI workflow is optional setup, shown in the Ship Gate panel. */
+const CI_SETUP_LABEL = 'Run Assurly on every push';
 
 const baseOrganization: Organization = {
   id: 'org-1',
@@ -239,7 +240,7 @@ describe('Run Secure Scan results rendering', () => {
     // The computed result is shown despite the save failing.
     await revealDetailedFindings();
     await expectRlsFindingInDetails();
-    expect(screen.getAllByText(CI_FINDING_TEXT).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(CI_SETUP_LABEL).length).toBeGreaterThan(0);
 
     // The user is told the truth instead of seeing a fake success.
     const alert = await screen.findByRole('alert');
@@ -467,7 +468,8 @@ describe('Run Secure Scan results rendering', () => {
 
     expect(await screen.findByText('REVIEW RECOMMENDED')).toBeTruthy();
     expect(screen.getByText(/3 Go files not analysed/i)).toBeTruthy();
-    expect(screen.getByText('Backend code not analysed')).toBeTruthy();
+    // Unread code is a limit of the scan, listed apart from the findings.
+    expect(screen.getByText('Not checked by this scan')).toBeTruthy();
     expect(screen.queryByText('READY TO SHIP')).toBeNull();
   });
 
@@ -596,19 +598,19 @@ describe('Run Secure Scan results rendering', () => {
     await waitFor(() => expect(findingsMock).toHaveBeenCalledWith(savedScan.id));
 
     // The fix summary reports the TRUE error total, not the capped 100.
-    expect(await screen.findByText(/120 blockers · 121 findings/i)).toBeTruthy();
+    // The missing CI workflow is optional setup, so it is not counted as a finding.
+    expect(await screen.findByText(/120 blockers · 120 findings/i)).toBeTruthy();
 
     fireEvent.click(await screen.findByTestId('scan-findings-details-toggle'));
 
     // A transparency note explains that history only stores the first 100.
     const note = await screen.findByRole('note');
-    expect(note.textContent).toMatch(/Showing all 121 findings from this run/i);
+    expect(note.textContent).toMatch(/Showing all 120 findings from this run/i);
     expect(note.textContent).toMatch(/first 100/i);
 
-    // The warning sits at position 121 (after the 120 prioritised errors), i.e.
-    // beyond the persisted cap — it must remain visible from the in-session set
-    // instead of being silently dropped.
-    expect(screen.getAllByText(CI_FINDING_TEXT).length).toBeGreaterThan(0);
+    // Table t_119 is beyond the persisted cap — it must remain visible from the
+    // in-session set instead of being silently dropped.
+    expect(screen.getAllByText(/'t_119'/).length).toBeGreaterThan(0);
   });
 });
 

@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import {
   collectDependencyNames,
   countCleanScannedFiles,
+  isIssueFinding,
   parsePackageJsonDependencies,
   type SourceInput,
 } from '@assurly/scanner-core';
@@ -1034,9 +1035,19 @@ function DashboardContent({
     return findingsMatchScan(findings, selectedScan.id) ? findings : [];
   }, [selectedScan, localScanForRepo, localFindings, findings]);
 
+  // Problems in the app only. What the scan could not check, optional setup and
+  // a planted canary are not findings; the Ship Gate panel shows them instead.
+  const issueFindings = useMemo(
+    () =>
+      displayedFindings.filter((finding) =>
+        isIssueFinding({ ruleId: finding.rule_id, message: finding.message }),
+      ),
+    [displayedFindings],
+  );
+
   const fixSummary = useMemo(
-    () => (selectedScan ? summarizeScanFixes(displayedFindings, selectedScan.error_count) : null),
-    [displayedFindings, selectedScan],
+    () => (selectedScan ? summarizeScanFixes(issueFindings, selectedScan.error_count) : null),
+    [issueFindings, selectedScan],
   );
 
   const shipGateReport = useMemo(() => {
@@ -2410,7 +2421,7 @@ function DashboardContent({
       deleteScanError={deleteScanError}
       shipGateReport={shipGateReport}
       fixSummary={fixSummary}
-      displayedFindings={displayedFindings}
+      displayedFindings={issueFindings}
       findingsLimit={SAVE_FINDINGS_LIMIT}
       selectedShareUrl={selectedShareUrl}
       selectedBadgeMarkdown={selectedBadgeMarkdown}

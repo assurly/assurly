@@ -33,6 +33,13 @@ export interface ShipGateReport {
     totalErrorFindings: number;
     totalWarningFindings: number;
     scanScope?: ScanScope;
+    /**
+     * What this scan could not check. Shown beside the verdict, never scored.
+     * Optional because reports also arrive as JSON built before it existed.
+     */
+    coverageNotes?: string[];
+    /** Optional Assurly setup (CI workflow, silent alarm). Never findings, never scored. */
+    setup?: ShipGateGroup[];
 }
 export interface ShipGateOptions {
     scannedFileCount?: number;

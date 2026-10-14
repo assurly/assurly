@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import type { ReactElement } from 'react';
 import { ShipGatePanel } from '../../_components/ship-gate/ShipGatePanel';
 import { ThemeToggle } from '../../_components/ThemeToggle';
+import { isIssueFinding } from '@assurly/scanner-core';
 import { buildShipGateFromScanFindings } from '../../../utils/shipGate';
 import { getAdminDbAdapter } from '../../../utils/dbAdapter';
 import { toPublicTrustProjection } from '../../../utils/publicTrust';
@@ -130,6 +131,11 @@ export default async function ReportPage({ params }: ReportPageProps): Promise<R
     scannedFileCount: Math.max(affectedPaths.size, 1),
     cleanFileCount: 0,
   });
+  // The panel above already shows coverage and setup; old scans also carry a
+  // CI nag that tells people to run someone else's `npx shipready` package.
+  const issueFindings = findings.filter((finding) =>
+    isIssueFinding({ ruleId: finding.rule_id, message: finding.message }),
+  );
 
   return (
     <main className="report-page">
@@ -148,11 +154,11 @@ export default async function ReportPage({ params }: ReportPageProps): Promise<R
 
         <ShipGatePanel report={shipGate} />
 
-        {findings.length > 0 ? (
+        {issueFindings.length > 0 ? (
           <section className="report-findings" aria-label="Detailed findings">
             <h2>Detailed findings</h2>
             <ul className="report-findings-list">
-              {findings.map((finding) => (
+              {issueFindings.map((finding) => (
                 <li
                   key={finding.id}
                   className={`report-finding report-finding--${finding.severity}`}

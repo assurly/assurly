@@ -1271,6 +1271,13 @@ export {
 } from './shipGate';
 
 export {
+  findingKind,
+  isCiWorkflowSuggestion,
+  isIssueFinding,
+  type FindingKind,
+} from './findingKind';
+
+export {
   excludeGitIgnoredFiles,
   isAssurlyEnvExamplePath,
   isGitIgnorePath,

@@ -54,6 +54,8 @@ export function ShipGatePanel({
   redactFindings = false,
 }: ShipGatePanelProps): ReactElement {
   const hint = actionHint ?? getShipGateActionHint(report);
+  const coverageNotes = report.coverageNotes ?? [];
+  const setup = report.setup ?? [];
 
   return (
     <section
@@ -129,6 +131,30 @@ export function ShipGatePanel({
             ) : null}
           </div>
         )}
+
+      {!redactFindings && coverageNotes.length > 0 ? (
+        <div className="ship-gate-group ship-gate-group--coverage" data-testid="ship-gate-coverage">
+          <h4 className="ship-gate-group-title">Not checked by this scan</h4>
+          <ul className="ship-gate-list">
+            {coverageNotes.map((note) => (
+              <li key={note} className="ship-gate-list-item ship-gate-coverage-note">
+                {note}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {!redactFindings && setup.length > 0 ? (
+        <div className="ship-gate-group ship-gate-group--setup" data-testid="ship-gate-setup">
+          <h4 className="ship-gate-group-title">Optional setup</h4>
+          <ul className="ship-gate-list">
+            {setup.map((item) => (
+              <ShipGateGroupRow key={item.id} group={item} fileSuffix="" />
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {redactFindings &&
       (report.blockers.length > 0 || report.reviews.length > 0 || report.warnings.length > 0) ? (

@@ -60,7 +60,7 @@ describe('shipGate web adapter', () => {
     expect(getShipGateActionHint(report)).toContain('blockers');
   });
 
-  it('maps CI workflow warnings to a assurly init command action', () => {
+  it('offers a missing CI workflow as optional setup with the assurly init command', () => {
     const report = buildShipGateFromScanFindings(
       [
         {
@@ -77,15 +77,18 @@ describe('shipGate web adapter', () => {
       { scannedFileCount: 5, cleanFileCount: 4 },
     );
 
-    expect(report.warnings[0]?.action).toEqual({
+    expect(report.warnings).toEqual([]);
+    expect(report.setup?.[0]?.action).toEqual({
       label: 'Initialize CI workflow',
       kind: 'command',
       command: 'npx assurly init',
-      hint: undefined,
+      hint: 'Run "npx assurly init" in your repository to automatically configure the CI/CD pipeline.',
     });
   });
 
   it('maps persisted CI workflow findings with a generic rule id back to Initialize CI workflow', () => {
+    // Rows saved before the rename say ShipReady and suggest `npx shipready init`,
+    // which is someone else's npm package.
     const report = buildShipGateFromScanFindings(
       [
         {
@@ -95,18 +98,20 @@ describe('shipGate web adapter', () => {
           severity: 'warning',
           file_path: 'Global Configs',
           line_number: 1,
-          message: 'GitHub Actions workflow for Assurly is missing.',
+          message: 'GitHub Actions workflow for ShipReady is missing.',
           suggestion:
-            'Run "npx assurly init" in your repository to automatically configure the CI/CD pipeline.',
+            'Run "npx shipready init" in your repository to automatically configure the CI/CD pipeline.',
           created_at: '2026-01-01T00:00:00Z',
         },
       ],
       { scannedFileCount: 5, cleanFileCount: 4 },
     );
 
-    expect(report.warnings[0]?.action?.label).toBe('Initialize CI workflow');
-    expect(report.warnings[0]?.action?.kind).toBe('command');
-    expect(report.warnings[0]?.action?.command).toBe('npx assurly init');
+    expect(report.warnings).toEqual([]);
+    expect(report.setup?.[0]?.action?.label).toBe('Initialize CI workflow');
+    expect(report.setup?.[0]?.action?.kind).toBe('command');
+    expect(report.setup?.[0]?.action?.command).toBe('npx assurly init');
+    expect(JSON.stringify(report)).not.toMatch(/shipready/i);
   });
 });
 
@@ -180,10 +185,11 @@ describe('resolveVerdict', () => {
       [
         finding({
           id: 'w',
-          rule_id: 'github-actions-integration',
+          rule_id: 'undocumented-env',
           severity: 'warning',
-          file_path: 'Global Configs',
-          message: 'CI workflow missing',
+          file_path: 'src/api.ts',
+          message:
+            "Environment variable 'process.env.STRIPE_SECRET_KEY' is used but not documented in '.env.example'.",
         }),
       ],
       { scannedFileCount: 4, cleanFileCount: 3 },

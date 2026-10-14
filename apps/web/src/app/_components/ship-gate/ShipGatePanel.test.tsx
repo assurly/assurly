@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe('ShipGatePanel warning actions', () => {
-  it('renders Initialize CI workflow prominently with a copyable command under warnings', () => {
+  it('renders Initialize CI workflow under optional setup with a copyable command', () => {
     Object.assign(navigator, {
       clipboard: { writeText },
     });
@@ -35,7 +35,10 @@ describe('ShipGatePanel warning actions', () => {
 
     render(<ShipGatePanel report={report} />);
 
-    expect(screen.getByText('GitHub Actions workflow for Assurly is missing.')).toBeTruthy();
+    // Optional setup, not a warning against the app.
+    expect(screen.queryByText('Warnings (review)')).toBeNull();
+    expect(screen.getByText('Optional setup')).toBeTruthy();
+    expect(screen.getByText('Run Assurly on every push')).toBeTruthy();
     expect(screen.getByText('Initialize CI workflow')).toBeTruthy();
     expect(screen.queryByText('Run locally')).toBeNull();
     expect(screen.getByText('npx assurly init')).toBeTruthy();

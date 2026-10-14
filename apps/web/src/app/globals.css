@@ -9151,6 +9151,22 @@ button.dashboard-repo-selector-item {
   color: var(--color-warning);
 }
 
+/* What the scan could not check: a limit of the verdict, not a problem. */
+.ship-gate-group--coverage {
+  border: 1px dashed var(--color-border-strong);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.ship-gate-group--coverage .ship-gate-group-title,
+.ship-gate-group--setup .ship-gate-group-title {
+  color: var(--color-text-secondary);
+}
+
+.ship-gate-coverage-note {
+  color: var(--color-text-secondary);
+}
+
 .ship-gate-list {
   margin: 0;
   padding: 0;

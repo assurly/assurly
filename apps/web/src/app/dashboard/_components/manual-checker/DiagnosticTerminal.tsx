@@ -39,6 +39,7 @@ function localizeManualCheckerShipGate(report: ShipGateReport): ShipGateReport {
     blockers: report.blockers.map(remapCanaryAction),
     reviews: report.reviews.map(remapCanaryAction),
     warnings: report.warnings.map(remapCanaryAction),
+    setup: report.setup?.map(remapCanaryAction),
   };
 }
 

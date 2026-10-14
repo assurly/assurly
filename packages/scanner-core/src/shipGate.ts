@@ -1,6 +1,7 @@
 import type { FindingConfidence, ScannerFinding, Severity } from './index';
 import type { ScanScope } from './fileRelevance';
 import { formatScanScopeSummary } from './fileRelevance';
+import { findingKind, isCiWorkflowSuggestion } from './findingKind';
 import { isAnalyzedCodeFile } from './languageCoverage';
 
 export type ShipGateFindingInput = Pick<
@@ -44,6 +45,13 @@ export interface ShipGateReport {
   totalErrorFindings: number;
   totalWarningFindings: number;
   scanScope?: ScanScope;
+  /**
+   * What this scan could not check. Shown beside the verdict, never scored.
+   * Optional because reports also arrive as JSON built before it existed.
+   */
+  coverageNotes?: string[];
+  /** Optional Assurly setup (CI workflow, silent alarm). Never findings, never scored. */
+  setup?: ShipGateGroup[];
 }
 
 export interface ShipGateOptions {
@@ -169,9 +177,7 @@ export function getFindingGroupKey(finding: ShipGateFindingInput): string {
     return 'perf:cold-start';
   }
   if (message.includes('edge runtime')) return 'edge:runtime';
-  if (message.includes('github actions workflow') && message.includes('assurly')) {
-    return 'rule:github-actions-integration';
-  }
+  if (isCiWorkflowSuggestion(finding)) return 'rule:github-actions-integration';
 
   if (finding.ruleId) return `rule:${finding.ruleId}`;
 
@@ -193,6 +199,7 @@ function issueGroupLabel(key: string, sampleMessage: string): string {
   if (key === 'perf:cold-start') return 'Heavy serverless / cold-start risk';
   if (key === 'edge:runtime') return 'Edge runtime compatibility';
   if (key === 'rule:scan-language-coverage') return 'Backend code not analysed';
+  if (key === 'rule:github-actions-integration') return 'Run Assurly on every push';
   return sampleMessage.length > 72 ? `${sampleMessage.slice(0, 69)}…` : sampleMessage;
 }
 
@@ -228,6 +235,45 @@ export function aggregateGroupSuggestion(
   return unique[0];
 }
 
+const CI_WORKFLOW_HINT =
+  'Run "npx assurly init" in your repository to automatically configure the CI/CD pipeline.';
+
+/**
+ * The CI nag in today's words, whatever was persisted. Reports leave the app as
+ * JSON (MCP, API, shared pages), so the old `npx shipready init` text must not
+ * survive even in fields the dashboard does not render.
+ */
+function canonicalSetupFinding(finding: ShipGateFindingInput): ShipGateFindingInput {
+  if (!isCiWorkflowSuggestion(finding)) return finding;
+  return {
+    ...finding,
+    ruleId: 'github-actions-integration',
+    message: 'GitHub Actions workflow for Assurly is missing.',
+    suggestion: CI_WORKFLOW_HINT,
+  };
+}
+
+/**
+ * One line per thing the scan could not check. Registry misses are counted,
+ * not listed: nineteen identical lines would bury the one that matters.
+ */
+function buildCoverageNotes(coverage: readonly ShipGateFindingInput[]): string[] {
+  const registryMisses = coverage.filter(
+    (finding) => finding.ruleId === 'dep-registry-unavailable',
+  ).length;
+  const notes = coverage
+    .filter((finding) => finding.ruleId !== 'dep-registry-unavailable')
+    .map((finding) => finding.message);
+  if (registryMisses > 0) {
+    const packages = registryMisses === 1 ? '1 npm package' : `${registryMisses} npm packages`;
+    const pronoun = registryMisses === 1 ? 'it was' : 'they were';
+    notes.push(
+      `Could not check ${packages} against the registry, so ${pronoun} not checked for lookalike or invented names.`,
+    );
+  }
+  return [...new Set(notes)];
+}
+
 export function resolveGroupAction(
   key: string,
   suggestion: string | undefined,
@@ -242,7 +288,9 @@ export function resolveGroupAction(
       label: 'Initialize CI workflow',
       kind: 'command',
       command: 'npx assurly init',
-      hint: suggestion,
+      // Never the stored suggestion: scans from before the rename say
+      // `npx shipready init`, and that npm package is someone else's.
+      hint: CI_WORKFLOW_HINT,
     };
   }
 
@@ -437,16 +485,27 @@ export function buildShipGateReport(
   findings: ShipGateFindingInput[],
   options: ShipGateOptions = {},
 ): ShipGateReport {
-  const blockerFindings = findings.filter(isBlockerFinding);
-  const reviewFindings = findings.filter(isReviewFinding);
-  const warningFindings = findings.filter(isWarningFinding);
+  // Only problems in the app are scored and listed; see findingKind.
+  const issues = findings.filter((finding) => findingKind(finding) === 'issue');
+  const coverage = findings.filter((finding) => findingKind(finding) === 'coverage');
+  const setupFindings = findings
+    .filter((finding) => findingKind(finding) === 'setup')
+    .map(canonicalSetupFinding);
+
+  const blockerFindings = issues.filter(isBlockerFinding);
+  const reviewFindings = issues.filter(isReviewFinding);
+  const warningFindings = issues.filter(isWarningFinding);
 
   const blockers = buildIssueGroups(blockerFindings);
   const reviews = buildIssueGroups(reviewFindings);
   const warnings = buildIssueGroups(warningFindings);
-  const { scannedFileCount, cleanFileCount } = resolveFileCounts(findings, options);
+  const { scannedFileCount, cleanFileCount } = resolveFileCounts(issues, options);
 
   const hasIncompleteCoverage = findings.some((finding) => finding.ruleId === 'scan-completeness');
+  /** Payment or login code in a language Assurly cannot read: never Ready. */
+  const hasUnreadSecuritySurface = findings.some(
+    (finding) => finding.ruleId === 'scan-language-coverage',
+  );
 
   /** Incomplete browser scans must never look "production ready". */
   const INCOMPLETE_SCORE_CAP = 79;
@@ -476,7 +535,12 @@ export function buildShipGateReport(
     status = 'blocked';
     headline = 'NOT READY TO SHIP';
     statusEmoji = '🚫';
-  } else if (warnings.length > 0 || reviews.length > 0 || hasIncompleteCoverage) {
+  } else if (
+    warnings.length > 0 ||
+    reviews.length > 0 ||
+    hasIncompleteCoverage ||
+    hasUnreadSecuritySurface
+  ) {
     status = 'review';
     headline = hasIncompleteCoverage ? 'INCOMPLETE SCAN — REVIEW' : 'REVIEW RECOMMENDED';
     statusEmoji = '⚠️';
@@ -515,9 +579,11 @@ export function buildShipGateReport(
     warnings,
     cleanFileCount,
     scannedFileCount,
-    totalErrorFindings: findings.filter((finding) => finding.severity === 'error').length,
-    totalWarningFindings: findings.filter((finding) => finding.severity === 'warning').length,
+    totalErrorFindings: issues.filter((finding) => finding.severity === 'error').length,
+    totalWarningFindings: issues.filter(isWarningFinding).length,
     scanScope: options.scanScope,
+    coverageNotes: buildCoverageNotes(coverage),
+    setup: buildIssueGroups(setupFindings),
   };
 }
 
@@ -571,6 +637,21 @@ export function formatShipGatePlainText(report: ShipGateReport): string {
       if (warning.action) {
         lines.push(`     ↳ ${formatActionPlainText(warning.action)}`);
       }
+    });
+  }
+
+  const coverageNotes = report.coverageNotes ?? [];
+  if (coverageNotes.length > 0) {
+    lines.push('Not checked by this scan:');
+    coverageNotes.forEach((note) => lines.push(`  · ${note}`));
+  }
+
+  const setup = report.setup ?? [];
+  if (setup.length > 0) {
+    lines.push('Optional setup:');
+    setup.forEach((item) => {
+      lines.push(`  · ${item.label}`);
+      if (item.action) lines.push(`     ↳ ${formatActionPlainText(item.action)}`);
     });
   }
 
@@ -641,6 +722,23 @@ export function formatShipGateMarkdown(
       if (warning.action) {
         lines.push(`  - Action: ${formatActionMarkdown(warning.action)}`);
       }
+    });
+    lines.push('');
+  }
+
+  const coverageNotes = report.coverageNotes ?? [];
+  if (coverageNotes.length > 0) {
+    lines.push('#### Not checked by this scan');
+    coverageNotes.forEach((note) => lines.push(`- ${note}`));
+    lines.push('');
+  }
+
+  const setup = report.setup ?? [];
+  if (setup.length > 0) {
+    lines.push('#### Optional setup');
+    setup.forEach((item) => {
+      lines.push(`- ${item.label}`);
+      if (item.action) lines.push(`  - Action: ${formatActionMarkdown(item.action)}`);
     });
     lines.push('');
   }
