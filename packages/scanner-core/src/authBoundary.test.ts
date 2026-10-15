@@ -341,6 +341,42 @@ describe('scanAuthBoundary', () => {
 });
 
 describe('scanServiceRoleBypass', () => {
+  it('accepts an edge function that verifies the caller JWT on its own client (Anima)', () => {
+    const code = [
+      "import { createClient } from 'jsr:@supabase/supabase-js@2';",
+      'Deno.serve(async (req) => {',
+      '  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");',
+      '  const authHeader = req.headers.get("Authorization");',
+      '  if (!authHeader?.startsWith("Bearer ")) return jsonResponse({ ok: false }, 401);',
+      '  const userClient = createClient(url, anonKey, {',
+      '    global: { headers: { Authorization: authHeader } },',
+      '  });',
+      '  const { data: { user } } = await userClient.auth.getUser();',
+      '  if (!user) return jsonResponse({ ok: false }, 401);',
+      '  const adminClient = createClient(url, serviceRoleKey);',
+      '  await adminClient.auth.admin.deleteUser(user.id);',
+      '});',
+    ].join('\n');
+
+    expect(
+      scanServiceRoleBypass(code, 'supabase/functions/delete-user-account/index.ts').findings,
+    ).toEqual([]);
+  });
+
+  it('still flags a cron edge function anyone holding the anon key can call', () => {
+    const code = [
+      'Deno.serve(async () => {',
+      '  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");',
+      '  const admin = createClient(url, key);',
+      '  await admin.from("profiles").update({ messages_today: 0 });',
+      '});',
+    ].join('\n');
+
+    expect(
+      scanServiceRoleBypass(code, 'supabase/functions/reset-daily-messages/index.ts').findings,
+    ).toHaveLength(1);
+  });
+
   it('flags raw service_role usage without a guard', () => {
     const code = [
       "import { createClient } from '@supabase/supabase-js';",

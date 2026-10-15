@@ -52,7 +52,10 @@ const AUTH_GUARD_PATTERNS = [
     /\brequireFindingAccess\s*\(/,
     /\bAuthenticationError\b/,
     /\bAuthorizationError\b/,
-    /\bsupabase\.auth\.getUser\s*\(/,
+    // Any Supabase client verifying the caller's JWT, not only one named
+    // `supabase`: Anima's delete-user-account edge function checks
+    // `userClient.auth.getUser()` before it touches the admin client.
+    /\.auth\.(?:getUser|getClaims)\s*\(/,
     /\bcookies\s*\(\s*\)\.get\s*\(/,
     /\bheaders\s*\(\s*\)\.get\s*\(\s*['"]authorization['"]/i,
     /\bUnauthorized\b/,
