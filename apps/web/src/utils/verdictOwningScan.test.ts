@@ -88,6 +88,32 @@ describe('scanOwnsRepoVerdict', () => {
   });
 });
 
+describe('a trunk scanned in place of an empty default branch', () => {
+  const standIn = {
+    branch: 'main',
+    scan_scope: { defaultBranch: 'src', emptyDefaultBranch: 'src' },
+  };
+
+  it('owns the verdict of a repository whose default is that empty branch', () => {
+    expect(scanOwnsRepoVerdict(standIn, 'src')).toBe(true);
+    expect(scanOwnsRepoVerdict(standIn)).toBe(true);
+  });
+
+  it('stops owning it once the default branch is renamed', () => {
+    expect(scanOwnsRepoVerdict(standIn, 'production')).toBe(false);
+  });
+
+  it('gives way to a newer scan of the default once it has code', () => {
+    const defaultWithCode = { branch: 'src', scan_scope: { defaultBranch: 'src' } };
+    expect(selectVerdictOwningScan([defaultWithCode, standIn], 'src')).toBe(defaultWithCode);
+  });
+
+  it('takes over from the failed scans of the empty default (Anima)', () => {
+    const emptyDefault = { branch: 'src', scan_scope: { defaultBranch: 'src' } };
+    expect(selectVerdictOwningScan([standIn, emptyDefault], 'src')).toBe(standIn);
+  });
+});
+
 describe('selectVerdictOwningScan', () => {
   it('returns the newest default-branch scan, skipping a newer feature branch', () => {
     const feature = { id: 'pr', branch: 'feat/login', created_at: '2026-08-10T00:00:00.000Z' };

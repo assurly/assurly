@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   branchQueryParam,
   parseGithubBranchList,
+  pickBranchForEmptyDefault,
   suggestAlternateScanBranches,
   visibleScanBranches,
 } from './scanBranch';
@@ -54,5 +55,25 @@ describe('visibleScanBranches', () => {
       'assurly-fix-abc',
       'main',
     ]);
+  });
+});
+
+describe('pickBranchForEmptyDefault', () => {
+  it('checks main when the default branch holds no app code (Anima, SentinelLog)', () => {
+    expect(
+      pickBranchForEmptyDefault('src', ['claude/study-project-code-eGZKT', 'main', 'src']),
+    ).toBe('main');
+  });
+
+  it('prefers main over master over develop', () => {
+    expect(pickBranchForEmptyDefault('src', ['develop', 'master', 'src'])).toBe('master');
+  });
+
+  it('never guesses among feature or Assurly fix branches', () => {
+    expect(pickBranchForEmptyDefault('src', ['src', 'feat/login', 'assurly-fix-0123'])).toBeNull();
+  });
+
+  it('never picks the empty default itself', () => {
+    expect(pickBranchForEmptyDefault('main', ['main'])).toBeNull();
   });
 });

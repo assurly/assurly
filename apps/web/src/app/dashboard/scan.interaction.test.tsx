@@ -137,7 +137,12 @@ function stubHangingGitHubFetch(): { release: () => void } {
 function stubGitHubFetch(
   tree: { path: string; type: string }[],
   files: Record<string, string>,
-  options: { defaultBranch?: string; branches?: string[] } = {},
+  options: {
+    defaultBranch?: string;
+    branches?: string[];
+    /** Trees served for `&branch=` requests; others get `tree`. */
+    treesByBranch?: Record<string, { path: string; type: string }[]>;
+  } = {},
 ): void {
   const defaultBranch = options.defaultBranch ?? 'main';
   const branches = options.branches ?? [defaultBranch];
@@ -156,6 +161,15 @@ function stubGitHubFetch(
         });
       }
       if (url.includes('type=tree')) {
+        const branch = new URL(url, 'http://localhost').searchParams.get('branch');
+        const branchTree = branch ? options.treesByBranch?.[branch] : undefined;
+        if (branchTree) {
+          // Instant Gate's tree payload names the branch it fetched.
+          return new Response(JSON.stringify({ default_branch: branch, tree: branchTree }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
         return new Response(JSON.stringify({ default_branch: defaultBranch, tree }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -255,13 +269,49 @@ describe('Run Secure Scan results rendering', () => {
     );
   });
 
-  it('offers Scan main instead when the default branch has no scannable files', async () => {
+  it('checks main when the GitHub default branch holds only a LICENSE (Anima)', async () => {
+    stubGitHubFetch(
+      [{ path: 'LICENSE', type: 'blob' }],
+      { LICENSE: 'MIT', 'app/page.tsx': 'export default function Page() { return null; }' },
+      {
+        defaultBranch: 'src',
+        branches: ['src', 'main', 'claude/study-project-code-eGZKT'],
+        treesByBranch: { main: [{ path: 'app/page.tsx', type: 'blob' }] },
+      },
+    );
+    saveScanMock.mockResolvedValue({
+      id: '22000000-0000-4000-8000-000000000098',
+      repository_id: session.repositories[0].id,
+      commit_sha: 'unknown',
+      branch: 'main',
+      status: 'success',
+      error_count: 0,
+      warning_count: 0,
+      created_at: '2026-10-15T05:00:00.000Z',
+      scan_scope: { defaultBranch: 'src', emptyDefaultBranch: 'src' },
+    });
+
+    render(<DashboardClient initialSession={session} />);
+    runScan();
+
+    await waitFor(() => expect(saveScanMock).toHaveBeenCalledTimes(1));
+    const payload = saveScanMock.mock.calls[0][0];
+    expect(payload).toMatchObject({ branch: 'main', status: 'success' });
+    expect(payload.failureReason).toBeUndefined();
+    expect(payload.scanScope).toMatchObject({ defaultBranch: 'src', emptyDefaultBranch: 'src' });
+    expect(screen.queryByText(/Scan failed/i)).toBeNull();
+    expect((await screen.findByTestId('scan-branch-note')).textContent).toMatch(
+      /Checked main because your GitHub default branch src has no app code/,
+    );
+  });
+
+  it('offers other branches when the empty default has no trunk to stand in', async () => {
     stubGitHubFetch(
       [{ path: 'LICENSE', type: 'blob' }],
       { LICENSE: 'MIT' },
       {
         defaultBranch: 'src',
-        branches: ['src', 'main'],
+        branches: ['src', 'feature/app'],
       },
     );
     saveScanMock.mockResolvedValue({
@@ -288,7 +338,7 @@ describe('Run Secure Scan results rendering', () => {
     });
     expect(payload.shipScore).toBeUndefined();
     expect(payload.scanScope).toMatchObject({ defaultBranch: 'src' });
-    expect(await screen.findByRole('button', { name: /Scan main instead/i })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /Scan feature\/app instead/i })).toBeTruthy();
   });
 
   it('does not poll /api/scans on an interval while the dashboard sits idle', async () => {

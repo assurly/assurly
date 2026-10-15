@@ -72,6 +72,7 @@ import { preferPublicScanForRepository } from '../../../utils/scanProxy';
 import {
   branchQueryParam,
   parseGithubBranchList,
+  pickBranchForEmptyDefault,
   suggestAlternateScanBranches,
 } from '../../../utils/scanBranch';
 import {
@@ -345,6 +346,8 @@ function DashboardContent({
   const [publicRepoInput, setPublicRepoInput] = useState('');
   const [isAddingRepo, setIsAddingRepo] = useState(false);
   const autoStartScanRef = useRef(false);
+  /** A trunk to scan next because GitHub's default branch held no app code. */
+  const standInScanRef = useRef<{ branch: string; emptyDefaultBranch: string } | null>(null);
 
   const [selectedRepo, setSelectedRepo] = useState<Repository | null>(() => {
     if (initialRoute.repoId) {
@@ -561,6 +564,7 @@ function DashboardContent({
   const [rescanningTargetId, setRescanningTargetId] = useState<string | null>(null);
   /** Bumps when a card Rescan targets an already-selected repo (selection alone would not re-fire). */
   const [scanKickToken, setScanKickToken] = useState(0);
+  const [standInScanKick, setStandInScanKick] = useState(0);
 
   const handleRescanVerdict = async (card: TargetCard): Promise<void> => {
     if (isScanning || rescanningTargetId) return;
@@ -1450,7 +1454,14 @@ function DashboardContent({
    * Triggers a real scan using the browserScanner engine.
    * Fetches files from GitHub API and runs all scanner rules against them.
    */
-  const triggerScan = async (branchOverride?: string): Promise<void> => {
+  /**
+   * `emptyDefaultBranch`: GitHub's default branch, already found to hold no
+   * app code, that this scan of `branchOverride` stands in for.
+   */
+  const triggerScan = async (
+    branchOverride?: string,
+    emptyDefaultBranch?: string,
+  ): Promise<void> => {
     if (!selectedRepo || !org) return;
 
     setResultsView('repo');
@@ -1463,6 +1474,11 @@ function DashboardContent({
     }
     setScanLogs([
       '⚙ Initializing Assurly Scanner...',
+      ...(emptyDefaultBranch && branchOverride
+        ? [
+            `ℹ Default branch "${emptyDefaultBranch}" has no app code — checking "${branchOverride}", where your code is.`,
+          ]
+        : []),
       `📥 Fetching repository tree for "${selectedRepo.name}"...`,
     ]);
     scanControllerRef.current?.abort();
@@ -1698,7 +1714,7 @@ function DashboardContent({
       }
       // GitHub's real default (from type=branches), not the scanned ref. Instant
       // Gate's tree payload sets default_branch to the branch it fetched.
-      let recordedDefaultBranch = githubDefaultBranch;
+      let recordedDefaultBranch = githubDefaultBranch ?? emptyDefaultBranch ?? null;
       if (
         !recordedDefaultBranch &&
         !requestedBranch &&
@@ -1784,9 +1800,37 @@ function DashboardContent({
       const persistedScanScope = {
         ...scanScope,
         ...(recordedDefaultBranch ? { defaultBranch: recordedDefaultBranch } : {}),
+        ...(emptyDefaultBranch ? { emptyDefaultBranch } : {}),
       };
+      const branchListUrl = usePrivateProxy
+        ? `/api/github/proxy?repoId=${selectedRepo.id}&type=branches`
+        : `/api/github/public-scan?repo=${encodeURIComponent(repoFullName)}&type=branches`;
       setLastScanFileCount(fileSelection.files.length);
       setLastScanScope(scanScope);
+
+      // GitHub's default branch with no source in any language (a README-only
+      // `src`) is not what ships: check the trunk that holds the code.
+      const defaultHasNoCode = unanalyzedSummary.totalFiles === 0;
+      const scannedGithubDefault =
+        !emptyDefaultBranch && (!requestedBranch || requestedBranch === githubDefaultBranch);
+      if (fileSelection.files.length === 0 && defaultHasNoCode && scannedGithubDefault) {
+        try {
+          const branchesResponse = await fetch(branchListUrl, { signal });
+          if (branchesResponse.ok) {
+            const parsed = parseGithubBranchList(await branchesResponse.json());
+            const standIn = pickBranchForEmptyDefault(defaultBranch, parsed.branches);
+            if (standIn) {
+              setRepoBranches(parsed.branches);
+              standInScanRef.current = { branch: standIn, emptyDefaultBranch: defaultBranch };
+              setStandInScanKick((kick) => kick + 1);
+              return;
+            }
+          }
+        } catch (branchError) {
+          if (settleIfAborted()) return;
+          console.error('Failed to list branches for an empty default branch:', branchError);
+        }
+      }
 
       if (fileSelection.files.length === 0) {
         const message =
@@ -1820,10 +1864,7 @@ function DashboardContent({
           console.error('Failed to persist empty-file scan failure:', saveError);
         }
         try {
-          const branchesUrl = usePrivateProxy
-            ? `/api/github/proxy?repoId=${selectedRepo.id}&type=branches`
-            : `/api/github/public-scan?repo=${encodeURIComponent(repoFullName)}&type=branches`;
-          const branchesResponse = await fetch(branchesUrl, { signal });
+          const branchesResponse = await fetch(branchListUrl, { signal });
           if (branchesResponse.ok) {
             const parsed = parseGithubBranchList(await branchesResponse.json());
             setRepoBranches(parsed.branches);
@@ -2414,6 +2455,17 @@ function DashboardContent({
   };
 
   const startScan = useEffectEvent(() => void triggerScan());
+  const startStandInScan = useEffectEvent(
+    (next: { branch: string; emptyDefaultBranch: string }) =>
+      void triggerScan(next.branch, next.emptyDefaultBranch),
+  );
+
+  useEffect(() => {
+    const next = standInScanRef.current;
+    if (!next || !selectedRepo) return;
+    standInScanRef.current = null;
+    queueMicrotask(() => startStandInScan(next));
+  }, [selectedRepo, standInScanKick]);
 
   useEffect(() => {
     if (!autoStartScanRef.current || !selectedRepo || isScanning) return;

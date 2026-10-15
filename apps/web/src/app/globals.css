@@ -6437,6 +6437,20 @@ button.dashboard-repo-selector-item {
   }
 }
 
+.scan-branch-note {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.scan-branch-note code {
+  color: var(--color-text-primary);
+}
+
 .scan-history__error {
   margin: 0 0 10px;
   font-size: 0.8rem;

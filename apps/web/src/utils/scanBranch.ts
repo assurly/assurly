@@ -41,6 +41,24 @@ export function visibleScanBranches(branches: readonly string[], current: string
 const PREFERRED_ALTERNATE_BRANCHES = ['main', 'master', 'develop'] as const;
 
 /**
+ * The branch to check instead when GitHub's default branch holds no app code.
+ * Anima, SentinelLog and Attesta---Fixes keep a README-only `src` as default
+ * and their code on `main`, so every scan of the default failed. Only the
+ * conventional trunk names qualify: guessing among feature branches would
+ * hand the verdict to work that is not shipping.
+ */
+export function pickBranchForEmptyDefault(
+  emptyDefaultBranch: string,
+  branches: readonly string[],
+): string | null {
+  return (
+    PREFERRED_ALTERNATE_BRANCHES.find(
+      (name) => name !== emptyDefaultBranch && branches.includes(name),
+    ) ?? null
+  );
+}
+
+/**
  * After an empty scan, offer other branches that might hold application files.
  * Preferred names come first so "Scan main instead" is the first action.
  */

@@ -41,6 +41,14 @@ export function recordedDefaultBranch(scan: VerdictOwningScanFields): string | n
   return branchName(scan.scan_scope?.defaultBranch);
 }
 
+/**
+ * Set when the scan checked another branch because GitHub's default held no
+ * app code: the default it found empty. See `pickBranchForEmptyDefault`.
+ */
+export function emptyDefaultBranchOf(scan: VerdictOwningScanFields): string | null {
+  return branchName(scan.scan_scope?.emptyDefaultBranch);
+}
+
 function scanSource(scope: Record<string, unknown> | null | undefined): string | null {
   const value = scope?.source;
   return typeof value === 'string' ? value : null;
@@ -59,10 +67,13 @@ export function scanOwnsRepoVerdict(
   const branch = scan.branch?.trim() ?? '';
   if (!branch) return true;
   if (branch === CLI_LOCAL_BRANCH) return true;
+  // A default branch with no app code is not what ships; the trunk scanned in
+  // its place speaks for the repository until the default gets code.
+  const standsInFor = emptyDefaultBranchOf(scan);
   const repoDefault = branchName(repoDefaultBranch);
-  if (repoDefault) return branch === repoDefault;
+  if (repoDefault) return branch === repoDefault || standsInFor === repoDefault;
   const recorded = recordedDefaultBranch(scan);
-  if (recorded) return branch === recorded;
+  if (recorded) return branch === recorded || standsInFor === recorded;
   return LEGACY_DEFAULT_BRANCHES.has(branch);
 }
 

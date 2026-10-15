@@ -17,6 +17,7 @@ import {
 } from './icons/DashboardIcons';
 import type { RepoDetailStatus } from './repoSelection';
 import { excludeTooLargeFailedScans } from '../../../utils/scanHistoryDisplay';
+import { emptyDefaultBranchOf } from '../../../utils/verdictOwningScan';
 import { fullGateCliCommand } from './verdictCardsView';
 
 export interface ScanWorkspaceProps {
@@ -348,6 +349,15 @@ export function ScanWorkspace({
               onSelectScan={onSelectScan}
               onDeleteScan={onDeleteScan}
             />
+
+            {repoDetailStatus === 'ready' && selectedScan && emptyDefaultBranchOf(selectedScan) ? (
+              <p className="scan-branch-note" data-testid="scan-branch-note">
+                Checked <code>{selectedScan.branch}</code> because your GitHub default branch{' '}
+                <code>{emptyDefaultBranchOf(selectedScan)}</code> has no app code. To make this
+                permanent, set <code>{selectedScan.branch}</code> as the default branch in your
+                GitHub repository settings.
+              </p>
+            ) : null}
 
             {repoDetailStatus === 'ready' &&
             selectedScan &&
