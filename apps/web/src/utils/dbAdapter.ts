@@ -430,6 +430,7 @@ export interface DbAdapter {
   ): Promise<ApiRateLimitResult>;
   getOrganization(orgId: string): Promise<Organization | null>;
   getOrganizationByUserId(userId: string): Promise<Organization | null>;
+  getOrganizationByGitHubInstallationId(installationId: string): Promise<Organization | null>;
   createOrganization(name: string): Promise<Organization>;
   getMembership(userId: string, orgId: string): Promise<Membership | null>;
   setOrganizationStripeCustomerId(organizationId: string, stripeCustomerId: string): Promise<void>;
@@ -870,6 +871,10 @@ export class SupabaseDbAdapter implements DbAdapter {
 
   getRepository(repoId: string): Promise<Repository | null> {
     return this.first(`repositories?select=*&id=eq.${eq(repoId)}`);
+  }
+
+  getOrganizationByGitHubInstallationId(installationId: string): Promise<Organization | null> {
+    return this.first(`organizations?select=*&github_installation_id=eq.${eq(installationId)}`);
   }
 
   getRepositoryByGithubRepoId(githubRepoId: number): Promise<Repository | null> {

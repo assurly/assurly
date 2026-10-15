@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   after: vi.fn(),
   getAdminDbAdapter: vi.fn(),
   getInstallationAccessToken: vi.fn(),
+  syncInstallationRepositories: vi.fn(),
 }));
 
 vi.mock('next/server', async (importOriginal) => ({
@@ -17,6 +18,9 @@ vi.mock('../../../../utils/dbAdapter', () => ({
 vi.mock('../../../../utils/githubApp', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../utils/githubApp')>()),
   getInstallationAccessToken: mocks.getInstallationAccessToken,
+}));
+vi.mock('../../../../utils/githubInstallationSync', () => ({
+  syncInstallationRepositories: mocks.syncInstallationRepositories,
 }));
 vi.mock('../../../../utils/scanRegression', () => ({
   notifyIfRegressionBlockers: vi.fn().mockResolvedValue(undefined),
@@ -38,7 +42,9 @@ const db = {
   updateRepositoryDefaultBranch: vi.fn(),
 };
 
-function request(overrides: { body?: string; secret?: string; delivery?: string } = {}) {
+function request(
+  overrides: { body?: string; secret?: string; delivery?: string; event?: string } = {},
+) {
   const body =
     overrides.body ||
     JSON.stringify({
@@ -51,7 +57,7 @@ function request(overrides: { body?: string; secret?: string; delivery?: string 
   return new Request('http://localhost/api/github/webhook', {
     method: 'POST',
     headers: {
-      'x-github-event': 'pull_request',
+      'x-github-event': overrides.event ?? 'pull_request',
       'x-github-delivery': overrides.delivery ?? 'delivery-1',
       'x-hub-signature-256': `sha256=${crypto.createHmac('sha256', secret).update(body).digest('hex')}`,
     },
@@ -114,6 +120,45 @@ describe('GitHub webhook security and idempotency', () => {
     const response = await POST(request({ body: closedPullRequest('feature/login') }));
     expect(response.status).toBe(200);
     expect(db.claimGitHubDelivery).not.toHaveBeenCalled();
+    expect(mocks.after).not.toHaveBeenCalled();
+  });
+
+  it('re-syncs the workspace repositories when GitHub grants or revokes access', async () => {
+    mocks.syncInstallationRepositories.mockResolvedValue(15);
+    const body = JSON.stringify({
+      action: 'added',
+      installation: { id: 456 },
+      repositories_added: [{ id: 7, full_name: 'owner/new-app' }],
+    });
+
+    const response = await POST(request({ body, event: 'installation_repositories' }));
+    expect(response.status).toBe(202);
+    const work = mocks.after.mock.calls[0][0] as () => Promise<void>;
+    await work();
+
+    expect(mocks.syncInstallationRepositories).toHaveBeenCalledWith(db, '456');
+    expect(db.claimGitHubDelivery).not.toHaveBeenCalled();
+  });
+
+  it('re-syncs when the user accepts new permissions for the installation', async () => {
+    const body = JSON.stringify({ action: 'new_permissions_accepted', installation: { id: 456 } });
+    expect((await POST(request({ body, event: 'installation' }))).status).toBe(202);
+  });
+
+  it('keeps repositories and history when the installation is deleted or suspended', async () => {
+    for (const action of ['deleted', 'suspend']) {
+      const body = JSON.stringify({ action, installation: { id: 456 } });
+      expect((await POST(request({ body, event: 'installation' }))).status).toBe(200);
+    }
+    expect(mocks.after).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unsigned installation event before touching anything', async () => {
+    const body = JSON.stringify({ action: 'added', installation: { id: 456 } });
+    const response = await POST(
+      request({ body, event: 'installation_repositories', secret: 'wrong-secret' }),
+    );
+    expect(response.status).toBe(401);
     expect(mocks.after).not.toHaveBeenCalled();
   });
 

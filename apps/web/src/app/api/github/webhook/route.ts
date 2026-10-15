@@ -53,6 +53,7 @@ import { createDbNpmCacheStore } from '../../../../utils/dependencyProvenanceLoo
 import { learnRepositoryHomepage } from '../../../../utils/repoHomepage';
 import { attachSecretExposureWindows } from '../../../../utils/secretExposureWindow';
 import { deleteClosedFixBranch } from '../../../../utils/githubFixBranchCleanup';
+import { syncInstallationRepositories } from '../../../../utils/githubInstallationSync';
 import { isAssurlyFixBranch } from '../../../../utils/scanBranch';
 
 export const maxDuration = 60;
@@ -101,6 +102,26 @@ const pullRequestWebhookSchema = z
   })
   .passthrough();
 type PullRequestWebhook = z.infer<typeof pullRequestWebhookSchema>;
+
+const installationWebhookSchema = z
+  .object({
+    action: z.string().min(1).max(80),
+    installation: z.object({ id: z.number().int().positive().safe() }).passthrough(),
+  })
+  .passthrough();
+
+/**
+ * Events after which the installation's repository list may have changed:
+ * repositories granted or revoked, or access restored. `deleted` and
+ * `suspend` are left alone so scan history survives a reinstall.
+ */
+function changesInstallationRepositories(event: string | null, action: string): boolean {
+  if (event === 'installation_repositories') return true;
+  return (
+    event === 'installation' &&
+    ['created', 'new_permissions_accepted', 'unsuspend'].includes(action)
+  );
+}
 
 async function tryFetchGitHubFile(
   token: string,
@@ -537,7 +558,31 @@ export const POST = secureRoute(
     } catch {
       throw new ApiError(400, 'invalid_json', 'Request body must be valid JSON.');
     }
-    if (request.headers.get('x-github-event') !== 'pull_request') {
+    const event = request.headers.get('x-github-event');
+    if (event === 'installation' || event === 'installation_repositories') {
+      const installationEvent = installationWebhookSchema.parse(rawPayload);
+      if (!changesInstallationRepositories(event, installationEvent.action)) {
+        return NextResponse.json({ message: 'Action ignored.' });
+      }
+      const installationId = String(installationEvent.installation.id);
+      after(async () => {
+        try {
+          await syncInstallationRepositories(getAdminDbAdapter(), installationId);
+        } catch (error) {
+          console.error(
+            JSON.stringify({
+              service: 'assurly-api',
+              requestId,
+              route: 'github:webhook:installation-sync',
+              status: 'failed',
+              errorType: error instanceof Error ? error.name : 'UnknownError',
+            }),
+          );
+        }
+      });
+      return NextResponse.json({ message: 'Webhook accepted.' }, { status: 202 });
+    }
+    if (event !== 'pull_request') {
       return NextResponse.json({ message: 'Event ignored.' });
     }
 

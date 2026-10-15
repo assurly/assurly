@@ -9,14 +9,10 @@ import {
   secureRoute,
 } from '../../../../utils/apiSecurity';
 import { requireOrganizationMember } from '../../../../utils/authorization';
-import { getAdminDbAdapter, type GitHubRepositoryMapping } from '../../../../utils/dbAdapter';
+import { getAdminDbAdapter } from '../../../../utils/dbAdapter';
 import { getApplicationUrl } from '../../../../utils/env';
-import {
-  getGitHubInstallation,
-  getInstallationAccessToken,
-  githubHeaders,
-  verifyGitHubInstallationState,
-} from '../../../../utils/githubApp';
+import { verifyGitHubInstallationState } from '../../../../utils/githubApp';
+import { connectInstallationRepositories } from '../../../../utils/githubInstallationSync';
 
 const installQuery = z
   .object({
@@ -25,46 +21,6 @@ const installQuery = z
     setup_action: z.enum(['install', 'update']).optional(),
   })
   .strict();
-const installationSchema = z
-  .object({ account: z.object({ id: z.number().int().positive().safe() }) })
-  .passthrough();
-const repositoryPageSchema = z
-  .object({
-    repositories: z
-      .array(
-        z
-          .object({
-            id: z.number().int().positive().safe(),
-            full_name: z
-              .string()
-              .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/)
-              .max(201),
-          })
-          .passthrough(),
-      )
-      .max(100),
-  })
-  .passthrough();
-
-async function listInstallationRepositories(token: string): Promise<GitHubRepositoryMapping[]> {
-  const repositories: GitHubRepositoryMapping[] = [];
-  for (let page = 1; page <= 10; page += 1) {
-    const url = new URL('https://api.github.com/installation/repositories');
-    url.searchParams.set('per_page', '100');
-    url.searchParams.set('page', String(page));
-    const response = await fetch(url, { headers: githubHeaders(token) });
-    if (!response.ok) throw new ApiError(502, 'github_unavailable', 'GitHub is unavailable.');
-    const data = repositoryPageSchema.parse(await response.json());
-    repositories.push(
-      ...data.repositories.map((repository) => ({
-        id: repository.id,
-        fullName: repository.full_name,
-      })),
-    );
-    if (data.repositories.length < 100) return repositories;
-  }
-  throw new ApiError(422, 'repository_limit_exceeded', 'Installation has too many repositories.');
-}
 
 export const GET = secureRoute(
   {
@@ -110,16 +66,10 @@ export const GET = secureRoute(
       }
     }
 
-    const installation = installationSchema.parse(
-      await getGitHubInstallation(query.installation_id),
-    );
-    const token = await getInstallationAccessToken(query.installation_id);
-    const repositories = await listInstallationRepositories(token);
-    await getAdminDbAdapter().connectGitHubInstallation(
+    await connectInstallationRepositories(
+      getAdminDbAdapter(),
       organizationId,
-      installation.account.id,
       query.installation_id,
-      repositories,
     );
     return NextResponse.redirect(`${getApplicationUrl()}/dashboard?success=github_app_installed`);
   },
