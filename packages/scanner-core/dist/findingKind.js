@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isDatabaseSafetyNetAdvisory = isDatabaseSafetyNetAdvisory;
 exports.isCiWorkflowSuggestion = isCiWorkflowSuggestion;
+exports.isRlsWithoutPolicyAdvisory = isRlsWithoutPolicyAdvisory;
 exports.findingKind = findingKind;
 exports.isIssueFinding = isIssueFinding;
 const COVERAGE_RULE_IDS = new Set([
@@ -36,6 +37,10 @@ function isCiWorkflowSuggestion(finding) {
         return true;
     return /github actions workflow for (assurly|shipready) is missing/i.test(finding.message ?? '');
 }
+/** RLS on with no policy: right for server-only tables, so never scored. */
+function isRlsWithoutPolicyAdvisory(finding) {
+    return finding.ruleId === 'supabase-rls-no-policy';
+}
 function findingKind(finding) {
     const ruleId = finding.ruleId ?? '';
     if (INFO_RULE_IDS.has(ruleId))
@@ -44,8 +49,9 @@ function findingKind(finding) {
         return 'setup';
     if (COVERAGE_RULE_IDS.has(ruleId))
         return 'coverage';
-    if (isDatabaseSafetyNetAdvisory(finding))
+    if (isDatabaseSafetyNetAdvisory(finding) || isRlsWithoutPolicyAdvisory(finding)) {
         return 'advisory';
+    }
     return 'issue';
 }
 function isIssueFinding(finding) {

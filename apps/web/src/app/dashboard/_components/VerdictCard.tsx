@@ -205,7 +205,7 @@ export function VerdictCard({
     : card.topIssue
       ? (consequenceForGroupKey(card.topIssue.key)?.consequence ?? card.topIssue.sampleMessage)
       : card.verdict === 'ready'
-        ? 'No blockers — safe to deploy.'
+        ? 'No blockers in the last check.'
         : 'Run a scan to get a verdict.';
   const issueLine =
     card.topIssue && !capability ? (
@@ -222,7 +222,7 @@ export function VerdictCard({
       </span>
     );
 
-  // Compact rows keep blockers actionable; repeated "safe to deploy" on ready
+  // Compact rows keep blockers actionable; repeated "no blockers" on ready
   // apps is the main source of warning fatigue in a long list.
   const showIssue =
     !compact || card.verdict === 'blocked' || card.verdict === 'review' || capability !== null;

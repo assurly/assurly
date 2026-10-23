@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.isAgentStackFile = exports.isAgentMcpConfigFile = exports.isAgentInstructionFile = exports.isHighConfidenceBlockerRuleId = exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = exports.scanStripeWebhookIdempotencyForProject = exports.scanStripeWebhookIdempotency = exports.scanStripeMissingSubscriptionEvents = exports.scanStripeLiveKeyInDev = exports.scanStripeLifecycle = exports.scanSupabaseStorage = exports.scanSupabasePolicies = exports.scanSupabaseDeepPolicies = exports.scanAuthLinkedMigrationNoRls = exports.scanServiceRoleBypass = exports.scanServerActionAuth = exports.scanRouteHandlerAuth = exports.scanAuthBoundary = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.selectPackageManifestPaths = exports.detectStackFromManifests = exports.describeDetectedStack = exports.MAX_PACKAGE_MANIFESTS = exports.unanalyzedSourceFinding = exports.unanalyzedLanguageForPath = exports.unanalyzedLanguageCounts = exports.summarizeUnanalyzedSource = exports.isSecuritySurfacePath = exports.isAnalyzedSourceFile = exports.isAnalyzedCodeFile = exports.formatUnanalyzedLogLine = exports.UNANALYZED_SOURCE_LANGUAGES = exports.SCAN_LANGUAGE_COVERAGE_RULE_ID = exports.rankFilesByRelevance = exports.measureScanScopeTotals = exports.isTextScanSurface = exports.isScannableFile = exports.instantGateSurfaceFiles = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = exports.INSTANT_GATE_MAX_FILES = exports.RLS_GENERIC_TABLE_LABEL = exports.RLS_SUPABASE_TABLE_LABEL = void 0;
-exports.isAssurlyCanaryBody = exports.extractAssurlyCanaryToken = exports.containsAssurlyCanaryToken = exports.containsAssurlyCanaryCallbackPath = exports.ASSURLY_CANARY_PREFIX = exports.ASSURLY_CANARY_IN_TEXT = exports.ASSURLY_CANARY_ENV_KEY = exports.ASSURLY_CANARY_CALLBACK_PATH = exports.findNearestCorpusMatch = exports.damerauLevenshtein = exports.tokenizePackageName = exports.scopeOwnsBorrowedName = exports.parsePackageJsonDependencies = exports.isAbandonedShape = exports.getTopNpmPackageCorpus = exports.findBorrowedCorpusName = exports.evaluateNewDependencies = exports.evaluateDependencyProvenance = exports.diffAddedDependencies = exports.contiguousTokenRuns = exports.collectDependencyNames = exports.DEP_YOUNG_AGE_DAYS = exports.DEP_TYPOSQUAT_SUSPECT = exports.DEP_SLOPSQUAT_SUSPECT = exports.DEP_SCAN_CAPPED = exports.DEP_REGISTRY_UNAVAILABLE = exports.DEP_PROXIMITY_MAX_DISTANCE = exports.DEP_NONEXISTENT_PACKAGE = exports.DEP_NEW_UNVETTED = exports.DEP_LOW_DOWNLOADS = exports.DEP_DEFAULT_EVAL_CAP = exports.scanSupplyChain = exports.readIgnoreScriptsFromNpmrc = exports.parsePackageManagerNpmMajor = exports.packageNameFromLockKey = exports.isSupplyChainRuleId = exports.enginesNpmPermitsBelow12 = exports.classifyAllowScriptsKey = exports.SUPPLY_NPM_BELOW_V12 = exports.SUPPLY_NON_REGISTRY_DEPENDENCY = exports.SUPPLY_INSTALL_SCRIPTS_UNREVIEWED = exports.SUPPLY_CHAIN_RULE_IDS = exports.SUPPLY_ALLOWSCRIPTS_UNPINNED = exports.SUPPLY_ALLOWSCRIPTS_STALE = exports.SUPPLY_ALLOWSCRIPTS_INVALID = exports.SUPPLY_ALLOWSCRIPTS_IN_WORKSPACE = exports.scanAgentStack = exports.scanAgentMcpConfig = exports.scanAgentInstructionFile = exports.redactEnvKey = void 0;
-exports.isPostgresSqlSource = exports.detectSqlDialect = exports.scanWorkspaceFiles = exports.scanTsconfigStrict = exports.scanHardcodedStripeSecrets = exports.scanGithubActionsIntegration = exports.isProjectTsconfigPath = exports.githubActionsIntegrationMessage = exports.GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE = exports.GITHUB_ACTIONS_INIT_SUGGESTION = exports.GITHUB_ACTIONS_EXISTING_CI_MESSAGE = exports.parseGitIgnoreSources = exports.isGitIgnored = exports.isGitIgnorePath = exports.isAssurlyEnvExamplePath = exports.excludeGitIgnoredFiles = exports.isIssueFinding = exports.isDatabaseSafetyNetAdvisory = exports.isCiWorkflowSuggestion = exports.findingKind = exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.countCleanScannedFiles = exports.buildShipGateReport = exports.buildIssueGroups = exports.RLS_SCORE_GROUP_CAP = exports.BLOCKED_SCORE_CAP = exports.mergeCanaryPlantIntoEnvExample = exports.isAssurlyCanaryToken = exports.isAssurlyCanaryPlantLine = exports.isAssurlyCanaryMcpUrl = exports.isAssurlyCanaryEnvKey = void 0;
+exports.isAgentMcpConfigFile = exports.isAgentInstructionFile = exports.isHighConfidenceBlockerRuleId = exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = exports.scanStripeWebhookIdempotencyForProject = exports.scanStripeWebhookIdempotency = exports.scanStripeMissingSubscriptionEvents = exports.scanStripeLiveKeyInDev = exports.scanStripeLifecycle = exports.scanSupabaseStorage = exports.scanSupabasePolicies = exports.scanSupabaseDeepPolicies = exports.scanAuthLinkedMigrationNoRls = exports.scanServiceRoleBypass = exports.scanServerActionAuth = exports.scanRouteHandlerAuth = exports.scanAuthBoundary = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.selectPackageManifestPaths = exports.detectStackFromManifests = exports.describeDetectedStack = exports.MAX_PACKAGE_MANIFESTS = exports.unanalyzedSourceFinding = exports.unanalyzedLanguageForPath = exports.unanalyzedLanguageCounts = exports.summarizeUnanalyzedSource = exports.isSecuritySurfacePath = exports.isAnalyzedSourceFile = exports.isAnalyzedCodeFile = exports.formatUnanalyzedLogLine = exports.UNANALYZED_SOURCE_LANGUAGES = exports.SCAN_LANGUAGE_COVERAGE_RULE_ID = exports.rankFilesByRelevance = exports.measureScanScopeTotals = exports.isTextScanSurface = exports.isScannableFile = exports.instantGateSurfaceFiles = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = exports.INSTANT_GATE_MAX_FILES = exports.RLS_NO_POLICY_RULE_ID = exports.RLS_GENERIC_TABLE_LABEL = exports.RLS_SUPABASE_TABLE_LABEL = void 0;
+exports.extractAssurlyCanaryToken = exports.containsAssurlyCanaryToken = exports.containsAssurlyCanaryCallbackPath = exports.ASSURLY_CANARY_PREFIX = exports.ASSURLY_CANARY_IN_TEXT = exports.ASSURLY_CANARY_ENV_KEY = exports.ASSURLY_CANARY_CALLBACK_PATH = exports.findNearestCorpusMatch = exports.damerauLevenshtein = exports.tokenizePackageName = exports.scopeOwnsBorrowedName = exports.parsePackageJsonDependencies = exports.isAbandonedShape = exports.getTopNpmPackageCorpus = exports.findBorrowedCorpusName = exports.evaluateNewDependencies = exports.evaluateDependencyProvenance = exports.diffAddedDependencies = exports.contiguousTokenRuns = exports.collectDependencyNames = exports.DEP_YOUNG_AGE_DAYS = exports.DEP_TYPOSQUAT_SUSPECT = exports.DEP_SLOPSQUAT_SUSPECT = exports.DEP_SCAN_CAPPED = exports.DEP_REGISTRY_UNAVAILABLE = exports.DEP_PROXIMITY_MAX_DISTANCE = exports.DEP_NONEXISTENT_PACKAGE = exports.DEP_NEW_UNVETTED = exports.DEP_LOW_DOWNLOADS = exports.DEP_DEFAULT_EVAL_CAP = exports.scanSupplyChain = exports.readIgnoreScriptsFromNpmrc = exports.parsePackageManagerNpmMajor = exports.packageNameFromLockKey = exports.isSupplyChainRuleId = exports.enginesNpmPermitsBelow12 = exports.classifyAllowScriptsKey = exports.SUPPLY_NPM_BELOW_V12 = exports.SUPPLY_NON_REGISTRY_DEPENDENCY = exports.SUPPLY_INSTALL_SCRIPTS_UNREVIEWED = exports.SUPPLY_CHAIN_RULE_IDS = exports.SUPPLY_ALLOWSCRIPTS_UNPINNED = exports.SUPPLY_ALLOWSCRIPTS_STALE = exports.SUPPLY_ALLOWSCRIPTS_INVALID = exports.SUPPLY_ALLOWSCRIPTS_IN_WORKSPACE = exports.scanAgentStack = exports.scanAgentMcpConfig = exports.scanAgentInstructionFile = exports.redactEnvKey = exports.isAgentStackFile = void 0;
+exports.isPostgresSqlSource = exports.detectSqlDialect = exports.scanWorkspaceFiles = exports.scanTsconfigStrict = exports.scanHardcodedStripeSecrets = exports.scanGithubActionsIntegration = exports.isProjectTsconfigPath = exports.githubActionsIntegrationMessage = exports.GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE = exports.GITHUB_ACTIONS_INIT_SUGGESTION = exports.GITHUB_ACTIONS_EXISTING_CI_MESSAGE = exports.parseGitIgnoreSources = exports.isGitIgnored = exports.isGitIgnorePath = exports.isAssurlyEnvExamplePath = exports.excludeGitIgnoredFiles = exports.isIssueFinding = exports.isRlsWithoutPolicyAdvisory = exports.isDatabaseSafetyNetAdvisory = exports.isCiWorkflowSuggestion = exports.findingKind = exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.countCleanScannedFiles = exports.buildShipGateReport = exports.buildIssueGroups = exports.RLS_SCORE_GROUP_CAP = exports.BLOCKED_SCORE_CAP = exports.mergeCanaryPlantIntoEnvExample = exports.isAssurlyCanaryToken = exports.isAssurlyCanaryPlantLine = exports.isAssurlyCanaryMcpUrl = exports.isAssurlyCanaryEnvKey = exports.isAssurlyCanaryBody = void 0;
 exports.isSupabaseRlsMessage = isSupabaseRlsMessage;
 exports.subsumeRlsFindings = subsumeRlsFindings;
 exports.selectFiles = selectFiles;
@@ -529,6 +529,7 @@ function scanSqlMigrations(sources, options = {}) {
     const findings = [];
     const created = new Map();
     const rls = new Set();
+    const rlsEnabledAt = new Map();
     const postgresSources = sources.filter((source) => (0, sqlDialect_1.isPostgresSqlSource)(source));
     const normalize = (name) => name
         .replace(/['"`]/g, '')
@@ -541,8 +542,10 @@ function scanSqlMigrations(sources, options = {}) {
             const enabled = code.match(/alter\s+table\s+([a-zA-Z0-9_."`'-]+)\s+enable\s+row\s+level\s+security/i);
             if (create)
                 created.set(normalize(create[1]), { file: source.file, line: index + 1 });
-            if (enabled)
+            if (enabled) {
                 rls.add(normalize(enabled[1]));
+                rlsEnabledAt.set(normalize(enabled[1]), { file: source.file, line: index + 1 });
+            }
             if (/alter\s+table[\s\S]*\sadd\s+(?:column\s+)?[\s\S]*\snot\s+null/i.test(code) &&
                 !/\bdefault\b/i.test(code)) {
                 findings.push({
@@ -575,8 +578,39 @@ function scanSqlMigrations(sources, options = {}) {
                 suggestion: `Add SQL step: ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;`,
             });
     }
+    if (hasSupabaseSignal) {
+        findings.push(...rlsWithoutPolicyFindings(created, rlsEnabledAt, postgresSources, normalize));
+    }
     findings.push(...(0, supabasePolicies_1.scanSupabaseDeepPolicies)(postgresSources).findings);
     return result(subsumeRlsFindings(findings));
+}
+exports.RLS_NO_POLICY_RULE_ID = 'supabase-rls-no-policy';
+const CREATE_POLICY_TABLE = /create\s+policy\s+(?:"[^"]+"|'[^']+'|`[^`]+`|[^\s]+)\s+on\s+([a-zA-Z0-9_."`'-]+)/gi;
+/**
+ * A Supabase table with row-level security on and no policy: the public key
+ * can neither read nor write it. Right for a table only server code touches,
+ * a broken feature for one the browser reads — and what the stock "enable RLS"
+ * fix leaves behind. Static analysis cannot tell the two apart, so this is an
+ * unscored note, never a verdict.
+ */
+function rlsWithoutPolicyFindings(created, rlsEnabledAt, sources, normalize) {
+    const withPolicy = new Set();
+    for (const source of sources) {
+        const sql = source.content.replace(/--[^\n]*/g, ' ');
+        for (const match of sql.matchAll(CREATE_POLICY_TABLE))
+            withPolicy.add(normalize(match[1]));
+    }
+    return [...rlsEnabledAt]
+        .filter(([table]) => created.has(table) && !withPolicy.has(table))
+        .map(([table, location]) => ({
+        ruleId: exports.RLS_NO_POLICY_RULE_ID,
+        severity: 'warning',
+        confidence: 'high',
+        file: location.file,
+        line: location.line,
+        message: `Supabase table '${table}' has row-level security on but no policy, so the public key can neither read nor write it.`,
+        suggestion: `If the browser reads '${table}', add a policy that scopes rows to the caller, for example: CREATE POLICY "own rows" ON ${table} FOR SELECT USING (auth.uid() = user_id);`,
+    }));
 }
 function scanSqlMigration(content, file = 'schema.sql') {
     return scanSqlMigrations([{ file, content }]);
@@ -1112,6 +1146,7 @@ var findingKind_1 = require("./findingKind");
 Object.defineProperty(exports, "findingKind", { enumerable: true, get: function () { return findingKind_1.findingKind; } });
 Object.defineProperty(exports, "isCiWorkflowSuggestion", { enumerable: true, get: function () { return findingKind_1.isCiWorkflowSuggestion; } });
 Object.defineProperty(exports, "isDatabaseSafetyNetAdvisory", { enumerable: true, get: function () { return findingKind_1.isDatabaseSafetyNetAdvisory; } });
+Object.defineProperty(exports, "isRlsWithoutPolicyAdvisory", { enumerable: true, get: function () { return findingKind_1.isRlsWithoutPolicyAdvisory; } });
 Object.defineProperty(exports, "isIssueFinding", { enumerable: true, get: function () { return findingKind_1.isIssueFinding; } });
 var gitIgnore_1 = require("./gitIgnore");
 Object.defineProperty(exports, "excludeGitIgnoredFiles", { enumerable: true, get: function () { return gitIgnore_1.excludeGitIgnoredFiles; } });

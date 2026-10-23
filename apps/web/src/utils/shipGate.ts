@@ -194,8 +194,12 @@ export function getShipGateActionHint(
         return 'No blockers detected. Review heuristic findings and warnings before shipping.';
       }
       return 'No blockers detected. Review warnings before shipping.';
-    case 'ready':
-      return 'All scanned files passed. You can deploy with confidence.';
+    case 'ready': {
+      // Say what was checked, not what it means for the launch: a static read of
+      // the code cannot vouch for config, data or anything it did not read.
+      const files = report.scannedFileCount;
+      return `Nothing in the ${files} ${files === 1 ? 'file' : 'files'} Assurly read blocks launch.`;
+    }
     default: {
       const neverStatus: never = report.status;
       return neverStatus;

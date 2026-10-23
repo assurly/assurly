@@ -57,12 +57,19 @@ export function isCiWorkflowSuggestion(
   return /github actions workflow for (assurly|shipready) is missing/i.test(finding.message ?? '');
 }
 
+/** RLS on with no policy: right for server-only tables, so never scored. */
+export function isRlsWithoutPolicyAdvisory(finding: Pick<ScannerFinding, 'ruleId'>): boolean {
+  return finding.ruleId === 'supabase-rls-no-policy';
+}
+
 export function findingKind(finding: Pick<ScannerFinding, 'ruleId' | 'message'>): FindingKind {
   const ruleId = finding.ruleId ?? '';
   if (INFO_RULE_IDS.has(ruleId)) return 'info';
   if (SETUP_RULE_IDS.has(ruleId) || isCiWorkflowSuggestion(finding)) return 'setup';
   if (COVERAGE_RULE_IDS.has(ruleId)) return 'coverage';
-  if (isDatabaseSafetyNetAdvisory(finding)) return 'advisory';
+  if (isDatabaseSafetyNetAdvisory(finding) || isRlsWithoutPolicyAdvisory(finding)) {
+    return 'advisory';
+  }
   return 'issue';
 }
 

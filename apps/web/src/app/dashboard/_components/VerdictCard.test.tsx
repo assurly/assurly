@@ -118,7 +118,7 @@ describe('VerdictCard', () => {
       />,
     );
     expect(screen.getByText('Ready to ship')).toBeTruthy();
-    expect(screen.getByText(/safe to deploy/i)).toBeTruthy();
+    expect(screen.getByText('No blockers in the last check.')).toBeTruthy();
   });
 
   it('shows a builder chip when a generator fingerprint is known', () => {
@@ -274,7 +274,7 @@ describe('VerdictCard', () => {
         density="compact"
       />,
     );
-    expect(screen.queryByText(/safe to deploy/i)).toBeNull();
+    expect(screen.queryByText('No blockers in the last check.')).toBeNull();
     expect(screen.queryByText('Ready to ship')).toBeNull();
     expect(screen.getByText('96')).toBeTruthy();
   });

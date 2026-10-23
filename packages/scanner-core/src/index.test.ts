@@ -18,6 +18,8 @@ import {
   scanSupabaseClientLeaks,
   selectFiles,
 } from './index';
+import { buildShipGateReport } from './shipGate';
+import { findingKind } from './findingKind';
 
 describe('shared scanner core', () => {
   it('uses the AST instead of comments to verify Stripe signatures', () => {
@@ -509,5 +511,79 @@ describe('next.config env keys', () => {
       configDefinedKeys: collectNextConfigEnvKeys([nextConfig]),
     }).findings.filter((finding) => finding.ruleId === 'undocumented-env');
     expect(flagged).toEqual([]);
+  });
+});
+
+describe('row-level security on with no policy', () => {
+  const create = 'create table public.customers (id uuid primary key, user_id uuid, email text);';
+  const enable = 'alter table public.customers enable row level security;';
+
+  it('notes a Supabase table the public key can no longer read, without scoring it', () => {
+    const { findings } = scanSqlMigrations(
+      [{ file: 'supabase/migrations/0001_customers.sql', content: `${create}\n${enable}` }],
+      { usesSupabase: true },
+    );
+
+    const note = findings.find((finding) => finding.ruleId === 'supabase-rls-no-policy');
+    expect(note).toMatchObject({ file: 'supabase/migrations/0001_customers.sql', line: 2 });
+    expect(findingKind(note!)).toBe('advisory');
+  });
+
+  it('is quiet once the table has a policy, quoted name and all', () => {
+    const policy =
+      'create policy "Customers can read their own rows" on public.customers for select using (auth.uid() = user_id);';
+    const { findings } = scanSqlMigrations(
+      [
+        {
+          file: 'supabase/migrations/0001_customers.sql',
+          content: `${create}\n${enable}\n${policy}`,
+        },
+      ],
+      { usesSupabase: true },
+    );
+    expect(findings.filter((finding) => finding.ruleId === 'supabase-rls-no-policy')).toEqual([]);
+  });
+
+  it('finds a policy that lives in a later migration', () => {
+    const { findings } = scanSqlMigrations(
+      [
+        { file: 'supabase/migrations/0001_customers.sql', content: `${create}\n${enable}` },
+        {
+          file: 'supabase/migrations/0002_policies.sql',
+          content: 'create policy own_rows on customers using (auth.uid() = user_id);',
+        },
+      ],
+      { usesSupabase: true },
+    );
+    expect(findings.filter((finding) => finding.ruleId === 'supabase-rls-no-policy')).toEqual([]);
+  });
+
+  it('says nothing for a database no browser can reach', () => {
+    const { findings } = scanSqlMigrations([
+      { file: 'db/migrations/001.sql', content: `${create}\n${enable}` },
+    ]);
+    expect(findings.filter((finding) => finding.ruleId === 'supabase-rls-no-policy')).toEqual([]);
+  });
+
+  it('keeps the stock RLS fix from passing silently: ready, but with the note', () => {
+    // assurly-live-target before and after the "enable RLS" auto-fix PR.
+    const before = scanSqlMigrations(
+      [{ file: 'supabase/migrations/0001_customers.sql', content: create }],
+      { usesSupabase: true },
+    ).findings;
+    const after = scanSqlMigrations(
+      [{ file: 'supabase/migrations/0001_customers.sql', content: `${create}\n${enable}` }],
+      { usesSupabase: true },
+    ).findings;
+
+    expect(buildShipGateReport(before, { scannedFileCount: 1 }).status).toBe('blocked');
+    const report = buildShipGateReport(after, { scannedFileCount: 1, cleanFileCount: 0 });
+    expect(report.blockers).toEqual([]);
+    expect(report.advisories?.map((group) => group.label)).toEqual([
+      'Row-level security on, no policy · 1 table',
+    ]);
+    expect(report.advisories?.[0]?.sampleMessage).toMatch(
+      /gets no rows until each table has a policy/,
+    );
   });
 });

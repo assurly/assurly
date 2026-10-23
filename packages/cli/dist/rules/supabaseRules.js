@@ -53,10 +53,13 @@ exports.supabaseRules = {
             return (0, scanner_core_1.scanSqlMigrations)(sql, { usesSupabase: false }).findings.filter(scanner_core_1.isDatabaseSafetyNetAdvisory);
         }
         const findings = [];
+        const sqlFindings = (0, scanner_core_1.scanSqlMigrations)(sql, { usesSupabase: true }).findings;
+        // Kept under its own rule id: findingKind files it as an unscored note.
+        findings.push(...sqlFindings.filter(scanner_core_1.isRlsWithoutPolicyAdvisory));
         findings.push(
         // This rule only runs on Supabase projects.
-        ...(0, scanner_core_1.scanSqlMigrations)(sql, { usesSupabase: true })
-            .findings.filter((finding) => finding.ruleId === 'supabase-rls')
+        ...sqlFindings
+            .filter((finding) => finding.ruleId === 'supabase-rls')
             .map((finding) => ({
             ...finding,
             ruleId: this.id,

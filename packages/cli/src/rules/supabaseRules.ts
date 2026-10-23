@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   isDatabaseSafetyNetAdvisory,
+  isRlsWithoutPolicyAdvisory,
   scanEnvVariables,
   scanSqlMigrations,
   scanSupabaseClientLeaks,
@@ -27,10 +28,13 @@ export const supabaseRules: Rule = {
       );
     }
     const findings: Finding[] = [];
+    const sqlFindings = scanSqlMigrations(sql, { usesSupabase: true }).findings;
+    // Kept under its own rule id: findingKind files it as an unscored note.
+    findings.push(...sqlFindings.filter(isRlsWithoutPolicyAdvisory));
     findings.push(
       // This rule only runs on Supabase projects.
-      ...scanSqlMigrations(sql, { usesSupabase: true })
-        .findings.filter((finding) => finding.ruleId === 'supabase-rls')
+      ...sqlFindings
+        .filter((finding) => finding.ruleId === 'supabase-rls')
         .map((finding) => ({
           ...finding,
           ruleId: this.id,

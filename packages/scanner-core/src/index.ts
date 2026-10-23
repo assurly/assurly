@@ -587,6 +587,7 @@ export function scanSqlMigrations(
   const findings: ScannerFinding[] = [];
   const created = new Map<string, { file: string; line: number }>();
   const rls = new Set<string>();
+  const rlsEnabledAt = new Map<string, { file: string; line: number }>();
   const postgresSources = sources.filter((source) => isPostgresSqlSource(source));
   const normalize = (name: string) =>
     name
@@ -601,7 +602,10 @@ export function scanSqlMigrations(
         /alter\s+table\s+([a-zA-Z0-9_."`'-]+)\s+enable\s+row\s+level\s+security/i,
       );
       if (create) created.set(normalize(create[1]), { file: source.file, line: index + 1 });
-      if (enabled) rls.add(normalize(enabled[1]));
+      if (enabled) {
+        rls.add(normalize(enabled[1]));
+        rlsEnabledAt.set(normalize(enabled[1]), { file: source.file, line: index + 1 });
+      }
       if (
         /alter\s+table[\s\S]*\sadd\s+(?:column\s+)?[\s\S]*\snot\s+null/i.test(code) &&
         !/\bdefault\b/i.test(code)
@@ -645,8 +649,48 @@ export function scanSqlMigrations(
       });
   }
 
+  if (hasSupabaseSignal) {
+    findings.push(...rlsWithoutPolicyFindings(created, rlsEnabledAt, postgresSources, normalize));
+  }
+
   findings.push(...scanSupabaseDeepPolicies(postgresSources).findings);
   return result(subsumeRlsFindings(findings));
+}
+
+export const RLS_NO_POLICY_RULE_ID = 'supabase-rls-no-policy';
+
+const CREATE_POLICY_TABLE =
+  /create\s+policy\s+(?:"[^"]+"|'[^']+'|`[^`]+`|[^\s]+)\s+on\s+([a-zA-Z0-9_."`'-]+)/gi;
+
+/**
+ * A Supabase table with row-level security on and no policy: the public key
+ * can neither read nor write it. Right for a table only server code touches,
+ * a broken feature for one the browser reads — and what the stock "enable RLS"
+ * fix leaves behind. Static analysis cannot tell the two apart, so this is an
+ * unscored note, never a verdict.
+ */
+function rlsWithoutPolicyFindings(
+  created: ReadonlyMap<string, { file: string; line: number }>,
+  rlsEnabledAt: ReadonlyMap<string, { file: string; line: number }>,
+  sources: readonly SourceInput[],
+  normalize: (name: string) => string,
+): ScannerFinding[] {
+  const withPolicy = new Set<string>();
+  for (const source of sources) {
+    const sql = source.content.replace(/--[^\n]*/g, ' ');
+    for (const match of sql.matchAll(CREATE_POLICY_TABLE)) withPolicy.add(normalize(match[1]!));
+  }
+  return [...rlsEnabledAt]
+    .filter(([table]) => created.has(table) && !withPolicy.has(table))
+    .map(([table, location]) => ({
+      ruleId: RLS_NO_POLICY_RULE_ID,
+      severity: 'warning' as const,
+      confidence: 'high' as const,
+      file: location.file,
+      line: location.line,
+      message: `Supabase table '${table}' has row-level security on but no policy, so the public key can neither read nor write it.`,
+      suggestion: `If the browser reads '${table}', add a policy that scopes rows to the caller, for example: CREATE POLICY "own rows" ON ${table} FOR SELECT USING (auth.uid() = user_id);`,
+    }));
 }
 
 export function scanSqlMigration(content: string, file = 'schema.sql'): ScanResult {
@@ -1332,6 +1376,7 @@ export {
   findingKind,
   isCiWorkflowSuggestion,
   isDatabaseSafetyNetAdvisory,
+  isRlsWithoutPolicyAdvisory,
   isIssueFinding,
   type FindingKind,
 } from './findingKind';

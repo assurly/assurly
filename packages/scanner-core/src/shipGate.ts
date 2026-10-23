@@ -1,7 +1,7 @@
 import type { FindingConfidence, ScannerFinding, Severity } from './index';
 import type { ScanScope } from './fileRelevance';
 import { formatScanScopeSummary } from './fileRelevance';
-import { findingKind, isCiWorkflowSuggestion } from './findingKind';
+import { findingKind, isCiWorkflowSuggestion, isRlsWithoutPolicyAdvisory } from './findingKind';
 import { isAnalyzedCodeFile } from './languageCoverage';
 
 export type ShipGateFindingInput = Pick<
@@ -289,31 +289,62 @@ function canonicalSetupFinding(finding: ShipGateFindingInput): ShipGateFindingIn
  * Missing RLS on a database no browser can reach, all tables in one group:
  * five identical warnings told the reader nothing five times.
  */
-function buildAdvisories(advisory: readonly ShipGateFindingInput[]): ShipGateGroup[] {
-  if (advisory.length === 0) return [];
-  const tables = [
+function advisoryTables(findings: readonly ShipGateFindingInput[]): string[] {
+  return [
     ...new Set(
-      advisory
+      findings
         .map((finding) => finding.message.match(/table '([^']+)'/i)?.[1])
         .filter((table): table is string => Boolean(table)),
     ),
   ];
-  const files = new Set(advisory.map((finding) => finding.file ?? '__global__'));
-  const count = tables.length || advisory.length;
-  return [
-    {
-      id: 'advisory:database-safety-net',
-      label: `No row-level safety net in the database · ${count} ${count === 1 ? 'table' : 'tables'}`,
-      severity: 'warning',
-      occurrenceCount: advisory.length,
-      affectedFileCount: files.size,
-      sampleMessage:
+}
+
+function advisoryGroup(
+  id: string,
+  title: string,
+  findings: readonly ShipGateFindingInput[],
+  explanation: string,
+): ShipGateGroup {
+  const tables = advisoryTables(findings);
+  const count = tables.length || findings.length;
+  return {
+    id,
+    label: `${title} · ${count} ${count === 1 ? 'table' : 'tables'}`,
+    severity: 'warning',
+    occurrenceCount: findings.length,
+    affectedFileCount: new Set(findings.map((finding) => finding.file ?? '__global__')).size,
+    sampleMessage: explanation + (tables.length > 0 ? ` Tables: ${tables.join(', ')}.` : ''),
+  };
+}
+
+function buildAdvisories(advisory: readonly ShipGateFindingInput[]): ShipGateGroup[] {
+  const noPolicy = advisory.filter(isRlsWithoutPolicyAdvisory);
+  const safetyNet = advisory.filter((finding) => !isRlsWithoutPolicyAdvisory(finding));
+  const groups: ShipGateGroup[] = [];
+  if (safetyNet.length > 0) {
+    groups.push(
+      advisoryGroup(
+        'advisory:database-safety-net',
+        'No row-level safety net in the database',
+        safetyNet,
         'Not a leak: no Supabase or other browser access to this database was found, so only your backend reads these tables. ' +
-        'If you ever expose the database to the browser, turn on row-level security with a policy for each table first — ' +
-        'turning it on without policies blocks every query your app makes.' +
-        (tables.length > 0 ? ` Tables: ${tables.join(', ')}.` : ''),
-    },
-  ];
+          'If you ever expose the database to the browser, turn on row-level security with a policy for each table first — ' +
+          'turning it on without policies blocks every query your app makes.',
+      ),
+    );
+  }
+  if (noPolicy.length > 0) {
+    groups.push(
+      advisoryGroup(
+        'advisory:rls-no-policy',
+        'Row-level security on, no policy',
+        noPolicy,
+        'Your public Supabase key can neither read nor write these tables. That is right when only server code with the service role uses them. ' +
+          'If your app reads them from the browser, it gets no rows until each table has a policy that scopes rows to the caller.',
+      ),
+    );
+  }
+  return groups;
 }
 
 /**

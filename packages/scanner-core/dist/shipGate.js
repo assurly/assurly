@@ -215,29 +215,39 @@ function canonicalSetupFinding(finding) {
  * Missing RLS on a database no browser can reach, all tables in one group:
  * five identical warnings told the reader nothing five times.
  */
-function buildAdvisories(advisory) {
-    if (advisory.length === 0)
-        return [];
-    const tables = [
-        ...new Set(advisory
+function advisoryTables(findings) {
+    return [
+        ...new Set(findings
             .map((finding) => finding.message.match(/table '([^']+)'/i)?.[1])
             .filter((table) => Boolean(table))),
     ];
-    const files = new Set(advisory.map((finding) => finding.file ?? '__global__'));
-    const count = tables.length || advisory.length;
-    return [
-        {
-            id: 'advisory:database-safety-net',
-            label: `No row-level safety net in the database · ${count} ${count === 1 ? 'table' : 'tables'}`,
-            severity: 'warning',
-            occurrenceCount: advisory.length,
-            affectedFileCount: files.size,
-            sampleMessage: 'Not a leak: no Supabase or other browser access to this database was found, so only your backend reads these tables. ' +
-                'If you ever expose the database to the browser, turn on row-level security with a policy for each table first — ' +
-                'turning it on without policies blocks every query your app makes.' +
-                (tables.length > 0 ? ` Tables: ${tables.join(', ')}.` : ''),
-        },
-    ];
+}
+function advisoryGroup(id, title, findings, explanation) {
+    const tables = advisoryTables(findings);
+    const count = tables.length || findings.length;
+    return {
+        id,
+        label: `${title} · ${count} ${count === 1 ? 'table' : 'tables'}`,
+        severity: 'warning',
+        occurrenceCount: findings.length,
+        affectedFileCount: new Set(findings.map((finding) => finding.file ?? '__global__')).size,
+        sampleMessage: explanation + (tables.length > 0 ? ` Tables: ${tables.join(', ')}.` : ''),
+    };
+}
+function buildAdvisories(advisory) {
+    const noPolicy = advisory.filter(findingKind_1.isRlsWithoutPolicyAdvisory);
+    const safetyNet = advisory.filter((finding) => !(0, findingKind_1.isRlsWithoutPolicyAdvisory)(finding));
+    const groups = [];
+    if (safetyNet.length > 0) {
+        groups.push(advisoryGroup('advisory:database-safety-net', 'No row-level safety net in the database', safetyNet, 'Not a leak: no Supabase or other browser access to this database was found, so only your backend reads these tables. ' +
+            'If you ever expose the database to the browser, turn on row-level security with a policy for each table first — ' +
+            'turning it on without policies blocks every query your app makes.'));
+    }
+    if (noPolicy.length > 0) {
+        groups.push(advisoryGroup('advisory:rls-no-policy', 'Row-level security on, no policy', noPolicy, 'Your public Supabase key can neither read nor write these tables. That is right when only server code with the service role uses them. ' +
+            'If your app reads them from the browser, it gets no rows until each table has a policy that scopes rows to the caller.'));
+    }
+    return groups;
 }
 /**
  * One line per thing the scan could not check. Registry misses are counted,

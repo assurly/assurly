@@ -30,5 +30,7 @@ export declare function isDatabaseSafetyNetAdvisory(finding: Pick<ScannerFinding
  * a package on npm that is not ours.
  */
 export declare function isCiWorkflowSuggestion(finding: Pick<ScannerFinding, 'ruleId' | 'message'>): boolean;
+/** RLS on with no policy: right for server-only tables, so never scored. */
+export declare function isRlsWithoutPolicyAdvisory(finding: Pick<ScannerFinding, 'ruleId'>): boolean;
 export declare function findingKind(finding: Pick<ScannerFinding, 'ruleId' | 'message'>): FindingKind;
 export declare function isIssueFinding(finding: Pick<ScannerFinding, 'ruleId' | 'message'>): boolean;

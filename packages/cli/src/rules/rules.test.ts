@@ -108,12 +108,17 @@ describe('Assurly Verification Rules', () => {
       };
 
       const findings = await supabaseRules.run(context);
-      // Profiles should fail, posts should pass
-      expect(findings.length).toBe(1);
-      expect(findings[0].severity).toBe('error');
-      expect(findings[0].message).toContain(
+      // Profiles fails; posts passes the RLS check but has no policy yet.
+      const blockers = findings.filter((finding) => finding.severity === 'error');
+      expect(blockers).toHaveLength(1);
+      expect(blockers[0].message).toContain(
         "table 'profiles' is created in migration files, but Row-Level Security (RLS) is not enabled",
       );
+      expect(findings.map((finding) => finding.ruleId)).toEqual([
+        'supabase-rls-no-policy',
+        'supabase-security-checks',
+      ]);
+      expect(findings[0].message).toContain("'posts' has row-level security on but no policy");
     });
 
     it('should flag service_role leaks in frontend', async () => {

@@ -57,8 +57,15 @@ describe('scanSqlMigration', () => {
       const result = scanSqlMigration(sql, 'supabase/migrations/001.sql');
 
       expect(result.errorCount).toBe(1);
-      expect(result.findings).toHaveLength(1);
-      expect(result.findings[0].message).toContain("'posts'");
+      const missingRls = result.findings.filter((finding) => finding.ruleId === 'supabase-rls');
+      expect(missingRls).toHaveLength(1);
+      expect(missingRls[0].message).toContain("'posts'");
+      // users and comments have RLS on with no policy: unscored notes, not blockers.
+      expect(
+        result.findings
+          .filter((finding) => finding.ruleId === 'supabase-rls-no-policy')
+          .map((finding) => finding.severity),
+      ).toEqual(['warning', 'warning']);
     });
 
     it('ignores system tables like spatial_ref_sys', () => {

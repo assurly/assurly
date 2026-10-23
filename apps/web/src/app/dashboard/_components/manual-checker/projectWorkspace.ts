@@ -220,7 +220,7 @@ export function getScanActionLabel(verdict: ProjectScanVerdict): string {
     case 'warnings':
       return 'No blocking errors. Review warnings in the active file log before shipping.';
     case 'passed':
-      return 'All scanned files passed. You can deploy with confidence.';
+      return 'Nothing in the scanned files blocks launch.';
     default: {
       const neverVerdict: never = verdict;
       return neverVerdict;
