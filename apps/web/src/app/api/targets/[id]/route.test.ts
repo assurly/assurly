@@ -23,6 +23,7 @@ const db = {
   deleteTarget: vi.fn(),
   getLatestProbeEvidenceForTarget: vi.fn(),
   getFixOutcomesForTarget: vi.fn(),
+  getLiveLockSummary: vi.fn(),
 };
 
 describe('DELETE /api/targets/[id]', () => {
@@ -148,6 +149,20 @@ describe('GET /api/targets/[id]', () => {
         created_at: '2026-09-20T16:50:16.547Z',
       },
     ]);
+    db.getLiveLockSummary.mockResolvedValue({
+      latest: {
+        id: 'lock-1',
+        organization_id: 'org-1',
+        target_id: TARGET_ID,
+        git_sha: 'abc1234',
+        attempt_id: 'run.1',
+        status: 'blocked',
+        ship_score: 59,
+        reason: 'runtime_blocker',
+        created_at: '2026-10-23T07:00:00.000Z',
+      },
+      stoppedDeploy: true,
+    });
   });
 
   it('returns each blocker with its redacted proof and how long it has been open', async () => {

@@ -276,6 +276,39 @@ export interface ProbeEvidenceInput {
   redactedSample?: unknown;
 }
 
+export type LiveLockStatus = 'ready' | 'blocked';
+
+export type LiveLockReason = 'ownership_unverified' | 'probe_refused' | 'runtime_blocker' | 'clear';
+
+/** One deploy-path check. No row contents — proof stays in probe_evidence. */
+export interface LiveLockAttemptRow {
+  id: string;
+  organization_id: string;
+  target_id: string;
+  git_sha: string;
+  attempt_id: string;
+  status: LiveLockStatus;
+  ship_score: number;
+  reason: LiveLockReason;
+  created_at: string;
+}
+
+export interface InsertLiveLockAttemptInput {
+  organizationId: string;
+  targetId: string;
+  gitSha: string;
+  attemptId: string;
+  status: LiveLockStatus;
+  shipScore: number;
+  reason: LiveLockReason;
+}
+
+export interface LiveLockSummary {
+  latest: LiveLockAttemptRow | null;
+  /** True once any attempt for this target came back blocked. */
+  stoppedDeploy: boolean;
+}
+
 export type FixOutcomeStatus = 'verified_fixed' | 'still_open' | 'regressed';
 
 /** A persisted verified-fix loop record (Phase 5). */
@@ -585,6 +618,9 @@ export interface DbAdapter {
   ): Promise<void>;
   insertFixOutcomes(rows: FixOutcomeInput[]): Promise<void>;
   getFixOutcomesForTarget(targetId: string): Promise<FixOutcomeRow[]>;
+  getLiveLockAttempt(targetId: string, attemptId: string): Promise<LiveLockAttemptRow | null>;
+  insertLiveLockAttempt(input: InsertLiveLockAttemptInput): Promise<LiveLockAttemptRow>;
+  getLiveLockSummary(targetId: string): Promise<LiveLockSummary>;
   getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]>;
   /**
    * Total number of monitored apps (targets) across all orgs. Aggregate scalar
@@ -1414,6 +1450,58 @@ export class SupabaseDbAdapter implements DbAdapter {
 
   getFixOutcomesForTarget(targetId: string): Promise<FixOutcomeRow[]> {
     return this.fetchDb(`fix_outcome?select=*&target_id=eq.${eq(targetId)}&order=created_at.asc`);
+  }
+
+  getLiveLockAttempt(targetId: string, attemptId: string): Promise<LiveLockAttemptRow | null> {
+    return this.first(
+      `live_lock_attempt?select=*&target_id=eq.${eq(targetId)}&attempt_id=eq.${eq(attemptId)}`,
+    );
+  }
+
+  async insertLiveLockAttempt(input: InsertLiveLockAttemptInput): Promise<LiveLockAttemptRow> {
+    const existing = await this.getLiveLockAttempt(input.targetId, input.attemptId);
+    if (existing) return existing;
+
+    const payload = {
+      organization_id: input.organizationId,
+      target_id: input.targetId,
+      git_sha: input.gitSha,
+      attempt_id: input.attemptId,
+      status: input.status,
+      ship_score: input.shipScore,
+      reason: input.reason,
+    };
+
+    try {
+      const rows = await this.fetchDb<LiveLockAttemptRow[]>('live_lock_attempt?select=*', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify(payload),
+      });
+      const row = rows[0];
+      if (!row) {
+        throw new Error('Live Lock insert returned no row.');
+      }
+      return row;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes('409')) throw error;
+      const raced = await this.getLiveLockAttempt(input.targetId, input.attemptId);
+      if (raced) return raced;
+      throw error;
+    }
+  }
+
+  async getLiveLockSummary(targetId: string): Promise<LiveLockSummary> {
+    const [latest, blocked] = await Promise.all([
+      this.first<LiveLockAttemptRow>(
+        `live_lock_attempt?select=*&target_id=eq.${eq(targetId)}&order=created_at.desc`,
+      ),
+      this.first<{ id: string }>(
+        `live_lock_attempt?select=id&target_id=eq.${eq(targetId)}&status=eq.blocked`,
+      ),
+    ]);
+    return { latest, stoppedDeploy: blocked !== null };
   }
 
   getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]> {

@@ -93,6 +93,8 @@ describe('buildGitHubAutoFix', () => {
     expect(fix?.targetFilePath).toBe('.github/workflows/assurly.yml');
     expect(fix?.statement).toContain('name: Assurly Security & Config Scan');
     expect(fix?.statement).toContain('npx --yes assurly@1 scan');
+    expect(fix?.statement).toContain('name: Assurly Live Lock');
+    expect(fix?.statement).toContain('Live Lock blocked this deploy.');
     // The scan is static analysis: no dependency install and no lockfile-bound
     // npm cache, so the workflow works on repos with package.json in a subdir.
     expect(fix?.statement).not.toContain('npm ci');

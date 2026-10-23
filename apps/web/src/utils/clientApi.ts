@@ -148,6 +148,23 @@ const urlTargetDetailSchema = z.object({
     }),
   ),
   otherEvidence: z.array(urlTargetEvidenceSchema),
+  liveLock: z
+    .object({
+      status: z.enum(['ready', 'blocked']).nullable(),
+      shipScore: z.number().nullable(),
+      reason: z.string().nullable(),
+      gitSha: z.string().nullable(),
+      checkedAt: z.string().nullable(),
+      stoppedDeploy: z.boolean(),
+    })
+    .default({
+      status: null,
+      shipScore: null,
+      reason: null,
+      gitSha: null,
+      checkedAt: null,
+      stoppedDeploy: false,
+    }),
 });
 export type UrlTargetDetail = z.infer<typeof urlTargetDetailSchema>;
 
@@ -161,6 +178,46 @@ const sharedReportSchema = z.object({
   createdAt: z.string(),
   url: z.string(),
 });
+const diffLineSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('context'),
+    text: z.string(),
+    oldLine: z.number().int(),
+    newLine: z.number().int(),
+  }),
+  z.object({ kind: z.literal('remove'), text: z.string(), oldLine: z.number().int() }),
+  z.object({ kind: z.literal('add'), text: z.string(), newLine: z.number().int() }),
+]);
+const findingCodeSchema = z.discriminatedUnion('available', [
+  z.object({
+    available: z.literal(true),
+    file: z.string(),
+    commitSha: z.string(),
+    githubUrl: z.string(),
+    window: z.object({
+      startLine: z.number().int().positive(),
+      lines: z.array(z.string()),
+      highlightLine: z.number().int().positive().nullable(),
+      redactedCount: z.number().int().nonnegative(),
+    }),
+    suggestedChange: z
+      .object({
+        title: z.string(),
+        description: z.string(),
+        file: z.string(),
+        isNewFile: z.boolean(),
+        lines: z.array(diffLineSchema),
+      })
+      .nullable(),
+  }),
+  z.object({
+    available: z.literal(false),
+    reason: z.string(),
+    message: z.string(),
+    githubUrl: z.string().nullable(),
+  }),
+]);
+export type FindingCodeResult = z.infer<typeof findingCodeSchema>;
 export type SharedReport = z.infer<typeof sharedReportSchema>;
 export type UrlTargetEvidence = z.infer<typeof urlTargetEvidenceSchema>;
 
@@ -524,6 +581,11 @@ export const clientApi = {
     message: string;
   }): Promise<{ success: boolean }> =>
     requestJson('/api/contact', z.object({ success: z.boolean() }), jsonRequest('POST', body)),
+  /** The code behind one saved finding, read from GitHub at the scanned commit. */
+  findingCode: (findingId: string, signal?: AbortSignal): Promise<FindingCodeResult> =>
+    requestJson(`/api/findings/${encodeURIComponent(findingId)}/code`, findingCodeSchema, {
+      signal,
+    }),
   targetDetail: (targetId: string): Promise<UrlTargetDetail> =>
     requestJson(`/api/targets/${encodeURIComponent(targetId)}`, urlTargetDetailSchema),
   reprobe: (targetId: string): Promise<ReprobeResult> =>

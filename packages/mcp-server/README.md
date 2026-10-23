@@ -178,7 +178,7 @@ Point the client at `npx` with these arguments:
 }
 ```
 
-`ASSURLY_API_URL` is optional and defaults to `https://assurly.dev`. Pass exactly one of `url` or `repo` (in `owner/name` form) when calling the tool.
+`ASSURLY_API_URL` is optional and defaults to `https://assurly.dev`. `assurly_verdict` runs Live Lock: pass the deployed `url` and the `gitSha` of the commit being deployed.
 
 ## Typical agent loop
 
@@ -191,13 +191,13 @@ Point the client at `npx` with these arguments:
 
 ## Troubleshooting
 
-| Symptom                           | Fix                                                                                                                |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Tools do not appear               | Restart the client or reload MCP, then confirm the six `assurly_*` tools are listed.                               |
-| `ASSURLY_API_KEY is not set`      | Create a key in the Assurly dashboard (Settings → API keys) and expose it to this MCP server as `ASSURLY_API_KEY`. |
-| `invalid or revoked (401)`        | The key is no longer valid. Issue a new one.                                                                       |
-| `Provide exactly one of url/repo` | `assurly_verdict` takes one target, not both and not neither.                                                      |
-| Server fails to start             | Check your Node version against the requirement above.                                                             |
+| Symptom                            | Fix                                                                                                                |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Tools do not appear                | Restart the client or reload MCP, then confirm the six `assurly_*` tools are listed.                               |
+| `ASSURLY_API_KEY is not set`       | Create a key in the Assurly dashboard (Settings → API keys) and expose it to this MCP server as `ASSURLY_API_KEY`. |
+| `invalid or revoked (401)`         | The key is no longer valid. Issue a new one.                                                                       |
+| `Live Lock needs the deployed url` | `assurly_verdict` needs `url` and `gitSha`. A stored score is not a ship decision.                                 |
+| Server fails to start              | Check your Node version against the requirement above.                                                             |
 
 ## Build from source (contributors)
 

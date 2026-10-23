@@ -49,154 +49,74 @@ describe('formatFixOutcomesText', () => {
   });
 });
 
-describe('assurly_verdict MCP tool (reads the hosted API)', () => {
-  it('returns a structured verdict for a known target and calls only the hosted API', async () => {
+describe('assurly_verdict MCP tool (Live Lock)', () => {
+  it('POSTs a fresh Live Lock check and treats BLOCKED as a ship failure', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({
         status: 'blocked',
-        shipScore: 80,
-        displayName: 'Example app',
-        identifier: 'https://app.example.com',
-        kind: 'url',
-        topIssue: {
-          category: 'Database access control (RLS)',
-          severity: 'error',
-          remediation: 'Enable Row-Level Security on every Supabase table.',
-        },
-        trustPageUrl: 'https://assurly.dev/report/abc',
-        activeProbeAllowed: true,
-        fixOutcomes: [],
+        shipScore: 59,
+        reason: 'runtime_blocker',
+        gitSha: 'abc1234',
+        attemptId: 'mcp-abc1234',
+        checkedAt: '2026-10-23T12:00:00.000Z',
       }),
     );
 
-    const result = await handleVerdict({ url: 'https://app.example.com' }, config(fetchImpl));
+    const result = await handleVerdict(
+      { url: 'https://app.example.com', gitSha: 'ABC1234' },
+      config(fetchImpl),
+    );
     const output = textBlocks(result);
 
     expect(output).toContain('BLOCKED');
-    expect(output).toContain('80/100');
-    expect(output).toContain('Database access control (RLS)');
-    expect(output).toContain('Enable Row-Level Security');
-    expect(output).toContain('https://assurly.dev/report/abc');
-    expect(output).toContain('Fix outcomes: none recorded yet');
-    expect(result.isError).toBe(true); // a blocked verdict is a real ship-gate failure
+    expect(output).toContain('59/100');
+    expect(output).toContain('runtime_blocker');
+    expect(result.isError).toBe(true);
 
-    // It READS the hosted API — exactly one GET, with the bearer key, and no local scan.
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [calledUrl, init] = fetchImpl.mock.calls[0];
-    expect(calledUrl).toBe(
-      `${API_URL}/api/v1/verdict?url=${encodeURIComponent('https://app.example.com')}`,
-    );
-    expect(init?.method).toBe('GET');
+    expect(calledUrl).toBe(`${API_URL}/api/v1/live-lock`);
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      url: 'https://app.example.com',
+      gitSha: 'abc1234',
+      attemptId: 'mcp-abc1234',
+    });
     expect((init?.headers as Record<string, string>).Authorization).toBe(`Bearer ${API_KEY}`);
   });
 
-  it('surfaces all three fix outcomes in text and JSON with observation times', async () => {
-    const payload = {
-      status: 'review',
-      shipScore: 70,
-      displayName: 'Example app',
-      identifier: 'https://app.example.com',
-      kind: 'url',
-      topIssue: null,
-      activeProbeAllowed: true,
-      fixOutcomes: [
-        {
-          ruleId: 'runtime-supabase-rls-open',
-          outcome: 'verified_fixed',
-          observedAt: '2026-07-18T10:00:00.000Z',
-        },
-        {
-          ruleId: 'runtime-secret-in-bundle',
-          outcome: 'still_open',
-          observedAt: '2026-07-18T09:00:00.000Z',
-        },
-        {
-          ruleId: 'runtime-missing-security-headers',
-          outcome: 'regressed',
-          observedAt: '2026-07-18T08:00:00.000Z',
-        },
-      ],
-    };
-    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(payload));
-    const result = await handleVerdict({ url: 'https://app.example.com' }, config(fetchImpl));
-    const output = textBlocks(result);
-
-    expect(output).toContain(
-      'runtime-supabase-rls-open: verified_fixed · observed 2026-07-18T10:00:00.000Z',
-    );
-    expect(output).toContain(
-      'runtime-secret-in-bundle: still_open · observed 2026-07-18T09:00:00.000Z',
-    );
-    expect(output).toContain(
-      'runtime-missing-security-headers: regressed · observed 2026-07-18T08:00:00.000Z',
-    );
-    expect(output).toMatch(/Not yet verified/i);
-    // JSON payload carries the same shape-only outcomes for programmatic agents.
-    expect(output).toContain('"outcome": "verified_fixed"');
-    expect(output).toContain('"observedAt": "2026-07-18T09:00:00.000Z"');
-    // still_open / regressed must NOT widen isError — status is review, not blocked.
-    expect(result.isError).toBe(false);
-  });
-
-  it('treats a stale still_open observation as not-yet-verified, not as isError', async () => {
+  it('returns READY only from the fresh check payload', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({
         status: 'ready',
         shipScore: 100,
-        displayName: 'Example app',
-        identifier: 'https://app.example.com',
-        kind: 'url',
-        topIssue: null,
-        activeProbeAllowed: true,
-        // Observation predates any claim the agent is asking about — age must be
-        // unmistakable, and must not halt the agent as a failed claim.
-        fixOutcomes: [
-          {
-            ruleId: 'runtime-supabase-rls-open',
-            outcome: 'still_open',
-            observedAt: '2026-07-01T00:00:00.000Z',
-          },
-        ],
+        reason: 'clear',
+        gitSha: 'abc1234',
+        attemptId: 'deploy-9',
+        checkedAt: '2026-10-23T12:00:00.000Z',
       }),
     );
-
-    const result = await handleVerdict({ url: 'https://app.example.com' }, config(fetchImpl));
-    const output = textBlocks(result);
-
-    expect(output).toContain('READY');
-    expect(output).toContain('observed 2026-07-01T00:00:00.000Z');
-    expect(output).toMatch(/Not yet verified/i);
-    expect(output).toMatch(/deploy and re-probe/i);
+    const result = await handleVerdict(
+      { url: 'https://app.example.com', gitSha: 'abc1234', attemptId: 'deploy-9' },
+      config(fetchImpl),
+    );
+    expect(textBlocks(result)).toContain('READY');
     expect(result.isError).toBe(false);
+    expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body)).attemptId).toBe('deploy-9');
   });
 
-  it('returns the PASSIVE verdict for a stranger URL and triggers NO active probe', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({
-        status: 'unknown',
-        shipScore: null,
-        identifier: 'https://stranger.example.com',
-        kind: 'url',
-        topIssue: null,
-        activeProbeAllowed: false,
-        fixOutcomes: [],
-      }),
-    );
-
-    const result = await handleVerdict({ url: 'https://stranger.example.com' }, config(fetchImpl));
-    const output = textBlocks(result);
-
-    expect(output).toContain('UNKNOWN');
-    expect(result.isError).toBe(false);
-    // The only network call is the single hosted-API read — never a probe.
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl.mock.calls[0][1]?.method).toBe('GET');
+  it('refuses to call the API without a url and git SHA', async () => {
+    const fetchImpl = vi.fn();
+    const result = await handleVerdict({ url: 'https://app.example.com' }, config(fetchImpl));
+    expect(result.isError).toBe(true);
+    expect(textBlocks(result)).toMatch(/gitSha/i);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('errors without an API key and never calls the network', async () => {
     const fetchImpl = vi.fn();
     const result = await handleVerdict(
-      { url: 'https://app.example.com' },
+      { url: 'https://app.example.com', gitSha: 'abc1234' },
       { apiUrl: API_URL, apiKey: undefined, fetchImpl },
     );
     expect(result.isError).toBe(true);
@@ -204,19 +124,12 @@ describe('assurly_verdict MCP tool (reads the hosted API)', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('rejects providing both url and repo', async () => {
-    const fetchImpl = vi.fn();
-    const result = await handleVerdict(
-      { url: 'https://app.example.com', repo: 'acme/api' },
-      config(fetchImpl),
-    );
-    expect(result.isError).toBe(true);
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
   it('surfaces an invalid/revoked key (401) as an error', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
-    const result = await handleVerdict({ repo: 'acme/api' }, config(fetchImpl));
+    const result = await handleVerdict(
+      { url: 'https://app.example.com', gitSha: 'abc1234' },
+      config(fetchImpl),
+    );
     expect(result.isError).toBe(true);
     expect(textBlocks(result)).toMatch(/invalid or revoked/i);
   });

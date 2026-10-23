@@ -29,6 +29,41 @@ jobs:
 
       - name: Run Assurly Scan
         run: npx --yes assurly@1 scan
+
+      - name: Assurly Live Lock
+        env:
+          ASSURLY_API_KEY: \${{ secrets.ASSURLY_API_KEY }}
+          ASSURLY_TARGET_URL: \${{ secrets.ASSURLY_TARGET_URL }}
+          ASSURLY_API_URL: \${{ secrets.ASSURLY_API_URL }}
+        run: |
+          node --input-type=module <<'NODE'
+          const key = process.env.ASSURLY_API_KEY || '';
+          const target = process.env.ASSURLY_TARGET_URL || '';
+          if (!key || !target) {
+            console.log('Live Lock skipped: set ASSURLY_API_KEY and ASSURLY_TARGET_URL to require it.');
+            process.exit(0);
+          }
+          const api = (process.env.ASSURLY_API_URL || 'https://assurly.dev').replace(/\\/$/, '');
+          const response = await fetch(api + '/api/v1/live-lock', {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer ' + key,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({
+              url: target,
+              gitSha: process.env.GITHUB_SHA,
+              attemptId: String(process.env.GITHUB_RUN_ID) + '.' + String(process.env.GITHUB_RUN_ATTEMPT),
+            }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          console.log(JSON.stringify(payload));
+          if (!response.ok || payload.status !== 'ready') {
+            console.error('Live Lock blocked this deploy.');
+            process.exit(1);
+          }
+          NODE
 `;
 
 /**

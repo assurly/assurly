@@ -38,6 +38,50 @@ function ProofBlock({ evidence }: { evidence: UrlTargetEvidence }): ReactElement
   );
 }
 
+function liveLockCopy(lock: UrlTargetDetail['liveLock']): { title: string; body: string } {
+  if (lock.status === null) {
+    return {
+      title: 'Not called yet',
+      body: 'No deploy has called Live Lock. Set ASSURLY_API_KEY and ASSURLY_TARGET_URL on the Assurly check. The workflow file alone does not turn it on.',
+    };
+  }
+  if (lock.status === 'blocked') {
+    return {
+      title: 'BLOCKED',
+      body: lock.stoppedDeploy
+        ? 'Live Lock stopped a deploy. The fresh check still found a blocker.'
+        : 'The latest Live Lock check is blocked.',
+    };
+  }
+  return {
+    title: 'READY',
+    body: lock.stoppedDeploy
+      ? 'The latest check passed. An earlier deploy was stopped.'
+      : 'The latest check passed. Live Lock is on after it stops a deploy.',
+  };
+}
+
+function LiveLockPanel({ lock }: { lock: UrlTargetDetail['liveLock'] }): ReactElement {
+  const copy = liveLockCopy(lock);
+  const when = lock.checkedAt ? `Checked ${formatScanDateTime(lock.checkedAt)}` : null;
+  const sha = lock.gitSha ? `Commit ${lock.gitSha.slice(0, 7)}` : null;
+  const meta = [when, sha, lock.shipScore !== null ? `${lock.shipScore}/100` : null]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <section
+      className={`url-proof__lock${lock.status ? ` url-proof__lock--${lock.status}` : ''}`}
+      aria-label="Live Lock"
+      data-testid="live-lock"
+    >
+      <h5 className="url-proof__lock-title">Live Lock · {copy.title}</h5>
+      <p>{copy.body}</p>
+      {meta ? <p className="url-proof__lock-meta">{meta}</p> : null}
+    </section>
+  );
+}
+
 function DetailBody({ detail }: { detail: UrlTargetDetail }): ReactElement {
   return (
     <>
@@ -174,7 +218,12 @@ export function UrlTargetDetailDialog({
             {state.message}
           </p>
         ) : null}
-        {detail ? <DetailBody detail={detail} /> : null}
+        {detail ? (
+          <>
+            <LiveLockPanel lock={detail.liveLock} />
+            <DetailBody detail={detail} />
+          </>
+        ) : null}
 
         <div className="url-proof__footer">
           {ownershipVerified ? (

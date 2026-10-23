@@ -26,6 +26,11 @@ export interface ReprobeContext {
   scanImpl?: ScanLiveUrlFn;
   /** Injectable fetch for tests; defaults to global fetch (mirrors scan-url). */
   fetchImpl?: typeof fetch;
+  /**
+   * Live Lock keeps the ship decision deterministic: no model call on the
+   * deploy path. Other callers keep the planner.
+   */
+  useAiPlanner?: boolean;
 }
 
 export interface ReprobeResult {
@@ -78,7 +83,11 @@ export async function reprobeTargetAndRecord(context: ReprobeContext): Promise<R
     probeUrl,
     context.fetchImpl ?? fetch,
     undefined,
-    { activeProbe, organizationId: target.organization_id },
+    {
+      activeProbe,
+      organizationId: target.organization_id,
+      useAiPlanner: context.useAiPlanner,
+    },
   );
 
   if (blocked) {

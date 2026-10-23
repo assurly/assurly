@@ -67,6 +67,14 @@ const OPEN_DETAIL: UrlTargetDetail = {
       },
     },
   ],
+  liveLock: {
+    status: 'blocked',
+    shipScore: 59,
+    reason: 'runtime_blocker',
+    gitSha: 'abc1234def',
+    checkedAt: '2026-10-23T07:00:00.000Z',
+    stoppedDeploy: true,
+  },
   otherEvidence: [
     {
       findingRuleId: 'runtime-missing-security-headers',
@@ -162,6 +170,29 @@ describe('UrlTargetDetailDialog', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it('shows that Live Lock stopped a deploy', async () => {
+    targetDetail.mockResolvedValue(OPEN_DETAIL);
+    renderDialog();
+    expect(await screen.findByTestId('live-lock')).toBeTruthy();
+    expect(screen.getByText(/Live Lock stopped a deploy/)).toBeTruthy();
+  });
+
+  it('says Live Lock has not been called when there is no attempt', async () => {
+    targetDetail.mockResolvedValue({
+      ...OPEN_DETAIL,
+      liveLock: {
+        status: null,
+        shipScore: null,
+        reason: null,
+        gitSha: null,
+        checkedAt: null,
+        stoppedDeploy: false,
+      },
+    });
+    renderDialog();
+    expect(await screen.findByText(/No deploy has called Live Lock/)).toBeTruthy();
   });
 
   it('says so when the proof cannot be loaded', async () => {

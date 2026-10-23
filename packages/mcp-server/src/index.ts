@@ -93,28 +93,27 @@ export function createAssurlyMcpServer(): McpServer {
   server.registerTool(
     'assurly_verdict',
     {
-      title: 'Get the hosted Assurly ship verdict',
+      title: 'Live Lock ship verdict',
       description:
-        'Pre-deploy ship gate: read the hosted Assurly verdict (Ready/Review/Blocked + ship score + ' +
-        'top issue + one-line fix + per-rule fix outcomes with observation times) for a deployed URL or a repo. ' +
-        'Fix outcomes reflect the last re-probe only — after claiming a fix, deploy and re-probe before treating ' +
-        'it as done. Reads the hosted Assurly API — it does not scan locally and never triggers an active probe. ' +
-        'Requires ASSURLY_API_KEY in the environment.',
+        'Pre-deploy Live Lock. Runs a fresh read-only check of the deployed URL and returns only READY or ' +
+        'BLOCKED. READY is valid for this run only — a stored score is never a ship decision. BLOCKED is ' +
+        'returned with isError: true; do not deploy. Requires ASSURLY_API_KEY, the deployed url, and gitSha.',
       inputSchema: {
-        url: z
+        url: z.string().url().describe('Deployed app URL to check'),
+        gitSha: z
           .string()
-          .url()
-          .optional()
-          .describe('Deployed app URL to look up (exactly one of url/repo)'),
-        repo: z
+          .describe('Full or short git SHA of the commit being deployed (7-64 hex characters)'),
+        attemptId: z
           .string()
           .optional()
-          .describe('Repository in owner/name form to look up (exactly one of url/repo)'),
+          .describe(
+            'Stable id for this attempt. Defaults to mcp-<gitSha> so a retry does not probe twice.',
+          ),
       },
     },
-    async ({ url, repo }) =>
+    async ({ url, gitSha, attemptId }) =>
       handleVerdict(
-        { url, repo },
+        { url, gitSha, attemptId },
         {
           apiUrl: process.env.ASSURLY_API_URL?.trim() || DEFAULT_ASSURLY_API_URL,
           apiKey: process.env.ASSURLY_API_KEY?.trim() || undefined,

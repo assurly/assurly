@@ -52,20 +52,17 @@ Warnings (review):
   · GitHub Actions workflow for Assurly is missing.     → 1 file
      ↳ Run: npx assurly init`;
 
-const VERDICT_SAMPLE = `Assurly verdict: BLOCKED · Ship Score 42/100
-Target: my-app.vercel.app
-Top issue: Database exposure — Enable RLS on public tables
-Fix outcomes (last re-probe only — may predate your latest edit):
-  · runtime-supabase-rls-open: still_open · observed 2026-07-18T06:00:00.000Z
-Not yet verified against your latest changes — deploy and re-probe. An unverified claim is not done.
-Trust page: https://assurly.dev/trust/my-app`;
+const VERDICT_SAMPLE = `Assurly Live Lock: BLOCKED · Ship Score 59/100
+Target: https://my-app.vercel.app
+Commit: abc1234
+BLOCKED (runtime_blocker). Do not deploy. Open the Assurly proof for this URL.`;
 
 const GATE_RULES_SNIPPET = `# Assurly ship gate
 Before deploying, pushing to production, or claiming the app is ready to ship:
 1. Call assurly_scan_path (or assurly_scan_files) on the project.
 2. Fix every blocker; re-scan until the verdict is READY TO SHIP.
-3. If a deployed URL or repo is in scope, call assurly_verdict. A blocked verdict is returned with isError: true — stop and do not ship.
-4. After you claim a fix for a hosted finding: deploy, then call assurly_verdict again and confirm a post-deploy re-probe recorded verified_fixed for that rule. Fix outcomes include an observed timestamp — they reflect the last re-probe, not your working tree. An unverified claim is not done.
+3. Before deploy, call assurly_verdict with the deployed url and the gitSha of the commit. Live Lock runs a fresh read-only check. BLOCKED is returned with isError: true — stop and do not ship. READY applies only to that run.
+4. After you claim a fix: deploy is allowed only when a new assurly_verdict call for that commit returns READY. A stored score is not a ship decision.
 Do not skip this gate or ask the user whether to run it.`;
 
 const HOSTED_VERDICT_ENV = `{
@@ -84,7 +81,8 @@ const HOSTED_VERDICT_ENV = `{
 const ERR_API_KEY_MISSING =
   'ASSURLY_API_KEY is not set. Create a key in the Assurly dashboard (Settings → API keys) and expose it to this MCP server as ASSURLY_API_KEY.';
 const ERR_API_KEY_INVALID = 'The Assurly API key is invalid or revoked (401). Issue a new key.';
-const ERR_VERDICT_ARGS = 'Provide exactly one of `url` or `repo`.';
+const ERR_VERDICT_ARGS =
+  'Live Lock needs the deployed `url` and the `gitSha` of the commit being deployed. A stored score is not a ship decision.';
 
 /** Published version from packages/mcp-server/package.json — bundled at build time. */
 const MCP_SERVER_VERSION: string = mcpServerPackage.version;
@@ -155,18 +153,15 @@ export default async function McpPage(): Promise<ReactElement> {
             <code>detectedStack</code>, and <code>scanScope</code>.
           </p>
           <p>
-            <code>assurly_verdict</code> reads the hosted API only — it never scans locally and
-            never triggers an active probe. Pass exactly one of <code>url</code> or{' '}
-            <code>repo</code> (<code>owner/name</code>). Alongside status and Ship Score it returns
-            per-rule <code>fixOutcomes</code> (<code>ruleId</code>, <code>outcome</code>,{' '}
-            <code>observedAt</code>) — shape-only, from the last re-probe. Example:
+            <code>assurly_verdict</code> calls Live Lock. Pass the deployed <code>url</code> and the{' '}
+            <code>gitSha</code> being deployed. The answer is READY or BLOCKED from that fresh
+            read-only check, not from a stored score. Example:
           </p>
           <CodeBlock code={VERDICT_SAMPLE} label="Example assurly_verdict output" />
           <p>
-            When the hosted status is <code>blocked</code>, the tool returns that text with{' '}
-            <code>isError: true</code>, so the agent stops instead of shipping. Fix outcomes alone
-            do not set <code>isError</code> — they may predate the agent&apos;s latest edit. After
-            claiming a fix, deploy and re-probe; treat an unverified claim as not done.
+            When Live Lock is <code>blocked</code>, the tool returns that text with{' '}
+            <code>isError: true</code>, so the agent does not deploy. Call it again after the fix is
+            on the URL. A previous READY does not cover a new commit.
           </p>
         </section>
 
@@ -204,11 +199,9 @@ export default async function McpPage(): Promise<ReactElement> {
                     <code>assurly_verdict</code>
                   </td>
                   <td>
-                    Read the hosted ship verdict (status, Ship Score, top issue, and per-rule fix
-                    outcomes with observation times) for a deployed URL or repository. Requires{' '}
-                    <code>ASSURLY_API_KEY</code>; a blocked verdict is returned as an error so the
-                    agent stops instead of shipping. Fix outcomes reflect the last re-probe — after
-                    claiming a fix, deploy and re-probe before treating it as done.
+                    Live Lock for a deployed URL. Requires <code>ASSURLY_API_KEY</code>,{' '}
+                    <code>url</code>, and <code>gitSha</code>. READY or BLOCKED comes from a fresh
+                    read-only check. BLOCKED is returned as an error so the agent does not deploy.
                   </td>
                 </tr>
                 <tr>

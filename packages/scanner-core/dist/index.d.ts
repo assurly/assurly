@@ -136,7 +136,7 @@ export interface DeeperStackScanOptions {
 }
 /** Runs Phase 3 deeper-stack scanners over the supplied project sources. */
 export declare function runDeeperStackScans(sources: readonly SourceInput[], options?: DeeperStackScanOptions): ScanResult;
-export { BLOCKED_SCORE_CAP, RLS_SCORE_GROUP_CAP, buildIssueGroups, buildShipGateReport, countCleanScannedFiles, formatShipGateMarkdown, formatShipGatePlainText, getFindingGroupKey, isShipGateBlocked, resolveGroupAction, type ShipGateAction, type ShipGateActionKind, type ShipGateFindingInput, type ShipGateGroup, type ShipGateMarkdownOptions, type ShipGateOptions, type ShipGateReport, type ShipGateStatus, } from './shipGate';
+export { BLOCKED_SCORE_CAP, RLS_SCORE_GROUP_CAP, buildIssueGroups, buildShipGateReport, countCleanScannedFiles, formatShipGateMarkdown, formatShipGatePlainText, getFindingGroupKey, isShipGateBlocked, isShipGateBlockerFinding, resolveGroupAction, type ShipGateAction, type ShipGateActionKind, type ShipGateFindingInput, type ShipGateGroup, type ShipGateMarkdownOptions, type ShipGateOptions, type ShipGateReport, type ShipGateStatus, } from './shipGate';
 export { findingKind, isCiWorkflowSuggestion, isDatabaseSafetyNetAdvisory, isRlsWithoutPolicyAdvisory, isIssueFinding, type FindingKind, } from './findingKind';
 export { excludeGitIgnoredFiles, isAssurlyEnvExamplePath, isGitIgnorePath, isGitIgnored, parseGitIgnoreSources, type GitIgnoreFileInput, type GitIgnoreSource, } from './gitIgnore';
 export { GITHUB_ACTIONS_EXISTING_CI_MESSAGE, GITHUB_ACTIONS_INIT_SUGGESTION, GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE, githubActionsIntegrationMessage, isProjectTsconfigPath, scanGithubActionsIntegration, scanHardcodedStripeSecrets, scanTsconfigStrict, scanWorkspaceFiles, } from './workspaceScan';

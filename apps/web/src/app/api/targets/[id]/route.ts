@@ -38,11 +38,12 @@ export const GET = secureRoute(
       throw new ApiError(404, 'not_found', 'Target not found.');
     }
 
-    const [evidence, outcomes] = await Promise.all([
+    const [evidence, outcomes, liveLock] = await Promise.all([
       context.db.getLatestProbeEvidenceForTarget(target.id),
       context.db.getFixOutcomesForTarget(target.id),
+      context.db.getLiveLockSummary(target.id),
     ]);
-    return NextResponse.json(buildUrlTargetDetail(target, evidence, outcomes));
+    return NextResponse.json(buildUrlTargetDetail(target, evidence, outcomes, liveLock));
   },
 );
 

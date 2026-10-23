@@ -9,6 +9,7 @@ exports.buildIssueGroups = buildIssueGroups;
 exports.buildShipGateReport = buildShipGateReport;
 exports.formatShipGatePlainText = formatShipGatePlainText;
 exports.formatShipGateMarkdown = formatShipGateMarkdown;
+exports.isShipGateBlockerFinding = isShipGateBlockerFinding;
 exports.isShipGateBlocked = isShipGateBlocked;
 const fileRelevance_1 = require("./fileRelevance");
 const findingKind_1 = require("./findingKind");
@@ -669,6 +670,10 @@ function formatShipGateMarkdown(report, options = {}) {
         lines.push(`[View full Assurly report](${options.reportUrl})`);
     }
     return lines.join('\n');
+}
+/** Whether this one finding lands in a report's blockers, by the rule the report uses. */
+function isShipGateBlockerFinding(finding) {
+    return (0, findingKind_1.findingKind)(finding) === 'issue' && isBlockerFinding(finding);
 }
 function isShipGateBlocked(report) {
     return report.status === 'blocked';

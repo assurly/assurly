@@ -55,22 +55,6 @@ var ASSURLY_MCP_TOOL_NAMES = [
   "assurly_scan_agent",
   "assurly_plant_canary"
 ];
-function formatFixOutcomesText(outcomes) {
-  if (outcomes.length === 0) {
-    return "Fix outcomes: none recorded yet. After deploying a claimed fix, re-probe before treating it as done.";
-  }
-  const lines = outcomes.map((entry) => {
-    const ruleId = entry.ruleId ?? "unknown-rule";
-    const outcome = entry.outcome ?? "unknown";
-    const when = entry.observedAt ?? "unknown time";
-    return `  \xB7 ${ruleId}: ${outcome} \xB7 observed ${when}`;
-  });
-  return [
-    "Fix outcomes (last re-probe only \u2014 may predate your latest edit):",
-    ...lines,
-    "Not yet verified against your latest changes \u2014 deploy and re-probe. An unverified claim is not done."
-  ].join("\n");
-}
 function formatScanToolResult(result) {
   const payload = {
     verdict: result.report.headline,
@@ -119,28 +103,33 @@ async function handleScanAgent(input) {
 function errorResult(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
+var GIT_SHA = /^[0-9a-f]{7,64}$/i;
 async function handleVerdict(input, config) {
-  const hasUrl = typeof input.url === "string" && input.url.length > 0;
-  const hasRepo = typeof input.repo === "string" && input.repo.length > 0;
-  if (hasUrl === hasRepo) {
-    return errorResult("Provide exactly one of `url` or `repo`.");
+  const url = typeof input.url === "string" ? input.url.trim() : "";
+  const gitSha = typeof input.gitSha === "string" ? input.gitSha.trim().toLowerCase() : "";
+  if (!url || !GIT_SHA.test(gitSha)) {
+    return errorResult(
+      "Live Lock needs the deployed `url` and the `gitSha` of the commit being deployed. A stored score is not a ship decision."
+    );
   }
   if (!config.apiKey) {
     return errorResult(
       "ASSURLY_API_KEY is not set. Create a key in the Assurly dashboard (Settings \u2192 API keys) and expose it to this MCP server as ASSURLY_API_KEY."
     );
   }
+  const attemptId = typeof input.attemptId === "string" && input.attemptId.trim().length > 0 ? input.attemptId.trim() : `mcp-${gitSha}`;
   const doFetch = config.fetchImpl ?? fetch;
   const base = config.apiUrl.replace(/\/$/, "");
-  const query = hasUrl ? `url=${encodeURIComponent(input.url)}` : `repo=${encodeURIComponent(input.repo)}`;
   let response;
   try {
-    response = await doFetch(`${base}/api/v1/verdict?${query}`, {
-      method: "GET",
+    response = await doFetch(`${base}/api/v1/live-lock`, {
+      method: "POST",
       headers: {
         Accept: "application/json",
+        "Content-Type": "application/json",
         Authorization: `Bearer ${config.apiKey}`
-      }
+      },
+      body: JSON.stringify({ url, gitSha, attemptId })
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -153,24 +142,19 @@ async function handleVerdict(input, config) {
     return errorResult(`The Assurly API returned an error (${response.status}).`);
   }
   const verdict = await response.json();
-  const status = verdict.status ?? "unknown";
+  const status = verdict.status === "ready" ? "ready" : "blocked";
   const score = typeof verdict.shipScore === "number" ? `${verdict.shipScore}/100` : "n/a";
-  const shipReady = status === "ready";
-  const fixOutcomes = Array.isArray(verdict.fixOutcomes) ? verdict.fixOutcomes : [];
   const lines = [
-    `Assurly verdict: ${status.toUpperCase()} \xB7 Ship Score ${score}`,
-    verdict.displayName || verdict.identifier ? `Target: ${verdict.displayName ?? verdict.identifier}` : "",
-    shipReady ? "No blocking issues detected \u2014 safe to ship." : verdict.topIssue ? `Top issue: ${verdict.topIssue.category ?? "Security issue"}${verdict.topIssue.remediation ? ` \u2014 ${verdict.topIssue.remediation}` : ""}` : status === "unknown" ? "No published verdict for this target yet. Scan it in Assurly first." : "Review the issues in the Assurly dashboard before shipping.",
-    formatFixOutcomesText(fixOutcomes),
-    verdict.trustPageUrl ? `Trust page: ${verdict.trustPageUrl}` : ""
-  ].filter((line) => line.length > 0);
+    `Assurly Live Lock: ${status.toUpperCase()} \xB7 Ship Score ${score}`,
+    `Target: ${url}`,
+    `Commit: ${verdict.gitSha ?? gitSha}`,
+    status === "ready" ? "This fresh check found no blockers. READY applies only to this run." : `BLOCKED (${verdict.reason ?? "runtime_blocker"}). Do not deploy. Open the Assurly proof for this URL.`
+  ];
   return {
     content: [
       { type: "text", text: lines.join("\n") },
       { type: "text", text: JSON.stringify(verdict, null, 2) }
     ],
-    // Blocked status is the only ship-gate halt. See docstring for why fix
-    // outcomes never widen isError.
     isError: status === "blocked"
   };
 }
@@ -336,15 +320,18 @@ function createAssurlyMcpServer() {
   server.registerTool(
     "assurly_verdict",
     {
-      title: "Get the hosted Assurly ship verdict",
-      description: "Pre-deploy ship gate: read the hosted Assurly verdict (Ready/Review/Blocked + ship score + top issue + one-line fix + per-rule fix outcomes with observation times) for a deployed URL or a repo. Fix outcomes reflect the last re-probe only \u2014 after claiming a fix, deploy and re-probe before treating it as done. Reads the hosted Assurly API \u2014 it does not scan locally and never triggers an active probe. Requires ASSURLY_API_KEY in the environment.",
+      title: "Live Lock ship verdict",
+      description: "Pre-deploy Live Lock. Runs a fresh read-only check of the deployed URL and returns only READY or BLOCKED. READY is valid for this run only \u2014 a stored score is never a ship decision. BLOCKED is returned with isError: true; do not deploy. Requires ASSURLY_API_KEY, the deployed url, and gitSha.",
       inputSchema: {
-        url: import_zod.z.string().url().optional().describe("Deployed app URL to look up (exactly one of url/repo)"),
-        repo: import_zod.z.string().optional().describe("Repository in owner/name form to look up (exactly one of url/repo)")
+        url: import_zod.z.string().url().describe("Deployed app URL to check"),
+        gitSha: import_zod.z.string().describe("Full or short git SHA of the commit being deployed (7-64 hex characters)"),
+        attemptId: import_zod.z.string().optional().describe(
+          "Stable id for this attempt. Defaults to mcp-<gitSha> so a retry does not probe twice."
+        )
       }
     },
-    async ({ url, repo }) => handleVerdict(
-      { url, repo },
+    async ({ url, gitSha, attemptId }) => handleVerdict(
+      { url, gitSha, attemptId },
       {
         apiUrl: process.env.ASSURLY_API_URL?.trim() || DEFAULT_ASSURLY_API_URL,
         apiKey: process.env.ASSURLY_API_KEY?.trim() || void 0

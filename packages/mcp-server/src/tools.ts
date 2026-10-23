@@ -34,8 +34,12 @@ export interface ExplainRuleInput {
 }
 
 export interface VerdictInput {
+  /** Deployed app URL. Live Lock checks this URL; a repo name is not enough. */
   url?: string;
-  repo?: string;
+  /** Git commit the deploy is built from. Required so a stored score cannot be reused. */
+  gitSha?: string;
+  /** Stable id for this attempt. Defaults to `mcp-<gitSha>` so a retry does not probe twice. */
+  attemptId?: string;
 }
 
 export interface PlantCanaryInput {
@@ -44,9 +48,9 @@ export interface PlantCanaryInput {
 }
 
 /**
- * Config for the `assurly_verdict` tool. It READS the hosted Assurly API — it
- * does NOT scan or probe locally. The API key (an org's programmatic key) is the
- * only secret and lives in the caller's environment, never in this package.
+ * Config for the `assurly_verdict` tool. It asks the hosted Live Lock for a
+ * fresh READY or BLOCKED. It does not scan source locally. The API key lives
+ * in the caller's environment, never in this package.
  */
 export interface VerdictToolConfig {
   /** Base URL of the hosted Assurly app, e.g. `https://assurly.dev`. */
@@ -65,19 +69,14 @@ interface HostedFixOutcome {
   observedAt?: string;
 }
 
-/** The shape-only verdict the hosted `GET /api/v1/verdict` returns. */
-interface HostedVerdict {
-  status?: string;
+/** The Live Lock response. Shape-only: no table names and no samples. */
+interface LiveLockVerdict {
+  status?: 'ready' | 'blocked' | string;
   shipScore?: number | null;
-  displayName?: string | null;
-  identifier?: string;
-  kind?: string;
-  lastCheckedAt?: string | null;
-  topIssue?: { category?: string; severity?: string; remediation?: string } | null;
-  trustPageUrl?: string | null;
-  badgeUrl?: string | null;
-  activeProbeAllowed?: boolean;
-  fixOutcomes?: HostedFixOutcome[];
+  reason?: string;
+  gitSha?: string;
+  attemptId?: string;
+  checkedAt?: string;
 }
 
 /**
@@ -180,14 +179,18 @@ function errorResult(text: string): CallToolResult {
  * "re-verify after claiming a fix" lives in the agent contract
  * (`GATE_RULES_SNIPPET`) plus the explicit "not yet verified" wording below.
  */
+const GIT_SHA = /^[0-9a-f]{7,64}$/i;
+
 export async function handleVerdict(
   input: VerdictInput,
   config: VerdictToolConfig,
 ): Promise<CallToolResult> {
-  const hasUrl = typeof input.url === 'string' && input.url.length > 0;
-  const hasRepo = typeof input.repo === 'string' && input.repo.length > 0;
-  if (hasUrl === hasRepo) {
-    return errorResult('Provide exactly one of `url` or `repo`.');
+  const url = typeof input.url === 'string' ? input.url.trim() : '';
+  const gitSha = typeof input.gitSha === 'string' ? input.gitSha.trim().toLowerCase() : '';
+  if (!url || !GIT_SHA.test(gitSha)) {
+    return errorResult(
+      'Live Lock needs the deployed `url` and the `gitSha` of the commit being deployed. A stored score is not a ship decision.',
+    );
   }
   if (!config.apiKey) {
     return errorResult(
@@ -196,20 +199,24 @@ export async function handleVerdict(
     );
   }
 
+  const attemptId =
+    typeof input.attemptId === 'string' && input.attemptId.trim().length > 0
+      ? input.attemptId.trim()
+      : `mcp-${gitSha}`;
+
   const doFetch = config.fetchImpl ?? fetch;
   const base = config.apiUrl.replace(/\/$/, '');
-  const query = hasUrl
-    ? `url=${encodeURIComponent(input.url as string)}`
-    : `repo=${encodeURIComponent(input.repo as string)}`;
 
   let response: Response;
   try {
-    response = await doFetch(`${base}/api/v1/verdict?${query}`, {
-      method: 'GET',
+    response = await doFetch(`${base}/api/v1/live-lock`, {
+      method: 'POST',
       headers: {
         Accept: 'application/json',
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${config.apiKey}`,
       },
+      body: JSON.stringify({ url, gitSha, attemptId }),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -223,37 +230,23 @@ export async function handleVerdict(
     return errorResult(`The Assurly API returned an error (${response.status}).`);
   }
 
-  const verdict = (await response.json()) as HostedVerdict;
-  const status = verdict.status ?? 'unknown';
+  const verdict = (await response.json()) as LiveLockVerdict;
+  const status = verdict.status === 'ready' ? 'ready' : 'blocked';
   const score = typeof verdict.shipScore === 'number' ? `${verdict.shipScore}/100` : 'n/a';
-  const shipReady = status === 'ready';
-  const fixOutcomes = Array.isArray(verdict.fixOutcomes) ? verdict.fixOutcomes : [];
-
-  const lines: string[] = [
-    `Assurly verdict: ${status.toUpperCase()} · Ship Score ${score}`,
-    verdict.displayName || verdict.identifier
-      ? `Target: ${verdict.displayName ?? verdict.identifier}`
-      : '',
-    shipReady
-      ? 'No blocking issues detected — safe to ship.'
-      : verdict.topIssue
-        ? `Top issue: ${verdict.topIssue.category ?? 'Security issue'}${
-            verdict.topIssue.remediation ? ` — ${verdict.topIssue.remediation}` : ''
-          }`
-        : status === 'unknown'
-          ? 'No published verdict for this target yet. Scan it in Assurly first.'
-          : 'Review the issues in the Assurly dashboard before shipping.',
-    formatFixOutcomesText(fixOutcomes),
-    verdict.trustPageUrl ? `Trust page: ${verdict.trustPageUrl}` : '',
-  ].filter((line) => line.length > 0);
+  const lines = [
+    `Assurly Live Lock: ${status.toUpperCase()} · Ship Score ${score}`,
+    `Target: ${url}`,
+    `Commit: ${verdict.gitSha ?? gitSha}`,
+    status === 'ready'
+      ? 'This fresh check found no blockers. READY applies only to this run.'
+      : `BLOCKED (${verdict.reason ?? 'runtime_blocker'}). Do not deploy. Open the Assurly proof for this URL.`,
+  ];
 
   return {
     content: [
       { type: 'text', text: lines.join('\n') },
       { type: 'text', text: JSON.stringify(verdict, null, 2) },
     ],
-    // Blocked status is the only ship-gate halt. See docstring for why fix
-    // outcomes never widen isError.
     isError: status === 'blocked',
   };
 }
