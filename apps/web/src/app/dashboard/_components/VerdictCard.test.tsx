@@ -146,6 +146,23 @@ describe('VerdictCard', () => {
     expect(screen.queryByText('✅')).toBeNull();
   });
 
+  it('gives the same age in the verdict and the freshness line', () => {
+    // 8.6 days: "Checked 9d ago" must not sit next to "Ready 8 days ago".
+    render(
+      <VerdictCard
+        card={card({
+          verdict: 'ready',
+          shipScore: 100,
+          topIssue: null,
+          lastCheckedAt: new Date(Date.now() - 8.6 * 24 * 60 * 60 * 1000).toISOString(),
+        })}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Ready 9 days ago')).toBeTruthy();
+    expect(screen.getByText('Checked 9d ago')).toBeTruthy();
+  });
+
   it('shows a builder chip when a generator fingerprint is known', () => {
     render(<VerdictCard card={card({ generatorFingerprint: 'lovable' })} onOpen={vi.fn()} />);
     expect(screen.getByText('Lovable')).toBeTruthy();

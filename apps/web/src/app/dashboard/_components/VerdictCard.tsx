@@ -48,12 +48,13 @@ const OUTDATED_META = {
   className: 'verdict-card--outdated',
 } as const;
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-function daysSince(iso: string | null): number | null {
+/** Whole days since `iso`, rounded exactly as `formatCheckedAt` rounds them. */
+function daysSince(iso: string | null, now: number = Date.now()): number | null {
   if (!iso) return null;
   const then = new Date(iso).getTime();
-  return Number.isNaN(then) ? null : Math.floor((Date.now() - then) / MS_PER_DAY);
+  if (Number.isNaN(then)) return null;
+  const minutes = Math.round(Math.max(0, Math.round((now - then) / 1000)) / 60);
+  return Math.round(Math.round(minutes / 60) / 24);
 }
 
 function capabilityPresentation(card: TargetCard): {
