@@ -78,6 +78,15 @@ describe('SharedReports', () => {
     expect(screen.queryByText(/README badge stops showing/)).toBeNull();
   });
 
+  it('leaves out a commit the scan never read', async () => {
+    api.sharedReports.mockResolvedValue({
+      shares: [{ ...ANIMA, repositoryName: 'vercel/vercel', commitSha: 'unknown', verdict: null }],
+    });
+    render(<SharedReports />);
+
+    expect((await screen.findByText(/^main · /)).textContent).not.toContain('unknown');
+  });
+
   it('says so when nothing is shared', async () => {
     api.sharedReports.mockResolvedValue({ shares: [] });
     render(<SharedReports />);

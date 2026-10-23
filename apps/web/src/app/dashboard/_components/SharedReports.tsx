@@ -19,7 +19,8 @@ const VERDICT_LABEL: Readonly<Record<string, string>> = {
 function describeShare(share: SharedReport): string {
   return [
     share.branch,
-    share.commitSha.slice(0, 7),
+    // A scan that failed before reading a commit stores "unknown".
+    /^[0-9a-f]{7,64}$/i.test(share.commitSha) ? share.commitSha.slice(0, 7) : null,
     formatScanDateTime(share.createdAt),
     share.verdict ? (VERDICT_LABEL[share.verdict] ?? null) : null,
   ]
