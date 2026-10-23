@@ -52,7 +52,10 @@ for (const viewport of QA_VIEWPORTS) {
       await waitForRepoHeader(page, dashboardFixture.leaksRepo.name);
       await expect(page.getByText(/organizations.*Row-Level Security/i)).toHaveCount(0);
       await expect(
-        page.getByTestId('scan-details-ship-gate').getByText(/Possible API key exposed/i),
+        page
+          .getByTestId('scan-details-ship-gate')
+          .getByTestId('ship-gate-blockers')
+          .getByText(/Possible API key exposed/i),
       ).toBeVisible();
     });
 

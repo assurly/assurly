@@ -150,7 +150,10 @@ export function ShipGatePanel({
         (report.blockers.length > 0 || report.reviews.length > 0 || report.warnings.length > 0) && (
           <div className="ship-gate-groups">
             {report.blockers.length > 0 ? (
-              <div className="ship-gate-group ship-gate-group--blockers">
+              <div
+                className="ship-gate-group ship-gate-group--blockers"
+                data-testid="ship-gate-blockers"
+              >
                 <h4 className="ship-gate-group-title">Blocks launch</h4>
                 <ol className="ship-gate-list">
                   {report.blockers.map((blocker) => (
