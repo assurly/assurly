@@ -113,12 +113,37 @@ describe('VerdictCard', () => {
   it('shows a reassuring line and a dash score for a ready app with no issue', () => {
     render(
       <VerdictCard
-        card={card({ verdict: 'ready', shipScore: 100, topIssue: null })}
+        card={card({
+          verdict: 'ready',
+          shipScore: 100,
+          topIssue: null,
+          lastCheckedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        })}
         onOpen={vi.fn()}
       />,
     );
     expect(screen.getByText('Ready to ship')).toBeTruthy();
     expect(screen.getByText('No blockers in the last check.')).toBeTruthy();
+  });
+
+  it('never presents a months-old green verdict as the current state', () => {
+    render(
+      <VerdictCard
+        card={card({
+          verdict: 'ready',
+          shipScore: 100,
+          topIssue: null,
+          lastCheckedAt: new Date(Date.now() - 128 * 24 * 60 * 60 * 1000).toISOString(),
+        })}
+        onOpen={vi.fn()}
+        onRescan={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('Ready to ship')).toBeNull();
+    expect(screen.getByText('Ready 128 days ago')).toBeTruthy();
+    expect(screen.getByText(/code may have changed since/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Rescan/i })).toBeTruthy();
+    expect(screen.queryByText('✅')).toBeNull();
   });
 
   it('shows a builder chip when a generator fingerprint is known', () => {

@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore, type ReactElement } from 'react';
 import type { TargetCard } from '../../../utils/clientApi';
 import { consequenceForGroupKey } from '../../../utils/consequenceMap';
 import { isScanStale, rescanActionLabel, shouldOfferRescan } from './staleScan';
+import { verdictBucket } from './verdictCardsView';
 import { formatVerdictCardLabel } from './verdictCardLabel';
 import {
   coverageLabelForCard,
@@ -39,6 +40,20 @@ const VERDICT_META: Record<VerdictKey, { label: string; emoji: string; className
 /** The card's plain verdict wording, for surfaces that describe the same app. */
 export function verdictStatusLabel(verdict: VerdictKey): string {
   return VERDICT_META[verdict].label;
+}
+
+const OUTDATED_META = {
+  label: 'Out of date',
+  emoji: '○',
+  className: 'verdict-card--outdated',
+} as const;
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function daysSince(iso: string | null): number | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  return Number.isNaN(then) ? null : Math.floor((Date.now() - then) / MS_PER_DAY);
 }
 
 function capabilityPresentation(card: TargetCard): {
@@ -150,9 +165,17 @@ export function VerdictCard({
 }: VerdictCardProps): ReactElement {
   const [copiedCli, setCopiedCli] = useState(false);
   const capability = capabilityPresentation(card);
-  const meta = VERDICT_META[card.verdict];
+  // An old green verdict says what the code was, not what it is: no ✅, no
+  // "Ready to ship", and the age in the label itself.
+  const outdated = verdictBucket(card) === 'outdated';
+  const outdatedDays = outdated ? daysSince(card.lastCheckedAt) : null;
+  const meta = outdated ? OUTDATED_META : VERDICT_META[card.verdict];
   const lastScanFailed = Boolean(card.lastScanFailed);
-  const verdictLabel = capability?.label ?? (lastScanFailed ? 'Scan failed' : meta.label);
+  const readyLabel =
+    outdatedDays === null
+      ? meta.label
+      : `Ready ${outdatedDays} ${outdatedDays === 1 ? 'day' : 'days'} ago`;
+  const verdictLabel = capability?.label ?? (lastScanFailed ? 'Scan failed' : readyLabel);
   const verdictEmoji = capability?.emoji ?? meta.emoji;
   const label = formatVerdictCardLabel(card.displayName, card.kind);
   const fingerprintLabel = card.generatorFingerprint
@@ -204,15 +227,17 @@ export function VerdictCard({
     ? capability.issueText
     : card.topIssue
       ? (consequenceForGroupKey(card.topIssue.key)?.consequence ?? card.topIssue.sampleMessage)
-      : card.verdict === 'ready'
-        ? 'No blockers in the last check.'
-        : 'Run a scan to get a verdict.';
+      : outdated
+        ? 'The code may have changed since. Rescan to see if it is still ready.'
+        : card.verdict === 'ready'
+          ? 'No blockers in the last check.'
+          : 'Run a scan to get a verdict.';
   const issueLine =
     card.topIssue && !capability ? (
       <span className="verdict-card__issue" title={issueText}>
         {issueText}
       </span>
-    ) : card.verdict === 'ready' && !capability ? (
+    ) : card.verdict === 'ready' && !outdated && !capability ? (
       <span className="verdict-card__issue verdict-card__issue--clean" title={issueText}>
         {issueText}
       </span>
@@ -225,7 +250,11 @@ export function VerdictCard({
   // Compact rows keep blockers actionable; repeated "no blockers" on ready
   // apps is the main source of warning fatigue in a long list.
   const showIssue =
-    !compact || card.verdict === 'blocked' || card.verdict === 'review' || capability !== null;
+    !compact ||
+    card.verdict === 'blocked' ||
+    card.verdict === 'review' ||
+    outdated ||
+    capability !== null;
 
   return (
     <div

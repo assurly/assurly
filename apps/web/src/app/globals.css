@@ -10589,8 +10589,12 @@ body {
 .verdict-card--ready {
   border-left-color: var(--color-success);
 }
-.verdict-card--unknown {
+.verdict-card--unknown,
+.verdict-card--outdated {
   border-left-color: var(--color-border-strong);
+}
+.verdict-card--outdated .verdict-card__score {
+  color: var(--text-muted);
 }
 .verdict-card__status {
   font-size: 1.25rem;

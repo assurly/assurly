@@ -1,7 +1,9 @@
 import type { TargetCard } from '../../../utils/clientApi';
+import { isScanStale } from './staleScan';
 
 export type AppsKindFilter = 'all' | 'repos' | 'urls';
-export type AppsVerdictFilter = 'all' | 'blocked' | 'review' | 'ready' | 'unknown';
+export type AppsVerdictFilter = 'all' | 'blocked' | 'review' | 'ready' | 'outdated' | 'unknown';
+export type VerdictBucket = Exclude<AppsVerdictFilter, 'all'>;
 export type AppsSort = 'urgency' | 'score-asc' | 'score-desc' | 'name' | 'checked';
 export type AppsDensity = 'comfortable' | 'compact';
 
@@ -14,12 +16,24 @@ export interface VerdictCardsViewPrefs {
 
 export const VERDICT_CARDS_PREFS_KEY = 'assurly.yourApps.view';
 
-const VERDICT_URGENCY: Record<TargetCard['verdict'], number> = {
+const VERDICT_URGENCY: Record<VerdictBucket, number> = {
   blocked: 0,
   review: 1,
-  ready: 2,
-  unknown: 3,
+  outdated: 2,
+  ready: 3,
+  unknown: 4,
 };
+
+/**
+ * Where a card belongs right now. A "ready" verdict older than the stale window
+ * is `outdated`: the code has had time to change, and a green card from four
+ * months ago must not read as the app's current state. Blocked and review
+ * verdicts keep their bucket — an old warning still warns.
+ */
+export function verdictBucket(card: TargetCard, now: number = Date.now()): VerdictBucket {
+  if (card.verdict === 'ready' && isScanStale(card.lastCheckedAt, now)) return 'outdated';
+  return card.verdict;
+}
 
 const DEFAULT_PREFS: VerdictCardsViewPrefs = {
   density: 'comfortable',
@@ -52,6 +66,7 @@ function isAppsVerdictFilter(value: unknown): value is AppsVerdictFilter {
     value === 'blocked' ||
     value === 'review' ||
     value === 'ready' ||
+    value === 'outdated' ||
     value === 'unknown'
   );
 }
@@ -132,13 +147,14 @@ export function fullGateCliCommand(repoName?: string | null): string {
 
 /**
  * The verdict chips partition the cards: each card is in exactly one bucket and
- * the four counts add up to "All". "Unscanned" is every card without a verdict
+ * the five counts add up to "All" (see `verdictBucket`). "Unscanned" is every card without a verdict
  * — how it gets scanned (browser, CLI, or not at all) is the card's coverage
  * label, not a reason to drop it from every chip.
  */
 export function filterCardsByVerdict(cards: TargetCard[], filter: AppsVerdictFilter): TargetCard[] {
   if (filter === 'all') return cards;
-  return cards.filter((card) => card.verdict === filter);
+  const now = Date.now();
+  return cards.filter((card) => verdictBucket(card, now) === filter);
 }
 
 function compareByName(a: TargetCard, b: TargetCard): number {
@@ -157,10 +173,12 @@ function checkedValue(card: TargetCard): number {
 
 export function sortVerdictCards(cards: TargetCard[], sort: AppsSort): TargetCard[] {
   const sorted = [...cards];
+  const now = Date.now();
   sorted.sort((a, b) => {
     switch (sort) {
       case 'urgency': {
-        const urgency = VERDICT_URGENCY[a.verdict] - VERDICT_URGENCY[b.verdict];
+        const urgency =
+          VERDICT_URGENCY[verdictBucket(a, now)] - VERDICT_URGENCY[verdictBucket(b, now)];
         if (urgency !== 0) return urgency;
         // Within the same verdict, lower scores first (more concerning).
         const score = scoreValue(a, 101) - scoreValue(b, 101);
@@ -205,11 +223,15 @@ export function shouldShowGuardianChip(card: TargetCard): boolean {
 
 export function countByVerdict(
   cards: TargetCard[],
-): Record<Exclude<AppsVerdictFilter, 'all'>, number> {
-  return {
-    blocked: cards.filter((card) => card.verdict === 'blocked').length,
-    review: cards.filter((card) => card.verdict === 'review').length,
-    ready: cards.filter((card) => card.verdict === 'ready').length,
-    unknown: cards.filter((card) => card.verdict === 'unknown').length,
+  now: number = Date.now(),
+): Record<VerdictBucket, number> {
+  const counts: Record<VerdictBucket, number> = {
+    blocked: 0,
+    review: 0,
+    ready: 0,
+    outdated: 0,
+    unknown: 0,
   };
+  for (const card of cards) counts[verdictBucket(card, now)] += 1;
+  return counts;
 }

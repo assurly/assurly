@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactElement } from 'react';
 import type { TargetCard } from '../../../utils/clientApi';
 import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
+import { STALE_SCAN_DAYS } from './staleScan';
 import { UrlTargetDetailDialog } from './UrlTargetDetailDialog';
 import { VerdictCard } from './VerdictCard';
 import {
@@ -173,6 +174,8 @@ export function VerdictCardsSection({
           return 'No apps need review right now.';
         case 'ready':
           return 'No apps are ready to ship yet.';
+        case 'outdated':
+          return 'Every ready verdict is from the last week.';
         case 'unknown':
           return 'Every listed app has been scanned.';
         default: {
@@ -315,6 +318,15 @@ export function VerdictCardsSection({
               onClick={() => setVerdictFilter('ready')}
             >
               Ready ({verdictCounts.ready})
+            </button>
+            <button
+              type="button"
+              className={`verdict-section__filter${verdictFilter === 'outdated' ? ' is-active' : ''}`}
+              aria-pressed={verdictFilter === 'outdated'}
+              onClick={() => setVerdictFilter('outdated')}
+              title={`Ready when last checked, but that was over ${STALE_SCAN_DAYS} days ago`}
+            >
+              Out of date ({verdictCounts.outdated})
             </button>
             <button
               type="button"
