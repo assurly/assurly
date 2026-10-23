@@ -36,6 +36,11 @@ const VERDICT_META: Record<VerdictKey, { label: string; emoji: string; className
   unknown: { label: 'Not scanned yet', emoji: '○', className: 'verdict-card--unknown' },
 };
 
+/** The card's plain verdict wording, for surfaces that describe the same app. */
+export function verdictStatusLabel(verdict: VerdictKey): string {
+  return VERDICT_META[verdict].label;
+}
+
 function capabilityPresentation(card: TargetCard): {
   label: string;
   emoji: string;

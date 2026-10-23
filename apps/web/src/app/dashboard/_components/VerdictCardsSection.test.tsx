@@ -298,6 +298,38 @@ describe('VerdictCardsSection', () => {
     expect(onRescan).toHaveBeenCalledWith(stale);
   });
 
+  it('opens the proof behind a guarded URL when its card is clicked', async () => {
+    const url = card({
+      id: '76cbe4db-d1a6-474f-b1c9-33bcebbc3f5e',
+      kind: 'url',
+      verdict: 'blocked',
+      displayName: 'assurly-live-target.vercel.app',
+      identifier: 'https://assurly-live-target.vercel.app',
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: 'not_found', message: 'Target not found.' } }), {
+        status: 404,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<VerdictCardsSection onOpenRepo={vi.fn()} cards={[url]} error={null} />);
+    fireEvent.click(
+      screen.getByRole('button', { name: /assurly-live-target\.vercel\.app: Not ready to ship/i }),
+    );
+
+    expect(
+      await screen.findByRole('dialog', { name: 'assurly-live-target.vercel.app' }),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(String(fetchMock.mock.calls[0][0])).toContain(
+        '/api/targets/76cbe4db-d1a6-474f-b1c9-33bcebbc3f5e',
+      ),
+    );
+    vi.unstubAllGlobals();
+  });
+
   it('asks for confirmation before removing a URL card', () => {
     const onRemoveUrl = vi.fn();
     render(

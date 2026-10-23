@@ -106,6 +106,52 @@ const reprobeSchema = z.object({
 });
 export type ReprobeResult = z.infer<typeof reprobeSchema>;
 
+const urlTargetEvidenceSchema = z.object({
+  findingRuleId: z.string(),
+  kind: z.enum(['rls_rows', 'exposed_secret', 'open_endpoint', 'missing_header']),
+  summary: z.string(),
+  redactedSample: z
+    .object({
+      table: z.string().optional(),
+      path: z.string().optional(),
+      rowCount: z.number().optional(),
+      columns: z.array(z.string()).optional(),
+      sampleCell: z.string().optional(),
+      secretLabel: z.string().optional(),
+      maskedSecret: z.string().optional(),
+      headers: z.array(z.string()).optional(),
+    })
+    .optional(),
+  checkedAt: z.string(),
+});
+const urlTargetDetailSchema = z.object({
+  id: z.string(),
+  identifier: z.string(),
+  displayName: z.string(),
+  verdict: z.enum(['ready', 'review', 'blocked', 'unknown']).nullable(),
+  shipScore: z.number().nullable(),
+  lastCheckedAt: z.string().nullable(),
+  ownershipVerified: z.boolean(),
+  blockers: z.array(
+    z.object({
+      ruleId: z.string(),
+      message: z.string(),
+      location: z.string(),
+      evidence: urlTargetEvidenceSchema.nullable(),
+      outcome: z
+        .object({
+          status: z.enum(['verified_fixed', 'still_open', 'regressed']),
+          since: z.string(),
+          foundAt: z.string(),
+        })
+        .nullable(),
+    }),
+  ),
+  otherEvidence: z.array(urlTargetEvidenceSchema),
+});
+export type UrlTargetDetail = z.infer<typeof urlTargetDetailSchema>;
+export type UrlTargetEvidence = z.infer<typeof urlTargetEvidenceSchema>;
+
 const sessionSchema = z.object({
   user: userSchema.nullable(),
   organization: organizationSchema.nullable(),
@@ -455,6 +501,8 @@ export const clientApi = {
     message: string;
   }): Promise<{ success: boolean }> =>
     requestJson('/api/contact', z.object({ success: z.boolean() }), jsonRequest('POST', body)),
+  targetDetail: (targetId: string): Promise<UrlTargetDetail> =>
+    requestJson(`/api/targets/${encodeURIComponent(targetId)}`, urlTargetDetailSchema),
   reprobe: (targetId: string): Promise<ReprobeResult> =>
     requestJson(
       `/api/targets/${encodeURIComponent(targetId)}/reprobe`,

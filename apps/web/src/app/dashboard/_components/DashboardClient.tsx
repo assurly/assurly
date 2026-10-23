@@ -2562,7 +2562,7 @@ function DashboardContent({
                 onOpenRepo={handleOpenVerdict}
                 onRemoveUrl={handleRemoveUrlTarget}
                 onRemoveRepo={(repositoryId) => void handleRemoveRepo(repositoryId)}
-                onRescan={(card) => void handleRescanVerdict(card)}
+                onRescan={handleRescanVerdict}
                 removingTargetId={removingTargetId}
                 removingRepositoryId={removingRepositoryId}
                 rescanningTargetId={rescanningTargetId}

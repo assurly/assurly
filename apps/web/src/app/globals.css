@@ -10931,6 +10931,111 @@ body {
 }
 
 /* --- Proof evidence (Phase 2: proof-first) -------------------------------- */
+.url-proof {
+  width: min(100%, 640px);
+  max-height: calc(100dvh - 2 * var(--space-4));
+  overflow-y: auto;
+}
+.url-proof__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.url-proof__header .scan-delete-dialog__title {
+  overflow-wrap: anywhere;
+}
+.url-proof__close {
+  flex: none;
+  min-width: 36px;
+  min-height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.url-proof__close:hover,
+.url-proof__close:focus-visible {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+}
+.url-proof__status {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+.url-proof__blockers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+.url-proof__blocker {
+  border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 6%, var(--color-surface));
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+.url-proof__blocker-title {
+  margin: 0 0 var(--space-1);
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.4;
+  color: var(--color-text);
+}
+.url-proof__location {
+  margin: 0 0 var(--space-3);
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+.url-proof__evidence {
+  margin-bottom: var(--space-3);
+}
+.url-proof__summary {
+  margin: 0 0 var(--space-3);
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+.url-proof__taken,
+.url-proof__missing,
+.url-proof__hint,
+.url-proof__loading,
+.url-proof__empty {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+.url-proof__error {
+  margin: 0;
+  color: var(--color-danger-text);
+  font-size: 0.9rem;
+}
+.url-proof__other {
+  margin-top: var(--space-4);
+}
+.url-proof__other-title {
+  margin: 0 0 var(--space-2);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.url-proof__other ul {
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+.url-proof__footer {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
 .proof-evidence {
   border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
   background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));

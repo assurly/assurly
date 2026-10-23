@@ -16,6 +16,8 @@ export interface ProofEvidenceItem {
     columns?: string[];
     sampleCell?: string;
     table?: string;
+    /** Route an open endpoint answered on (`open_endpoint`). */
+    path?: string;
     secretLabel?: string;
     maskedSecret?: string;
     headers?: string[];
@@ -40,7 +42,8 @@ function selectHeadline(evidence: ProofEvidenceItem[]): ProofEvidenceItem | null
   return [...evidence].sort((a, b) => KIND_PRIORITY[a.kind] - KIND_PRIORITY[b.kind])[0];
 }
 
-function EvidenceDetail({ item }: { item: ProofEvidenceItem }): ReactElement | null {
+/** The redacted facts behind one proof item, or null when it has none to show. */
+export function EvidenceDetail({ item }: { item: ProofEvidenceItem }): ReactElement | null {
   const sample = item.redactedSample;
   if (!sample) return null;
 
@@ -64,6 +67,41 @@ function EvidenceDetail({ item }: { item: ProofEvidenceItem }): ReactElement | n
         {sample.columns && sample.columns.length > 0 ? (
           <div className="proof-evidence__fact">
             <dt>Columns</dt>
+            <dd>{sample.columns.join(', ')}</dd>
+          </div>
+        ) : null}
+        {sample.sampleCell ? (
+          <div className="proof-evidence__fact">
+            <dt>Sample (redacted)</dt>
+            <dd>
+              <code>{sample.sampleCell}</code>
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+    );
+  }
+
+  if (item.kind === 'open_endpoint') {
+    return (
+      <dl className="proof-evidence__facts">
+        {sample.path ? (
+          <div className="proof-evidence__fact">
+            <dt>Route</dt>
+            <dd>
+              <code>GET {sample.path}</code>
+            </dd>
+          </div>
+        ) : null}
+        {typeof sample.rowCount === 'number' ? (
+          <div className="proof-evidence__fact">
+            <dt>Records returned</dt>
+            <dd>{sample.rowCount.toLocaleString('en-US')}</dd>
+          </div>
+        ) : null}
+        {sample.columns && sample.columns.length > 0 ? (
+          <div className="proof-evidence__fact">
+            <dt>Fields</dt>
             <dd>{sample.columns.join(', ')}</dd>
           </div>
         ) : null}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactElement } from 'react';
 import type { TargetCard } from '../../../utils/clientApi';
 import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
+import { UrlTargetDetailDialog } from './UrlTargetDetailDialog';
 import { VerdictCard } from './VerdictCard';
 import {
   countByVerdict,
@@ -41,9 +42,15 @@ export interface VerdictCardsSectionProps {
   rescanBlocked?: boolean;
 }
 
-function handleCardOpen(card: TargetCard, onOpenRepo: (repositoryId: string) => void): void {
+function handleCardOpen(
+  card: TargetCard,
+  onOpenRepo: (repositoryId: string) => void,
+  onOpenUrl: (card: TargetCard) => void,
+): void {
   if (card.kind === 'repo' && card.repositoryId) {
     onOpenRepo(card.repositoryId);
+  } else if (card.kind === 'url') {
+    onOpenUrl(card);
   }
 }
 
@@ -85,6 +92,8 @@ export function VerdictCardsSection({
   const [density, setDensity] = useState<AppsDensity>('comfortable');
   const [prefsReady, setPrefsReady] = useState(false);
   const [confirmCard, setConfirmCard] = useState<TargetCard | null>(null);
+  /** The guarded URL whose proof is open. */
+  const [proofCard, setProofCard] = useState<TargetCard | null>(null);
   const { menuRef: dialogRef, rememberTrigger } = useAccessibleMenu<HTMLDivElement>({
     open: confirmCard !== null,
     onClose: () => setConfirmCard(null),
@@ -343,7 +352,7 @@ export function VerdictCardsSection({
               key={card.id}
               card={card}
               density={density}
-              onOpen={(c) => handleCardOpen(c, onOpenRepo)}
+              onOpen={(c) => handleCardOpen(c, onOpenRepo, setProofCard)}
               onRescan={onRescan}
               rescanning={rescanningTargetId === rescanBusyKey(card)}
               rescanBlocked={rescanBlocked}
@@ -362,6 +371,18 @@ export function VerdictCardsSection({
           ))}
         </div>
       )}
+
+      {proofCard ? (
+        <UrlTargetDetailDialog
+          card={proofCard}
+          onClose={() => setProofCard(null)}
+          onRescan={async (card) => {
+            await onRescan?.(card);
+          }}
+          rescanning={rescanningTargetId === proofCard.id}
+          rescanBlocked={rescanBlocked}
+        />
+      ) : null}
 
       {confirmCard ? (
         <div

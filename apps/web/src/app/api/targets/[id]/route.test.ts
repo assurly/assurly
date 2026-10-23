@@ -13,7 +13,7 @@ vi.mock('../../../../utils/dbAdapter', async (importOriginal) => ({
   getAdminDbAdapter: () => ({ deleteTarget: mocks.adminDeleteTarget }),
 }));
 
-import { DELETE } from './route';
+import { DELETE, GET } from './route';
 
 const TARGET_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -21,6 +21,8 @@ const db = {
   getOrganizationByUserId: vi.fn(),
   getTargetById: vi.fn(),
   deleteTarget: vi.fn(),
+  getLatestProbeEvidenceForTarget: vi.fn(),
+  getFixOutcomesForTarget: vi.fn(),
 };
 
 describe('DELETE /api/targets/[id]', () => {
@@ -84,5 +86,110 @@ describe('DELETE /api/targets/[id]', () => {
     );
     expect(res.status).toBe(404);
     expect(mocks.adminDeleteTarget).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/targets/[id]', () => {
+  const liveTarget = {
+    id: TARGET_ID,
+    organization_id: 'org-1',
+    kind: 'url',
+    identifier: 'https://assurly-live-target.vercel.app',
+    display_name: null,
+    ownership_verified: true,
+    current_verdict: 'blocked',
+    current_ship_score: 59,
+    last_checked_at: '2026-10-23T06:34:55.908Z',
+    verdict_evidence: {
+      blockerSnapshot: [
+        {
+          rule_id: 'runtime-supabase-rls-open',
+          file_path: 'Supabase REST API · customers',
+          severity: 'error',
+          message: "Supabase table 'customers' returned rows via anon key without RLS protection.",
+        },
+      ],
+    },
+  };
+
+  function get() {
+    return GET(new Request(`http://localhost/api/targets/${TARGET_ID}`), {
+      params: Promise.resolve({ id: TARGET_ID }),
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireUser.mockResolvedValue({ user: { id: 'user-1' }, accessToken: 'token', db });
+    db.getOrganizationByUserId.mockResolvedValue({ id: 'org-1' });
+    db.getLatestProbeEvidenceForTarget.mockResolvedValue([
+      {
+        id: 'e1',
+        organization_id: 'org-1',
+        target_id: TARGET_ID,
+        scan_id: null,
+        finding_rule_id: 'runtime-supabase-rls-open',
+        kind: 'rls_rows',
+        summary: 'We read 3 rows from your `customers` table using only the public key.',
+        redacted_sample: {
+          table: 'customers',
+          columns: ['id', 'name', 'email', 'note'],
+          rowCount: 3,
+          sampleCell: '7***',
+          rawRow: { email: 'never@shown.example' },
+        },
+        created_at: '2026-10-23T06:34:55.501Z',
+      },
+    ]);
+    db.getFixOutcomesForTarget.mockResolvedValue([
+      {
+        finding_rule_id: 'runtime-supabase-rls-open',
+        outcome: 'still_open',
+        created_at: '2026-09-20T16:50:16.547Z',
+      },
+    ]);
+  });
+
+  it('returns each blocker with its redacted proof and how long it has been open', async () => {
+    db.getTargetById.mockResolvedValue(liveTarget);
+
+    const res = await get();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      verdict: 'blocked',
+      shipScore: 59,
+      lastCheckedAt: '2026-10-23T06:34:55.908Z',
+      blockers: [
+        {
+          ruleId: 'runtime-supabase-rls-open',
+          location: 'Supabase REST API · customers',
+          evidence: {
+            kind: 'rls_rows',
+            redactedSample: { table: 'customers', rowCount: 3, sampleCell: '7***' },
+            checkedAt: '2026-10-23T06:34:55.501Z',
+          },
+          outcome: {
+            status: 'still_open',
+            since: '2026-09-20T16:50:16.547Z',
+            foundAt: '2026-09-20T16:50:16.547Z',
+          },
+        },
+      ],
+    });
+    // Only the whitelisted, already-redacted fields leave the server.
+    expect(JSON.stringify(body)).not.toContain('never@shown.example');
+  });
+
+  it('returns 404 for another org’s target without reading its evidence', async () => {
+    db.getTargetById.mockResolvedValue({ ...liveTarget, organization_id: 'org-other' });
+
+    expect((await get()).status).toBe(404);
+    expect(db.getLatestProbeEvidenceForTarget).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 for a repository target', async () => {
+    db.getTargetById.mockResolvedValue({ ...liveTarget, kind: 'repo' });
+    expect((await get()).status).toBe(404);
   });
 });
