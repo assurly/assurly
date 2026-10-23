@@ -2263,7 +2263,7 @@ function DashboardContent({
         severity: f.severity,
         confidence: f.confidence,
         file_path: f.file || 'unknown',
-        line_number: f.line || 1,
+        line_number: f.line || undefined,
         message: f.message,
         suggestion: f.suggestion || '',
       }));
