@@ -8,7 +8,12 @@ import {
   secureRoute,
 } from '../../../../utils/apiSecurity';
 import { requireOrganizationMember } from '../../../../utils/authorization';
-import { signVercelState, vercelAuthorizeUrl } from '../../../../utils/vercelOauth';
+import {
+  createPkcePair,
+  signVercelState,
+  VERCEL_PKCE_COOKIE,
+  vercelAuthorizeUrl,
+} from '../../../../utils/vercelOauth';
 import { vercelConnectConfigured } from '../../../../utils/vercelToken';
 
 /** Starts the one-time Vercel connection for the caller's workspace. */
@@ -35,6 +40,17 @@ export const GET = secureRoute(
         'Vercel is not connected on this workspace yet.',
       );
     }
-    return NextResponse.redirect(vercelAuthorizeUrl(signVercelState(organization.id)));
+    const pkce = createPkcePair();
+    const response = NextResponse.redirect(
+      vercelAuthorizeUrl(signVercelState(organization.id), pkce.challenge),
+    );
+    response.cookies.set(VERCEL_PKCE_COOKIE, pkce.verifier, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/api/vercel',
+      maxAge: 600,
+    });
+    return response;
   },
 );

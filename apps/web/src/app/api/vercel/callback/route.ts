@@ -9,7 +9,12 @@ import {
 } from '../../../../utils/apiSecurity';
 import { getAdminDbAdapter } from '../../../../utils/dbAdapter';
 import { getApplicationUrl } from '../../../../utils/env';
-import { readVercelState, vercelRedirectUri } from '../../../../utils/vercelOauth';
+import {
+  readCookie,
+  readVercelState,
+  VERCEL_PKCE_COOKIE,
+  vercelRedirectUri,
+} from '../../../../utils/vercelOauth';
 import { encryptVercelToken } from '../../../../utils/vercelToken';
 
 const callbackQuery = z
@@ -34,7 +39,7 @@ export const GET = secureRoute(
     maxBodyBytes: 0,
     rateLimit: RATE_LIMITS.sensitive,
   },
-  async ({ auth, query }) => {
+  async ({ auth, query, request }) => {
     const context = requireRouteUser(auth);
     const organization = await context.db.getOrganizationByUserId(context.user.id);
     if (!organization || !query.code || !query.state) {
@@ -55,13 +60,19 @@ export const GET = secureRoute(
       );
     }
 
+    const verifier = readCookie(request, VERCEL_PKCE_COOKIE);
+    if (!verifier) {
+      throw new ApiError(400, 'invalid_request', 'Vercel connection state is not valid.');
+    }
     const body = new URLSearchParams({
+      grant_type: 'authorization_code',
       client_id: clientId,
       client_secret: clientSecret,
       code: query.code,
+      code_verifier: verifier,
       redirect_uri: vercelRedirectUri(),
     });
-    const response = await fetch('https://api.vercel.com/v2/oauth/access_token', {
+    const response = await fetch('https://api.vercel.com/login/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
@@ -79,6 +90,8 @@ export const GET = secureRoute(
       teamId,
       encryptVercelToken(tokenBody.access_token),
     );
-    return NextResponse.redirect(`${getApplicationUrl()}/dashboard`);
+    const done = NextResponse.redirect(`${getApplicationUrl()}/dashboard`);
+    done.cookies.set(VERCEL_PKCE_COOKIE, '', { path: '/api/vercel', maxAge: 0 });
+    return done;
   },
 );
