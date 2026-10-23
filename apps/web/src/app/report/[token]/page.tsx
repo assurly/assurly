@@ -7,6 +7,9 @@ import { isIssueFinding } from '@assurly/scanner-core';
 import { buildShipGateFromScanFindings } from '../../../utils/shipGate';
 import { getAdminDbAdapter } from '../../../utils/dbAdapter';
 import { toPublicTrustProjection } from '../../../utils/publicTrust';
+import { formatScanDateTime } from '../../../utils/scanHistoryDisplay';
+import { resolveScanFreshness, resolveTargetFreshness } from '../../../utils/targetFreshness';
+import { freshnessNote, type VerdictFreshness } from '../../../utils/verdictFreshness';
 
 interface ReportPageProps {
   params: Promise<{ token: string }>;
@@ -44,6 +47,28 @@ function formatFreshness(iso: string | null): string {
 }
 
 /**
+ * The verdict wording for a public page. An out-of-date "ready" is reported as
+ * history ("Ready 128 days ago"), never as the app's current state.
+ */
+function publicVerdictLabel(verdict: string, freshness: VerdictFreshness): string {
+  if (verdict === 'ready' && freshness.status === 'code_changed') return 'Ready at an older commit';
+  if (verdict === 'ready' && freshness.status === 'old' && freshness.daysOld !== null) {
+    return `Ready ${freshness.daysOld} ${freshness.daysOld === 1 ? 'day' : 'days'} ago`;
+  }
+  return VERDICT_LABEL[verdict] ?? verdict;
+}
+
+function StaleNotice({ freshness }: { freshness: VerdictFreshness }): ReactElement | null {
+  const note = freshnessNote(freshness);
+  if (!note) return null;
+  return (
+    <p className="report-page-stale" role="status" data-testid="report-stale-notice">
+      {note}
+    </p>
+  );
+}
+
+/**
  * Public trust page (Phase 6 growth loop) when the token is a target badge_token.
  * Falls back to the legacy scan share report for backward compatibility.
  * Trust projection is shape-only — never evidence rows / PII.
@@ -57,6 +82,8 @@ export default async function ReportPage({ params }: ReportPageProps): Promise<R
   if (target) {
     const trust = toPublicTrustProjection(target);
     if (!trust) notFound();
+    const freshness = await resolveTargetFreshness(db, target);
+    const verdictLabel = publicVerdictLabel(trust.verdict, freshness);
 
     const badgeSrc = `/api/badge/${token}`;
     return (
@@ -69,11 +96,12 @@ export default async function ReportPage({ params }: ReportPageProps): Promise<R
             <p className="report-page-eyebrow">Verified by Assurly</p>
             <h1>{trust.displayName}</h1>
             <p className="report-page-meta">
-              {VERDICT_LABEL[trust.verdict] ?? trust.verdict}
+              {verdictLabel}
               {trust.shipScore !== null ? ` · Ship Score ${trust.shipScore}/100` : ''}
               {' · '}
               {formatFreshness(trust.lastCheckedAt)}
             </p>
+            <StaleNotice freshness={freshness} />
           </header>
 
           <p className="trust-page__badge-wrap">
@@ -82,8 +110,7 @@ export default async function ReportPage({ params }: ReportPageProps): Promise<R
               <img
                 className="trust-page__badge"
                 src={badgeSrc}
-                alt={`Verified by Assurly · Ship Score ${trust.shipScore ?? '—'}/100`}
-                width={260}
+                alt={`Assurly · Ship Score ${trust.shipScore ?? '—'}/100`}
                 height={28}
               />
             </a>
@@ -94,14 +121,14 @@ export default async function ReportPage({ params }: ReportPageProps): Promise<R
               {trust.shipScore === null ? '—' : trust.shipScore}
               <span>/100</span>
             </p>
-            <p className="trust-page__status">{VERDICT_LABEL[trust.verdict] ?? trust.verdict}</p>
+            <p className="trust-page__status">{verdictLabel}</p>
             {trust.topIssue ? (
               <p className="trust-page__issue">
                 <strong>{trust.topIssue.severity === 'error' ? 'Blocker' : 'Review'}</strong> —{' '}
                 {trust.topIssue.category}
               </p>
             ) : trust.verdict === 'ready' ? (
-              <p className="trust-page__issue">No blockers detected on the last check.</p>
+              <p className="trust-page__issue">No blockers on the last check.</p>
             ) : null}
             <p className="trust-page__freshness">{formatFreshness(trust.lastCheckedAt)}</p>
           </section>
@@ -120,6 +147,7 @@ export default async function ReportPage({ params }: ReportPageProps): Promise<R
 
   const scan = await db.getScanByShareToken(token);
   if (!scan) notFound();
+  const scanFreshness = await resolveScanFreshness(db, scan);
 
   const [findings, repositoryName] = await Promise.all([
     db.getScanFindings(scan.id),
@@ -148,8 +176,9 @@ export default async function ReportPage({ params }: ReportPageProps): Promise<R
           <h1>{repositoryName ?? 'Repository scan'}</h1>
           <p className="report-page-meta">
             Commit <code>{scan.commit_sha.slice(0, 7)}</code> on branch{' '}
-            <strong>{scan.branch}</strong>
+            <strong>{scan.branch}</strong> · Checked {formatScanDateTime(scan.created_at)}
           </p>
+          <StaleNotice freshness={scanFreshness} />
         </header>
 
         <ShipGatePanel report={shipGate} />

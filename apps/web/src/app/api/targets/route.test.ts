@@ -200,6 +200,55 @@ describe('GET /api/targets', () => {
     expect(db.getLatestScanSummaries).toHaveBeenCalledTimes(1);
   });
 
+  it('hands the card the commit it checked and the newest pushed commit', async () => {
+    db.getRepositories.mockResolvedValue([
+      {
+        id: 'repo-1',
+        organization_id: 'org-1',
+        name: 'acme/api',
+        head_commit_sha: 'a'.repeat(40),
+      },
+    ]);
+    db.getTargets.mockResolvedValue([
+      {
+        id: 'target-1',
+        organization_id: 'org-1',
+        repository_id: 'repo-1',
+        kind: 'repo',
+        identifier: 'acme/api',
+        display_name: 'acme/api',
+        generator_fingerprint: null,
+        ownership_verified: false,
+        current_verdict: 'ready',
+        current_ship_score: 100,
+        verdict_evidence: {},
+        last_checked_at: '2026-10-23T08:00:00.000Z',
+        badge_token: null,
+      },
+    ]);
+    db.getLatestScanSummaries.mockResolvedValue(
+      new Map([
+        [
+          'repo-1',
+          {
+            id: 'scan-9',
+            repository_id: 'repo-1',
+            ship_score: 100,
+            created_at: '2026-10-23T08:00:00.000Z',
+            verdict: 'ready',
+            commit_sha: 'b'.repeat(40),
+          },
+        ],
+      ]),
+    );
+
+    const { targets } = await callGet();
+    expect(targets[0]).toMatchObject({
+      checkedCommitSha: 'b'.repeat(40),
+      headCommitSha: 'a'.repeat(40),
+    });
+  });
+
   it('clamps incomplete target projections and prefers latest scan ship_score', async () => {
     db.getRepositories.mockResolvedValue([
       { id: 'repo-2', organization_id: 'org-1', name: 'vercel/eve' },

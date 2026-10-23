@@ -44,6 +44,10 @@ export interface TargetCard {
   /** True when the latest persisted scan failed before producing a verdict. */
   lastScanFailed: boolean;
   lastScanFailureReason: string | null;
+  /** The commit the verdict was computed from; null for URL apps or unknown. */
+  checkedCommitSha: string | null;
+  /** The newest commit pushed to the branch the repo ships from, when known. */
+  headCommitSha: string | null;
 }
 
 export type RepoTargetCardDb = Pick<DbAdapter, 'getRecentScans' | 'getScanFindings'>;
@@ -116,6 +120,8 @@ function cardFromTargetRow(
     scanCapability: resolveRepoScanCapability(repo),
     lastScanFailed: failed,
     lastScanFailureReason: latest?.failure_reason ?? null,
+    checkedCommitSha: latest?.commit_sha ?? null,
+    headCommitSha: repo.head_commit_sha ?? null,
   };
 }
 
@@ -152,6 +158,8 @@ async function deriveCardFromLatestScan(
     scanCapability: resolveRepoScanCapability(repo),
     lastScanFailed: false,
     lastScanFailureReason: null,
+    checkedCommitSha: latest?.commit_sha ?? null,
+    headCommitSha: repo.head_commit_sha ?? null,
   };
   if (!latest) return base;
 

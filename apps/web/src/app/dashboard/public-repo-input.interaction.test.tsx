@@ -167,6 +167,8 @@ describe('Dashboard tab keep-alive prefs', () => {
           scanCapability: 'browser',
           lastScanFailed: false,
           lastScanFailureReason: null,
+          checkedCommitSha: null,
+          headCommitSha: null,
         },
         {
           id: 't-ready',
@@ -187,6 +189,8 @@ describe('Dashboard tab keep-alive prefs', () => {
           scanCapability: 'browser',
           lastScanFailed: false,
           lastScanFailureReason: null,
+          checkedCommitSha: null,
+          headCommitSha: null,
         },
       ],
     });

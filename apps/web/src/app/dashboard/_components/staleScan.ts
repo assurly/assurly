@@ -1,10 +1,28 @@
 import type { TargetCard } from '../../../utils/clientApi';
+import { STALE_VERDICT_DAYS, verdictFreshness } from '../../../utils/verdictFreshness';
 
 /**
  * After this many days without a check, Guardian cards look abandoned.
- * Daily guardian cron covers verified URLs; repos still need a manual rescan.
+ * Daily guardian cron covers verified URLs; repos rescan on push when the
+ * GitHub App delivers push events, and otherwise need a manual rescan.
  */
-export const STALE_SCAN_DAYS = 7;
+export const STALE_SCAN_DAYS = STALE_VERDICT_DAYS;
+
+/**
+ * The card's verdict no longer describes the app: newer commits were pushed
+ * since it was computed, or it is older than the stale window.
+ */
+export function isCardVerdictOutOfDate(card: TargetCard, now: number = Date.now()): boolean {
+  const { status } = verdictFreshness(
+    {
+      checkedAt: card.lastCheckedAt,
+      checkedCommitSha: card.checkedCommitSha,
+      headCommitSha: card.headCommitSha,
+    },
+    now,
+  );
+  return status === 'old' || status === 'code_changed';
+}
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -36,7 +54,10 @@ export function canRescanVerdictCard(card: TargetCard): boolean {
 
 export function shouldOfferRescan(card: TargetCard): boolean {
   return (
-    canRescanVerdictCard(card) && (isScanStale(card.lastCheckedAt) || Boolean(card.lastScanFailed))
+    canRescanVerdictCard(card) &&
+    (isScanStale(card.lastCheckedAt) ||
+      isCardVerdictOutOfDate(card) ||
+      Boolean(card.lastScanFailed))
   );
 }
 

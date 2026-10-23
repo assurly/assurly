@@ -31,6 +31,8 @@ function card(overrides: Partial<TargetCard> = {}): TargetCard {
     scanCapability: 'browser',
     lastScanFailed: false,
     lastScanFailureReason: null,
+    checkedCommitSha: null,
+    headCommitSha: null,
     ...overrides,
   };
 }

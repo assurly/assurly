@@ -31,6 +31,8 @@ const CARD: TargetCard = {
   scanCapability: 'browser',
   lastScanFailed: false,
   lastScanFailureReason: null,
+  checkedCommitSha: null,
+  headCommitSha: null,
 };
 
 const OPEN_DETAIL: UrlTargetDetail = {

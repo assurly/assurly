@@ -34,6 +34,8 @@ function card(overrides: Partial<TargetCard> = {}): TargetCard {
     scanCapability: 'browser',
     lastScanFailed: false,
     lastScanFailureReason: null,
+    checkedCommitSha: null,
+    headCommitSha: null,
     ...overrides,
   };
 }
@@ -144,6 +146,61 @@ describe('VerdictCard', () => {
     expect(screen.getByText(/code may have changed since/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /Rescan/i })).toBeTruthy();
     expect(screen.queryByText('✅')).toBeNull();
+  });
+
+  it('takes the green away the moment new commits land, however recent the check', () => {
+    render(
+      <VerdictCard
+        card={card({
+          verdict: 'ready',
+          shipScore: 100,
+          topIssue: null,
+          lastCheckedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+          checkedCommitSha: 'b'.repeat(40),
+          headCommitSha: 'a'.repeat(40),
+        })}
+        onOpen={vi.fn()}
+        onRescan={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('Ready to ship')).toBeNull();
+    expect(screen.getByText('Ready at an older commit')).toBeTruthy();
+    expect(screen.getByText(/New commits since this check\. Rescan/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Rescan/i })).toBeTruthy();
+  });
+
+  it('keeps a blocked verdict blocked and notes the new commits', () => {
+    render(
+      <VerdictCard
+        card={card({
+          verdict: 'blocked',
+          lastCheckedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+          checkedCommitSha: 'b'.repeat(40),
+          headCommitSha: 'a'.repeat(40),
+        })}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Not ready to ship')).toBeTruthy();
+    expect(screen.getByText('New commits since this check')).toBeTruthy();
+  });
+
+  it('stays green when the check is recent and at the newest commit', () => {
+    render(
+      <VerdictCard
+        card={card({
+          verdict: 'ready',
+          shipScore: 100,
+          topIssue: null,
+          lastCheckedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+          checkedCommitSha: 'a'.repeat(40),
+          headCommitSha: 'a'.repeat(40),
+        })}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Ready to ship')).toBeTruthy();
+    expect(screen.queryByText(/New commits/)).toBeNull();
   });
 
   it('gives the same age in the verdict and the freshness line', () => {

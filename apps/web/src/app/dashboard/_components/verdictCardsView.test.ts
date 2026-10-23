@@ -47,6 +47,8 @@ function card(partial: Partial<TargetCard> & Pick<TargetCard, 'id' | 'verdict'>)
     scanCapability: partial.scanCapability ?? 'browser',
     lastScanFailed: partial.lastScanFailed ?? false,
     lastScanFailureReason: partial.lastScanFailureReason ?? null,
+    checkedCommitSha: partial.checkedCommitSha ?? null,
+    headCommitSha: partial.headCommitSha ?? null,
     ...partial,
   };
 }

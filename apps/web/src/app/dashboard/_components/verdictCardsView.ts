@@ -1,5 +1,5 @@
 import type { TargetCard } from '../../../utils/clientApi';
-import { isScanStale } from './staleScan';
+import { isCardVerdictOutOfDate } from './staleScan';
 
 export type AppsKindFilter = 'all' | 'repos' | 'urls';
 export type AppsVerdictFilter = 'all' | 'blocked' | 'review' | 'ready' | 'outdated' | 'unknown';
@@ -25,13 +25,13 @@ const VERDICT_URGENCY: Record<VerdictBucket, number> = {
 };
 
 /**
- * Where a card belongs right now. A "ready" verdict older than the stale window
- * is `outdated`: the code has had time to change, and a green card from four
- * months ago must not read as the app's current state. Blocked and review
+ * Where a card belongs right now. A "ready" verdict is `outdated` once newer
+ * commits were pushed or it is older than the stale window: a green card from
+ * another commit must not read as the app's current state. Blocked and review
  * verdicts keep their bucket — an old warning still warns.
  */
 export function verdictBucket(card: TargetCard, now: number = Date.now()): VerdictBucket {
-  if (card.verdict === 'ready' && isScanStale(card.lastCheckedAt, now)) return 'outdated';
+  if (card.verdict === 'ready' && isCardVerdictOutOfDate(card, now)) return 'outdated';
   return card.verdict;
 }
 

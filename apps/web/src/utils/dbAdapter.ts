@@ -88,6 +88,12 @@ export interface Repository {
    * set. Binds to a verified `url` target of the same origin.
    */
   homepage_url?: string | null;
+  /**
+   * The newest commit a push reported on the branch the repo ships from, and
+   * when it was made. Null until the GitHub App delivers a push.
+   */
+  head_commit_sha?: string | null;
+  head_commit_at?: string | null;
 }
 
 /** Ship Gate status persisted at scan time (source of truth for trend/cards). */
@@ -134,6 +140,7 @@ export interface LatestScanSummary {
   failure_reason?: string | null;
   branch?: string | null;
   scan_scope?: Record<string, unknown> | null;
+  commit_sha?: string | null;
 }
 
 export interface ScanFinding {
@@ -475,6 +482,8 @@ export interface DbAdapter {
   getDismissedRepositories(orgId: string): Promise<Repository[]>;
   getRepository(repoId: string): Promise<Repository | null>;
   getRepositoryByGithubRepoId(githubRepoId: number): Promise<Repository | null>;
+  /** Records the newest commit a push reported on the branch the repo ships from. */
+  recordRepositoryHeadCommit(repoId: string, commitSha: string, committedAt: string): Promise<void>;
   addRepository(orgId: string, name: string, githubRepoId: number): Promise<Repository>;
   updateRepositoryScanCapability(
     repoId: string,
@@ -897,6 +906,18 @@ export class SupabaseDbAdapter implements DbAdapter {
     return this.first(`repositories?select=*&github_repo_id=eq.${eq(githubRepoId)}`);
   }
 
+  async recordRepositoryHeadCommit(
+    repoId: string,
+    commitSha: string,
+    committedAt: string,
+  ): Promise<void> {
+    await this.fetchDb(`repositories?id=eq.${eq(repoId)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ head_commit_sha: commitSha, head_commit_at: committedAt }),
+    });
+  }
+
   async addRepository(orgId: string, name: string, githubRepoId: number): Promise<Repository> {
     const rows = await this.fetchDb<Repository[]>('repositories', {
       method: 'POST',
@@ -1046,7 +1067,7 @@ export class SupabaseDbAdapter implements DbAdapter {
     const uniqueIds = [...new Set(repoIds)];
     const inList = uniqueIds.map((id) => eq(id)).join(',');
     const rows = await this.fetchDb<LatestScanSummary[]>(
-      `scans?select=id,repository_id,ship_score,created_at,verdict,failure_reason,branch,scan_scope&repository_id=in.(${inList})&order=created_at.desc`,
+      `scans?select=id,repository_id,ship_score,created_at,verdict,failure_reason,branch,scan_scope,commit_sha&repository_id=in.(${inList})&order=created_at.desc`,
     );
     return indexLatestVerdictOwningSummaries(rows, defaultBranchByRepoId);
   }

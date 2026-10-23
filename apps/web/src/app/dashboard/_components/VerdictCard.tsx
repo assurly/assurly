@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore, type ReactElement } from 'react';
 import type { TargetCard } from '../../../utils/clientApi';
 import { consequenceForGroupKey } from '../../../utils/consequenceMap';
 import { isScanStale, rescanActionLabel, shouldOfferRescan } from './staleScan';
+import { verdictFreshness } from '../../../utils/verdictFreshness';
 import { verdictBucket } from './verdictCardsView';
 import { formatVerdictCardLabel } from './verdictCardLabel';
 import {
@@ -47,15 +48,6 @@ const OUTDATED_META = {
   emoji: '○',
   className: 'verdict-card--outdated',
 } as const;
-
-/** Whole days since `iso`, rounded exactly as `formatCheckedAt` rounds them. */
-function daysSince(iso: string | null, now: number = Date.now()): number | null {
-  if (!iso) return null;
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return null;
-  const minutes = Math.round(Math.max(0, Math.round((now - then) / 1000)) / 60);
-  return Math.round(Math.round(minutes / 60) / 24);
-}
 
 function capabilityPresentation(card: TargetCard): {
   label: string;
@@ -168,14 +160,22 @@ export function VerdictCard({
   const capability = capabilityPresentation(card);
   // An old green verdict says what the code was, not what it is: no ✅, no
   // "Ready to ship", and the age in the label itself.
+  const freshness = verdictFreshness({
+    checkedAt: card.lastCheckedAt,
+    checkedCommitSha: card.checkedCommitSha,
+    headCommitSha: card.headCommitSha,
+  });
+  const codeChanged = freshness.status === 'code_changed';
   const outdated = verdictBucket(card) === 'outdated';
-  const outdatedDays = outdated ? daysSince(card.lastCheckedAt) : null;
   const meta = outdated ? OUTDATED_META : VERDICT_META[card.verdict];
   const lastScanFailed = Boolean(card.lastScanFailed);
-  const readyLabel =
-    outdatedDays === null
-      ? meta.label
-      : `Ready ${outdatedDays} ${outdatedDays === 1 ? 'day' : 'days'} ago`;
+  const readyLabel = !outdated
+    ? meta.label
+    : codeChanged
+      ? 'Ready at an older commit'
+      : freshness.daysOld === null
+        ? meta.label
+        : `Ready ${freshness.daysOld} ${freshness.daysOld === 1 ? 'day' : 'days'} ago`;
   const verdictLabel = capability?.label ?? (lastScanFailed ? 'Scan failed' : readyLabel);
   const verdictEmoji = capability?.emoji ?? meta.emoji;
   const label = formatVerdictCardLabel(card.displayName, card.kind);
@@ -229,7 +229,9 @@ export function VerdictCard({
     : card.topIssue
       ? (consequenceForGroupKey(card.topIssue.key)?.consequence ?? card.topIssue.sampleMessage)
       : outdated
-        ? 'The code may have changed since. Rescan to see if it is still ready.'
+        ? codeChanged
+          ? 'New commits since this check. Rescan to see if it is still ready.'
+          : 'The code may have changed since. Rescan to see if it is still ready.'
         : card.verdict === 'ready'
           ? 'No blockers in the last check.'
           : 'Run a scan to get a verdict.';
@@ -291,6 +293,9 @@ export function VerdictCard({
             <span className="verdict-card__regression" role="status">
               Score dropped since last check
             </span>
+          ) : null}
+          {codeChanged && !outdated && card.verdict !== 'unknown' ? (
+            <span className="verdict-card__code-changed">New commits since this check</span>
           ) : null}
         </span>
 

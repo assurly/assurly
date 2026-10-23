@@ -42,6 +42,8 @@ function cardFromUrlTarget(target: Target): TargetCard {
     scanCapability: 'browser',
     lastScanFailed: false,
     lastScanFailureReason: null,
+    checkedCommitSha: null,
+    headCommitSha: null,
   };
 }
 

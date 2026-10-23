@@ -47,6 +47,8 @@ function card(
     scanCapability: partial.scanCapability ?? 'browser',
     lastScanFailed: partial.lastScanFailed ?? false,
     lastScanFailureReason: partial.lastScanFailureReason ?? null,
+    checkedCommitSha: partial.checkedCommitSha ?? null,
+    headCommitSha: partial.headCommitSha ?? null,
     ...partial,
   };
 }

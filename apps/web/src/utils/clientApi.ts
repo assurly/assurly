@@ -236,6 +236,8 @@ const targetCardSchema = z.object({
   scanCapability: scanCapabilitySchema.default('browser'),
   lastScanFailed: z.boolean().default(false),
   lastScanFailureReason: z.string().nullable().default(null),
+  checkedCommitSha: z.string().nullable().default(null),
+  headCommitSha: z.string().nullable().default(null),
 });
 const targetsSchema = z.object({ targets: z.array(targetCardSchema) });
 export type TargetCard = z.infer<typeof targetCardSchema>;

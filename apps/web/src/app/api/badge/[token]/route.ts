@@ -4,6 +4,8 @@ import { RATE_LIMITS, secureRoute } from '../../../../utils/apiSecurity';
 import { getAdminDbAdapter, type Target } from '../../../../utils/dbAdapter';
 import { getApplicationUrl } from '../../../../utils/env';
 import { resolveTargetShipScore } from '../../../../utils/shipScoreDisplay';
+import { resolveScanFreshness, resolveTargetFreshness } from '../../../../utils/targetFreshness';
+import type { VerdictFreshness } from '../../../../utils/verdictFreshness';
 
 const SHARE_TOKEN_PATTERN = /^[a-f0-9]{32}$/;
 
@@ -36,21 +38,54 @@ function badgeColor(status: 'ready' | 'review' | 'blocked' | 'unknown'): string 
  * A null score renders an explicit unscored variant — this badge goes into
  * users' READMEs, so it must never invent a number we do not have.
  */
+const MIN_BADGE_WIDTH = 260;
+/** Rough advance width of the 12px semibold label font, in px per character. */
+const BADGE_CHAR_WIDTH = 6.6;
+const BADGE_PADDING = 24;
+
+function badgeLabel(shipScore: number | null, freshness: VerdictFreshness): string {
+  if (shipScore == null) return 'Assurly · Ship Score unavailable';
+  // An out-of-date score is history, not a verification: no "Verified by".
+  switch (freshness.status) {
+    case 'code_changed':
+      return `Assurly · Ship Score ${shipScore}/100 · code changed since`;
+    case 'old':
+      return `Assurly · Ship Score ${shipScore}/100 · ${freshness.daysOld} ${
+        freshness.daysOld === 1 ? 'day' : 'days'
+      } old`;
+    case 'current':
+    case 'unknown':
+      return `Verified by Assurly · Ship Score ${shipScore}/100`;
+    default: {
+      const neverStatus: never = freshness.status;
+      return neverStatus;
+    }
+  }
+}
+
+/**
+ * The badge goes into READMEs and outlives the check behind it, so an
+ * out-of-date score turns grey and says why instead of staying green.
+ */
 function buildBadgeSvg(
   shipScore: number | null,
   status: 'ready' | 'review' | 'blocked' | 'unknown',
   trustHref: string | null,
+  freshness: VerdictFreshness = { status: 'current', daysOld: 0 },
 ): string {
-  const fill = badgeColor(status);
-  const label =
-    shipScore == null
-      ? 'Assurly · Ship Score unavailable'
-      : `Verified by Assurly · Ship Score ${shipScore}/100`;
-  const inner = `<rect width="260" height="28" rx="4" fill="${fill}"/><text x="130" y="19" fill="#ffffff" font-family="system-ui,sans-serif" font-size="12" font-weight="600" text-anchor="middle">${label}</text>`;
+  const outOfDate = freshness.status === 'old' || freshness.status === 'code_changed';
+  const fill = badgeColor(outOfDate && shipScore != null ? 'unknown' : status);
+  const label = badgeLabel(shipScore, freshness);
+  const width = Math.max(
+    MIN_BADGE_WIDTH,
+    Math.ceil(label.length * BADGE_CHAR_WIDTH + BADGE_PADDING),
+  );
+  const inner = `<rect width="${width}" height="28" rx="4" fill="${fill}"/><text x="${width / 2}" y="19" fill="#ffffff" font-family="system-ui,sans-serif" font-size="12" font-weight="600" text-anchor="middle">${label}</text>`;
+  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="28" role="img" aria-label="${label}">`;
   if (trustHref) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="260" height="28" role="img" aria-label="${label}"><a href="${trustHref}" target="_blank" rel="noopener">${inner}</a></svg>`;
+    return `${open}<a href="${trustHref}" target="_blank" rel="noopener">${inner}</a></svg>`;
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="260" height="28" role="img" aria-label="${label}">${inner}</svg>`;
+  return `${open}${inner}</svg>`;
 }
 
 function trustPageUrl(token: string): string {
@@ -94,7 +129,8 @@ export const GET = secureRoute(
     const target = await db.getTargetByBadgeToken(params.token);
     if (target) {
       const { shipScore, status } = scoreFromTarget(target);
-      return new Response(buildBadgeSvg(shipScore, status, trustPageUrl(params.token)), {
+      const freshness = await resolveTargetFreshness(db, target);
+      return new Response(buildBadgeSvg(shipScore, status, trustPageUrl(params.token), freshness), {
         status: 200,
         headers: {
           'Content-Type': 'image/svg+xml; charset=utf-8',
@@ -116,8 +152,9 @@ export const GET = secureRoute(
       cleanFileCount: 0,
     });
 
+    const freshness = await resolveScanFreshness(db, scan);
     return new Response(
-      buildBadgeSvg(shipGate.shipScore, shipGate.status, trustPageUrl(params.token)),
+      buildBadgeSvg(shipGate.shipScore, shipGate.status, trustPageUrl(params.token), freshness),
       {
         status: 200,
         headers: {

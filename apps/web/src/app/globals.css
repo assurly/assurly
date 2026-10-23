@@ -9644,6 +9644,16 @@ button.dashboard-repo-selector-item {
   color: var(--color-text-muted);
 }
 
+.report-page-stale {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface));
+  color: var(--color-warning-text, #b45309);
+  font-size: 0.9rem;
+}
+
 .report-page-meta {
   margin: 0;
   color: var(--color-text-secondary);
@@ -10595,6 +10605,10 @@ body {
 }
 .verdict-card--outdated .verdict-card__score {
   color: var(--text-muted);
+}
+.verdict-card__code-changed {
+  font-size: 0.75rem;
+  color: var(--color-warning-text, #b45309);
 }
 .verdict-card__status {
   font-size: 1.25rem;
