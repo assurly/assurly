@@ -54,8 +54,7 @@ for (const viewport of QA_VIEWPORTS) {
       await expect(
         page
           .getByTestId('scan-details-ship-gate')
-          .getByTestId('ship-gate-blockers')
-          .getByText(/Possible API key exposed/i),
+          .locator('.ship-gate-list-label', { hasText: /Possible API key exposed/i }),
       ).toBeVisible();
     });
 

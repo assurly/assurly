@@ -1,5 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.handlerExportLine = handlerExportLine;
+exports.handlerLineOf = handlerLineOf;
 exports.scanServerActionAuth = scanServerActionAuth;
 exports.scanRouteHandlerAuth = scanRouteHandlerAuth;
 exports.scanServiceRoleBypass = scanServiceRoleBypass;
@@ -163,6 +165,22 @@ function hasServiceRoleGuard(content) {
 function usesServiceRole(content) {
     return CLIENT_CONSTRUCTION.test(content) && SERVICE_ROLE_KEY_REFERENCE.test(content);
 }
+/** How far past `createClient(` the service-role key may sit and still be its argument. */
+const CLIENT_ARGUMENT_WINDOW = 400;
+/** Line of the client built with the service-role key, else of the key itself. */
+function serviceRoleClientLine(content) {
+    const lineAt = (index) => content.slice(0, index).split('\n').length;
+    for (const match of content.matchAll(new RegExp(CLIENT_CONSTRUCTION.source, 'g'))) {
+        const start = match.index ?? 0;
+        const statementEnd = content.indexOf(';', start);
+        const end = statementEnd === -1 ? start + CLIENT_ARGUMENT_WINDOW : statementEnd;
+        const call = content.slice(start, Math.min(end, start + CLIENT_ARGUMENT_WINDOW));
+        if (SERVICE_ROLE_KEY_REFERENCE.test(call))
+            return lineAt(start);
+    }
+    const reference = SERVICE_ROLE_KEY_REFERENCE.exec(content);
+    return reference ? lineAt(reference.index) : 1;
+}
 function isPublicMutationRoute(content, file) {
     const normalized = file.replace(/\\/g, '/').toLowerCase();
     return (PUBLIC_MUTATION_PATTERNS.some((pattern) => pattern.test(content)) ||
@@ -180,10 +198,19 @@ function hasSchemaValidation(content) {
 function hasSignatureVerification(content) {
     return SIGNATURE_VERIFICATION_PATTERNS.some((pattern) => pattern.test(content));
 }
-/** Line of the first exported HTTP handler, so findings point at the entry point. */
+/**
+ * Line of the first exported HTTP handler (`export async function POST`, or a
+ * Pages Router `export default` handler), so findings point at the entry point.
+ */
 function handlerExportLine(ast) {
     let earliest;
     walk(ast, (node) => {
+        if (node.type === 'ExportDefaultDeclaration') {
+            const line = lineOf(node);
+            if (line !== undefined && (earliest === undefined || line < earliest))
+                earliest = line;
+            return;
+        }
         if (node.type !== 'ExportNamedDeclaration')
             return;
         const declaration = node.declaration;
@@ -203,6 +230,15 @@ function handlerExportLine(ast) {
             earliest = line;
     });
     return earliest ?? 1;
+}
+/** {@link handlerExportLine} for raw source; line 1 when the file does not parse. */
+function handlerLineOf(content) {
+    try {
+        return handlerExportLine(parseCode(content));
+    }
+    catch {
+        return 1;
+    }
 }
 function scanServerActionAuth(content, file = 'actions.ts') {
     const findings = [];
@@ -278,7 +314,7 @@ function scanServiceRoleBypass(content, file = 'server.ts') {
     if (hasServiceRoleGuard(content))
         return result(findings);
     return result([
-        finding('auth-service-role-bypass', 'error', 'high', file, 1, 'Server code uses the Supabase service_role client without a clear authorization guard.', 'Restrict service_role usage to trusted system paths (requireUser, admin guard, or verified webhook/cron entry).'),
+        finding('auth-service-role-bypass', 'error', 'high', file, serviceRoleClientLine(content), 'Server code uses the Supabase service_role client without a clear authorization guard.', 'Restrict service_role usage to trusted system paths (requireUser, admin guard, or verified webhook/cron entry).'),
     ]);
 }
 function scanAuthBoundary(content, file = 'route.ts') {

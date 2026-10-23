@@ -78,4 +78,6 @@ export interface ShipGateMarkdownOptions {
     reportUrl?: string;
 }
 export declare function formatShipGateMarkdown(report: ShipGateReport, options?: ShipGateMarkdownOptions): string;
+/** Whether this one finding lands in a report's blockers, by the rule the report uses. */
+export declare function isShipGateBlockerFinding(finding: ShipGateFindingInput): boolean;
 export declare function isShipGateBlocked(report: ShipGateReport): boolean;

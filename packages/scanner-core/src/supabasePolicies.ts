@@ -99,39 +99,53 @@ export function scanSupabaseStorage(content: string, file = 'storage.sql'): Scan
   return result(findings);
 }
 
+/** Comments blanked to spaces, so every offset and line number still matches the file. */
+function maskSqlComments(content: string): string {
+  return content
+    .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '))
+    .replace(/--[^\n]*/g, (comment) => ' '.repeat(comment.length));
+}
+
+const TABLE_NAME = String.raw`([a-zA-Z0-9_."\`'-]+)`;
+// The reference must sit in the same statement: never past a `;` or into the
+// next CREATE TABLE, or an unrelated table inherits its neighbour's auth link.
+const AUTH_LINKED_CREATE = new RegExp(
+  String.raw`create\s+table\s+(?:if\s+not\s+exists\s+)?${TABLE_NAME}(?:(?!create\s+table)[^;])*?\breferences\s+auth\.users\b`,
+  'gi',
+);
+const ENABLE_RLS = new RegExp(
+  String.raw`alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?${TABLE_NAME}\s+enable\s+row\s+level\s+security`,
+  'gi',
+);
+
+/**
+ * Tables a migration enables RLS on, with the line of each ALTER TABLE — also
+ * when the statement is formatted across lines (`alter table x` / `enable row
+ * level security;`). Names come back raw; callers normalise them their way.
+ */
+export function rlsEnabledStatements(content: string): Array<{ table: string; line: number }> {
+  const sql = maskSqlComments(content);
+  return [...sql.matchAll(ENABLE_RLS)].map((match) => ({
+    table: match[1],
+    line: sql.slice(0, match.index).split(/\r?\n/).length,
+  }));
+}
+
 export function scanAuthLinkedMigrationNoRls(sources: readonly SourceInput[]): ScanResult {
   const findings: ScannerFinding[] = [];
   const authLinkedTables = new Map<string, { file: string; line: number }>();
   const rlsEnabled = new Set<string>();
 
   for (const source of sources) {
-    source.content.split(/\r?\n/).forEach((rawLine, index) => {
-      const code = rawLine.replace(/--.*$/, '');
-      const create = code.match(/create\s+table\s+(?:if\s+not\s+exists\s+)?([a-zA-Z0-9_."`'-]+)/i);
-      if (create) {
-        const table = normalizeTableName(create[1]);
-        if (
-          /references\s+auth\.users/i.test(code) ||
-          /\buser_id\b[\s\S]*references\s+auth\.users/i.test(code)
-        ) {
-          authLinkedTables.set(table, { file: source.file, line: index + 1 });
-        }
-      }
-
-      const enabled = code.match(
-        /alter\s+table\s+([a-zA-Z0-9_."`'-]+)\s+enable\s+row\s+level\s+security/i,
-      );
-      if (enabled) rlsEnabled.add(normalizeTableName(enabled[1]));
-    });
-
-    const fullSql = stripSqlComments(source.content);
-    const multiLineCreate =
-      /create\s+table\s+(?:if\s+not\s+exists\s+)?([a-zA-Z0-9_."`'-]+)[\s\S]*?references\s+auth\.users/gi;
-    let match: RegExpExecArray | null;
-    while ((match = multiLineCreate.exec(fullSql)) !== null) {
-      const table = normalizeTableName(match[1]);
-      const line = source.content.slice(0, match.index).split(/\r?\n/).length;
-      authLinkedTables.set(table, { file: source.file, line: Math.max(1, line) });
+    const sql = maskSqlComments(source.content);
+    for (const match of sql.matchAll(AUTH_LINKED_CREATE)) {
+      const line = sql.slice(0, match.index).split(/\r?\n/).length;
+      authLinkedTables.set(normalizeTableName(match[1]), { file: source.file, line });
+    }
+  }
+  for (const source of sources) {
+    for (const { table } of rlsEnabledStatements(source.content)) {
+      rlsEnabled.add(normalizeTableName(table));
     }
   }
 

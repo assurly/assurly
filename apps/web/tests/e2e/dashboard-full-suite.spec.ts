@@ -211,7 +211,7 @@ test.describe('Dashboard full suite @1280px', () => {
     ).toBeVisible();
     await expect(card.getByText(/Row-Level Security/i)).toBeHidden();
 
-    await card.locator('summary').click();
+    await card.getByText('For your developer').click();
     await expect(card.getByText(/Row-Level Security/i)).toBeVisible();
   });
 

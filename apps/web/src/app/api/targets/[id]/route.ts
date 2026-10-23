@@ -38,11 +38,30 @@ export const GET = secureRoute(
       throw new ApiError(404, 'not_found', 'Target not found.');
     }
 
-    const [evidence, outcomes] = await Promise.all([
+    const admin = getAdminDbAdapter();
+    const [evidence, outcomes, liveLock, project, repositories, connection] = await Promise.all([
       context.db.getLatestProbeEvidenceForTarget(target.id),
       context.db.getFixOutcomesForTarget(target.id),
+      context.db.getLiveLockSummary(target.id),
+      context.db.getLiveLockProject(target.id),
+      context.db.getRepositories(organization.id),
+      admin.getVercelConnection(organization.id).catch(() => null),
     ]);
-    return NextResponse.json(buildUrlTargetDetail(target, evidence, outcomes));
+    let origin = target.identifier;
+    try {
+      origin = new URL(target.identifier).origin;
+    } catch {
+      origin = target.identifier;
+    }
+    const linked = repositories.find((repo) => repo.homepage_url === origin && repo.is_active);
+    return NextResponse.json(
+      buildUrlTargetDetail(target, evidence, outcomes, liveLock, {
+        repositoryName: linked?.name ?? null,
+        vercelConnected: connection !== null,
+        locked: project?.production_deploy_held === true,
+        pullRequestUrl: project?.pull_request_url ?? null,
+      }),
+    );
   },
 );
 

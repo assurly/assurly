@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import type { FixOutcomeRow, ProbeEvidenceKind, ProbeEvidenceRow, Target } from './dbAdapter';
+import type {
+  FixOutcomeRow,
+  LiveLockSummary,
+  ProbeEvidenceKind,
+  ProbeEvidenceRow,
+  Target,
+} from './dbAdapter';
 import { readBlockerSnapshot } from './guardian';
 import type { FixOutcome } from './verifiedFix';
 
@@ -52,6 +58,22 @@ export interface UrlTargetDetail {
   blockers: UrlTargetBlocker[];
   /** Proof behind findings that do not block launch (missing headers). */
   otherEvidence: UrlTargetEvidence[];
+  /** Latest deploy-path check. Null status means no attempt has been recorded. */
+  liveLock: {
+    status: 'ready' | 'blocked' | null;
+    shipScore: number | null;
+    reason: string | null;
+    gitSha: string | null;
+    checkedAt: string | null;
+    stoppedDeploy: boolean;
+  };
+  /** What the Lock deploys button still needs. No secrets. */
+  liveLockSetup: {
+    repositoryName: string | null;
+    vercelConnected: boolean;
+    locked: boolean;
+    pullRequestUrl: string | null;
+  };
 }
 
 function toEvidence(row: ProbeEvidenceRow): UrlTargetEvidence {
@@ -98,6 +120,13 @@ export function buildUrlTargetDetail(
   target: Target,
   evidenceRows: readonly ProbeEvidenceRow[],
   outcomeRows: readonly FixOutcomeRow[],
+  liveLock: LiveLockSummary = { latest: null, stoppedDeploy: false },
+  liveLockSetup: UrlTargetDetail['liveLockSetup'] = {
+    repositoryName: null,
+    vercelConnected: false,
+    locked: false,
+    pullRequestUrl: null,
+  },
 ): UrlTargetDetail {
   const evidence = evidenceRows.map(toEvidence);
   const evidenceByRule = new Map(evidence.map((item) => [item.findingRuleId, item]));
@@ -131,5 +160,14 @@ export function buildUrlTargetDetail(
     ownershipVerified: target.ownership_verified,
     blockers,
     otherEvidence: evidence.filter((item) => !blockerRules.has(item.findingRuleId)),
+    liveLock: {
+      status: liveLock.latest?.status ?? null,
+      shipScore: liveLock.latest?.ship_score ?? null,
+      reason: liveLock.latest?.reason ?? null,
+      gitSha: liveLock.latest?.git_sha ?? null,
+      checkedAt: liveLock.latest?.created_at ?? null,
+      stoppedDeploy: liveLock.stoppedDeploy,
+    },
+    liveLockSetup,
   };
 }

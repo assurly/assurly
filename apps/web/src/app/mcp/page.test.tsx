@@ -99,20 +99,18 @@ describe('McpPage', () => {
     const html = await renderMcpPageHtml();
     expect(html).toContain('What your agent gets back');
     expect(html).toContain('isError: true');
-    expect(html).toContain('Assurly verdict: BLOCKED · Ship Score 42/100');
-    expect(html).toContain('Fix outcomes (last re-probe only');
-    expect(html).toContain('observed 2026-07-18T06:00:00.000Z');
-    expect(html).toContain('An unverified claim is not done');
+    expect(html).toContain('Assurly Live Lock: BLOCKED · Ship Score 59/100');
+    expect(html).toContain('runtime_blocker');
     expect(html).toContain('REVIEW RECOMMENDED');
     expect(html).toContain('Make the gate automatic');
-    expect(html).toContain('deploy and re-probe');
+    expect(html).toContain('A stored score is not a ship decision');
     expect(html).toContain('Connect the hosted verdict');
     expect(html).toContain('ASSURLY_API_KEY');
     expect(html).toContain('^20.19.0 || &gt;=22.12.0');
     expect(html).toContain(
       'ASSURLY_API_KEY is not set. Create a key in the Assurly dashboard (Settings → API keys) and expose it to this MCP server as ASSURLY_API_KEY.',
     );
-    expect(html).toContain('Provide exactly one of `url` or `repo`.');
+    expect(html).toContain('Live Lock needs the deployed `url`');
   });
 
   it('renders install as a tabbed client picker, not separate Cursor/Claude sections', async () => {

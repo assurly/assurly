@@ -885,6 +885,11 @@ export function formatShipGateMarkdown(
   return lines.join('\n');
 }
 
+/** Whether this one finding lands in a report's blockers, by the rule the report uses. */
+export function isShipGateBlockerFinding(finding: ShipGateFindingInput): boolean {
+  return findingKind(finding) === 'issue' && isBlockerFinding(finding);
+}
+
 export function isShipGateBlocked(report: ShipGateReport): boolean {
   return report.status === 'blocked';
 }

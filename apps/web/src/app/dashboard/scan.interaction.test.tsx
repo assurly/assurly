@@ -432,6 +432,27 @@ describe('Run Secure Scan results rendering', () => {
     expect(findingsMock).toHaveBeenCalledWith(savedScan.id);
   });
 
+  it('persists a finding without a line as having none, not as line 1', async () => {
+    // A blocker's code view highlights the stored line; inventing line 1 would
+    // point at the wrong code.
+    stubGitHubFetch([{ path: 'db/schema.sql', type: 'blob' }], {
+      'db/schema.sql': TABLE_WITHOUT_RLS,
+    });
+    saveScanMock.mockRejectedValue(new Error('stop after capturing the payload'));
+
+    render(<DashboardClient initialSession={session} />);
+    runScan();
+
+    await waitFor(() => expect(saveScanMock).toHaveBeenCalledTimes(1));
+    const persisted = saveScanMock.mock.calls[0][0].findings;
+    const lineless = persisted.filter((finding) => finding.line_number === undefined);
+    expect(lineless.length).toBeGreaterThan(0);
+    expect(persisted.every((f) => f.line_number == null || f.line_number >= 1)).toBe(true);
+    expect(
+      persisted.find((f) => f.file_path === 'db/schema.sql')?.line_number ?? 0,
+    ).toBeGreaterThan(0);
+  });
+
   it('renders Ship Gate before auto-fix summary and detailed findings', async () => {
     stubGitHubFetch([{ path: 'db/schema.sql', type: 'blob' }], {
       'db/schema.sql': TABLE_WITHOUT_RLS,

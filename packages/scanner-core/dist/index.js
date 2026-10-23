@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isAgentInstructionFile = exports.isHighConfidenceBlockerRuleId = exports.HIGH_CONFIDENCE_BLOCKER_RULE_IDS = exports.scanStripeWebhookIdempotencyForProject = exports.scanStripeWebhookIdempotency = exports.scanStripeMissingSubscriptionEvents = exports.scanStripeLiveKeyInDev = exports.scanStripeLifecycle = exports.scanSupabaseStorage = exports.scanSupabasePolicies = exports.scanSupabaseDeepPolicies = exports.scanAuthLinkedMigrationNoRls = exports.scanServiceRoleBypass = exports.scanServerActionAuth = exports.scanRouteHandlerAuth = exports.scanAuthBoundary = exports.scanAiRouteAuthz = exports.scanAiRateLimit = exports.scanAiPromptInjection = exports.scanAiPiiToModelContext = exports.scanAiLlmKeyLeak = exports.scanAiAppSecurity = exports.selectPackageManifestPaths = exports.detectStackFromManifests = exports.describeDetectedStack = exports.MAX_PACKAGE_MANIFESTS = exports.unanalyzedSourceFinding = exports.unanalyzedLanguageForPath = exports.unanalyzedLanguageCounts = exports.summarizeUnanalyzedSource = exports.isSecuritySurfacePath = exports.isAnalyzedSourceFile = exports.isAnalyzedCodeFile = exports.formatUnanalyzedLogLine = exports.UNANALYZED_SOURCE_LANGUAGES = exports.SCAN_LANGUAGE_COVERAGE_RULE_ID = exports.rankFilesByRelevance = exports.measureScanScopeTotals = exports.languageCoveragePaths = exports.isTextScanSurface = exports.isScannableFile = exports.instantGateSurfaceFiles = exports.inferScanRoots = exports.getFileRelevanceScore = exports.formatScanScopeSummary = exports.buildScanScope = exports.INSTANT_GATE_MAX_FILES = exports.RLS_NO_POLICY_RULE_ID = exports.RLS_GENERIC_TABLE_LABEL = exports.RLS_SUPABASE_TABLE_LABEL = void 0;
 exports.containsAssurlyCanaryToken = exports.containsAssurlyCanaryCallbackPath = exports.ASSURLY_CANARY_PREFIX = exports.ASSURLY_CANARY_IN_TEXT = exports.ASSURLY_CANARY_ENV_KEY = exports.ASSURLY_CANARY_CALLBACK_PATH = exports.findNearestCorpusMatch = exports.damerauLevenshtein = exports.tokenizePackageName = exports.scopeOwnsBorrowedName = exports.parsePackageJsonDependencies = exports.isAbandonedShape = exports.getTopNpmPackageCorpus = exports.findBorrowedCorpusName = exports.evaluateNewDependencies = exports.evaluateDependencyProvenance = exports.diffAddedDependencies = exports.contiguousTokenRuns = exports.collectDependencyNames = exports.DEP_YOUNG_AGE_DAYS = exports.DEP_TYPOSQUAT_SUSPECT = exports.DEP_SLOPSQUAT_SUSPECT = exports.DEP_SCAN_CAPPED = exports.DEP_REGISTRY_UNAVAILABLE = exports.DEP_PROXIMITY_MAX_DISTANCE = exports.DEP_NONEXISTENT_PACKAGE = exports.DEP_NEW_UNVETTED = exports.DEP_LOW_DOWNLOADS = exports.DEP_DEFAULT_EVAL_CAP = exports.scanSupplyChain = exports.readIgnoreScriptsFromNpmrc = exports.parsePackageManagerNpmMajor = exports.packageNameFromLockKey = exports.isSupplyChainRuleId = exports.enginesNpmPermitsBelow12 = exports.classifyAllowScriptsKey = exports.SUPPLY_NPM_BELOW_V12 = exports.SUPPLY_NON_REGISTRY_DEPENDENCY = exports.SUPPLY_INSTALL_SCRIPTS_UNREVIEWED = exports.SUPPLY_CHAIN_RULE_IDS = exports.SUPPLY_ALLOWSCRIPTS_UNPINNED = exports.SUPPLY_ALLOWSCRIPTS_STALE = exports.SUPPLY_ALLOWSCRIPTS_INVALID = exports.SUPPLY_ALLOWSCRIPTS_IN_WORKSPACE = exports.scanAgentStack = exports.scanAgentMcpConfig = exports.scanAgentInstructionFile = exports.redactEnvKey = exports.isAgentStackFile = exports.isAgentMcpConfigFile = void 0;
-exports.isPostgresSqlSource = exports.detectSqlDialect = exports.scanWorkspaceFiles = exports.scanTsconfigStrict = exports.scanHardcodedStripeSecrets = exports.scanGithubActionsIntegration = exports.isProjectTsconfigPath = exports.githubActionsIntegrationMessage = exports.GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE = exports.GITHUB_ACTIONS_INIT_SUGGESTION = exports.GITHUB_ACTIONS_EXISTING_CI_MESSAGE = exports.parseGitIgnoreSources = exports.isGitIgnored = exports.isGitIgnorePath = exports.isAssurlyEnvExamplePath = exports.excludeGitIgnoredFiles = exports.isIssueFinding = exports.isRlsWithoutPolicyAdvisory = exports.isDatabaseSafetyNetAdvisory = exports.isCiWorkflowSuggestion = exports.findingKind = exports.resolveGroupAction = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.countCleanScannedFiles = exports.buildShipGateReport = exports.buildIssueGroups = exports.RLS_SCORE_GROUP_CAP = exports.BLOCKED_SCORE_CAP = exports.mergeCanaryPlantIntoEnvExample = exports.isAssurlyCanaryToken = exports.isAssurlyCanaryPlantLine = exports.isAssurlyCanaryMcpUrl = exports.isAssurlyCanaryEnvKey = exports.isAssurlyCanaryBody = exports.extractAssurlyCanaryToken = void 0;
+exports.isPostgresSqlSource = exports.detectSqlDialect = exports.scanWorkspaceFiles = exports.scanTsconfigStrict = exports.scanHardcodedStripeSecrets = exports.scanGithubActionsIntegration = exports.isProjectTsconfigPath = exports.githubActionsIntegrationMessage = exports.GITHUB_ACTIONS_MISSING_ASSURLY_MESSAGE = exports.GITHUB_ACTIONS_INIT_SUGGESTION = exports.GITHUB_ACTIONS_EXISTING_CI_MESSAGE = exports.parseGitIgnoreSources = exports.isGitIgnored = exports.isGitIgnorePath = exports.isAssurlyEnvExamplePath = exports.excludeGitIgnoredFiles = exports.isIssueFinding = exports.isRlsWithoutPolicyAdvisory = exports.isDatabaseSafetyNetAdvisory = exports.isCiWorkflowSuggestion = exports.findingKind = exports.resolveGroupAction = exports.isShipGateBlockerFinding = exports.isShipGateBlocked = exports.getFindingGroupKey = exports.formatShipGatePlainText = exports.formatShipGateMarkdown = exports.countCleanScannedFiles = exports.buildShipGateReport = exports.buildIssueGroups = exports.RLS_SCORE_GROUP_CAP = exports.BLOCKED_SCORE_CAP = exports.mergeCanaryPlantIntoEnvExample = exports.isAssurlyCanaryToken = exports.isAssurlyCanaryPlantLine = exports.isAssurlyCanaryMcpUrl = exports.isAssurlyCanaryEnvKey = exports.isAssurlyCanaryBody = exports.extractAssurlyCanaryToken = void 0;
 exports.isSupabaseRlsMessage = isSupabaseRlsMessage;
 exports.subsumeRlsFindings = subsumeRlsFindings;
 exports.selectFiles = selectFiles;
@@ -203,7 +203,7 @@ function scanStripeWebhook(content, file = 'route.ts') {
             ruleId: 'stripe-webhook-signature',
             severity: 'error',
             file,
-            line: 1,
+            line: (0, authBoundary_1.handlerExportLine)(ast),
             message: 'Stripe webhook endpoint appears to lack signature verification.',
             suggestion: 'Verify the raw request body with stripe.webhooks.constructEvent before processing the event.',
         });
@@ -540,13 +540,8 @@ function scanSqlMigrations(sources, options = {}) {
         source.content.split(/\r?\n/).forEach((line, index) => {
             const code = line.replace(/--.*$/, '');
             const create = code.match(/create\s+table\s+(?:if\s+not\s+exists\s+)?([a-zA-Z0-9_."`'-]+)/i);
-            const enabled = code.match(/alter\s+table\s+([a-zA-Z0-9_."`'-]+)\s+enable\s+row\s+level\s+security/i);
             if (create)
                 created.set(normalize(create[1]), { file: source.file, line: index + 1 });
-            if (enabled) {
-                rls.add(normalize(enabled[1]));
-                rlsEnabledAt.set(normalize(enabled[1]), { file: source.file, line: index + 1 });
-            }
             if (/alter\s+table[\s\S]*\sadd\s+(?:column\s+)?[\s\S]*\snot\s+null/i.test(code) &&
                 !/\bdefault\b/i.test(code)) {
                 findings.push({
@@ -559,6 +554,12 @@ function scanSqlMigrations(sources, options = {}) {
                 });
             }
         });
+    }
+    for (const source of postgresSources) {
+        for (const { table, line } of (0, supabasePolicies_1.rlsEnabledStatements)(source.content)) {
+            rls.add(normalize(table));
+            rlsEnabledAt.set(normalize(table), { file: source.file, line });
+        }
     }
     const hasSupabaseSignal = options.usesSupabase === true ||
         postgresSources.some((source) => /supabase/i.test(source.file) ||
@@ -1142,6 +1143,7 @@ Object.defineProperty(exports, "formatShipGateMarkdown", { enumerable: true, get
 Object.defineProperty(exports, "formatShipGatePlainText", { enumerable: true, get: function () { return shipGate_1.formatShipGatePlainText; } });
 Object.defineProperty(exports, "getFindingGroupKey", { enumerable: true, get: function () { return shipGate_1.getFindingGroupKey; } });
 Object.defineProperty(exports, "isShipGateBlocked", { enumerable: true, get: function () { return shipGate_1.isShipGateBlocked; } });
+Object.defineProperty(exports, "isShipGateBlockerFinding", { enumerable: true, get: function () { return shipGate_1.isShipGateBlockerFinding; } });
 Object.defineProperty(exports, "resolveGroupAction", { enumerable: true, get: function () { return shipGate_1.resolveGroupAction; } });
 var findingKind_1 = require("./findingKind");
 Object.defineProperty(exports, "findingKind", { enumerable: true, get: function () { return findingKind_1.findingKind; } });

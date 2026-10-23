@@ -27,6 +27,47 @@ describe('shared scanner core', () => {
     expect(scanStripeWebhook(code, 'app/api/webhook/route.ts').errorCount).toBe(1);
   });
 
+  it('sees RLS enabled by an ALTER TABLE formatted across two lines', () => {
+    const sql = [
+      'create table public.profiles (id uuid primary key references auth.users (id));',
+      '',
+      'alter table public.profiles',
+      '  enable row level security;',
+      'create policy "own" on public.profiles for select using ((select auth.uid()) = id);',
+    ].join('\n');
+    const ruleIds = scanSqlMigrations([{ file: 'supabase/migrations/1.sql', content: sql }], {
+      usesSupabase: true,
+    }).findings.map((finding) => finding.ruleId);
+    expect(ruleIds).not.toContain('supabase-rls');
+    expect(ruleIds).not.toContain('supabase-rls-no-policy');
+  });
+
+  it('points an unverified Stripe webhook at its handler, not line 1', () => {
+    const code = [
+      '// Stripe calls this endpoint.',
+      "import Stripe from 'stripe';",
+      '',
+      "const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? '');",
+      '',
+      'export async function POST(request: Request) {',
+      '  const event = JSON.parse(await request.text());',
+      '  return new Response(event.id);',
+      '}',
+    ].join('\n');
+    expect(scanStripeWebhook(code, 'app/api/webhooks/stripe/route.ts').findings[0]?.line).toBe(6);
+  });
+
+  it('points a Pages Router webhook at its default-exported handler', () => {
+    const code = [
+      "import Stripe from 'stripe';",
+      '',
+      'export default async function handler(req, res) {',
+      '  res.json(req.body);',
+      '}',
+    ].join('\n');
+    expect(scanStripeWebhook(code, 'pages/api/webhook.ts').findings[0]?.line).toBe(3);
+  });
+
   it('does not flag ordinary Stripe checkout code as a webhook', () => {
     const code = `import Stripe from 'stripe';\nexport async function POST(request: Request) { return request.json(); }`;
     expect(scanStripeWebhook(code, 'app/api/stripe/checkout/route.ts').findings).toEqual([]);
