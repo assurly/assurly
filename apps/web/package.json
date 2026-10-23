@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@assurly/scanner-core": "1.2.2",
+    "assurly": "1.2.2",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.1",

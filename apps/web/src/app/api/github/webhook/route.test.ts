@@ -153,6 +153,30 @@ describe('GitHub webhook security and idempotency', () => {
     expect(mocks.after).not.toHaveBeenCalled();
   });
 
+  it('routes a signed push to the push handler', async () => {
+    const body = JSON.stringify({
+      ref: 'refs/heads/feature/login',
+      after: 'a'.repeat(40),
+      repository: { id: 42, full_name: 'owner/private-repo', default_branch: 'main' },
+      installation: { id: 456 },
+    });
+    db.getRepositoryByGithubRepoId.mockResolvedValue({ id: 'repo-uuid', is_active: true });
+    db.getRecentScans.mockResolvedValue([]);
+
+    const response = await POST(request({ body, event: 'push' }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ message: 'Branch not tracked.' });
+    expect(db.getRepositoryByGithubRepoId).toHaveBeenCalledWith(42);
+  });
+
+  it('rejects an unsigned push before touching anything', async () => {
+    const body = JSON.stringify({ ref: 'refs/heads/main', after: 'a'.repeat(40) });
+    const response = await POST(request({ body, event: 'push', secret: 'wrong-secret' }));
+    expect(response.status).toBe(401);
+    expect(db.getRepositoryByGithubRepoId).not.toHaveBeenCalled();
+  });
+
   it('rejects an unsigned installation event before touching anything', async () => {
     const body = JSON.stringify({ action: 'added', installation: { id: 456 } });
     const response = await POST(

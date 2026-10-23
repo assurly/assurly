@@ -54,9 +54,11 @@ import { learnRepositoryHomepage } from '../../../../utils/repoHomepage';
 import { attachSecretExposureWindows } from '../../../../utils/secretExposureWindow';
 import { deleteClosedFixBranch } from '../../../../utils/githubFixBranchCleanup';
 import { syncInstallationRepositories } from '../../../../utils/githubInstallationSync';
+import { handlePushDelivery } from '../../../../utils/pushWebhook';
 import { isAssurlyFixBranch } from '../../../../utils/scanBranch';
 
-export const maxDuration = 60;
+// A push runs Full Gate on the whole commit in after(); PR checks stay quick.
+export const maxDuration = 300;
 
 const gitRefSchema = z
   .object({
@@ -581,6 +583,16 @@ export const POST = secureRoute(
         }
       });
       return NextResponse.json({ message: 'Webhook accepted.' }, { status: 202 });
+    }
+    if (event === 'push') {
+      const result = await handlePushDelivery({
+        rawPayload,
+        deliveryId: request.headers.get('x-github-delivery'),
+        db: getAdminDbAdapter(),
+        runAfter: after,
+        requestId,
+      });
+      return NextResponse.json({ message: result.message }, { status: result.status });
     }
     if (event !== 'pull_request') {
       return NextResponse.json({ message: 'Event ignored.' });

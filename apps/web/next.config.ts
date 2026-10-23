@@ -21,6 +21,10 @@ const getLocalIps = (): string[] => {
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // The Full Gate engine (the `assurly` CLI package and its ts-morph/TypeScript
+  // dependency) runs only in the push webhook; load it from node_modules at
+  // runtime instead of bundling a compiler into every server chunk.
+  serverExternalPackages: ['assurly', 'ts-morph'],
   allowedDevOrigins: ['localhost:3000', '127.0.0.1:3000', ...getLocalIps()],
   turbopack: {
     root: workspaceRoot,

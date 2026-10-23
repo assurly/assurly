@@ -3,13 +3,8 @@ import { z } from 'zod';
 import { ApiError, RATE_LIMITS, requireApiKey, secureRoute } from '../../../../utils/apiSecurity';
 import { getAdminDbAdapter } from '../../../../utils/dbAdapter';
 import { isGitHubRepositoryName } from '../../../../utils/githubApp';
-import { persistRepoScan } from '../../../../utils/persistRepoScan';
-import { resolveVerdictFromScanFindings } from '../../../../utils/shipGate';
-import {
-  logRejectedGateClaim,
-  PERSISTED_FINDINGS_LIMIT,
-  resolveAuthoritativeGate,
-} from '../../../../utils/scanGateAuthority';
+import { persistFullGateScan } from '../../../../utils/fullGatePersist';
+import { PERSISTED_FINDINGS_LIMIT } from '../../../../utils/scanGateAuthority';
 
 const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
@@ -102,54 +97,17 @@ export const POST = secureRoute(
       );
     }
 
-    const persistedFindings = body.findings.map((finding) => ({
-      rule_id: finding.ruleId,
-      severity: finding.severity,
-      confidence: finding.confidence,
-      file_path: finding.file ?? 'unknown',
-      line_number: finding.line,
-      message: finding.message,
-      suggestion: finding.suggestion,
-    }));
-
-    const computed = resolveVerdictFromScanFindings(persistedFindings as never, {
-      scannedFileCount: body.scannedFileCount,
-      cleanFileCount: body.cleanFileCount,
-    });
-    // Same authority as the browser route: the CLI scored every finding but
-    // submits at most PERSISTED_FINDINGS_LIMIT, so its number is kept only when
-    // that slice is truncated and the claim is no better than the slice proves.
-    const gate = resolveAuthoritativeGate({
-      computed,
-      claim: { shipScore: body.shipScore, verdict: body.verdict },
-      persistedFindingCount: persistedFindings.length,
-    });
-    logRejectedGateClaim({
-      route: 'v1:scans:create',
-      repoId: repo.id,
-      gate,
-      computed,
-      persistedFindingCount: persistedFindings.length,
-    });
-    // A failed scan has no gate — mirrors POST /api/scans, which stores null.
-    const scanFailed = body.verdict === 'failed';
-    const shipScore = scanFailed ? null : gate.shipScore;
-    const verdict = scanFailed ? 'failed' : gate.verdict;
-
-    const scan = await persistRepoScan(db, {
+    const { scan, shipScore, verdict } = await persistFullGateScan(db, {
       repoId: repo.id,
       commitSha: body.commitSha ?? 'cli',
       branch: body.branch ?? 'local',
-      status: body.status ?? (scanFailed || verdict === 'blocked' ? 'failed' : 'success'),
-      findings: persistedFindings,
-      meta: {
-        shipScore,
-        verdict,
-        scannedFileCount: body.scannedFileCount,
-        cleanFileCount: body.cleanFileCount ?? computed.cleanFileCount,
-        scanScope: body.scanScope ?? null,
-        failureReason: null,
-      },
+      status: body.status,
+      claim: { shipScore: body.shipScore, verdict: body.verdict },
+      scannedFileCount: body.scannedFileCount,
+      cleanFileCount: body.cleanFileCount,
+      scanScope: body.scanScope ?? null,
+      findings: body.findings,
+      route: 'v1:scans:create',
     });
 
     return NextResponse.json(
