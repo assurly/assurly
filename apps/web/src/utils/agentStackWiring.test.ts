@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The dashboard scan and the free landing scan are independent implementations.
+ * The dashboard scan and the free landing scan were once independent implementations.
  * Agent-stack rules shipped inert once before because only one path was wired.
  * These guards fail if either path drops `scanAgentStack` again.
  */
@@ -33,8 +33,7 @@ describe('agent stack web wiring', () => {
     expect(dashboardEngineSource).toContain('isAgentStackFile');
     expect(dashboardEngineSource).toContain('agentFiles');
 
-    expect(homeSource).toContain('scanAgentStack');
-    expect(homeSource).toContain('isAgentStackFile');
-    expect(homeSource).toContain('agentFiles');
+    // The landing scan runs the same engine (so it gets the same verdict).
+    expect(homeSource).toContain('runDashboardRules(');
   });
 });

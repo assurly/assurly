@@ -53,6 +53,7 @@ import {
   type ScanScope,
   type WebFinding,
 } from './browserScanner';
+import { isNestedReadme } from './publicScanPrefetch';
 import { buildShipGateFromWebFindings } from './shipGate';
 
 /** Dev and test env files, where a live Stripe key does not belong. Same set as the CLI. */
@@ -63,8 +64,18 @@ export interface TreeEntry {
   type: string;
 }
 
+export interface DashboardScanPlanOptions {
+  /** Most files the scan reads; the landing page's anonymous scan reads fewer. */
+  maxFiles?: number;
+  /** Leave nested README.md files out of the agent-stack pass (one fetch each). */
+  skipNestedReadmes?: boolean;
+}
+
 /** What one Instant Gate scan reads, decided from the repository tree alone. */
-export function planDashboardScan(tree: readonly TreeEntry[]) {
+export function planDashboardScan(
+  tree: readonly TreeEntry[],
+  { maxFiles = INSTANT_GATE_MAX_FILES, skipNestedReadmes = false }: DashboardScanPlanOptions = {},
+) {
   const sqlFiles: string[] = [];
   const envFiles: string[] = [];
   const codeFiles: string[] = [];
@@ -76,7 +87,7 @@ export function planDashboardScan(tree: readonly TreeEntry[]) {
     const pathLower = node.path.toLowerCase();
 
     if (isAgentStackFile(node.path)) {
-      agentFiles.push(node.path);
+      if (!(skipNestedReadmes && isNestedReadme(node.path))) agentFiles.push(node.path);
     } else if (pathLower.endsWith('.sql')) {
       sqlFiles.push(node.path);
     } else if (
@@ -96,7 +107,7 @@ export function planDashboardScan(tree: readonly TreeEntry[]) {
     instantGateSurfaceFiles([...new Set([...sqlFiles, ...codeFiles])], (path) => path),
     (path) => path,
   );
-  const fileSelection = selectFiles(rankedCandidates, INSTANT_GATE_MAX_FILES);
+  const fileSelection = selectFiles(rankedCandidates, maxFiles);
   const unanalyzedSummary = summarizeUnanalyzedSource(
     languageCoveragePaths(treePaths.filter((path) => isScannableFile(path))),
   );
@@ -132,6 +143,7 @@ export function planDashboardScan(tree: readonly TreeEntry[]) {
   ];
 
   return {
+    maxFiles,
     treePaths,
     codeFiles,
     agentFiles,
@@ -160,7 +172,7 @@ export function dashboardScanScope(
     treePaths: plan.treePaths,
     unanalyzed: unanalyzedLanguageCounts(plan.unanalyzedSummary),
     ...(scopeTotals ? { totals: scopeTotals } : {}),
-    limit: INSTANT_GATE_MAX_FILES,
+    limit: plan.maxFiles,
   });
 }
 
