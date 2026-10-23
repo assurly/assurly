@@ -118,10 +118,28 @@ function evaluateTsconfigStrict(file: SourceInput): ScannerFinding[] {
   }
 }
 
-export function scanTsconfigStrict(files: readonly SourceInput[]): ScanResult {
+const TYPESCRIPT_SOURCE = /\.(?:ts|tsx|mts|cts)$/;
+
+export interface TsconfigStrictOptions {
+  /**
+   * Whether the project has TypeScript sources. Callers that pass only
+   * tsconfig files must say; otherwise it is read from `files`.
+   */
+  usesTypeScript?: boolean;
+}
+
+export function scanTsconfigStrict(
+  files: readonly SourceInput[],
+  options: TsconfigStrictOptions = {},
+): ScanResult {
   const root = findExact(files, 'tsconfig.json');
   const targets = root ? [root] : files.filter((file) => isWorkspacePackageTsconfig(file.file));
-  if (targets.length === 0) return result([MISSING_ROOT_TSCONFIG]);
+  if (targets.length === 0) {
+    const usesTypeScript =
+      options.usesTypeScript ?? files.some((file) => TYPESCRIPT_SOURCE.test(posixPath(file.file)));
+    // A JavaScript or SQL project has nothing for a tsconfig to configure.
+    return result(usesTypeScript ? [MISSING_ROOT_TSCONFIG] : []);
+  }
   return result(targets.flatMap(evaluateTsconfigStrict));
 }
 

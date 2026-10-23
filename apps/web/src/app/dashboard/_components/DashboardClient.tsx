@@ -2,54 +2,24 @@
 
 import React, { useState, useEffect, useEffectEvent, useRef, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
-import {
-  collectDependencyNames,
-  collectNextConfigEnvKeys,
-  countCleanScannedFiles,
-  isIssueFinding,
-  isNextConfigPath,
-  parsePackageJsonDependencies,
-  type SourceInput,
-} from '@assurly/scanner-core';
+import { countCleanScannedFiles, isIssueFinding } from '@assurly/scanner-core';
 import type { User, Organization, Repository, Scan, ScanFinding } from '../../../utils/dbAdapter';
 import {
-  scanSqlMigrations,
-  scanStripeWebhook,
-  scanSupabaseClientLeaks,
-  scanEnvVariables,
-  scanRscDataLeaks,
-  scanColdStart,
-  scanEdgeRuntime,
-  scanMaxDuration,
-  scanRouteHandlerAuth,
-  scanServerActionAuth,
-  scanServiceRoleBypass,
-  scanStripeMissingSubscriptionEvents,
-  scanStripeWebhookIdempotencyForProject,
-  scanAgentStack,
-  incompleteScanFinding,
-  selectFiles,
-  buildScanScope,
-  isAgentStackFile,
-  isAnalyzedCodeFile,
-  isScannableFile,
-  rankFilesByRelevance,
-  instantGateSurfaceFiles,
-  languageCoveragePaths,
-  summarizeUnanalyzedSource,
-  unanalyzedLanguageCounts,
-  unanalyzedSourceFinding,
   formatUnanalyzedLogLine,
-  detectStackFromManifests,
   describeDetectedStack,
-  selectPackageManifestPaths,
-  INSTANT_GATE_MAX_FILES,
-  githubActionsIntegrationMessage,
   WebFinding,
   type ScanScope,
 } from '../../../utils/browserScanner';
 import ManualChecker from './manual-checker/ManualChecker';
 import { detectGeneratorFingerprint } from '../../../utils/generatorFingerprint';
+import {
+  dashboardCoverageFindings,
+  dashboardScanScope,
+  dashboardShipGate,
+  loadDashboardManifests,
+  planDashboardScan,
+  runDashboardRules,
+} from '../../../utils/dashboardScanEngine';
 import { UnauthenticatedDashboard } from './UnauthenticatedDashboard';
 import {
   clientApi,
@@ -76,10 +46,7 @@ import {
   pickBranchForEmptyDefault,
   suggestAlternateScanBranches,
 } from '../../../utils/scanBranch';
-import {
-  buildShipGateFromScanFindings,
-  buildShipGateFromWebFindings,
-} from '../../../utils/shipGate';
+import { buildShipGateFromScanFindings } from '../../../utils/shipGate';
 import { resolveDisplayedShipScore } from '../../../utils/shipScoreDisplay';
 import { countVisibleScanHistory, visibleScanHistory } from '../../../utils/scanHistoryDisplay';
 import { isLocalFindingId } from '../../../utils/scanFindingsDisplay';
@@ -1774,49 +1741,9 @@ function DashboardContent({
         '🔍 Detecting stack and analyzing project structure...',
       ]);
 
-      // Categorize files
-      const sqlFiles: string[] = [];
-      const envFiles: string[] = [];
-      const codeFiles: string[] = [];
-      const agentFiles: string[] = [];
-
-      for (const node of tree) {
-        if (node.type !== 'blob') continue;
-        if (!isScannableFile(node.path)) continue;
-        const pathLower = node.path.toLowerCase();
-
-        if (isAgentStackFile(node.path)) {
-          agentFiles.push(node.path);
-        } else if (pathLower.endsWith('.sql')) {
-          sqlFiles.push(node.path);
-        } else if (
-          pathLower.endsWith('.env.example') ||
-          pathLower === '.env' ||
-          pathLower.endsWith('.env.local')
-        ) {
-          envFiles.push(node.path);
-        } else if (isAnalyzedCodeFile(node.path)) {
-          codeFiles.push(node.path);
-        }
-      }
-
-      const treePaths = tree.filter((node) => node.type === 'blob').map((node) => node.path);
-      const packageJsonPaths = selectPackageManifestPaths(treePaths);
-      const rankedCandidates = rankFilesByRelevance(
-        instantGateSurfaceFiles([...new Set([...sqlFiles, ...codeFiles])], (path) => path),
-        (path) => path,
-      );
-      const fileSelection = selectFiles(rankedCandidates, INSTANT_GATE_MAX_FILES);
-      const coveragePaths = languageCoveragePaths(
-        treePaths.filter((path) => isScannableFile(path)),
-      );
-      const unanalyzedSummary = summarizeUnanalyzedSource(coveragePaths);
-      const scanScope = buildScanScope(rankedCandidates, fileSelection.files, {
-        treePaths,
-        unanalyzed: unanalyzedLanguageCounts(unanalyzedSummary),
-        ...(scopeTotals ? { totals: scopeTotals } : {}),
-        limit: INSTANT_GATE_MAX_FILES,
-      });
+      const plan = planDashboardScan(tree);
+      const { treePaths, fileSelection, unanalyzedSummary } = plan;
+      const scanScope = dashboardScanScope(plan, scopeTotals);
       const persistedScanScope = {
         ...scanScope,
         ...(recordedDefaultBranch ? { defaultBranch: recordedDefaultBranch } : {}),
@@ -1896,47 +1823,8 @@ function DashboardContent({
         return;
       }
 
-      const selectedFiles = new Set(fileSelection.files);
-      const incompleteFinding = incompleteScanFinding(fileSelection, {
-        ...(scopeTotals
-          ? {
-              eligibleTotal: scopeTotals.surfaceAnalyzable,
-              eligibleTotalIsLowerBound: scopeTotals.partial === true,
-            }
-          : {}),
-      });
-      if (incompleteFinding) allFindings.push(incompleteFinding);
-      const coverageFinding = unanalyzedSourceFinding(unanalyzedSummary);
-      if (coverageFinding) allFindings.push(coverageFinding);
-
-      // Resolve every file this scan will read, then fetch them all in one
-      // bounded-concurrency batch. Doing this up front (instead of serially
-      // inside each pass) is the difference between seconds and minutes on a
-      // large repository.
-      const sqlToScan = sqlFiles.filter((path) => selectedFiles.has(path));
-      const codeToScan = codeFiles.filter((path) => selectedFiles.has(path));
-      const stripeToScan = codeToScan.filter(
-        (p) => p.toLowerCase().includes('stripe') || p.toLowerCase().includes('webhook'),
-      );
-      const envExamplePaths = envFiles.filter((path) => path.endsWith('.env.example'));
-      const workflowPaths = tree
-        .filter(
-          (node) =>
-            node.type === 'blob' &&
-            /^\.github\/workflows\/.*\.(ya?ml)$/i.test(node.path.replace(/\\/g, '/')),
-        )
-        .map((node) => node.path);
-
-      const filesToFetch = [
-        ...new Set([
-          ...sqlToScan,
-          ...codeToScan,
-          ...envExamplePaths,
-          ...workflowPaths,
-          ...agentFiles,
-          ...packageJsonPaths,
-        ]),
-      ];
+      allFindings.push(...dashboardCoverageFindings(plan, scopeTotals));
+      const { filesToFetch } = plan;
       setScanLogs((prev) => [...prev, `📥 Fetching ${filesToFetch.length} file(s) in parallel...`]);
       const fetchFilesStartedAt = performance.now();
       await prefetchContents(filesToFetch);
@@ -1951,16 +1839,9 @@ function DashboardContent({
         });
       }
 
-      const manifests = packageJsonPaths.flatMap((manifestPath) => {
-        const content = contentCache.get(manifestPath);
-        return typeof content === 'string' ? [{ path: manifestPath, content }] : [];
-      });
+      const { manifests, detectedStack } = await loadDashboardManifests(plan, loadFileContent);
       const packageJsonText =
         manifests.length > 0 ? manifests.map((item) => item.content).join('\n') : null;
-      const detectedStack = detectStackFromManifests({
-        manifests,
-        filePaths: treePaths,
-      });
       const stackLog = describeDetectedStack(detectedStack);
       const generatorFingerprint = detectGeneratorFingerprint({
         filePaths: treePaths,
@@ -1979,174 +1860,19 @@ function DashboardContent({
         '🛡 Running static analysis scanner rules...',
       ]);
 
-      // Scan SQL Migrations in one batch so RLS correlation and the Supabase
-      // stack signal apply across files, not per migration.
-      const sqlSources: SourceInput[] = [];
-      for (const sqlPath of sqlToScan) {
-        if (controller.signal.aborted) break;
-        const content = await loadFileContent(sqlPath);
-        if (content === null) continue;
-        sqlSources.push({ file: sqlPath, content });
-      }
-      if (sqlSources.length > 0) {
-        const scan = scanSqlMigrations(sqlSources, {
-          usesSupabase: detectedStack.database === 'supabase',
-        });
-        allFindings.push(...scan.findings);
-        for (const source of sqlSources) {
-          const fileFindings = scan.findings.filter((finding) => finding.file === source.file);
-          const errorCount = fileFindings.filter((finding) => finding.severity === 'error').length;
-          const warningCount = fileFindings.filter(
-            (finding) => finding.severity === 'warning',
-          ).length;
-          setScanLogs((prev) => [
-            ...prev,
-            `  ✓ Scanned ${source.file}: ${errorCount} errors, ${warningCount} warnings.`,
-          ]);
-        }
-      }
-
-      setScanProgress(50);
-
-      // Scan Stripe Webhooks
-      for (const webhookPath of stripeToScan) {
-        if (controller.signal.aborted) break;
-        const content = await loadFileContent(webhookPath);
-        if (content === null) continue;
-        const scan = scanStripeWebhook(content, webhookPath);
-        allFindings.push(...scan.findings);
-        setScanLogs((prev) => [...prev, `  ✓ Scanned ${webhookPath}: ${scan.errorCount} errors.`]);
-      }
-
-      setScanProgress(65);
-
-      // Scan Environment Variables (per-app-root .env.example matching)
-      if (envExamplePaths.length > 0) {
-        setScanLogs((prev) => [...prev, '⚙ Reading env configuration files...']);
-        const allExamples: Array<{ file: string; content: string }> = [];
-        for (const examplePath of envExamplePaths) {
-          const envContent = await loadFileContent(examplePath);
-          if (envContent !== null) {
-            allExamples.push({ file: examplePath, content: envContent });
-          }
-        }
-
-        if (allExamples.length > 0) {
-          const rootExample =
-            allExamples.find((example) => example.file === '.env.example') ?? allExamples[0];
-          const nextConfigs: Array<{ file: string; content: string }> = [];
-          for (const configPath of codeFiles.filter(isNextConfigPath)) {
-            const content = await loadFileContent(configPath);
-            if (content !== null) nextConfigs.push({ file: configPath, content });
-          }
-          const configDefinedKeys = collectNextConfigEnvKeys(nextConfigs);
-
-          for (const codePath of codeToScan) {
-            const codeContent = await loadFileContent(codePath);
-            if (codeContent === null) continue;
-            const scan = scanEnvVariables(
-              rootExample.content,
-              codeContent,
-              rootExample.file,
-              codePath,
-              { allExamples, configDefinedKeys },
-            );
-            allFindings.push(
-              ...scan.findings.filter((finding) => finding.ruleId === 'undocumented-env'),
-            );
-          }
-
-          const secretScan = scanEnvVariables(
-            rootExample.content,
-            '',
-            rootExample.file,
-            'Repository Codebase',
-            { allExamples },
-          );
-          allFindings.push(
-            ...secretScan.findings.filter((finding) => finding.ruleId !== 'undocumented-env'),
-          );
-
-          setScanLogs((prev) => [
-            ...prev,
-            `  ✓ Checked env variables across ${envExamplePaths.length} example file(s).`,
-          ]);
-        }
-      }
-
-      setScanProgress(80);
-
-      // Scan for RSC leaks and Cold Start issues
-      const codeSources: SourceInput[] = [];
-      for (const codePath of codeToScan) {
-        if (controller.signal.aborted) break;
-        const content = await loadFileContent(codePath);
-        if (content === null) continue;
-        codeSources.push({ file: codePath, content });
-
-        allFindings.push(...scanEdgeRuntime(content, codePath).findings);
-
-        // Phase 3: deeper-stack per-file scanners (edge runtime is already
-        // handled above; maxDuration + auth boundaries + Stripe lifecycle).
-        allFindings.push(...scanMaxDuration(content, codePath).findings);
-        allFindings.push(...scanServerActionAuth(content, codePath).findings);
-        allFindings.push(...scanRouteHandlerAuth(content, codePath).findings);
-        allFindings.push(...scanServiceRoleBypass(content, codePath).findings);
-        allFindings.push(...scanStripeMissingSubscriptionEvents(content, codePath).findings);
-
-        // RSC data leak check
-        const rscScan = scanRscDataLeaks(content, codePath);
-        if (rscScan.findings.length > 0) {
-          allFindings.push(...rscScan.findings);
-        }
-        allFindings.push(...scanSupabaseClientLeaks(content, codePath).findings);
-
-        // Cold Start check for API routes
-        if (codePath.includes('/api/')) {
-          const csScan = scanColdStart(content, codePath);
-          if (csScan.findings.length > 0) {
-            allFindings.push(...csScan.findings);
-          }
-        }
-      }
-
-      if (!controller.signal.aborted) {
-        allFindings.push(...scanStripeWebhookIdempotencyForProject(codeSources).findings);
-      }
-
-      // Agent stack — MCP configs and instruction files (advisory; never blocks).
-      if (agentFiles.length > 0) {
-        setScanLogs((prev) => [...prev, `🤖 Scanning ${agentFiles.length} agent-stack file(s)...`]);
-        for (const agentPath of agentFiles) {
-          if (controller.signal.aborted) break;
-          const content = await loadFileContent(agentPath);
-          if (content === null) continue;
-          const agentScan = scanAgentStack(content, agentPath);
-          allFindings.push(...agentScan.findings);
-        }
-      }
-
-      // Dependency provenance — server proxy (never hit npm from the browser).
-      // Degrade silently: a registry outage must not fail the rest of the scan.
-      if (manifests.length > 0 && !controller.signal.aborted) {
-        try {
-          const declared = [
-            ...new Set(
-              manifests.flatMap((manifest) => {
-                const parsedManifest = parsePackageJsonDependencies(manifest.content);
-                return parsedManifest ? [...collectDependencyNames(parsedManifest)] : [];
-              }),
-            ),
-          ];
-          if (declared.length > 0) {
-            setScanLogs((prev) => [
-              ...prev,
-              `📦 Checking dependency provenance (${declared.length} package(s))...`,
-            ]);
-            const depResult = await clientApi.dependencyProvenance(declared);
-            if (!controller.signal.aborted) {
-              for (const finding of depResult.findings) {
-                allFindings.push({
+      allFindings.push(
+        ...(await runDashboardRules(
+          plan,
+          loadFileContent,
+          { manifests, detectedStack },
+          {
+            signal: controller.signal,
+            onLog: (line) => setScanLogs((prev) => [...prev, line]),
+            onProgress: setScanProgress,
+            dependencyProvenance: async (declared) => {
+              const result = await clientApi.dependencyProvenance(declared);
+              return {
+                findings: result.findings.map((finding) => ({
                   ruleId: finding.ruleId,
                   severity: finding.severity,
                   confidence: finding.confidence,
@@ -2154,38 +1880,12 @@ function DashboardContent({
                   line: finding.line,
                   message: finding.message,
                   suggestion: finding.suggestion,
-                });
-              }
-            }
-          }
-        } catch {
-          // Intentionally empty — provenance is best-effort on the dashboard path.
-        }
-      }
-
-      // Check for missing GitHub Actions workflow with an Assurly scan step
-      let hasScanWorkflow = false;
-      for (const workflowPath of workflowPaths) {
-        const workflowContent = await loadFileContent(workflowPath);
-        if (
-          workflowContent !== null &&
-          /assurly|npm\s+run\s+scan(?::self)?|npx\s+assurly\s+scan/i.test(workflowContent)
-        ) {
-          hasScanWorkflow = true;
-          break;
-        }
-      }
-
-      if (!hasScanWorkflow) {
-        allFindings.push({
-          ruleId: 'github-actions-integration',
-          severity: 'warning',
-          file: 'Global Configs',
-          message: githubActionsIntegrationMessage(workflowPaths.length),
-          suggestion:
-            'Run "npx assurly init" in your repository to automatically configure the CI/CD pipeline.',
-        });
-      }
+                })),
+              };
+            },
+          },
+        )),
+      );
 
       if (settleIfAborted()) {
         return;
@@ -2197,15 +1897,7 @@ function DashboardContent({
 
       const errorCount = allFindings.filter((f) => f.severity === 'error').length;
       const warningCount = allFindings.filter((f) => f.severity === 'warning').length;
-      const shipGate = buildShipGateFromWebFindings(allFindings, {
-        scannedFileCount: fileSelection.files.length,
-        cleanFileCount: countCleanScannedFiles(
-          fileSelection.files.length,
-          allFindings.map((finding) => finding.file),
-          fileSelection.files,
-        ),
-        scanScope,
-      });
+      const shipGate = dashboardShipGate(allFindings, plan, scanScope);
 
       const deriveRuleId = (file: string | undefined): string => {
         if (file?.includes('.sql')) return 'rls-check';

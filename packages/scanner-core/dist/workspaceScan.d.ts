@@ -5,7 +5,14 @@ export declare const GITHUB_ACTIONS_INIT_SUGGESTION = "Run \"npx assurly init\" 
 export declare function githubActionsIntegrationMessage(existingWorkflowCount: number): string;
 /** The tsconfig.json files `scanTsconfigStrict` reads: the root one or an app's. */
 export declare function isProjectTsconfigPath(filePath: string): boolean;
-export declare function scanTsconfigStrict(files: readonly SourceInput[]): ScanResult;
+export interface TsconfigStrictOptions {
+    /**
+     * Whether the project has TypeScript sources. Callers that pass only
+     * tsconfig files must say; otherwise it is read from `files`.
+     */
+    usesTypeScript?: boolean;
+}
+export declare function scanTsconfigStrict(files: readonly SourceInput[], options?: TsconfigStrictOptions): ScanResult;
 export declare function scanGithubActionsIntegration(files: readonly SourceInput[]): ScanResult;
 export declare function scanHardcodedStripeSecrets(files: readonly SourceInput[]): ScanResult;
 /**

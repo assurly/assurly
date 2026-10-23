@@ -74,6 +74,8 @@ exports.tsconfigRules = {
     description: 'Ensures compilerOptions.strict is set to true in tsconfig.json to enforce maximum type safety.',
     severity: 'warning',
     async run(context) {
-        return (0, scanner_core_1.scanTsconfigStrict)(readTsconfigSources(context.projectPath, context.files)).findings;
+        return (0, scanner_core_1.scanTsconfigStrict)(readTsconfigSources(context.projectPath, context.files), {
+            usesTypeScript: context.files.some((file) => /\.(?:ts|tsx|mts|cts)$/.test(file)),
+        }).findings;
     },
 };

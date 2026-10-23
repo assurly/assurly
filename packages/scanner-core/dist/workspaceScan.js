@@ -91,11 +91,15 @@ function evaluateTsconfigStrict(file) {
         ];
     }
 }
-function scanTsconfigStrict(files) {
+const TYPESCRIPT_SOURCE = /\.(?:ts|tsx|mts|cts)$/;
+function scanTsconfigStrict(files, options = {}) {
     const root = findExact(files, 'tsconfig.json');
     const targets = root ? [root] : files.filter((file) => isWorkspacePackageTsconfig(file.file));
-    if (targets.length === 0)
-        return result([MISSING_ROOT_TSCONFIG]);
+    if (targets.length === 0) {
+        const usesTypeScript = options.usesTypeScript ?? files.some((file) => TYPESCRIPT_SOURCE.test(posixPath(file.file)));
+        // A JavaScript or SQL project has nothing for a tsconfig to configure.
+        return result(usesTypeScript ? [MISSING_ROOT_TSCONFIG] : []);
+    }
     return result(targets.flatMap(evaluateTsconfigStrict));
 }
 function scanGithubActionsIntegration(files) {

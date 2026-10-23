@@ -10,6 +10,10 @@ const dashboardSource = readFileSync(
   new URL('../app/dashboard/_components/DashboardClient.tsx', import.meta.url),
   'utf8',
 );
+const dashboardEngineSource = readFileSync(
+  new URL('./dashboardScanEngine.ts', import.meta.url),
+  'utf8',
+);
 const homeSource = readFileSync(
   new URL('../app/_components/home/HomeClient.tsx', import.meta.url),
   'utf8',
@@ -23,9 +27,11 @@ describe('agent stack web wiring', () => {
   });
 
   it('invokes agent scanners from both the dashboard and free landing scan paths', () => {
-    expect(dashboardSource).toContain('scanAgentStack');
-    expect(dashboardSource).toContain('isAgentStackFile');
-    expect(dashboardSource).toContain('agentFiles');
+    // The dashboard runs its rules through dashboardScanEngine.
+    expect(dashboardSource).toContain('runDashboardRules(');
+    expect(dashboardEngineSource).toContain('scanAgentStack');
+    expect(dashboardEngineSource).toContain('isAgentStackFile');
+    expect(dashboardEngineSource).toContain('agentFiles');
 
     expect(homeSource).toContain('scanAgentStack');
     expect(homeSource).toContain('isAgentStackFile');

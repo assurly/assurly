@@ -190,6 +190,18 @@ describe('scanTsconfigStrict', () => {
     expect(result.findings[0]?.message).toContain('No tsconfig.json file found');
   });
 
+  it('asks for no tsconfig in a project without TypeScript', () => {
+    expect(
+      scanTsconfigStrict([
+        { file: 'db/schema.sql', content: 'create table t (id int);' },
+        { file: 'server.js', content: 'module.exports = {};' },
+      ]).findings,
+    ).toEqual([]);
+    // Callers that pass only tsconfig files say whether the project uses TypeScript.
+    expect(scanTsconfigStrict([], { usesTypeScript: false }).findings).toEqual([]);
+    expect(scanTsconfigStrict([], { usesTypeScript: true }).findings).toHaveLength(1);
+  });
+
   it('accepts apps/web/tsconfig.json with strict true when root is missing', () => {
     const result = scanTsconfigStrict([
       {

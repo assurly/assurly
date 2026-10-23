@@ -318,13 +318,27 @@ describe('Assurly Verification Rules', () => {
           payments: 'none',
           deployment: 'vercel',
         },
-        files: [],
+        files: ['app/page.tsx'],
       };
 
       const findings = await tsconfigRules.run(context);
       expect(findings.length).toBe(1);
       expect(findings[0].severity).toBe('warning');
       expect(findings[0].message).toContain('No tsconfig.json file found');
+    });
+
+    it('asks a JavaScript-only project for no tsconfig.json', async () => {
+      const findings = await tsconfigRules.run({
+        projectPath: FIXTURE_DIR,
+        detectedStack: {
+          framework: 'nextjs',
+          database: 'none',
+          payments: 'none',
+          deployment: 'vercel',
+        },
+        files: ['app/page.jsx', 'db/schema.sql'],
+      });
+      expect(findings).toEqual([]);
     });
 
     it('should warn if strict: true is missing in tsconfig.json', async () => {

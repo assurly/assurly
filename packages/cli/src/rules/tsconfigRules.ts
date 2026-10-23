@@ -42,6 +42,8 @@ export const tsconfigRules: Rule = {
   severity: 'warning',
 
   async run(context: ProjectContext): Promise<Finding[]> {
-    return scanTsconfigStrict(readTsconfigSources(context.projectPath, context.files)).findings;
+    return scanTsconfigStrict(readTsconfigSources(context.projectPath, context.files), {
+      usesTypeScript: context.files.some((file) => /\.(?:ts|tsx|mts|cts)$/.test(file)),
+    }).findings;
   },
 };

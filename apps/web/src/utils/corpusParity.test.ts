@@ -1,0 +1,152 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { findingKind } from '@assurly/scanner-core';
+import { describe, expect, it } from 'vitest';
+import {
+  dashboardCoverageFindings,
+  dashboardScanScope,
+  dashboardShipGate,
+  loadDashboardManifests,
+  planDashboardScan,
+  runDashboardRules,
+  type TreeEntry,
+} from './dashboardScanEngine';
+import type { WebFinding } from './browserScanner';
+
+/**
+ * The precision corpus, scanned the way the dashboard scans a repository.
+ * packages/cli/src/corpus.test.ts holds the CLI to each case's expected
+ * answer; this holds the dashboard to the same answer, so the verdict a user
+ * sees cannot drift from the one the CLI and CI give.
+ */
+
+const CORPUS_ROOT = path.resolve(__dirname, '../../../../test-projects/corpus');
+
+interface ExpectedIssue {
+  ruleId: string;
+  severity: 'error' | 'warning';
+  file?: string;
+  line?: number;
+}
+
+interface ExpectedAnswer {
+  verdict: { status: string; headline: string; shipScore: number; partialCoverage: boolean };
+  issues: ExpectedIssue[];
+  knownFalsePositives: ExpectedIssue[];
+  coverage: string[];
+  advisories: string[];
+  /** Where the dashboard knowingly differs from the CLI; see the corpus README. */
+  dashboard?: Partial<Omit<ExpectedAnswer, 'dashboard'>>;
+}
+
+/**
+ * The CLI reports scanner-core's `supabase-rls` under its wrapper rule's id
+ * (packages/cli/src/rules/supabaseRules.ts). Same check, same file and line;
+ * only the name differs, so the dashboard's id is compared under the CLI's.
+ */
+const CLI_RULE_ID: Readonly<Record<string, string>> = {
+  'supabase-rls': 'supabase-security-checks',
+};
+
+function issueKey(issue: ExpectedIssue): string {
+  return [issue.ruleId, issue.severity, issue.file ?? '-', issue.line ?? '-'].join(' · ');
+}
+
+function missingFrom(wanted: readonly string[], present: readonly string[]): string[] {
+  const remaining = [...present];
+  return wanted.filter((key) => {
+    const index = remaining.indexOf(key);
+    if (index === -1) return true;
+    remaining.splice(index, 1);
+    return false;
+  });
+}
+
+const sortedUnique = (values: readonly string[]): string[] => [...new Set(values)].sort();
+
+/** Every file in the case, as GitHub's recursive tree lists a repository. */
+function treeOf(root: string): TreeEntry[] {
+  const entries: TreeEntry[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const absolute = path.join(dir, entry.name);
+      const relative = path.relative(root, absolute).split(path.sep).join('/');
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === '.git') continue;
+        entries.push({ path: relative, type: 'tree' });
+        walk(absolute);
+      } else if (entry.isFile()) {
+        entries.push({ path: relative, type: 'blob' });
+      }
+    }
+  };
+  walk(root);
+  return entries;
+}
+
+async function scanLikeTheDashboard(root: string) {
+  const plan = planDashboardScan(treeOf(root));
+  const load = async (file: string): Promise<string | null> => {
+    try {
+      return fs.readFileSync(path.join(root, file), 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  const scanScope = dashboardScanScope(plan);
+  const findings: WebFinding[] = [
+    ...dashboardCoverageFindings(plan),
+    ...(await runDashboardRules(plan, load, await loadDashboardManifests(plan, load))),
+  ];
+  return { findings, report: dashboardShipGate(findings, plan, scanScope) };
+}
+
+const caseNames = fs
+  .readdirSync(CORPUS_ROOT, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
+
+describe('precision corpus, as the dashboard scans it', () => {
+  it('finds the corpus', () => {
+    expect(caseNames.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it.each(caseNames)('%s', async (name) => {
+    const answer = JSON.parse(
+      fs.readFileSync(path.join(CORPUS_ROOT, `${name}.expected.json`), 'utf8'),
+    ) as ExpectedAnswer;
+    const expected = { ...answer, ...answer.dashboard };
+    const { findings, report } = await scanLikeTheDashboard(path.join(CORPUS_ROOT, name));
+
+    const reported = findings
+      .filter((finding) => findingKind(finding) === 'issue')
+      .map((finding) =>
+        issueKey({
+          ruleId: CLI_RULE_ID[finding.ruleId] ?? finding.ruleId,
+          severity: finding.severity,
+          file: finding.file,
+          line: finding.line,
+        }),
+      );
+    const listed = [...expected.issues, ...expected.knownFalsePositives].map(issueKey);
+
+    expect({
+      falsePositives: missingFrom(reported, listed),
+      missedDefects: missingFrom(expected.issues.map(issueKey), reported),
+      fixedKnownFalsePositives: missingFrom(expected.knownFalsePositives.map(issueKey), reported),
+    }).toEqual({ falsePositives: [], missedDefects: [], fixedKnownFalsePositives: [] });
+
+    expect({
+      status: report.status,
+      headline: report.headline,
+      shipScore: report.shipScore,
+      partialCoverage: report.partialCoverage ?? false,
+    }).toEqual(expected.verdict);
+
+    const ruleIdsOfKind = (kind: 'coverage' | 'advisory'): string[] =>
+      sortedUnique(findings.filter((f) => findingKind(f) === kind).map((f) => f.ruleId));
+    expect(ruleIdsOfKind('coverage')).toEqual(sortedUnique(expected.coverage));
+    expect(ruleIdsOfKind('advisory')).toEqual(sortedUnique(expected.advisories));
+  });
+});
