@@ -36,6 +36,8 @@ export interface ScanDetailsPanelProps {
   badgeMarkdown?: string | null;
   onShare?: () => void;
   isSharing?: boolean;
+  onStopSharing?: () => void;
+  isStoppingShare?: boolean;
   shareError?: string | null;
   fixingFindingId: string | null;
   isFindingFixable: (finding: ScanFinding) => boolean;
@@ -73,6 +75,8 @@ export function ScanDetailsPanel({
   badgeMarkdown = null,
   onShare,
   isSharing = false,
+  onStopSharing,
+  isStoppingShare = false,
   shareError = null,
   fixingFindingId,
   isFindingFixable,
@@ -141,6 +145,8 @@ export function ScanDetailsPanel({
           badgeMarkdown={badgeMarkdown}
           onShare={onShare}
           isSharing={isSharing}
+          onStopSharing={onStopSharing}
+          isStoppingShare={isStoppingShare}
           shareError={shareError}
           resolvedSincePrevious={resolvedSincePrevious}
         />

@@ -61,6 +61,8 @@ export interface ScanWorkspaceProps {
   selectedBadgeMarkdown: string | null;
   onShare?: () => void;
   isSharing: boolean;
+  onStopSharing?: () => void;
+  isStoppingShare?: boolean;
   shareError: string | null;
   fixingFindingId: string | null;
   isFindingFixable: (finding: ScanFinding) => boolean;
@@ -123,6 +125,8 @@ export function ScanWorkspace({
   selectedBadgeMarkdown,
   onShare,
   isSharing,
+  onStopSharing,
+  isStoppingShare = false,
   shareError,
   fixingFindingId,
   isFindingFixable,
@@ -376,6 +380,8 @@ export function ScanWorkspace({
                 badgeMarkdown={selectedBadgeMarkdown}
                 onShare={onShare}
                 isSharing={isSharing}
+                onStopSharing={onStopSharing}
+                isStoppingShare={isStoppingShare}
                 shareError={shareError}
                 fixingFindingId={fixingFindingId}
                 isFindingFixable={isFindingFixable}

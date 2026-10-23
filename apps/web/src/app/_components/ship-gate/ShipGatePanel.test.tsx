@@ -203,6 +203,36 @@ describe('ShipGatePanel share button copy', () => {
     expect(getShareReportButtonLabel('pro', true)).toBe('Creating link…');
   });
 
+  it('stops a shared link only after the user confirms the consequence', () => {
+    const onStopSharing = vi.fn();
+    render(
+      <ShipGatePanel
+        report={readyReport}
+        billingPlan="pro"
+        shareUrl={`https://assurly.dev/report/${'a'.repeat(32)}`}
+        badgeMarkdown="![Ship Score](https://assurly.dev/api/badge/x)"
+        onStopSharing={onStopSharing}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop sharing' }));
+    expect(onStopSharing).not.toHaveBeenCalled();
+    expect(screen.getByText(/the README badge stops showing/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop sharing' }));
+    expect(onStopSharing).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers no Stop sharing on the public report itself', () => {
+    render(
+      <ShipGatePanel
+        report={readyReport}
+        shareUrl={`https://assurly.dev/report/${'a'.repeat(32)}`}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Stop sharing' })).toBeNull();
+  });
+
   it('shows Share report for Pro users with an active share action', () => {
     render(<ShipGatePanel report={readyReport} billingPlan="pro" onShare={vi.fn()} />);
 

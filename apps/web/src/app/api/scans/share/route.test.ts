@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { POST } from './route';
+import { DELETE, GET, POST } from './route';
 
 const mocks = vi.hoisted(() => ({ requireUser: vi.fn() }));
 vi.mock('../../../../utils/auth', async (importOriginal) => ({
@@ -22,6 +22,8 @@ const db = {
   getMembership: vi.fn(),
   getScan: vi.fn(),
   setScanShareToken: vi.fn(),
+  clearScanShareToken: vi.fn(),
+  getSharedScans: vi.fn(),
 };
 
 const share = (body: unknown = { scanId }): Promise<Response> =>
@@ -142,5 +144,115 @@ describe('POST /api/scans/share', () => {
     const response = await share();
 
     expect(response.status).toBe(500);
+  });
+});
+
+describe('DELETE /api/scans/share', () => {
+  const unshare = (body: unknown = { scanId }): Promise<Response> =>
+    DELETE(
+      new Request('http://localhost/api/scans/share', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    );
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireUser.mockResolvedValue({
+      user: { id: 'user-a', name: 'A', email: '', avatar_url: '' },
+      accessToken: 'verified',
+      db,
+    });
+    db.getRepository.mockResolvedValue({ id: repoId, organization_id: 'org-a' });
+    db.getOrganization.mockResolvedValue({ id: 'org-a' });
+    db.getMembership.mockResolvedValue({ id: 'membership-a', role: 'admin' });
+    db.getScan.mockResolvedValue({
+      id: scanId,
+      repository_id: repoId,
+      share_token: 'a'.repeat(32),
+    });
+    db.clearScanShareToken.mockResolvedValue(undefined);
+  });
+
+  it('pins the route security contract', () => {
+    expect(DELETE.security.routeId).toBe('scans:share:revoke');
+    expect(DELETE.security.auth).toBe('required');
+    expect(DELETE.security.csrf).toBe(true);
+  });
+
+  it('stops the public link', async () => {
+    const response = await unshare();
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ revoked: true });
+    expect(db.clearScanShareToken).toHaveBeenCalledWith(scanId);
+  });
+
+  it('lets a workspace that left Pro stop links it shared on Pro', async () => {
+    db.getOrganizationByUserId.mockResolvedValue({ id: 'org-a', billing_plan: 'free' });
+
+    expect((await unshare()).status).toBe(200);
+    expect(db.clearScanShareToken).toHaveBeenCalledWith(scanId);
+  });
+
+  it('is a no-op for a scan that is not shared', async () => {
+    db.getScan.mockResolvedValue({ id: scanId, repository_id: repoId, share_token: null });
+
+    expect((await unshare()).status).toBe(200);
+    expect(db.clearScanShareToken).not.toHaveBeenCalled();
+  });
+
+  it('never unshares another tenant’s scan', async () => {
+    db.getMembership.mockResolvedValue(null);
+
+    expect((await unshare()).status).toBe(404);
+    expect(db.clearScanShareToken).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/scans/share', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireUser.mockResolvedValue({
+      user: { id: 'user-a', name: 'A', email: '', avatar_url: '' },
+      accessToken: 'verified',
+      db,
+    });
+    db.getOrganizationByUserId.mockResolvedValue({ id: 'org-a', billing_plan: 'free' });
+  });
+
+  it('lists every live link in the workspace with its public URL', async () => {
+    db.getSharedScans.mockResolvedValue([
+      {
+        id: scanId,
+        share_token: 'b'.repeat(32),
+        branch: 'main',
+        commit_sha: '254acca0000000000000000000000000000000000',
+        verdict: 'blocked',
+        ship_score: 59,
+        created_at: '2026-10-15T03:32:46.128Z',
+        repositories: { name: 'tibco87/Anima' },
+      },
+    ]);
+
+    const response = await GET(new Request('http://localhost/api/scans/share'));
+
+    expect(response.status).toBe(200);
+    expect(db.getSharedScans).toHaveBeenCalledWith('org-a');
+    expect(await response.json()).toEqual({
+      shares: [
+        {
+          scanId,
+          repositoryName: 'tibco87/Anima',
+          branch: 'main',
+          commitSha: '254acca0000000000000000000000000000000000',
+          verdict: 'blocked',
+          shipScore: 59,
+          createdAt: '2026-10-15T03:32:46.128Z',
+          url: `https://assurly.dev/report/${'b'.repeat(32)}`,
+        },
+      ],
+    });
   });
 });

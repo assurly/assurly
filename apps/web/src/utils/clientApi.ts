@@ -150,6 +150,18 @@ const urlTargetDetailSchema = z.object({
   otherEvidence: z.array(urlTargetEvidenceSchema),
 });
 export type UrlTargetDetail = z.infer<typeof urlTargetDetailSchema>;
+
+const sharedReportSchema = z.object({
+  scanId: z.string(),
+  repositoryName: z.string(),
+  branch: z.string().nullable(),
+  commitSha: z.string(),
+  verdict: z.string().nullable(),
+  shipScore: z.number().nullable(),
+  createdAt: z.string(),
+  url: z.string(),
+});
+export type SharedReport = z.infer<typeof sharedReportSchema>;
 export type UrlTargetEvidence = z.infer<typeof urlTargetEvidenceSchema>;
 
 const sessionSchema = z.object({
@@ -492,6 +504,15 @@ export const clientApi = {
     requestJson('/api/github/fix', fixSchema, jsonRequest('POST', body)),
   shareScan: (scanId: string): Promise<{ token: string; url: string }> =>
     requestJson('/api/scans/share', shareReportSchema, jsonRequest('POST', { scanId })),
+  stopSharingScan: async (scanId: string): Promise<void> => {
+    await requestJson(
+      '/api/scans/share',
+      z.object({ revoked: z.boolean() }),
+      jsonRequest('DELETE', { scanId }),
+    );
+  },
+  sharedReports: (): Promise<{ shares: SharedReport[] }> =>
+    requestJson('/api/scans/share', z.object({ shares: z.array(sharedReportSchema) })),
   trend: (repositoryId: string): Promise<{ points: Array<{ date: string; shipScore: number }> }> =>
     requestJson(`/api/repositories/${encodeURIComponent(repositoryId)}/trend`, trendSchema),
   contact: (body: {

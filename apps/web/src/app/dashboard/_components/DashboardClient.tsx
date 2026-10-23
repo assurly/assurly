@@ -86,6 +86,7 @@ import { RepoListPanel } from './RepoListPanel';
 import { buildRepoTargetLookup } from './buildRepoTargetLookup';
 import { VerdictCardsSection } from './VerdictCardsSection';
 import { ApiKeys } from './ApiKeys';
+import { SharedReports } from './SharedReports';
 import { CanarySilentAlarm } from './CanarySilentAlarm';
 import { CanaryTokens, CanaryTokensNotice } from './CanaryTokens';
 import { WorkspaceHeader } from './WorkspaceHeader';
@@ -1167,6 +1168,35 @@ function DashboardContent({
       setToast({ message: 'Shareable Ship Gate report link created.', type: 'success' });
     } catch (error: unknown) {
       setShareError(error instanceof Error ? error.message : 'Could not create share link.');
+    } finally {
+      setSharingScanId(null);
+    }
+  };
+
+  /**
+   * Stops sharing the selected scan. The token is cleared everywhere this
+   * session holds it, so the panel cannot keep offering a dead link.
+   */
+  const handleStopSharingScan = async (): Promise<void> => {
+    if (!selectedScan) return;
+    const scanId = selectedScan.id;
+    setSharingScanId(scanId);
+    setShareError(null);
+    try {
+      await clientApi.stopSharingScan(scanId);
+      setShareUrlsByScanId((current) => {
+        const next = { ...current };
+        delete next[scanId];
+        return next;
+      });
+      const unshare = (scan: Scan): Scan =>
+        scan.id === scanId ? { ...scan, share_token: null } : scan;
+      setScans((current) => current.map(unshare));
+      setSelectedScan((current) => (current ? unshare(current) : current));
+      invalidateRepoScansCache(selectedScan.repository_id);
+      setToast({ message: 'Sharing stopped. The old link no longer opens.', type: 'success' });
+    } catch (error: unknown) {
+      setShareError(error instanceof Error ? error.message : 'Could not stop sharing.');
     } finally {
       setSharingScanId(null);
     }
@@ -2533,6 +2563,8 @@ function DashboardContent({
           : undefined
       }
       isSharing={sharingScanId === selectedScan?.id}
+      onStopSharing={selectedShareUrl ? () => void handleStopSharingScan() : undefined}
+      isStoppingShare={sharingScanId === selectedScan?.id}
       shareError={shareError}
       fixingFindingId={fixingFindingId}
       isFindingFixable={isFindingFixable}
@@ -2636,6 +2668,7 @@ function DashboardContent({
                 onRestoreRepository={(repositoryId) => void handleRestoreRepo(repositoryId)}
               />
             }
+            sharedReports={<SharedReports />}
             apiKeys={<ApiKeys />}
             canary={
               selectedRepo ? (

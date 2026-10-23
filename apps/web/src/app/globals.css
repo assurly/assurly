@@ -5083,6 +5083,14 @@ html:has(.dashboard-page) {
   min-width: 0;
 }
 
+.shared-reports__item {
+  flex-wrap: wrap;
+}
+
+.shared-reports__side {
+  max-width: 100%;
+}
+
 .api-keys__item--revoked {
   opacity: 0.55;
 }
@@ -9554,6 +9562,52 @@ button.dashboard-repo-selector-item {
 .ship-gate-share-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.ship-gate-share-stop {
+  align-self: flex-start;
+  margin-top: 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-danger-text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 6px 0;
+  cursor: pointer;
+}
+
+.ship-gate-share-stop:hover:not(:disabled),
+.ship-gate-share-stop:focus-visible {
+  text-decoration: underline;
+}
+
+.ship-gate-share-stop--confirm {
+  margin-top: 0;
+  padding: 8px 12px;
+  border-color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface));
+}
+
+.ship-gate-share-stop:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ship-gate-share-confirm {
+  margin-top: 8px;
+}
+
+.ship-gate-share-confirm__text {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
+.ship-gate-share-confirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .ship-gate-share-error {

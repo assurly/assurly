@@ -11,6 +11,7 @@ import {
 import type { BillingPlan } from '../../../utils/entitlements';
 import { formatCount } from '../../../utils/pluralize';
 import { ShipGateGroupRow } from './ShipGateGroupRow';
+import { StopSharingButton } from './StopSharingButton';
 
 /** The plan values this panel renders for. Kept aligned with the canonical enum. */
 export type ShipGateBillingPlan = BillingPlan;
@@ -25,6 +26,9 @@ interface ShipGatePanelProps {
   onShare?: () => void;
   isSharing?: boolean;
   shareError?: string | null;
+  /** Revokes the share link; the control is hidden when omitted. */
+  onStopSharing?: () => void;
+  isStoppingShare?: boolean;
   /** When true, hides the blocker/warning finding details entirely (not just
    *  visually) — used for anonymous, pre-sign-in previews where only the
    *  verdict and score should be free. */
@@ -57,6 +61,8 @@ export function ShipGatePanel({
   onShare,
   isSharing = false,
   shareError = null,
+  onStopSharing,
+  isStoppingShare = false,
   redactFindings = false,
   resolvedSincePrevious = null,
 }: ShipGatePanelProps): ReactElement {
@@ -277,6 +283,13 @@ export function ShipGatePanel({
                     Copy link
                   </button>
                 </div>
+                {onStopSharing ? (
+                  <StopSharingButton
+                    onStopSharing={onStopSharing}
+                    isStopping={isStoppingShare}
+                    hasBadge={Boolean(badgeMarkdown)}
+                  />
+                ) : null}
               </div>
             ) : onShare ? (
               <button

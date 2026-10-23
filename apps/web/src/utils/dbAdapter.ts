@@ -246,6 +246,18 @@ export interface ProbeEvidenceRow {
   created_at: string;
 }
 
+/** A scan whose report is publicly reachable through its share token. */
+export interface SharedScanRow {
+  id: string;
+  share_token: string;
+  branch: string | null;
+  commit_sha: string;
+  verdict: string | null;
+  ship_score: number | null;
+  created_at: string;
+  repositories: { name: string };
+}
+
 /** Input for persisting probe evidence. `redactedSample` must already be masked. */
 export interface ProbeEvidenceInput {
   organizationId: string;
@@ -514,6 +526,10 @@ export interface DbAdapter {
   getScanFindings(scanId: string): Promise<ScanFinding[]>;
   getFinding(findingId: string): Promise<ScanFinding | null>;
   setScanShareToken(scanId: string, shareToken: string): Promise<Scan>;
+  /** Stops sharing a scan: its report link and README badge stop resolving. */
+  clearScanShareToken(scanId: string): Promise<void>;
+  /** Every scan of the organization's repositories that has a live share link. */
+  getSharedScans(organizationId: string): Promise<SharedScanRow[]>;
   getScanByShareToken(shareToken: string): Promise<Scan | null>;
   getRepositoryNameForScan(scanId: string): Promise<string | null>;
   getOrganizationAdminEmails(organizationId: string): Promise<string[]>;
@@ -1075,6 +1091,23 @@ export class SupabaseDbAdapter implements DbAdapter {
       throw new Error(`Supabase update matched no scan row (${scanId}).`);
     }
     return scan;
+  }
+
+  async clearScanShareToken(scanId: string): Promise<void> {
+    const rows = await this.fetchDb<Scan[]>(`scans?id=eq.${eq(scanId)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ share_token: null }),
+    });
+    if (!rows?.[0]) throw new Error(`Supabase update matched no scan row (${scanId}).`);
+  }
+
+  getSharedScans(organizationId: string): Promise<SharedScanRow[]> {
+    return this.fetchDb(
+      `scans?select=id,share_token,branch,commit_sha,verdict,ship_score,created_at,repositories!inner(name)` +
+        `&share_token=not.is.null&repositories.organization_id=eq.${eq(organizationId)}` +
+        `&order=created_at.desc&limit=200`,
+    );
   }
 
   getScanByShareToken(shareToken: string): Promise<Scan | null> {
