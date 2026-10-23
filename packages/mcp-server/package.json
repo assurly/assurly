@@ -51,7 +51,7 @@
     "test": "vitest run src"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "assurly": "1.2.2",
     "@assurly/scanner-core": "1.2.2",
     "zod": "^3.22.4"
