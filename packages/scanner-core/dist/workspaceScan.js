@@ -9,6 +9,7 @@ exports.scanHardcodedStripeSecrets = scanHardcodedStripeSecrets;
 exports.scanWorkspaceFiles = scanWorkspaceFiles;
 const gitIgnore_1 = require("./gitIgnore");
 const fileRelevance_1 = require("./fileRelevance");
+const languageCoverage_1 = require("./languageCoverage");
 const agentStack_1 = require("./agentStack");
 const supplyChain_1 = require("./supplyChain");
 const index_1 = require("./index");
@@ -173,6 +174,7 @@ function scanWorkspaceFiles(files) {
     findings.push(...(0, index_1.runDeeperStackScans)(sources, { includeEdgeRuntime: false }).findings);
     const allExamples = sources.filter((file) => /(?:^|\/)\.env\.example$/.test(posixPath(file.file)));
     const testOnlyKeys = (0, index_1.collectTestOnlyEnvKeys)(codeFiles);
+    const configDefinedKeys = (0, index_1.collectNextConfigEnvKeys)(codeFiles.filter((file) => (0, index_1.isNextConfigPath)(posixPath(file.file))));
     for (const file of allExamples) {
         findings.push(...(0, index_1.scanEnvVariables)(file.content, '', file.file, 'code.ts', { emitMissingCanary: false })
             .findings);
@@ -194,6 +196,7 @@ function scanWorkspaceFiles(files) {
             findings.push(...(0, index_1.scanEnvVariables)('', file.content, '.env.example', file.file, {
                 allExamples,
                 testOnlyKeys,
+                configDefinedKeys,
                 emitMissingCanary: false,
             }).findings.filter((finding) => finding.file === file.file));
         }
@@ -217,5 +220,9 @@ function scanWorkspaceFiles(files) {
     }
     findings.push(...scanTsconfigStrict(sources).findings);
     findings.push(...scanGithubActionsIntegration(sources).findings);
+    // Code in a language no rule reads (Go, Python…) is unchecked, not clean.
+    const unanalyzed = (0, languageCoverage_1.unanalyzedSourceFinding)((0, languageCoverage_1.summarizeUnanalyzedSource)((0, fileRelevance_1.languageCoveragePaths)(sources.map((file) => posixPath(file.file)))));
+    if (unanalyzed)
+        findings.push(unanalyzed);
     return result(findings);
 }

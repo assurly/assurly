@@ -12,12 +12,18 @@ import {
   type TreeEntry,
 } from './dashboardScanEngine';
 import type { WebFinding } from './browserScanner';
+import {
+  buildProjectScanOverview,
+  scanProject,
+} from '../app/dashboard/_components/manual-checker/projectWorkspace';
+import { buildShipGateFromWebFindings } from './shipGate';
 
 /**
- * The precision corpus, scanned the way the dashboard scans a repository.
- * packages/cli/src/corpus.test.ts holds the CLI to each case's expected
- * answer; this holds the dashboard to the same answer, so the verdict a user
- * sees cannot drift from the one the CLI and CI give.
+ * The precision corpus, scanned the way the web app scans a project: the
+ * dashboard's Instant Gate (also the landing page's free scan) and Manual
+ * Checker's uploaded-folder scan. packages/cli/src/corpus.test.ts holds the
+ * CLI to each case's expected answer; this holds both web channels to the
+ * same answer, so no verdict a user sees can drift from the CLI and CI.
  */
 
 const CORPUS_ROOT = path.resolve(__dirname, '../../../../test-projects/corpus');
@@ -101,23 +107,50 @@ async function scanLikeTheDashboard(root: string) {
   return { findings, report: dashboardShipGate(findings, plan, scanScope) };
 }
 
+/** Every file in the case, as Manual Checker reads an uploaded project folder. */
+function scanLikeManualChecker(root: string) {
+  const files = treeOf(root)
+    .filter((entry) => entry.type === 'blob')
+    .map((entry) => ({
+      path: entry.path,
+      content: fs.readFileSync(path.join(root, entry.path), 'utf8'),
+    }));
+  const { findings } = scanProject(files);
+  const overview = buildProjectScanOverview(files, findings);
+  // DiagnosticTerminal's project-mode report, before it localises the copy.
+  const report = buildShipGateFromWebFindings(findings, {
+    scannedFileCount: overview.scannedFileCount,
+    cleanFileCount: overview.cleanFileCount,
+  });
+  return { findings, report };
+}
+
+const CHANNELS = {
+  dashboard: scanLikeTheDashboard,
+  'manual checker': async (root: string) => scanLikeManualChecker(root),
+} as const;
+
 const caseNames = fs
   .readdirSync(CORPUS_ROOT, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name)
   .sort();
 
-describe('precision corpus, as the dashboard scans it', () => {
+describe('precision corpus, as the web app scans it', () => {
   it('finds the corpus', () => {
     expect(caseNames.length).toBeGreaterThanOrEqual(4);
   });
 
-  it.each(caseNames)('%s', async (name) => {
+  const cases = Object.keys(CHANNELS).flatMap((channel) =>
+    caseNames.map((name) => [channel as keyof typeof CHANNELS, name] as const),
+  );
+
+  it.each(cases)('%s · %s', async (channel, name) => {
     const answer = JSON.parse(
       fs.readFileSync(path.join(CORPUS_ROOT, `${name}.expected.json`), 'utf8'),
     ) as ExpectedAnswer;
     const expected = { ...answer, ...answer.dashboard };
-    const { findings, report } = await scanLikeTheDashboard(path.join(CORPUS_ROOT, name));
+    const { findings, report } = await CHANNELS[channel](path.join(CORPUS_ROOT, name));
 
     const reported = findings
       .filter((finding) => findingKind(finding) === 'issue')

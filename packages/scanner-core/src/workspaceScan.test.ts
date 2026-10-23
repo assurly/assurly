@@ -25,6 +25,33 @@ function lockfileV3(packages: Record<string, Record<string, unknown>>): string {
 }
 
 describe('scanWorkspaceFiles', () => {
+  it('says what it cannot read, so Go payment code never reads as ready', () => {
+    const findings = scanWorkspaceFiles([
+      { file: 'apps/web/app/page.tsx', content: 'export default function Page() { return null; }' },
+      { file: 'services/api/webhook.go', content: 'package api\n\nfunc Webhook() {}\n' },
+      { file: 'services/api/auth.go', content: 'package api\n\nfunc Auth() {}\n' },
+    ]).findings;
+    expect(findings.map((finding) => finding.ruleId)).toContain('scan-language-coverage');
+    expect(buildShipGateReport(findings).status).not.toBe('ready');
+  });
+
+  it('does not ask to document an env key next.config defines', () => {
+    const findings = scanWorkspaceFiles([
+      { file: '.env.example', content: 'AUTH_SECRET=\n' },
+      {
+        file: 'next.config.ts',
+        content: 'export default { env: { APP_VERSION: process.env.npm_package_version } };\n',
+      },
+      { file: 'components/footer.tsx', content: 'export const v = process.env.APP_VERSION;\n' },
+    ]).findings;
+    expect(
+      findings.filter(
+        (finding) =>
+          finding.ruleId === 'undocumented-env' && finding.file === 'components/footer.tsx',
+      ),
+    ).toEqual([]);
+  });
+
   it('does not emit supabase-rls when a later migration enables RLS', () => {
     const result = scanWorkspaceFiles([
       {

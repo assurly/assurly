@@ -1,10 +1,13 @@
 import { excludeGitIgnoredFiles } from './gitIgnore';
-import { isScannableFile } from './fileRelevance';
+import { isScannableFile, languageCoveragePaths } from './fileRelevance';
+import { summarizeUnanalyzedSource, unanalyzedSourceFinding } from './languageCoverage';
 import { isAgentStackFile, scanAgentStack } from './agentStack';
 import { scanSupplyChain } from './supplyChain';
 import {
+  collectNextConfigEnvKeys,
   collectTestOnlyEnvKeys,
   isAppEnvSourceFile,
+  isNextConfigPath,
   isServerlessApiRouteFile,
   runDeeperStackScans,
   scanColdStart,
@@ -228,6 +231,9 @@ export function scanWorkspaceFiles(files: readonly SourceInput[]): ScanResult {
     /(?:^|\/)\.env\.example$/.test(posixPath(file.file)),
   );
   const testOnlyKeys = collectTestOnlyEnvKeys(codeFiles);
+  const configDefinedKeys = collectNextConfigEnvKeys(
+    codeFiles.filter((file) => isNextConfigPath(posixPath(file.file))),
+  );
 
   for (const file of allExamples) {
     findings.push(
@@ -254,6 +260,7 @@ export function scanWorkspaceFiles(files: readonly SourceInput[]): ScanResult {
         ...scanEnvVariables('', file.content, '.env.example', file.file, {
           allExamples,
           testOnlyKeys,
+          configDefinedKeys,
           emitMissingCanary: false,
         }).findings.filter((finding) => finding.file === file.file),
       );
@@ -282,6 +289,12 @@ export function scanWorkspaceFiles(files: readonly SourceInput[]): ScanResult {
 
   findings.push(...scanTsconfigStrict(sources).findings);
   findings.push(...scanGithubActionsIntegration(sources).findings);
+
+  // Code in a language no rule reads (Go, Python…) is unchecked, not clean.
+  const unanalyzed = unanalyzedSourceFinding(
+    summarizeUnanalyzedSource(languageCoveragePaths(sources.map((file) => posixPath(file.file)))),
+  );
+  if (unanalyzed) findings.push(unanalyzed);
 
   return result(findings);
 }
