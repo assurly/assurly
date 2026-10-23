@@ -25,7 +25,11 @@ export interface BlockerSnapshotItem {
 export interface GuardianCheckResult {
   targetId: string;
   skipped: boolean;
-  skipReason: 'ownership_gate' | 'not_url' | null;
+  /**
+   * `probe_blocked`: the app turned the probe away (WAF, rate limit), so the
+   * card keeps its last real verdict instead of an empty, green one.
+   */
+  skipReason: 'ownership_gate' | 'not_url' | 'probe_blocked' | null;
   probed: boolean;
   alerted: boolean;
   newBlockerCount: number;
@@ -204,9 +208,6 @@ export async function runGuardianCheckForTarget(
     };
   }
 
-  const previousFindings = readBlockerSnapshot(target.verdict_evidence);
-  const hadBaseline = previousFindings.length > 0 || target.last_checked_at != null;
-
   const reprobe = await reprobeTargetAndRecord({
     target,
     db,
@@ -214,49 +215,13 @@ export async function runGuardianCheckForTarget(
     fetchImpl: options.fetchImpl,
   });
 
-  const currentFindings = scannerFindingsToScanFindings(reprobe.findings);
-  const verdict = resolveVerdictFromScanFindings(currentFindings, {
-    scannedFileCount: 1,
-    cleanFileCount: currentFindings.length === 0 ? 1 : 0,
-  });
-
-  let alerted = false;
-  let newBlockerCount = 0;
-  if (hadBaseline && reprobe.probed) {
-    const notify = await notifyIfTargetRegressionBlockers(
-      db,
-      target,
-      previousFindings,
-      currentFindings,
-    );
-    alerted = notify.alerted;
-    newBlockerCount = notify.newBlockers.length;
-  }
-
-  const previousShipScore = target.current_ship_score;
-  const badgeToken = target.badge_token ?? generateBadgeToken();
-
-  await db.upsertTarget({
-    organizationId: target.organization_id,
-    kind: target.kind,
-    identifier: target.identifier,
-    currentVerdict: verdict.status,
-    currentShipScore: verdict.shipScore,
-    verdictEvidence: buildGuardianVerdictEvidence(verdict, currentFindings, previousShipScore),
-    lastCheckedAt: now().toISOString(),
-    badgeToken,
-  });
-
-  return {
-    targetId: target.id,
-    skipped: false,
-    skipReason: null,
+  return applyGuardianAfterReprobe({
+    db,
+    target,
+    findings: reprobe.findings,
     probed: reprobe.probed,
-    alerted,
-    newBlockerCount,
-    shipScore: verdict.shipScore,
-    verdict: verdict.status,
-  };
+    now,
+  });
 }
 
 /**
@@ -274,10 +239,16 @@ export async function applyGuardianAfterReprobe(options: {
   const now = options.now ?? (() => new Date());
 
   if (!probed) {
+    // Never project a probe that did not run: an empty finding list here means
+    // "not looked at", and writing it would turn the card green.
+    const gateOpen = isActiveProbeAllowed({
+      kind: target.kind,
+      ownershipVerified: target.ownership_verified,
+    });
     return {
       targetId: target.id,
       skipped: true,
-      skipReason: 'ownership_gate',
+      skipReason: gateOpen ? 'probe_blocked' : 'ownership_gate',
       probed: false,
       alerted: false,
       newBlockerCount: 0,

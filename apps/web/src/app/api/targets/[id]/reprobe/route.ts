@@ -6,6 +6,7 @@ import {
   requireRouteUser,
   secureRoute,
 } from '../../../../../utils/apiSecurity';
+import { persistUrlTargetShipGateVerdict } from '../../../../../utils/guardian';
 import { reprobeTargetAndRecord } from '../../../../../utils/reprobe';
 import type { DbAdapter, Target } from '../../../../../utils/dbAdapter';
 
@@ -54,9 +55,27 @@ export const POST = secureRoute(
         'Verify ownership of this URL before re-probing it.',
       );
     }
+    if (!result.probed && result.probeUrl) {
+      throw new ApiError(
+        503,
+        'probe_blocked',
+        'Your app turned the check away (firewall or rate limit), so the last verdict stays. Try again in a few minutes.',
+      );
+    }
     if (!result.probed) {
       throw new ApiError(422, 'not_reprobeable', 'This target has no live URL to re-probe.');
     }
+
+    // The card shows the verdict this probe just proved. Without it the toast
+    // said "verdict refreshed" while the card kept the old one until the next
+    // scheduled Guardian check.
+    await persistUrlTargetShipGateVerdict({
+      db: context.db,
+      organizationId: target.organization_id,
+      identifier: target.identifier,
+      findings: result.findings,
+      previous: target,
+    });
 
     return NextResponse.json({
       probed: true,

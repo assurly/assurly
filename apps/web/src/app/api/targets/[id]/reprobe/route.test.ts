@@ -34,7 +34,10 @@ function authWith(target: unknown) {
   return {
     user: { id: 'user-1' },
     accessToken: 'token',
-    db: { getTargetById: vi.fn().mockResolvedValue(target) },
+    db: {
+      getTargetById: vi.fn().mockResolvedValue(target),
+      upsertTarget: vi.fn().mockResolvedValue(target),
+    },
   };
 }
 
@@ -71,6 +74,47 @@ describe('/api/targets/[id]/reprobe', () => {
     expect(json.outcomes).toEqual([
       { ruleId: 'runtime-supabase-rls-open', outcome: 'verified_fixed' },
     ]);
+  });
+
+  it('moves the card to the verdict the re-probe just proved', async () => {
+    const auth = authWith(urlTarget({ current_ship_score: 59, badge_token: 'badge' }));
+    requireUserMock.mockResolvedValue(auth);
+    reprobeMock.mockResolvedValue({
+      activeProbe: true,
+      probed: true,
+      probeUrl: 'https://app.example',
+      outcomes: [{ ruleId: 'runtime-supabase-rls-open', outcome: 'verified_fixed' }],
+      findings: [],
+      evidence: [],
+    });
+
+    expect((await POST(request(), params())).status).toBe(200);
+    expect(auth.db.upsertTarget).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'url',
+        identifier: 'https://app.example',
+        currentVerdict: 'ready',
+        currentShipScore: 100,
+      }),
+    );
+  });
+
+  it('keeps the last verdict when the app turns the probe away', async () => {
+    const auth = authWith(urlTarget());
+    requireUserMock.mockResolvedValue(auth);
+    reprobeMock.mockResolvedValue({
+      activeProbe: true,
+      probed: false,
+      probeUrl: 'https://app.example',
+      outcomes: [],
+      findings: [],
+      evidence: [],
+    });
+
+    const response = await POST(request(), params());
+    expect(response.status).toBe(503);
+    expect((await response.json()).error.code).toBe('probe_blocked');
+    expect(auth.db.upsertTarget).not.toHaveBeenCalled();
   });
 
   it('returns 403 for a url target that is not ownership-verified', async () => {

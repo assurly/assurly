@@ -169,6 +169,26 @@ describe('runGuardianCheckForTarget', () => {
     expect(notifyMock).not.toHaveBeenCalled();
   });
 
+  it('keeps the last real verdict when the app turns the probe away (never a false green)', async () => {
+    scanImpl.mockResolvedValue({ findings: [], evidence: [], blocked: true });
+
+    const result = await runGuardianCheckForTarget({
+      db,
+      target: target({ current_verdict: 'blocked', current_ship_score: 59 }),
+      scanImpl,
+    });
+
+    expect(result).toMatchObject({
+      skipped: true,
+      skipReason: 'probe_blocked',
+      probed: false,
+      verdict: 'blocked',
+      shipScore: 59,
+    });
+    expect(upsertTarget).not.toHaveBeenCalled();
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
   it('alerts exactly once on a new blocker vs the previous baseline', async () => {
     scanImpl.mockResolvedValue({ findings: [rlsFinding()], evidence: [] });
 
