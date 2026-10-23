@@ -4,6 +4,8 @@ import type { ReactElement } from 'react';
 import type { FixOutcomeStatus, ScanFinding } from '../../../utils/dbAdapter';
 import { getCuratedConsequenceForFinding } from '../../../utils/consequenceMap';
 import { findingFixPrUrl } from '../../../utils/fixSummary';
+import { isSavedBlockerFinding } from '../../../utils/scanFindingsDisplay';
+import { FindingCodePreview } from './FindingCodePreview';
 import { VerifiedFixTimeline } from './VerifiedFixTimeline';
 
 /** The verified-fix outcome for this finding, when a re-probe has recorded one. */
@@ -71,6 +73,8 @@ export function ScanFindingCard({
       ) : null}
 
       <p className="scan-finding-card__consequence">{primaryLine}</p>
+
+      {isSavedBlockerFinding(finding) ? <FindingCodePreview findingId={finding.id} /> : null}
 
       {fixOutcome ? (
         <VerifiedFixTimeline

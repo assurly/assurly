@@ -6659,12 +6659,12 @@ button.dashboard-repo-selector-item {
 }
 
 .scan-finding-card__badge--error {
-  color: var(--color-danger);
+  color: var(--color-danger-text);
   background: color-mix(in srgb, var(--color-danger) 12%, transparent);
 }
 
 .scan-finding-card__badge--warning {
-  color: var(--color-warning);
+  color: var(--color-warning-text);
   background: color-mix(in srgb, var(--color-warning) 12%, transparent);
 }
 
@@ -11751,6 +11751,144 @@ body {
 }
 .scan-finding-card__technical[open] > summary {
   margin-bottom: var(--space-2);
+}
+
+/* Step 5: the code behind a blocker, read from GitHub when opened. */
+.finding-code {
+  min-width: 0;
+}
+.finding-code > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+  list-style: revert;
+}
+.finding-code[open] > summary {
+  margin-bottom: var(--space-2);
+}
+.finding-code__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.finding-code__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+.finding-code__file {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--color-text);
+  word-break: break-all;
+}
+.finding-code__commit code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.finding-code__github {
+  margin-left: auto;
+  color: var(--color-accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+.finding-code__github:hover,
+.finding-code__github:focus-visible {
+  text-decoration: underline;
+}
+.finding-code__block {
+  margin: 0;
+  padding: 6px 0;
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-surface-subtle);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  overflow-wrap: normal;
+}
+.finding-code__block:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.finding-code__block code {
+  display: block;
+  min-width: max-content;
+}
+.finding-code__line {
+  display: flex;
+  padding-right: 12px;
+  white-space: pre;
+}
+.finding-code__number {
+  flex: 0 0 auto;
+  width: 3.5em;
+  padding-right: 12px;
+  text-align: right;
+  color: var(--color-text-muted);
+  user-select: none;
+}
+.finding-code__marker {
+  flex: 0 0 auto;
+  width: 1.25em;
+  user-select: none;
+}
+.finding-code__line--hit {
+  background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-danger);
+}
+.finding-code__line--hit .finding-code__number {
+  color: var(--color-danger-text);
+  font-weight: 700;
+}
+.finding-code__line--add {
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+}
+.finding-code__line--remove {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+}
+.finding-code__note,
+.finding-code__change-file {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+.finding-code__change-file {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  word-break: break-all;
+}
+.finding-code__change {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.finding-code__change-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.finding-code__error {
+  font-size: 0.82rem;
+  color: var(--color-danger-text);
+}
+.finding-code__retry {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 .ship-gate-list-consequence {

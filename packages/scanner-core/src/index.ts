@@ -1367,6 +1367,7 @@ export {
   formatShipGatePlainText,
   getFindingGroupKey,
   isShipGateBlocked,
+  isShipGateBlockerFinding,
   resolveGroupAction,
   type ShipGateAction,
   type ShipGateActionKind,

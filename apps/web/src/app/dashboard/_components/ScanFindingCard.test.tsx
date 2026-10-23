@@ -148,4 +148,28 @@ describe('ScanFindingCard', () => {
     expect(onCreateFixPr).toHaveBeenCalledTimes(1);
     expect(onCreateFixPr).toHaveBeenCalledWith(finding);
   });
+
+  it('offers the code behind a saved blocker, and nothing else', () => {
+    const saved = { ...finding, id: '33333333-3333-4333-8333-333333333333' };
+    const cases: Array<[ScanFinding, boolean]> = [
+      [saved, true],
+      // Not saved yet: the endpoint has nothing to read.
+      [{ ...saved, id: 'find-0-abc12' }, false],
+      [{ ...saved, severity: 'warning' }, false],
+      // An error the Ship Gate only asks to review.
+      [{ ...saved, rule_id: 'auth-route-handler-unprotected', confidence: 'medium' }, false],
+    ];
+    for (const [candidate, shows] of cases) {
+      const { unmount } = render(
+        <ScanFindingCard
+          finding={candidate}
+          fixingFindingId={null}
+          isFixable={false}
+          onCreateFixPr={vi.fn()}
+        />,
+      );
+      expect(Boolean(screen.queryByText('Show the code'))).toBe(shows);
+      unmount();
+    }
+  });
 });

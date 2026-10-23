@@ -8,6 +8,7 @@ import {
   formatShipGatePlainText,
   getFindingGroupKey,
   isShipGateBlocked,
+  isShipGateBlockerFinding,
   resolveGroupAction,
   type ShipGateFindingInput,
 } from './shipGate';
@@ -643,5 +644,36 @@ describe('shipGate', () => {
     expect(countCleanScannedFiles(71, findingFiles, scannedFiles)).toBe(64);
     expect(countCleanScannedFiles(71, findingFiles)).toBe(64);
     expect(countCleanScannedFiles(71, ['src/a.ts', 'Global Configs', '.env.example'])).toBe(70);
+  });
+});
+
+describe('isShipGateBlockerFinding', () => {
+  it('agrees with the report on which findings block', () => {
+    const findings = [
+      {
+        ruleId: 'supabase-rls',
+        severity: 'error' as const,
+        confidence: 'high' as const,
+        message: 'm',
+      },
+      {
+        ruleId: 'auth-route-handler-unprotected',
+        severity: 'error' as const,
+        confidence: 'medium' as const,
+        message: 'm',
+      },
+      {
+        ruleId: 'supply-install-scripts-unreviewed',
+        severity: 'error' as const,
+        confidence: 'high' as const,
+        message: 'm',
+      },
+      { ruleId: 'undocumented-env', severity: 'warning' as const, message: 'm' },
+      { ruleId: 'stripe-webhook-signature', severity: 'error' as const, message: 'm' },
+    ];
+    const report = buildShipGateReport(findings);
+    const blockerIds = findings.filter(isShipGateBlockerFinding).map((finding) => finding.ruleId);
+    expect(blockerIds).toEqual(['supabase-rls', 'stripe-webhook-signature']);
+    expect(report.blockers).toHaveLength(blockerIds.length);
   });
 });

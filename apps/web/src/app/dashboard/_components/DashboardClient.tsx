@@ -82,6 +82,7 @@ import {
 } from '../../../utils/shipGate';
 import { resolveDisplayedShipScore } from '../../../utils/shipScoreDisplay';
 import { countVisibleScanHistory, visibleScanHistory } from '../../../utils/scanHistoryDisplay';
+import { isLocalFindingId } from '../../../utils/scanFindingsDisplay';
 import { resolveShipGateScanContext } from '../../../utils/shipGateScanContext';
 import { RepoListPanel } from './RepoListPanel';
 import { buildRepoTargetLookup } from './buildRepoTargetLookup';
@@ -176,17 +177,6 @@ function isAbortError(error: unknown): boolean {
  */
 function isLocalScanId(id: string): boolean {
   return id.startsWith('scan-');
-}
-
-/**
- * Auto-fix operates on a database-persisted finding via /api/github/fix, which
- * requires a real id. Client-generated findings — those from an unsaved local
- * scan, or the in-session overflow beyond the persistence cap — carry a
- * `find-...` id and cannot be fixed; offering the action for them would only
- * fail request validation.
- */
-function isLocalFindingId(id: string): boolean {
-  return id.startsWith('find-');
 }
 
 /**

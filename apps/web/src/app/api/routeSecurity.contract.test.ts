@@ -22,6 +22,7 @@ import { DELETE as apiKeysDelete } from './api-keys/[id]/route';
 import { DELETE as scansDelete, GET as scansRead, POST as scansCreate } from './scans/route';
 import { GET as targetsRead, POST as targetsCreate } from './targets/route';
 import { DELETE as targetsDelete } from './targets/[id]/route';
+import { GET as findingCode } from './findings/[id]/code/route';
 import { POST as liveLock } from './v1/live-lock/route';
 import { POST as liveLockEnable } from './targets/[id]/live-lock/enable/route';
 import { GET as vercelConnect } from './vercel/connect/route';
@@ -99,6 +100,7 @@ const routes: RouteContract[] = [
     handler: repositoriesDelete,
   },
   { name: 'scans read', method: 'GET', auth: 'required', csrf: false, handler: scansRead },
+  { name: 'finding code', method: 'GET', auth: 'required', csrf: false, handler: findingCode },
   {
     name: 'v1 live lock',
     method: 'POST',

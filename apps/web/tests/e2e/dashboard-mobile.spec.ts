@@ -28,7 +28,9 @@ test.describe('Dashboard mobile flows @375px', () => {
     await expect(page.getByText('NOT READY TO SHIP')).toBeVisible();
     await expect(page.getByText(/organizations.*Row-Level Security/i)).toHaveCount(0);
     await expect(
-      page.getByTestId('scan-details-ship-gate').getByText(/Possible API key exposed/i),
+      page
+        .getByTestId('scan-details-ship-gate')
+        .locator('.ship-gate-list-label', { hasText: /Possible API key exposed/i }),
     ).toBeVisible();
   });
 
