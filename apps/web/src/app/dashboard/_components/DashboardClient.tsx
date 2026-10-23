@@ -1943,6 +1943,8 @@ function DashboardContent({
         scan_id: newScan.id,
         rule_id: f.ruleId || deriveRuleId(f.file),
         severity: f.severity,
+        // Without it every error reads as a blocker until the saved copy loads.
+        confidence: f.confidence,
         file_path: f.file || 'unknown',
         line_number: f.line,
         message: f.message,

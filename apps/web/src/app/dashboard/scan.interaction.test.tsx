@@ -239,6 +239,38 @@ afterEach(() => {
 });
 
 describe('Run Secure Scan results rendering', () => {
+  it('keeps a heuristic finding a review item when the scan cannot be saved', async () => {
+    // auth-route-handler-unprotected is error + medium: review, not a blocker.
+    // The in-session finding list once dropped confidence, so an unsaved scan
+    // showed it as a blocker.
+    const route = [
+      "import { db } from '@/lib/db';",
+      'export async function GET(): Promise<Response> {',
+      '  return Response.json(await db.users.findMany());',
+      '}',
+    ].join('\n');
+    stubGitHubFetch(
+      [
+        { path: 'app/api/admin/users/route.ts', type: 'blob' },
+        { path: 'tsconfig.json', type: 'blob' },
+      ],
+      {
+        'app/api/admin/users/route.ts': route,
+        'tsconfig.json': '{"compilerOptions":{"strict":true}}',
+      },
+    );
+    saveScanMock.mockRejectedValue(
+      new ClientApiError('Service is unavailable.', 503, 'service_unavailable'),
+    );
+
+    render(<DashboardClient initialSession={session} />);
+    runScan();
+
+    const panel = await screen.findByTestId('scan-details-ship-gate');
+    await waitFor(() => expect(panel.textContent).toMatch(/REVIEW RECOMMENDED/i));
+    expect(panel.textContent).not.toMatch(/NOT READY TO SHIP/i);
+  });
+
   it('keeps results visible and reports an honest error when persistence fails', async () => {
     stubGitHubFetch([{ path: 'db/schema.sql', type: 'blob' }], {
       'db/schema.sql': TABLE_WITHOUT_RLS,
