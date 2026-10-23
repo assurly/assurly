@@ -29,6 +29,14 @@ export default defineConfig({
       // Set it here so E2E is self-contained and runs in CI without a local
       // .env file — the dev server is served from 127.0.0.1:3200.
       APP_URL: 'http://127.0.0.1:3200',
+      // Billing UI (Manage Billing, Upgrade) renders only when Stripe is
+      // configured. Locally .env.local supplies that, CI has nothing, so the
+      // billing specs passed on laptops and failed in CI. Placeholders are
+      // enough: no spec reaches Stripe, every billing endpoint is mocked.
+      STRIPE_SECRET_KEY: 'e2e-placeholder',
+      STRIPE_WEBHOOK_SECRET: 'e2e-placeholder',
+      STRIPE_PRICE_MONTHLY: 'e2e-placeholder',
+      STRIPE_PRICE_YEARLY: 'e2e-placeholder',
     },
   },
 });
