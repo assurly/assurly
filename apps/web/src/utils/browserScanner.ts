@@ -11,6 +11,7 @@ export {
   RLS_SUPABASE_TABLE_LABEL,
   incompleteScanFinding,
   instantGateSurfaceFiles,
+  languageCoveragePaths,
   isAnalyzedCodeFile,
   isSupabaseRlsMessage,
   isAgentInstructionFile,

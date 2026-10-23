@@ -14,8 +14,8 @@ exports.languageCoverageRules = {
     description: 'Reports payment and authentication code in languages the rules cannot read.',
     severity: 'warning',
     async run(context) {
-        const surface = (0, scanner_core_1.instantGateSurfaceFiles)(context.files, (file) => file);
-        const finding = (0, scanner_core_1.unanalyzedSourceFinding)((0, scanner_core_1.summarizeUnanalyzedSource)(surface));
+        const paths = (0, scanner_core_1.languageCoveragePaths)(context.files);
+        const finding = (0, scanner_core_1.unanalyzedSourceFinding)((0, scanner_core_1.summarizeUnanalyzedSource)(paths));
         return finding ? [finding] : [];
     },
 };

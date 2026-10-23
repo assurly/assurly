@@ -4,6 +4,7 @@ import {
   isScannableFile,
   measureScanScopeTotals,
   rankFilesByRelevance,
+  unanalyzedLanguageForPath,
   type ScanScopeTotals,
 } from '@assurly/scanner-core';
 import {
@@ -77,8 +78,14 @@ export function selectInstantGateTreeEntries(
     0,
     INSTANT_GATE_MAX_FILES,
   );
+  // Paths only, never fetched: the browser needs every one of them to tell
+  // whether payment or login code sits in a language Assurly cannot read.
+  const rankedPaths = new Set(ranked.map((entry) => entry.path));
+  const unreadLanguage = scannable.filter(
+    (entry) => unanalyzedLanguageForPath(entry.path) !== null && !rankedPaths.has(entry.path),
+  );
   return {
-    tree: ranked.map((entry) => ({ path: entry.path, type: 'blob' })),
+    tree: [...ranked, ...unreadLanguage].map((entry) => ({ path: entry.path, type: 'blob' })),
     truncated: githubTruncated || ranked.length < surface.length,
     // Measured on everything fetched, not on `ranked` — the browser receives
     // `ranked` and nothing else, so a sample-derived figure would only ever
@@ -128,6 +135,21 @@ async function readGitHubTree(
     });
   }
   return { entries, truncated: record.truncated === true };
+}
+
+/** The whole repository in one call, or null when it is past a size limit. */
+async function readWholeTreeIfItFits(
+  url: string,
+  headers: HeadersInit,
+  fetchImpl: typeof fetch,
+): Promise<{ entries: GitHubTreeEntry[]; truncated: boolean } | null> {
+  try {
+    const parsed = await readGitHubTree(await githubGet(url, headers, fetchImpl));
+    return parsed.truncated ? null : parsed;
+  } catch (error) {
+    if (error instanceof InstantGateTreeError && error.kind === 'too_large') return null;
+    throw error;
+  }
 }
 
 function prefixEntries(entries: GitHubTreeEntry[], prefix: string): GitHubTreeEntry[] {
@@ -191,10 +213,20 @@ export async function loadInstantGateTree(options: {
   const root = await readGitHubTree(rootResponse);
   const appsSha = directorySha(root.entries, 'apps');
 
+  // Prefer the whole repository: a Go or Python backend beside apps/ holds
+  // payment code the verdict has to account for. Only a monorepo past the size
+  // limits (vercel/ai: 8,645 files) falls back to the apps/ and supabase/ subtrees.
+  const whole = appsSha
+    ? await readWholeTreeIfItFits(treeUrl(options.branch, true), options.headers, fetchImpl)
+    : null;
+  const subtreesOnly = Boolean(appsSha) && !whole;
+
   let combined: GitHubTreeEntry[] = [];
   let truncated = root.truncated;
 
-  if (appsSha) {
+  if (whole) {
+    combined = whole.entries;
+  } else if (appsSha) {
     const supabaseSha = directorySha(root.entries, 'supabase');
     const subtreeRefs: Array<{ sha: string; prefix: string }> = [{ sha: appsSha, prefix: 'apps' }];
     if (supabaseSha) subtreeRefs.push({ sha: supabaseSha, prefix: 'supabase' });
@@ -221,9 +253,9 @@ export async function loadInstantGateTree(options: {
     combined = parsed.entries;
   }
 
-  // The apps/ branch above fetches two subtrees rather than the repository, so
+  // The subtree fallback fetches two directories rather than the repository, so
   // the counts describe those roots only and must be reported as a floor.
-  const selected = selectInstantGateTreeEntries(combined, truncated, Boolean(appsSha));
+  const selected = selectInstantGateTreeEntries(combined, truncated, subtreesOnly);
   const value: InstantGateTreeResult = {
     default_branch: options.branch,
     ...(commitSha ? { commit_sha: commitSha } : {}),

@@ -35,6 +35,7 @@ import {
   isScannableFile,
   rankFilesByRelevance,
   instantGateSurfaceFiles,
+  languageCoveragePaths,
   summarizeUnanalyzedSource,
   unanalyzedLanguageCounts,
   unanalyzedSourceFinding,
@@ -1816,9 +1817,8 @@ function DashboardContent({
         (path) => path,
       );
       const fileSelection = selectFiles(rankedCandidates, INSTANT_GATE_MAX_FILES);
-      const coveragePaths = instantGateSurfaceFiles(
+      const coveragePaths = languageCoveragePaths(
         treePaths.filter((path) => isScannableFile(path)),
-        (path) => path,
       );
       const unanalyzedSummary = summarizeUnanalyzedSource(coveragePaths);
       const scanScope = buildScanScope(rankedCandidates, fileSelection.files, {

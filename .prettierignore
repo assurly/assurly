@@ -1,3 +1,7 @@
 packages/*/dist/
 packages/vscode-extension/vendor/
 packages/vscode-extension/*.vsix
+
+# Frozen scanner fixtures: expected.json pins findings to exact lines, and
+# live-target-blocked must stay byte-identical to the repository it copies.
+test-projects/corpus/

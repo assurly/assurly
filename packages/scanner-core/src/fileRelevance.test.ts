@@ -8,6 +8,7 @@ import {
   instantGateSurfaceFiles,
   isScannableFile,
   isTextScanSurface,
+  languageCoveragePaths,
   measureScanScopeTotals,
   rankFilesByRelevance,
 } from './fileRelevance';
@@ -212,6 +213,31 @@ describe('buildScanScope', () => {
     );
   });
 
+  it('counts a Go backend beside apps/ as not analysed, not as outside app roots', () => {
+    // Corpus case go-backend-monorepo: services/api holds the Stripe webhook and
+    // auth middleware. Calling that "outside app roots" hid it from the verdict.
+    const selected = ['apps/web/app/page.tsx'];
+    const treePaths = [
+      'apps/web/app/page.tsx',
+      'services/api/internal/billing/webhook.go',
+      'services/api/internal/middleware/auth.go',
+      'packages/eslint-config/index.js',
+    ];
+    const scope = buildScanScope(selected, selected, { treePaths });
+
+    expectInvariant(scope);
+    expect(scope.gaps).toEqual({ notAnalysed: 2, overLimit: 0, outsideAppRoots: 1 });
+    expect(scope.unanalyzed).toEqual([{ language: 'Go', fileCount: 2 }]);
+    expect(formatScanScopeSummary(scope)).toBe(
+      'Scanned apps/web · 1 of 4 source files · 2 Go files not analysed · 1 outside app roots',
+    );
+    expect(measureScanScopeTotals(treePaths)).toEqual({
+      sourceTotal: 4,
+      surfaceSource: 3,
+      surfaceAnalyzable: 1,
+    });
+  });
+
   it('names Instant Gate cap overflow against the source denominator', () => {
     const selected = Array.from({ length: 2 }, (_, index) => `src/file-${index}.ts`);
     const treePaths = [
@@ -291,6 +317,29 @@ describe('instantGateSurfaceFiles', () => {
       'apps/web/src/app/page.tsx',
       'supabase/migrations/001.sql',
     ]);
+  });
+});
+
+describe('languageCoveragePaths', () => {
+  it('keeps unread-language code anywhere in an apps/ monorepo', () => {
+    const paths = [
+      'apps/web/app/page.tsx',
+      'supabase/migrations/001.sql',
+      'services/api/internal/billing/webhook.go',
+      'backend/app/auth.py',
+      'packages/cli/src/index.ts',
+    ];
+    expect(languageCoveragePaths(paths)).toEqual([
+      'apps/web/app/page.tsx',
+      'supabase/migrations/001.sql',
+      'services/api/internal/billing/webhook.go',
+      'backend/app/auth.py',
+    ]);
+  });
+
+  it('keeps every path when the repository has no apps/ tree', () => {
+    const paths = ['src/index.ts', 'server/auth.go', 'packages/api/route.ts'];
+    expect(languageCoveragePaths(paths)).toEqual(paths);
   });
 });
 

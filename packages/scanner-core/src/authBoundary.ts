@@ -95,7 +95,9 @@ const SERVICE_ROLE_GUARD_PATTERNS = [
   /\bisAdmin\s*\(/,
   /\bassertAdmin\b/i,
   ...STRIPE_WEBHOOK_PATTERNS,
-  /\bfrom\s+['"]server-only['"]/,
+  // Both `import 'server-only'` (the form Next.js documents) and a named
+  // import, at the start of a line so a comment mentioning it does not count.
+  /^[ \t]*import\s+(?:[^'";\s][^'";]*?\bfrom\s+)?['"]server-only['"]/m,
 ];
 
 // A provider webhook authenticates its caller — and validates its body — by
@@ -290,7 +292,9 @@ export function scanRouteHandlerAuth(content: string, file = 'route.ts'): ScanRe
   const line = handlerExportLine(ast);
   const guarded = hasAuthGuard(content);
 
-  if (isProtectedRoutePath(file) && !guarded) {
+  // A provider webhook under /billing/ or /admin/ is authenticated by its
+  // signature, not a session.
+  if (isProtectedRoutePath(file) && !guarded && !hasSignatureVerification(content)) {
     findings.push(
       finding(
         'auth-route-handler-unprotected',

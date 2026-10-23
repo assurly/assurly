@@ -1,0 +1,14 @@
+{
+  "description": "A Next.js front end in apps/web over a Go API in services/api that holds the Stripe webhook and the auth middleware. Assurly cannot read Go, so it must not call the app ready.",
+  "origin": "Distilled from Attesta (private: Next.js + Go backend with Stripe and auth), laid out as a Turborepo apps/ monorepo. Before the corpus, the Go code beside apps/ counted as 'outside app roots' and the app read READY TO SHIP 100.",
+  "verdict": {
+    "status": "review",
+    "headline": "CAN’T CALL IT YET",
+    "shipScore": 100,
+    "partialCoverage": true
+  },
+  "issues": [],
+  "knownFalsePositives": [],
+  "coverage": ["scan-language-coverage"],
+  "advisories": []
+}

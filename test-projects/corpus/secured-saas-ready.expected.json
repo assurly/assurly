@@ -1,0 +1,14 @@
+{
+  "description": "A Next.js + Supabase + Stripe app written the way the docs say: RLS with owner policies, getClaims() on every route, a signature-verified idempotent webhook under /api/billing/, and the service-role client in a server-only module. Every issue reported here is a false positive.",
+  "origin": "Written for the corpus. It first reported two false blockers: the verified Stripe webhook as an unprotected route, and the `import 'server-only'` factory as a service-role bypass.",
+  "verdict": {
+    "status": "ready",
+    "headline": "READY TO SHIP",
+    "shipScore": 100,
+    "partialCoverage": false
+  },
+  "issues": [],
+  "knownFalsePositives": [],
+  "coverage": [],
+  "advisories": ["supabase-rls-no-policy"]
+}

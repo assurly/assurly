@@ -60,7 +60,9 @@ describe('selectInstantGateTreeEntries', () => {
 
     const selected = selectInstantGateTreeEntries(entries);
 
-    expect(selected.tree).toHaveLength(INSTANT_GATE_MAX_FILES);
+    // The capped sample, plus the unread Go path that rides along as a path only.
+    expect(selected.tree).toHaveLength(INSTANT_GATE_MAX_FILES + 1);
+    expect(selected.tree.at(-1)?.path).toBe('apps/web/src/legacy.go');
     expect(selected.totals).toEqual({
       sourceTotal: 502,
       surfaceSource: 501,
@@ -83,6 +85,25 @@ describe('selectInstantGateTreeEntries', () => {
     expect(selected.totals.partial).toBe(true);
   });
 
+  it('sends every unread-language path beside apps/, so payment code there stops "ready"', () => {
+    const entries = [
+      ...Array.from({ length: INSTANT_GATE_MAX_FILES + 5 }, (_, index) => ({
+        path: `apps/web/src/lib/mod-${index}.ts`,
+        type: 'blob' as const,
+      })),
+      { path: 'services/api/internal/billing/webhook.go', type: 'blob' as const },
+      { path: 'services/api/internal/middleware/auth.go', type: 'blob' as const },
+      { path: 'packages/cli/src/index.ts', type: 'blob' as const },
+    ];
+
+    const paths = selectInstantGateTreeEntries(entries).tree.map((entry) => entry.path);
+
+    expect(paths.filter((path) => path.endsWith('.ts'))).toHaveLength(INSTANT_GATE_MAX_FILES);
+    expect(paths).toContain('services/api/internal/billing/webhook.go');
+    expect(paths).toContain('services/api/internal/middleware/auth.go');
+    expect(paths).not.toContain('packages/cli/src/index.ts');
+  });
+
   it('flags the counts as a floor when GitHub truncated its own tree', () => {
     const selected = selectInstantGateTreeEntries(
       [{ path: 'apps/web/src/a.ts', type: 'blob' as const }],
@@ -98,7 +119,7 @@ describe('loadInstantGateTree', () => {
     vi.unstubAllGlobals();
   });
 
-  it('recurses only apps and supabase when the root listing has an apps directory', async () => {
+  it('falls back to the apps and supabase subtrees when the full tree is truncated', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const href = String(input);
       if (href.includes('/commits/')) {
@@ -130,7 +151,8 @@ describe('loadInstantGateTree', () => {
         );
       }
       if (href.includes('/git/trees/') && href.includes('recursive=1')) {
-        throw new Error(`unexpected full recursive tree fetch: ${href}`);
+        // The whole repository is past GitHub's own recursive limit.
+        return new Response(JSON.stringify({ tree: [], truncated: true }), { status: 200 });
       }
       if (href.includes('/git/trees/')) {
         return new Response(
@@ -161,6 +183,52 @@ describe('loadInstantGateTree', () => {
     ]);
     expect(result.tree[0] && 'url' in result.tree[0]).toBe(false);
     expect(result.commit_sha).toBe('a'.repeat(40));
+    expect(result.totals.partial).toBe(true);
+  });
+
+  it('reads the whole apps/ monorepo in one call when it fits, backend included', async () => {
+    const treeUrls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const href = String(input);
+      if (href.includes('/commits/')) {
+        return new Response(JSON.stringify({ sha: 'd'.repeat(40) }), { status: 200 });
+      }
+      if (href.includes('/git/trees/')) treeUrls.push(href);
+      if (href.includes('/git/trees/main') && href.includes('recursive=1')) {
+        return new Response(
+          JSON.stringify({
+            tree: [
+              { path: 'apps/web/app/page.tsx', type: 'blob' },
+              { path: 'services/api/internal/billing/webhook.go', type: 'blob' },
+              { path: 'packages/eslint-config/index.js', type: 'blob' },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (href.includes('/git/trees/main')) {
+        return new Response(
+          JSON.stringify({ tree: [{ path: 'apps', type: 'tree', sha: 'apps-sha' }] }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected subtree fetch: ${href}`);
+    });
+
+    const result = await loadInstantGateTree({
+      repo: 'acme/app',
+      branch: 'main',
+      headers: {},
+      cacheKey: 'public:acme/app',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    expect(treeUrls.filter((href) => href.includes('recursive=1'))).toHaveLength(1);
+    expect(result.tree.map((entry) => entry.path)).toEqual([
+      'apps/web/app/page.tsx',
+      'services/api/internal/billing/webhook.go',
+    ]);
+    expect(result.totals).toEqual({ sourceTotal: 3, surfaceSource: 2, surfaceAnalyzable: 1 });
   });
 
   it('skips GitHub tree fetches on a commit-sha cache hit', async () => {

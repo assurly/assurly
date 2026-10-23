@@ -5,6 +5,7 @@ exports.isTextScanSurface = isTextScanSurface;
 exports.isScannableFile = isScannableFile;
 exports.getFileRelevanceScore = getFileRelevanceScore;
 exports.instantGateSurfaceFiles = instantGateSurfaceFiles;
+exports.languageCoveragePaths = languageCoveragePaths;
 exports.rankFilesByRelevance = rankFilesByRelevance;
 exports.measureScanScopeTotals = measureScanScopeTotals;
 exports.inferScanRoots = inferScanRoots;
@@ -114,6 +115,17 @@ function instantGateSurfaceFiles(files, getPath) {
     return files.filter((file) => /^(apps|supabase)\//.test(normalizePath(getPath(file))));
 }
 /**
+ * Paths that decide whether Assurly can call a verdict at all. The Instant Gate
+ * surface leaves out everything beside `apps/` because JavaScript there is
+ * tooling, but code in a language the rules cannot read is different: a Go
+ * backend in `services/api` holding the Stripe webhook is the app's payment
+ * layer, and must stop "ready" as it would in a repository without `apps/`.
+ */
+function languageCoveragePaths(paths) {
+    const surface = new Set(instantGateSurfaceFiles(paths, (path) => path));
+    return paths.filter((path) => surface.has(path) || (0, languageCoverage_1.unanalyzedLanguageForPath)(path) !== null);
+}
+/**
  * Stable sort: high-relevance paths first; ties preserve input order.
  */
 function rankFilesByRelevance(files, getPath) {
@@ -128,7 +140,7 @@ function isSourceFile(filePath) {
 /** Measures {@link ScanScopeTotals} over a complete tree, before any cap applies. */
 function measureScanScopeTotals(paths, options = {}) {
     const allSource = paths.filter(isScannableFile).filter(isSourceFile);
-    const surfaceSource = instantGateSurfaceFiles(allSource, (path) => path);
+    const surfaceSource = languageCoveragePaths(allSource);
     return {
         sourceTotal: allSource.length,
         surfaceSource: surfaceSource.length,
@@ -159,7 +171,9 @@ function inferScanRoots(paths) {
 function buildScanScopeFromTree(treePaths, selectedPaths, options) {
     const scannable = treePaths.filter(isScannableFile);
     const allSource = scannable.filter(isSourceFile);
-    const surfaceSource = instantGateSurfaceFiles(allSource, (path) => path);
+    // Unread-language files beside apps/ are "not analysed", never "outside app
+    // roots": the second reads as deliberately out of scope.
+    const surfaceSource = languageCoveragePaths(allSource);
     const analyzedOnSurface = surfaceSource.filter(languageCoverage_1.isAnalyzedCodeFile);
     const selectedSet = new Set(selectedPaths.map(normalizePath));
     const scanned = analyzedOnSurface.filter((path) => selectedSet.has(normalizePath(path))).length;

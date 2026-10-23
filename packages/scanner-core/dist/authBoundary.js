@@ -77,7 +77,9 @@ const SERVICE_ROLE_GUARD_PATTERNS = [
     /\bisAdmin\s*\(/,
     /\bassertAdmin\b/i,
     ...STRIPE_WEBHOOK_PATTERNS,
-    /\bfrom\s+['"]server-only['"]/,
+    // Both `import 'server-only'` (the form Next.js documents) and a named
+    // import, at the start of a line so a comment mentioning it does not count.
+    /^[ \t]*import\s+(?:[^'";\s][^'";]*?\bfrom\s+)?['"]server-only['"]/m,
 ];
 // A provider webhook authenticates its caller — and validates its body — by
 // checking a signature over the raw payload. Reading `request.text()` there is
@@ -239,7 +241,9 @@ function scanRouteHandlerAuth(content, file = 'route.ts') {
     }
     const line = handlerExportLine(ast);
     const guarded = hasAuthGuard(content);
-    if (isProtectedRoutePath(file) && !guarded) {
+    // A provider webhook under /billing/ or /admin/ is authenticated by its
+    // signature, not a session.
+    if (isProtectedRoutePath(file) && !guarded && !hasSignatureVerification(content)) {
         findings.push(finding('auth-route-handler-unprotected', 'error', 'medium', file, line, 'Route handler under a protected path has no session or authorization check.', 'Require an authenticated session (requireUser, getSession, or authorization helper) before handling the request.'));
     }
     if (hasMutation(content) && !guarded && !isPublicMutationRoute(content, file)) {

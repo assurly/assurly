@@ -1,0 +1,32 @@
+{
+  "description": "Assurly's deliberately vulnerable live target: RLS off on a customer table, an admin route anyone can call, and an install script nobody reviewed.",
+  "origin": "tibco87/assurly-live-target@b74c7bc, file for file; package-lock.json trimmed to the root and the one package with an install script (unrs-resolver).",
+  "verdict": {
+    "status": "blocked",
+    "headline": "NOT READY TO SHIP",
+    "shipScore": 59,
+    "partialCoverage": false
+  },
+  "issues": [
+    {
+      "ruleId": "supabase-security-checks",
+      "severity": "error",
+      "file": "supabase/migrations/0001_customers.sql",
+      "line": 1
+    },
+    {
+      "ruleId": "auth-route-handler-unprotected",
+      "severity": "error",
+      "file": "app/api/admin/customers/route.ts",
+      "line": 25
+    },
+    {
+      "ruleId": "supply-install-scripts-unreviewed",
+      "severity": "warning",
+      "file": "package-lock.json"
+    }
+  ],
+  "knownFalsePositives": [],
+  "coverage": [],
+  "advisories": []
+}

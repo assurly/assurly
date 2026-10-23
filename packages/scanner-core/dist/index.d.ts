@@ -1,4 +1,4 @@
-import { INSTANT_GATE_MAX_FILES, buildScanScope, formatScanScopeSummary, getFileRelevanceScore, inferScanRoots, instantGateSurfaceFiles, isScannableFile, isTextScanSurface, measureScanScopeTotals, rankFilesByRelevance, type BuildScanScopeOptions, type ScanScope, type ScanScopeGaps, type ScanScopeTotals } from './fileRelevance';
+import { INSTANT_GATE_MAX_FILES, buildScanScope, formatScanScopeSummary, getFileRelevanceScore, inferScanRoots, instantGateSurfaceFiles, isScannableFile, isTextScanSurface, languageCoveragePaths, measureScanScopeTotals, rankFilesByRelevance, type BuildScanScopeOptions, type ScanScope, type ScanScopeGaps, type ScanScopeTotals } from './fileRelevance';
 export type Severity = 'error' | 'warning';
 export type FindingConfidence = 'high' | 'medium' | 'low';
 export interface ScannerFinding {
@@ -111,7 +111,7 @@ export declare function resolveEnvExampleForPath(codePath: string, examples: rea
 /** Collect env keys that appear exclusively in non-scannable (test/fixture) files. */
 export declare function collectTestOnlyEnvKeys(sources: readonly SourceInput[]): Set<string>;
 export declare function scanEnvVariables(exampleContent: string, codeContent: string, exampleFile?: string, codeFile?: string, options?: ScanEnvOptions): ScanResult;
-export { INSTANT_GATE_MAX_FILES, buildScanScope, formatScanScopeSummary, getFileRelevanceScore, inferScanRoots, instantGateSurfaceFiles, isScannableFile, isTextScanSurface, measureScanScopeTotals, rankFilesByRelevance, type BuildScanScopeOptions, type ScanScope, type ScanScopeGaps, type ScanScopeTotals, };
+export { INSTANT_GATE_MAX_FILES, buildScanScope, formatScanScopeSummary, getFileRelevanceScore, inferScanRoots, instantGateSurfaceFiles, isScannableFile, isTextScanSurface, languageCoveragePaths, measureScanScopeTotals, rankFilesByRelevance, type BuildScanScopeOptions, type ScanScope, type ScanScopeGaps, type ScanScopeTotals, };
 export { SCAN_LANGUAGE_COVERAGE_RULE_ID, UNANALYZED_SOURCE_LANGUAGES, formatUnanalyzedLogLine, isAnalyzedCodeFile, isAnalyzedSourceFile, isSecuritySurfacePath, summarizeUnanalyzedSource, unanalyzedLanguageCounts, unanalyzedLanguageForPath, unanalyzedSourceFinding, type UnanalyzedLanguageCount, type UnanalyzedLanguageSummary, type UnanalyzedSourceSummary, } from './languageCoverage';
 export { MAX_PACKAGE_MANIFESTS, describeDetectedStack, detectStackFromManifests, selectPackageManifestPaths, type DetectedDatabase, type DetectedDeployment, type DetectedFramework, type DetectedPayments, type DetectedStack, type DetectStackFromManifestsInput, type PackageManifestInput, } from './stackDetect';
 export { scanAiAppSecurity, scanAiLlmKeyLeak, scanAiPiiToModelContext, scanAiPromptInjection, scanAiRateLimit, scanAiRouteAuthz, } from './aiAppSecurity';

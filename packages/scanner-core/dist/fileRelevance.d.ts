@@ -24,6 +24,14 @@ export declare const INSTANT_GATE_MAX_FILES = 400;
  */
 export declare function instantGateSurfaceFiles<T>(files: readonly T[], getPath: (item: T) => string): T[];
 /**
+ * Paths that decide whether Assurly can call a verdict at all. The Instant Gate
+ * surface leaves out everything beside `apps/` because JavaScript there is
+ * tooling, but code in a language the rules cannot read is different: a Go
+ * backend in `services/api` holding the Stripe webhook is the app's payment
+ * layer, and must stop "ready" as it would in a repository without `apps/`.
+ */
+export declare function languageCoveragePaths(paths: readonly string[]): string[];
+/**
  * Stable sort: high-relevance paths first; ties preserve input order.
  */
 export declare function rankFilesByRelevance<T>(files: readonly T[], getPath: (item: T) => string): T[];
@@ -56,7 +64,7 @@ export interface ScanScope {
 export interface ScanScopeTotals {
     /** Scannable source files in the repository — analysed plus unread languages. */
     sourceTotal: number;
-    /** Of those, the ones inside the Instant Gate app roots. */
+    /** Of those, the ones inside the Instant Gate app roots, plus unread-language code anywhere. */
     surfaceSource: number;
     /** Of the surface, the ones Assurly rules can actually read. */
     surfaceAnalyzable: number;

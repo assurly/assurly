@@ -1,5 +1,5 @@
 import {
-  instantGateSurfaceFiles,
+  languageCoveragePaths,
   SCAN_LANGUAGE_COVERAGE_RULE_ID,
   summarizeUnanalyzedSource,
   unanalyzedSourceFinding,
@@ -19,8 +19,8 @@ export const languageCoverageRules: Rule = {
   severity: 'warning',
 
   async run(context: ProjectContext): Promise<Finding[]> {
-    const surface = instantGateSurfaceFiles(context.files, (file) => file);
-    const finding = unanalyzedSourceFinding(summarizeUnanalyzedSource(surface));
+    const paths = languageCoveragePaths(context.files);
+    const finding = unanalyzedSourceFinding(summarizeUnanalyzedSource(paths));
     return finding ? [finding] : [];
   },
 };

@@ -23,7 +23,7 @@ function mockMetadata(branch = 'main', isPrivate = false) {
   };
 }
 
-function mockTreeResponse(tree: { tree: unknown[] } = MOCK_TREE) {
+function mockTreeResponse(tree: { tree: unknown[]; truncated?: boolean } = MOCK_TREE) {
   return new Response(JSON.stringify(tree), { status: 200 });
 }
 
@@ -410,7 +410,7 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
     requireUserSpy.mockRestore();
   });
 
-  it('does not recurse the whole repository when apps/ is at the root', async () => {
+  it('falls back to the apps/ subtree when the whole repository is past the tree limit', async () => {
     const recursiveUrls: string[] = [];
     mockPublicGitHub({
       treeResponse: (href) => {
@@ -427,6 +427,10 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
                 },
               ],
             });
+          }
+          if (href.includes('/git/trees/main?recursive=1')) {
+            // vercel/next.js: GitHub cuts the recursive listing short.
+            return mockTreeResponse({ tree: [], truncated: true });
           }
           throw new Error(`unexpected recursive tree: ${href}`);
         }
@@ -445,8 +449,11 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
       'apps/web/src/app/page.tsx',
     ]);
     expect(data.tree[0].sha).toBeUndefined();
-    expect(recursiveUrls.some((url) => url.includes('/git/trees/main?recursive=1'))).toBe(false);
+    expect(recursiveUrls.filter((url) => url.includes('/git/trees/main?recursive=1'))).toHaveLength(
+      1,
+    );
     expect(recursiveUrls.some((url) => url.includes('apps-sha'))).toBe(true);
+    expect(data.totals.partial).toBe(true);
   });
 
   it('serves a repeated tree request from memory without a second GitHub tree fetch', async () => {

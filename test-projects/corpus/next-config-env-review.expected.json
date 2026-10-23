@@ -1,0 +1,21 @@
+{
+  "description": "A chat app that derives NEXT_PUBLIC_BASE_PATH and NEXT_PUBLIC_APP_VERSION in next.config.ts (nothing to document) and reads CHAT_MODEL_ID from the deploy environment without listing it in .env.example (a real gap).",
+  "origin": "Distilled from vercel/chatbot@c2f8235, which got 25 'undocumented' warnings for NEXT_PUBLIC_BASE_PATH before next.config env keys were recognised.",
+  "verdict": {
+    "status": "review",
+    "headline": "REVIEW RECOMMENDED",
+    "shipScore": 96,
+    "partialCoverage": false
+  },
+  "issues": [
+    {
+      "ruleId": "undocumented-env",
+      "severity": "warning",
+      "file": "app/api/chat/route.ts",
+      "line": 14
+    }
+  ],
+  "knownFalsePositives": [],
+  "coverage": [],
+  "advisories": []
+}

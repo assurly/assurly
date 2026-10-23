@@ -95,6 +95,20 @@ describe('scanRouteHandlerAuth', () => {
     );
   });
 
+  it('does not flag a signature-verified webhook that lives under a protected path', () => {
+    // Corpus case secured-saas-ready: Stripe calls /api/billing/webhook with no
+    // session; the signature over the raw body is its authentication.
+    const code = [
+      'export async function POST(request: Request) {',
+      "  const signature = request.headers.get('stripe-signature');",
+      '  const event = stripe.webhooks.constructEvent(await request.text(), signature, secret);',
+      '  return new Response(event.id);',
+      '}',
+    ].join('\n');
+
+    expect(scanRouteHandlerAuth(code, 'app/api/billing/webhook/route.ts').findings).toEqual([]);
+  });
+
   it('does not flag a route wrapped in secureRoute with auth required', () => {
     const code = [
       "import { secureRoute } from '../../../utils/apiSecurity';",
@@ -402,6 +416,33 @@ describe('scanServiceRoleBypass', () => {
     ].join('\n');
 
     expect(scanServiceRoleBypass(code, 'utils/dbAdapter.ts').findings).toEqual([]);
+  });
+
+  it('accepts a server-only factory module, imported the way Next.js documents it', () => {
+    // Corpus case secured-saas-ready: `import 'server-only'` (no `from`) is the
+    // canonical form; the authorization check lives at each call site.
+    const factory = (serverOnlyImport: string) =>
+      [
+        serverOnlyImport,
+        "import { createClient } from '@supabase/supabase-js';",
+        'export function createServiceClient() {',
+        '  return createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY);',
+        '}',
+      ].join('\n');
+
+    expect(
+      scanServiceRoleBypass(factory("import 'server-only';"), 'lib/admin.ts').findings,
+    ).toEqual([]);
+    expect(scanServiceRoleBypass(factory('import "server-only"'), 'lib/admin.ts').findings).toEqual(
+      [],
+    );
+    expect(
+      scanServiceRoleBypass(factory("import x from 'server-only';"), 'lib/admin.ts').findings,
+    ).toEqual([]);
+    // A comment that merely mentions the package is not the import.
+    expect(
+      scanServiceRoleBypass(factory("// TODO: import 'server-only'"), 'lib/admin.ts').findings,
+    ).toHaveLength(1);
   });
 
   it('does not flag a mere mention of service_role without client construction', () => {

@@ -33,7 +33,7 @@ import {
 import { notifyIfRegressionBlockers } from '../../../../utils/scanRegression';
 import {
   incompleteScanFinding,
-  instantGateSurfaceFiles,
+  languageCoveragePaths,
   isAnalyzedCodeFile,
   isScannableFile,
   scanColdStart,
@@ -324,10 +324,7 @@ export async function scanPullRequest(
   const incomplete = incompleteScanFinding(selection);
   if (incomplete) findings.push(incomplete);
   const treePaths = tree.filter((node) => node.type === 'blob').map((node) => node.path);
-  const coveragePaths = instantGateSurfaceFiles(
-    treePaths.filter((path) => isScannableFile(path)),
-    (path) => path,
-  );
+  const coveragePaths = languageCoveragePaths(treePaths.filter((path) => isScannableFile(path)));
   const unanalyzedSummary = summarizeUnanalyzedSource(coveragePaths);
   const coverageFinding = unanalyzedSourceFinding(unanalyzedSummary);
   if (coverageFinding) findings.push(coverageFinding);
