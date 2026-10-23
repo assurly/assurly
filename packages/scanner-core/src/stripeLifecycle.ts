@@ -1,3 +1,4 @@
+import { handlerLineOf } from './authBoundary';
 import type { ScannerFinding, SourceInput } from './index';
 
 export interface StripeLifecycleScanResult {
@@ -150,13 +151,13 @@ function importedGraphContent(
   return chunks.join('\n');
 }
 
-function missingIdempotencyFinding(file: string): ScannerFinding {
+function missingIdempotencyFinding(file: string, content: string): ScannerFinding {
   return {
     ruleId: 'stripe-webhook-no-idempotency',
     severity: 'warning',
     confidence: 'medium',
     file,
-    line: 1,
+    line: handlerLineOf(content),
     message: 'Stripe webhook handler has no obvious idempotency or replay protection.',
     suggestion:
       'Persist processed event IDs (event.id) and ignore duplicates before mutating subscription state.',
@@ -166,7 +167,7 @@ function missingIdempotencyFinding(file: string): ScannerFinding {
 export function scanStripeWebhookIdempotency(content: string, file = 'route.ts'): ScanResult {
   if (!isWebhookHandler(content, file)) return result([]);
   if (hasIdempotencySignal(content)) return result([]);
-  return result([missingIdempotencyFinding(file)]);
+  return result([missingIdempotencyFinding(file, content)]);
 }
 
 /**
@@ -187,7 +188,7 @@ export function scanStripeWebhookIdempotencyForProject(
     if (!isWebhookHandler(source.content, source.file)) continue;
     const combined = importedGraphContent(source.file, source.content, index);
     if (hasIdempotencySignal(combined)) continue;
-    findings.push(missingIdempotencyFinding(source.file));
+    findings.push(missingIdempotencyFinding(source.file, source.content));
   }
   return result(findings);
 }

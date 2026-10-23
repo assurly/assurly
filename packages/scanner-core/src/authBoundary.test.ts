@@ -406,6 +406,25 @@ describe('scanServiceRoleBypass', () => {
     });
   });
 
+  it('points a service_role bypass at the client it builds, not line 1', () => {
+    const code = [
+      '// Admin helpers.',
+      "import { createClient } from '@supabase/supabase-js';",
+      "import { createServerClient } from '@supabase/ssr';",
+      '',
+      'export const anon = createServerClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);',
+      'export function wipe() {',
+      '  const admin = createClient(',
+      '    url,',
+      '    process.env.SUPABASE_SERVICE_ROLE_KEY,',
+      '  );',
+      '  return admin.from("users").delete();',
+      '}',
+    ].join('\n');
+
+    expect(scanServiceRoleBypass(code, 'lib/admin.ts').findings[0]?.line).toBe(7);
+  });
+
   it('does not flag when getSupabaseAdminConfig guards service_role access', () => {
     const code = [
       "import { createClient } from '@supabase/supabase-js';",

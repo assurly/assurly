@@ -203,7 +203,7 @@ function scanStripeWebhook(content, file = 'route.ts') {
             ruleId: 'stripe-webhook-signature',
             severity: 'error',
             file,
-            line: 1,
+            line: (0, authBoundary_1.handlerExportLine)(ast),
             message: 'Stripe webhook endpoint appears to lack signature verification.',
             suggestion: 'Verify the raw request body with stripe.webhooks.constructEvent before processing the event.',
         });
@@ -540,13 +540,8 @@ function scanSqlMigrations(sources, options = {}) {
         source.content.split(/\r?\n/).forEach((line, index) => {
             const code = line.replace(/--.*$/, '');
             const create = code.match(/create\s+table\s+(?:if\s+not\s+exists\s+)?([a-zA-Z0-9_."`'-]+)/i);
-            const enabled = code.match(/alter\s+table\s+([a-zA-Z0-9_."`'-]+)\s+enable\s+row\s+level\s+security/i);
             if (create)
                 created.set(normalize(create[1]), { file: source.file, line: index + 1 });
-            if (enabled) {
-                rls.add(normalize(enabled[1]));
-                rlsEnabledAt.set(normalize(enabled[1]), { file: source.file, line: index + 1 });
-            }
             if (/alter\s+table[\s\S]*\sadd\s+(?:column\s+)?[\s\S]*\snot\s+null/i.test(code) &&
                 !/\bdefault\b/i.test(code)) {
                 findings.push({
@@ -559,6 +554,12 @@ function scanSqlMigrations(sources, options = {}) {
                 });
             }
         });
+    }
+    for (const source of postgresSources) {
+        for (const { table, line } of (0, supabasePolicies_1.rlsEnabledStatements)(source.content)) {
+            rls.add(normalize(table));
+            rlsEnabledAt.set(normalize(table), { file: source.file, line });
+        }
     }
     const hasSupabaseSignal = options.usesSupabase === true ||
         postgresSources.some((source) => /supabase/i.test(source.file) ||

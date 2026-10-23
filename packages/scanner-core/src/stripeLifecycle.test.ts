@@ -22,6 +22,8 @@ describe('scanStripeWebhookIdempotency', () => {
       ruleId: 'stripe-webhook-no-idempotency',
       severity: 'warning',
       confidence: 'medium',
+      // The handler, not line 1.
+      line: 2,
     });
   });
 

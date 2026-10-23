@@ -22,6 +22,7 @@ case's `.expected.json` in the same diff.
 | `secured-saas-ready` | Next.js + Supabase + Stripe done right. Any issue here is a false positive. |
 | `next-config-env-review` | `next.config` env keys need no docs (vercel/chatbot); a real undocumented variable does. |
 | `go-backend-monorepo` | Payment and auth code in Go beside `apps/` must stop "ready" (Attesta). |
+| `supabase-stripe-blocked` | Blockers point at the line that causes them; a secured table beside an open one is not blamed. |
 
 ## Adding a case
 

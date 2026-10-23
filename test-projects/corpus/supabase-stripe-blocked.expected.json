@@ -1,0 +1,45 @@
+{
+  "description": "A notes app with three real blockers, each reported where the code is: a workspace table without RLS (its CREATE TABLE after leading comments), a Stripe webhook that never verifies the signature (its POST handler), and an unguarded service-role client (the createClient call). The profiles table beside it is secured, with RLS enabled by an ALTER TABLE split across two lines.",
+  "origin": "Written for the corpus while adding code snippets to blockers. It first reported every one of these defects on line 1, blamed the secured profiles table twice (a missing-RLS blocker for the split ALTER TABLE, and an auth.users link pinned on notes), and hid the real notes defect behind the second.",
+  "verdict": {
+    "status": "blocked",
+    "headline": "NOT READY TO SHIP",
+    "shipScore": 56,
+    "partialCoverage": false
+  },
+  "issues": [
+    {
+      "ruleId": "supabase-security-checks",
+      "severity": "error",
+      "file": "supabase/migrations/0001_notes.sql",
+      "line": 4
+    },
+    {
+      "ruleId": "stripe-webhook-signature",
+      "severity": "error",
+      "file": "app/api/webhooks/stripe/route.ts",
+      "line": 6
+    },
+    {
+      "ruleId": "stripe-webhook-no-idempotency",
+      "severity": "warning",
+      "file": "app/api/webhooks/stripe/route.ts",
+      "line": 6
+    },
+    {
+      "ruleId": "api-route-unvalidated-input",
+      "severity": "warning",
+      "file": "app/api/webhooks/stripe/route.ts",
+      "line": 6
+    },
+    {
+      "ruleId": "auth-service-role-bypass",
+      "severity": "error",
+      "file": "lib/admin.ts",
+      "line": 5
+    }
+  ],
+  "knownFalsePositives": [],
+  "coverage": [],
+  "advisories": []
+}

@@ -5,6 +5,7 @@ exports.scanStripeWebhookIdempotencyForProject = scanStripeWebhookIdempotencyFor
 exports.scanStripeLiveKeyInDev = scanStripeLiveKeyInDev;
 exports.scanStripeMissingSubscriptionEvents = scanStripeMissingSubscriptionEvents;
 exports.scanStripeLifecycle = scanStripeLifecycle;
+const authBoundary_1 = require("./authBoundary");
 const result = (findings) => ({
     errorCount: findings.filter((finding) => finding.severity === 'error').length,
     warningCount: findings.filter((finding) => finding.severity === 'warning').length,
@@ -128,13 +129,13 @@ function importedGraphContent(startFile, startContent, index) {
     }
     return chunks.join('\n');
 }
-function missingIdempotencyFinding(file) {
+function missingIdempotencyFinding(file, content) {
     return {
         ruleId: 'stripe-webhook-no-idempotency',
         severity: 'warning',
         confidence: 'medium',
         file,
-        line: 1,
+        line: (0, authBoundary_1.handlerLineOf)(content),
         message: 'Stripe webhook handler has no obvious idempotency or replay protection.',
         suggestion: 'Persist processed event IDs (event.id) and ignore duplicates before mutating subscription state.',
     };
@@ -144,7 +145,7 @@ function scanStripeWebhookIdempotency(content, file = 'route.ts') {
         return result([]);
     if (hasIdempotencySignal(content))
         return result([]);
-    return result([missingIdempotencyFinding(file)]);
+    return result([missingIdempotencyFinding(file, content)]);
 }
 /**
  * Same rule as `scanStripeWebhookIdempotency`, but a handler that delegates to a
@@ -163,7 +164,7 @@ function scanStripeWebhookIdempotencyForProject(sources) {
         const combined = importedGraphContent(source.file, source.content, index);
         if (hasIdempotencySignal(combined))
             continue;
-        findings.push(missingIdempotencyFinding(source.file));
+        findings.push(missingIdempotencyFinding(source.file, source.content));
     }
     return result(findings);
 }
