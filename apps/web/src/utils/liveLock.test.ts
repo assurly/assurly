@@ -128,6 +128,26 @@ describe('runLiveLock', () => {
     expect(result.shipScore).toBeLessThanOrEqual(59);
   });
 
+  it('does not fetch when the preview project does not match', async () => {
+    const db = adapter();
+    const scanImpl = vi.fn();
+    const result = await runLiveLock({
+      target: target(),
+      gitSha: 'abc1234',
+      attemptId: 'dpl_other',
+      db,
+      scanImpl: scanImpl as never,
+      preview: {
+        projectId: 'prj_owned',
+        deploymentProjectId: 'prj_other',
+        previewUrl: 'https://other.vercel.app',
+      },
+    });
+    expect(result).toMatchObject({ status: 'blocked', reason: 'probe_refused' });
+    expect(scanImpl).not.toHaveBeenCalled();
+    expect(db.insertLiveLockAttempt).not.toHaveBeenCalled();
+  });
+
   it('is ready only when the fresh probe has no blocker', async () => {
     const db = adapter();
     const scanImpl = vi.fn(async () => ({

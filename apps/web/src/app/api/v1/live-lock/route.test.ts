@@ -68,6 +68,18 @@ describe('POST /api/v1/live-lock', () => {
     });
   });
 
+  it('rejects a preview URL field so the public body cannot choose the host', async () => {
+    mocks.getAdminDbAdapter.mockReturnValue({ getTargetByIdentifier: vi.fn() });
+    const res = await call({
+      url: 'https://app.example.com',
+      gitSha: 'abc1234',
+      attemptId: 'run-1',
+      previewUrl: 'https://stranger.vercel.app',
+    });
+    expect(res.status).toBe(400);
+    expect(mocks.runLiveLock).not.toHaveBeenCalled();
+  });
+
   it('returns 404 and does not probe when the URL is not a guarded target', async () => {
     const getTargetByIdentifier = vi.fn().mockResolvedValue(null);
     mocks.getAdminDbAdapter.mockReturnValue({ getTargetByIdentifier });

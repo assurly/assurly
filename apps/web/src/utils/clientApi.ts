@@ -165,6 +165,19 @@ const urlTargetDetailSchema = z.object({
       checkedAt: null,
       stoppedDeploy: false,
     }),
+  liveLockSetup: z
+    .object({
+      repositoryName: z.string().nullable(),
+      vercelConnected: z.boolean(),
+      locked: z.boolean(),
+      pullRequestUrl: z.string().nullable(),
+    })
+    .default({
+      repositoryName: null,
+      vercelConnected: false,
+      locked: false,
+      pullRequestUrl: null,
+    }),
 });
 export type UrlTargetDetail = z.infer<typeof urlTargetDetailSchema>;
 
@@ -592,6 +605,27 @@ export const clientApi = {
     requestJson(
       `/api/targets/${encodeURIComponent(targetId)}/reprobe`,
       reprobeSchema,
+      jsonRequest('POST'),
+    ),
+  enableLiveLock: (targetId: string) =>
+    requestJson(
+      `/api/targets/${encodeURIComponent(targetId)}/live-lock/enable`,
+      z.object({
+        status: z.enum([
+          'ownership_required',
+          'repo_required',
+          'github_permission_required',
+          'vercel_not_configured',
+          'vercel_required',
+          'vercel_project_required',
+          'ignored_build_conflict',
+          'workflow_blocked',
+          'locked',
+        ]),
+        installUrl: z.string().nullable(),
+        connectPath: z.string().nullable(),
+        pullRequestUrl: z.string().nullable(),
+      }),
       jsonRequest('POST'),
     ),
   apiKeys: {

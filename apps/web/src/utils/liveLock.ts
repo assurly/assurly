@@ -3,6 +3,7 @@ import type { DbAdapter, LiveLockAttemptRow, LiveLockReason, Target } from './db
 import { isActiveProbeAllowed } from './ownership';
 import { persistUrlTargetShipGateVerdict, scannerFindingsToScanFindings } from './guardian';
 import { reprobeTargetAndRecord, type ScanLiveUrlFn } from './reprobe';
+import { isVercelPreviewUrl } from './liveLockPreview';
 import { resolveVerdictFromScanFindings } from './shipGate';
 
 export interface LiveLockRequest {
@@ -14,6 +15,15 @@ export interface LiveLockRequest {
   scanImpl?: ScanLiveUrlFn;
   fetchImpl?: typeof fetch;
   now?: () => Date;
+  /**
+   * Internal preview check. The public route never sets this. A project id
+   * that does not match, or a host that is not `*.vercel.app`, is not fetched.
+   */
+  preview?: {
+    projectId: string;
+    deploymentProjectId: string;
+    previewUrl: string;
+  };
 }
 
 export interface LiveLockResult {
@@ -55,6 +65,23 @@ export async function runLiveLock(request: LiveLockRequest): Promise<LiveLockRes
     ownershipVerified: target.ownership_verified,
   });
 
+  if (request.preview) {
+    const allowed =
+      request.preview.projectId === request.preview.deploymentProjectId &&
+      isVercelPreviewUrl(request.preview.previewUrl);
+    if (!allowed) {
+      return {
+        status: 'blocked',
+        shipScore: 0,
+        reason: 'probe_refused',
+        gitSha,
+        attemptId: request.attemptId,
+        checkedAt: (request.now ?? (() => new Date()))().toISOString(),
+        fresh: true,
+      };
+    }
+  }
+
   if (target.kind !== 'url' || !owned) {
     const row = await db.insertLiveLockAttempt({
       organizationId: target.organization_id,
@@ -75,6 +102,7 @@ export async function runLiveLock(request: LiveLockRequest): Promise<LiveLockRes
     scanImpl: request.scanImpl,
     fetchImpl: request.fetchImpl,
     useAiPlanner: false,
+    probeUrlOverride: request.preview?.previewUrl,
   });
 
   if (!probe.probed) {

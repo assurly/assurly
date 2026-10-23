@@ -67,6 +67,13 @@ export interface UrlTargetDetail {
     checkedAt: string | null;
     stoppedDeploy: boolean;
   };
+  /** What the Lock deploys button still needs. No secrets. */
+  liveLockSetup: {
+    repositoryName: string | null;
+    vercelConnected: boolean;
+    locked: boolean;
+    pullRequestUrl: string | null;
+  };
 }
 
 function toEvidence(row: ProbeEvidenceRow): UrlTargetEvidence {
@@ -114,6 +121,12 @@ export function buildUrlTargetDetail(
   evidenceRows: readonly ProbeEvidenceRow[],
   outcomeRows: readonly FixOutcomeRow[],
   liveLock: LiveLockSummary = { latest: null, stoppedDeploy: false },
+  liveLockSetup: UrlTargetDetail['liveLockSetup'] = {
+    repositoryName: null,
+    vercelConnected: false,
+    locked: false,
+    pullRequestUrl: null,
+  },
 ): UrlTargetDetail {
   const evidence = evidenceRows.map(toEvidence);
   const evidenceByRule = new Map(evidence.map((item) => [item.findingRuleId, item]));
@@ -155,5 +168,6 @@ export function buildUrlTargetDetail(
       checkedAt: liveLock.latest?.created_at ?? null,
       stoppedDeploy: liveLock.stoppedDeploy,
     },
+    liveLockSetup,
   };
 }

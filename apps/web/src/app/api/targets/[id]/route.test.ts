@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
   adminDeleteTarget: vi.fn(),
+  getVercelConnection: vi.fn(),
 }));
 vi.mock('../../../../utils/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../utils/auth')>()),
@@ -10,7 +11,10 @@ vi.mock('../../../../utils/auth', async (importOriginal) => ({
 }));
 vi.mock('../../../../utils/dbAdapter', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../utils/dbAdapter')>()),
-  getAdminDbAdapter: () => ({ deleteTarget: mocks.adminDeleteTarget }),
+  getAdminDbAdapter: () => ({
+    deleteTarget: mocks.adminDeleteTarget,
+    getVercelConnection: mocks.getVercelConnection,
+  }),
 }));
 
 import { DELETE, GET } from './route';
@@ -24,6 +28,8 @@ const db = {
   getLatestProbeEvidenceForTarget: vi.fn(),
   getFixOutcomesForTarget: vi.fn(),
   getLiveLockSummary: vi.fn(),
+  getLiveLockProject: vi.fn(),
+  getRepositories: vi.fn(),
 };
 
 describe('DELETE /api/targets/[id]', () => {
@@ -149,6 +155,9 @@ describe('GET /api/targets/[id]', () => {
         created_at: '2026-09-20T16:50:16.547Z',
       },
     ]);
+    db.getLiveLockProject.mockResolvedValue(null);
+    db.getRepositories.mockResolvedValue([]);
+    mocks.getVercelConnection.mockResolvedValue(null);
     db.getLiveLockSummary.mockResolvedValue({
       latest: {
         id: 'lock-1',

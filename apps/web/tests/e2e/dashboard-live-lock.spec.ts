@@ -98,5 +98,71 @@ test.describe('Dashboard Live Lock', () => {
     expect(wide).not.toBeNull();
     expect(wide!.width).toBeGreaterThan(320);
     expect(wide!.x).toBeGreaterThanOrEqual(0);
+    await expect(panel).toContainText('Connect the GitHub repository that deploys this URL.');
+  });
+
+  test('offers Lock deploys and then Connect Vercel', async ({ context, page }) => {
+    await installDashboardSession(context);
+    await mockDashboardClientApis(page);
+    await page.route('**/api/targets**', async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (route.request().method() === 'POST' && path.endsWith('/live-lock/enable')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            status: 'vercel_required',
+            installUrl: null,
+            connectPath: '/api/vercel/connect',
+            pullRequestUrl: null,
+          }),
+        });
+        return;
+      }
+      if (path === `/api/targets/${TARGET_ID}`) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            ...DETAIL,
+            liveLock: {
+              status: null,
+              shipScore: null,
+              reason: null,
+              gitSha: null,
+              checkedAt: null,
+              stoppedDeploy: false,
+            },
+            liveLockSetup: {
+              repositoryName: 'acme/app',
+              vercelConnected: false,
+              locked: false,
+              pullRequestUrl: null,
+            },
+          }),
+        });
+        return;
+      }
+      if (path === '/api/targets') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ targets: [CARD] }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/dashboard');
+    await page
+      .getByRole('button', { name: 'assurly-live-target.vercel.app: Not ready to ship' })
+      .click();
+    await page.getByRole('button', { name: 'Lock deploys' }).click();
+    await expect(page.getByRole('link', { name: 'Connect Vercel' })).toBeVisible();
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(page.getByRole('link', { name: 'Connect Vercel' })).toBeVisible();
   });
 });

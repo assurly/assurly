@@ -7,7 +7,7 @@ import type { TargetCard, UrlTargetDetail } from '../../../utils/clientApi';
 const targetDetail = vi.hoisted(() => vi.fn());
 vi.mock('../../../utils/clientApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../utils/clientApi')>()),
-  clientApi: { targetDetail },
+  clientApi: { targetDetail, enableLiveLock: vi.fn() },
 }));
 
 import { UrlTargetDetailDialog } from './UrlTargetDetailDialog';
@@ -74,6 +74,12 @@ const OPEN_DETAIL: UrlTargetDetail = {
     gitSha: 'abc1234def',
     checkedAt: '2026-10-23T07:00:00.000Z',
     stoppedDeploy: true,
+  },
+  liveLockSetup: {
+    repositoryName: 'acme/app',
+    vercelConnected: false,
+    locked: false,
+    pullRequestUrl: null,
   },
   otherEvidence: [
     {

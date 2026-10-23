@@ -11134,6 +11134,9 @@ body {
 .url-proof__lock-meta {
   font-size: 0.8rem;
 }
+.url-proof__lock-action {
+  margin-top: var(--space-3);
+}
 @media (max-width: 640px) {
   .url-proof__lock {
     padding: var(--space-3);

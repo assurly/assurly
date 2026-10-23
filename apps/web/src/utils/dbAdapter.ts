@@ -309,6 +309,29 @@ export interface LiveLockSummary {
   stoppedDeploy: boolean;
 }
 
+/** Lock setup for one URL. Holds no API key and no Vercel token. */
+export interface LiveLockProjectRow {
+  target_id: string;
+  organization_id: string;
+  repository_id: string | null;
+  vercel_project_id: string | null;
+  vercel_project_name: string | null;
+  production_deploy_held: boolean;
+  pull_request_url: string | null;
+  secrets_written: boolean;
+}
+
+export interface UpsertLiveLockProjectInput {
+  organizationId: string;
+  targetId: string;
+  repositoryId: string;
+  vercelProjectId: string | null;
+  vercelProjectName: string | null;
+  productionDeployHeld: boolean;
+  pullRequestUrl: string | null;
+  secretsWritten: boolean;
+}
+
 export type FixOutcomeStatus = 'verified_fixed' | 'still_open' | 'regressed';
 
 /** A persisted verified-fix loop record (Phase 5). */
@@ -621,6 +644,18 @@ export interface DbAdapter {
   getLiveLockAttempt(targetId: string, attemptId: string): Promise<LiveLockAttemptRow | null>;
   insertLiveLockAttempt(input: InsertLiveLockAttemptInput): Promise<LiveLockAttemptRow>;
   getLiveLockSummary(targetId: string): Promise<LiveLockSummary>;
+  getLiveLockProject(targetId: string): Promise<LiveLockProjectRow | null>;
+  getLiveLockProjectByVercelProject(projectId: string): Promise<LiveLockProjectRow | null>;
+  upsertLiveLockProject(input: UpsertLiveLockProjectInput): Promise<LiveLockProjectRow>;
+  /** Service role only. Ciphertext, never a plaintext token. */
+  upsertVercelConnection(
+    organizationId: string,
+    teamId: string | null,
+    tokenCiphertext: string,
+  ): Promise<void>;
+  getVercelConnection(
+    organizationId: string,
+  ): Promise<{ team_id: string | null; token_ciphertext: string } | null>;
   getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]>;
   /**
    * Total number of monitored apps (targets) across all orgs. Aggregate scalar
@@ -1502,6 +1537,69 @@ export class SupabaseDbAdapter implements DbAdapter {
       ),
     ]);
     return { latest, stoppedDeploy: blocked !== null };
+  }
+
+  getLiveLockProject(targetId: string): Promise<LiveLockProjectRow | null> {
+    return this.first(`live_lock_project?select=*&target_id=eq.${eq(targetId)}`);
+  }
+
+  getLiveLockProjectByVercelProject(projectId: string): Promise<LiveLockProjectRow | null> {
+    return this.first(
+      `live_lock_project?select=*&vercel_project_id=eq.${eq(projectId)}&production_deploy_held=eq.true`,
+    );
+  }
+
+  async upsertLiveLockProject(input: UpsertLiveLockProjectInput): Promise<LiveLockProjectRow> {
+    const rows = await this.fetchDb<LiveLockProjectRow[]>(
+      'live_lock_project?on_conflict=target_id',
+      {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify({
+          organization_id: input.organizationId,
+          target_id: input.targetId,
+          repository_id: input.repositoryId,
+          vercel_project_id: input.vercelProjectId,
+          vercel_project_name: input.vercelProjectName,
+          production_deploy_held: input.productionDeployHeld,
+          pull_request_url: input.pullRequestUrl,
+          secrets_written: input.secretsWritten,
+          updated_at: new Date().toISOString(),
+        }),
+      },
+    );
+    const row = rows[0];
+    if (!row) throw new Error('Live Lock project upsert returned no row.');
+    return row;
+  }
+
+  async upsertVercelConnection(
+    organizationId: string,
+    teamId: string | null,
+    tokenCiphertext: string,
+  ): Promise<void> {
+    await this.fetchDb('rpc/upsert_vercel_connection', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        target_organization_id: organizationId,
+        target_team_id: teamId,
+        target_token_ciphertext: tokenCiphertext,
+      }),
+    });
+  }
+
+  async getVercelConnection(
+    organizationId: string,
+  ): Promise<{ team_id: string | null; token_ciphertext: string } | null> {
+    const rows = await this.fetchDb<{ team_id: string | null; token_ciphertext: string }[]>(
+      'rpc/read_vercel_connection',
+      {
+        method: 'POST',
+        body: JSON.stringify({ target_organization_id: organizationId }),
+      },
+    );
+    return rows[0] ?? null;
   }
 
   getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]> {

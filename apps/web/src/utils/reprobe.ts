@@ -1,5 +1,6 @@
 import type { ScannerFinding } from '@assurly/scanner-core';
 import type { DbAdapter, FixOutcomeInput, Target } from './dbAdapter';
+import { isVercelPreviewUrl } from './liveLockPreview';
 import { isActiveProbeAllowed } from './ownership';
 import { replaceProbeEvidenceForTarget } from './probeEvidence';
 import { scanLiveUrlWithEvidence, type ProbeEvidence } from './runtimeScanner';
@@ -31,6 +32,11 @@ export interface ReprobeContext {
    * deploy path. Other callers keep the planner.
    */
   useAiPlanner?: boolean;
+  /**
+   * Live Lock preview only. Must already be a `*.vercel.app` host that belongs
+   * to the verified project. Any other value is not fetched.
+   */
+  probeUrlOverride?: string;
 }
 
 export interface ReprobeResult {
@@ -69,7 +75,12 @@ export async function reprobeTargetAndRecord(context: ReprobeContext): Promise<R
     kind: target.kind,
     ownershipVerified: target.ownership_verified,
   });
-  const probeUrl = resolveProbeUrl(target);
+  const override = context.probeUrlOverride;
+  const probeUrl = override
+    ? isVercelPreviewUrl(override)
+      ? override
+      : null
+    : resolveProbeUrl(target);
 
   if (!probeUrl) {
     return { activeProbe, probed: false, probeUrl: null, outcomes: [], findings: [], evidence: [] };
