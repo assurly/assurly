@@ -86,7 +86,7 @@ export function EvidenceDetail({ item }: { item: ProofEvidenceItem }): ReactElem
     return (
       <dl className="proof-evidence__facts">
         {sample.path ? (
-          <div className="proof-evidence__fact">
+          <div className="proof-evidence__fact proof-evidence__fact--wide">
             <dt>Route</dt>
             <dd>
               <code>GET {sample.path}</code>

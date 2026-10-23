@@ -153,7 +153,7 @@ export function UrlTargetDetailDialog({
         className="scan-delete-dialog url-proof"
         onClick={(event) => event.stopPropagation()}
       >
-        <header className="url-proof__header">
+        <div className="url-proof__header">
           <h4 id={titleId} className="scan-delete-dialog__title">
             {card.displayName}
           </h4>
@@ -165,7 +165,7 @@ export function UrlTargetDetailDialog({
           >
             ×
           </button>
-        </header>
+        </div>
         <p className="url-proof__status">{statusLine}</p>
 
         {state.status === 'loading' ? <p className="url-proof__loading">Loading proof…</p> : null}
@@ -176,7 +176,7 @@ export function UrlTargetDetailDialog({
         ) : null}
         {detail ? <DetailBody detail={detail} /> : null}
 
-        <footer className="url-proof__footer">
+        <div className="url-proof__footer">
           {ownershipVerified ? (
             <button
               type="button"
@@ -196,7 +196,7 @@ export function UrlTargetDetailDialog({
             Read-only: Assurly reads with your app&apos;s public key and never writes. Shown values
             are masked.
           </p>
-        </footer>
+        </div>
       </div>
     </div>
   );
