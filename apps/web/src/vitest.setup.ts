@@ -13,6 +13,8 @@
  *     "original" value.
  */
 
+import { afterEach } from 'vitest';
+
 const CREDENTIALS_FROM_ENV_LOCAL = [
   // Stripe – live or test key, webhook secret, price IDs
   'STRIPE_SECRET_KEY',
@@ -51,4 +53,18 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
     removeEventListener: () => undefined,
     dispatchEvent: () => false,
   });
+}
+
+/**
+ * Testing Library unmounts after each test only when vitest globals are on,
+ * and they are off here, so a file that never called cleanup() left its trees
+ * mounted. A mounted next/link keeps a 1 ms timer (jsdom has no
+ * IntersectionObserver); when the file's jsdom was torn down first, the
+ * render it scheduled ran against a missing `window` and failed the whole run
+ * with "ReferenceError: window is not defined" (privacy.test.tsx, 14 timers).
+ * Node-environment files never load Testing Library.
+ */
+if (typeof window !== 'undefined') {
+  const { cleanup } = await import('@testing-library/react');
+  afterEach(cleanup);
 }
