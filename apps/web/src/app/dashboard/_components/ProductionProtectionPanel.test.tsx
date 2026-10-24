@@ -92,8 +92,12 @@ describe('ProductionProtectionPanel', () => {
       'https://vercel.com/integrations/assurly-live-lock/new?state=s',
     );
 
-    window.dispatchEvent(new Event('focus'));
-    expect(onChanged).toHaveBeenCalled();
+    // The focus listener is attached by an effect after the install state renders.
+    await screen.findByText(/Finish connecting Vercel/);
+    await waitFor(() => {
+      window.dispatchEvent(new Event('focus'));
+      expect(onChanged).toHaveBeenCalled();
+    });
     open.mockRestore();
   });
 

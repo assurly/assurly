@@ -98,24 +98,46 @@ test.describe('Dashboard Live Lock', () => {
     expect(wide).not.toBeNull();
     expect(wide!.width).toBeGreaterThan(320);
     expect(wide!.x).toBeGreaterThanOrEqual(0);
-    await expect(panel).toContainText('Connect the GitHub repository that deploys this URL.');
   });
 
-  test('offers Lock deploys and then Connect Vercel', async ({ context, page }) => {
+  test('protects production deploys: pick the project, then see each deploy', async ({
+    context,
+    page,
+  }) => {
     await installDashboardSession(context);
     await mockDashboardClientApis(page);
+    let locked = false;
+    const enableBodies: unknown[] = [];
     await page.route('**/api/targets**', async (route) => {
       const path = new URL(route.request().url()).pathname;
       if (route.request().method() === 'POST' && path.endsWith('/live-lock/enable')) {
+        const body = route.request().postDataJSON() as { vercelProjectId?: string };
+        enableBodies.push(body);
+        const picked = body.vercelProjectId === 'prj_target';
+        locked = picked;
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({
-            status: 'vercel_required',
-            installUrl: null,
-            connectPath: '/api/vercel/connect',
-            pullRequestUrl: null,
-          }),
+          body: JSON.stringify(
+            picked
+              ? {
+                  status: 'active',
+                  installUrl: null,
+                  projects: [],
+                  projectName: 'assurly-live-target',
+                  mode: 'monitor',
+                }
+              : {
+                  status: 'vercel_project_required',
+                  installUrl: null,
+                  projects: [
+                    { id: 'prj_other', name: 'portfolio' },
+                    { id: 'prj_target', name: 'assurly-live-target' },
+                  ],
+                  projectName: null,
+                  mode: null,
+                },
+          ),
         });
         return;
       }
@@ -125,20 +147,34 @@ test.describe('Dashboard Live Lock', () => {
           contentType: 'application/json',
           body: JSON.stringify({
             ...DETAIL,
-            liveLock: {
-              status: null,
-              shipScore: null,
-              reason: null,
-              gitSha: null,
-              checkedAt: null,
-              stoppedDeploy: false,
-            },
             liveLockSetup: {
-              repositoryName: 'acme/app',
-              vercelConnected: false,
-              locked: false,
-              pullRequestUrl: null,
+              vercelConfigured: true,
+              vercelConnected: true,
+              projectName: locked ? 'assurly-live-target' : null,
+              mode: locked ? 'monitor' : null,
             },
+            liveLockChecks: locked
+              ? [
+                  {
+                    deploymentId: 'dpl_1',
+                    deploymentUrl: 'https://assurly-live-target-abc.vercel.app',
+                    gitSha: 'abc1234def',
+                    blocking: false,
+                    status: 'completed',
+                    conclusion: 'neutral',
+                    reason: 'runtime_blocker',
+                    shipScore: 40,
+                    blockers: [
+                      {
+                        ruleId: 'runtime-supabase-rls-open',
+                        message: 'Supabase table customers returns rows to anyone.',
+                        location: 'Supabase REST API · customers',
+                      },
+                    ],
+                    checkedAt: '2026-10-24T10:00:00.000Z',
+                  },
+                ]
+              : [],
           }),
         });
         return;
@@ -159,10 +195,24 @@ test.describe('Dashboard Live Lock', () => {
     await page
       .getByRole('button', { name: 'assurly-live-target.vercel.app: Not ready to ship' })
       .click();
-    await page.getByRole('button', { name: 'Lock deploys' }).click();
-    await expect(page.getByRole('link', { name: 'Connect Vercel' })).toBeVisible();
+    const protection = page.getByRole('region', { name: 'Production protection' });
+    await protection.getByRole('button', { name: 'Protect production deploys' }).click();
+    await protection.getByLabel('Vercel project').selectOption('prj_target');
+    await protection.getByRole('button', { name: 'Use this project' }).click();
+
+    await expect(protection).toContainText('Monitoring assurly-live-target');
+    await expect(protection).toContainText('Would be held back');
+    await expect(protection).toContainText('Supabase table customers returns rows to anyone.');
+    await expect(
+      protection.getByRole('button', { name: 'Hold back blocked deploys' }),
+    ).toBeVisible();
+    expect(enableBodies).toEqual([{}, { vercelProjectId: 'prj_target' }]);
+
+    const narrow = await protection.boundingBox();
+    expect(narrow!.x).toBeGreaterThanOrEqual(0);
+    expect(narrow!.x + narrow!.width).toBeLessThanOrEqual(390);
 
     await page.setViewportSize({ width: 1280, height: 800 });
-    await expect(page.getByRole('link', { name: 'Connect Vercel' })).toBeVisible();
+    await expect(protection).toContainText('Would be held back');
   });
 });

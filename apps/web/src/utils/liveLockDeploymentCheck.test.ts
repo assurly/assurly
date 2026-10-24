@@ -235,6 +235,20 @@ describe('startDeploymentCheck', () => {
   });
 });
 
+describe('a Vercel failure while starting', () => {
+  it('gives the run back so the redelivered event can claim it', async () => {
+    const { api, deps } = harness();
+    await registerDeploymentCheck(EVENT, deps);
+    vi.mocked(api.markCheckRunning).mockRejectedValueOnce(new Error('Vercel 500'));
+
+    await expect(
+      startDeploymentCheck({ ...EVENT, type: 'deployment.ready' }, deps),
+    ).rejects.toThrow('Vercel 500');
+    const retry = await startDeploymentCheck({ ...EVENT, type: 'deployment.ready' }, deps);
+    expect(retry).not.toBeNull();
+  });
+});
+
 describe('rerunDeploymentCheck', () => {
   it('reruns a completed check and ignores a check id that is not ours', async () => {
     const { deps, probe } = harness();

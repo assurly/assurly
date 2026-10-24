@@ -754,6 +754,9 @@ function eq(value: string | number): string {
   return encodeURIComponent(String(value));
 }
 
+/** Vercel marks a running check stale after five minutes without an update. */
+export const LIVE_LOCK_RUN_STALE_MS = 5 * 60 * 1000;
+
 /** Git commit SHAs we treat as identity keys. Placeholders like `unknown` are excluded. */
 const HEX_COMMIT_SHA = /^[0-9a-f]{7,40}$/i;
 
@@ -1728,12 +1731,20 @@ export class SupabaseDbAdapter implements DbAdapter {
 
   async claimLiveLockCheckRun(deploymentId: string): Promise<LiveLockCheckRow | null> {
     const current = await this.getLiveLockCheck(deploymentId);
-    if (!current || current.status === 'running') return null;
+    if (!current) return null;
+    // A run still `running` past Vercel's five-minute window died with its
+    // function. It may be taken over, or the check could never run again.
+    const staleBefore = Date.now() - LIVE_LOCK_RUN_STALE_MS;
+    const stale =
+      current.status === 'running' &&
+      current.started_at !== null &&
+      Date.parse(current.started_at) < staleBefore;
+    if (current.status === 'running' && !stale) return null;
     // The run number is the compare-and-set token: two deliveries that read the
     // same row race on one UPDATE, and only one of them matches it.
     const now = new Date().toISOString();
     const rows = await this.fetchDb<LiveLockCheckRow[]>(
-      `live_lock_check?deployment_id=eq.${eq(deploymentId)}&run=eq.${current.run}&status=neq.running&select=*`,
+      `live_lock_check?deployment_id=eq.${eq(deploymentId)}&run=eq.${current.run}&select=*`,
       {
         method: 'PATCH',
         headers: { Prefer: 'return=representation' },

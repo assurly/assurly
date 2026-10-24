@@ -134,7 +134,18 @@ async function claimRun(
     });
     return null;
   }
-  await linked.api.markCheckRunning(deploymentId, claimed.vercel_check_id);
+  try {
+    await linked.api.markCheckRunning(deploymentId, claimed.vercel_check_id);
+  } catch (error) {
+    // Give the run back, so Vercel's redelivery of this event can claim it.
+    await deps.db.completeLiveLockCheck(deploymentId, claimed.run, {
+      conclusion: 'neutral',
+      reason: 'probe_unavailable',
+      shipScore: null,
+      blockers: [],
+    });
+    throw error;
+  }
   return () => concludeRun(claimed, linked, deps);
 }
 

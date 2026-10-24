@@ -571,3 +571,48 @@ describe('user database adapter', () => {
     SUPABASE_FETCH_TIMEOUT_MS + 5_000,
   );
 });
+
+describe('claimLiveLockCheckRun', () => {
+  const originalEnv = { ...process.env };
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    vi.unstubAllGlobals();
+  });
+
+  function stubCheck(row: Record<string, unknown>): ReturnType<typeof vi.fn> {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'publishable-key';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-secret';
+    const fetchMock = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      const body =
+        init?.method === 'PATCH' ? [{ ...row, ...JSON.parse(String(init.body)) }] : [row];
+      return new Response(JSON.stringify(body), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('does not take a run another delivery is working on', async () => {
+    const fetchMock = stubCheck({
+      deployment_id: 'dpl_1',
+      status: 'running',
+      run: 1,
+      started_at: new Date().toISOString(),
+    });
+    expect(await getAdminDbAdapter().claimLiveLockCheckRun('dpl_1')).toBeNull();
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false);
+  });
+
+  it('takes over a run that died past the five-minute window, guarded by the run number', async () => {
+    const fetchMock = stubCheck({
+      deployment_id: 'dpl_1',
+      status: 'running',
+      run: 1,
+      started_at: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
+    });
+    const claimed = await getAdminDbAdapter().claimLiveLockCheckRun('dpl_1');
+    expect(claimed).toMatchObject({ status: 'running', run: 2 });
+    const patch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH');
+    expect(String(patch?.[0])).toContain('run=eq.1');
+  });
+});
