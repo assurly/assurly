@@ -5,6 +5,7 @@ import type {
   ScanFinding,
   ScanShipGateMeta,
 } from './dbAdapter';
+import { canonicalizeLegacyFinding } from '@assurly/scanner-core';
 import { generateBadgeToken } from './guardian';
 import { confirmFindingsLive, type LiveProofEvidence } from './liveConfirmation';
 import { resolveVerdictFromScanFindings } from './shipGate';
@@ -213,8 +214,24 @@ async function confirmScanFindingsLive(
 }
 
 /** Persist findings + Ship Gate meta. Sync the repo projection only when this scan owns the verdict. */
+/** A finding from an older CLI, under the rule id every other channel uses. */
+function canonicalStoredFinding(
+  finding: PersistRepoScanInput['findings'][number],
+): PersistRepoScanInput['findings'][number] {
+  const { ruleId, message } = canonicalizeLegacyFinding({
+    ruleId: finding.rule_id,
+    message: finding.message,
+  });
+  return ruleId === finding.rule_id ? finding : { ...finding, rule_id: ruleId, message };
+}
+
 export async function persistRepoScan(db: DbAdapter, input: PersistRepoScanInput) {
-  const live = await confirmScanFindingsLive(db, input.repoId, input.findings);
+  // Before live confirmation, which only recognises current rule ids.
+  const live = await confirmScanFindingsLive(
+    db,
+    input.repoId,
+    input.findings.map(canonicalStoredFinding),
+  );
   const findings = live.findings;
   let meta = input.meta;
   if (live.confirmed > 0 && input.status !== 'failed') {

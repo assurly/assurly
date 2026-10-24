@@ -136,6 +136,7 @@ export interface DeeperStackScanOptions {
 }
 /** Runs Phase 3 deeper-stack scanners over the supplied project sources. */
 export declare function runDeeperStackScans(sources: readonly SourceInput[], options?: DeeperStackScanOptions): ScanResult;
+export { canonicalizeLegacyFinding } from './legacyRuleIds';
 export { BLOCKED_SCORE_CAP, RLS_SCORE_GROUP_CAP, buildIssueGroups, buildShipGateReport, countCleanScannedFiles, formatShipGateMarkdown, formatShipGatePlainText, getFindingGroupKey, isShipGateBlocked, isShipGateBlockerFinding, resolveGroupAction, type ShipGateAction, type ShipGateActionKind, type ShipGateFindingInput, type ShipGateGroup, type ShipGateMarkdownOptions, type ShipGateOptions, type ShipGateReport, type ShipGateStatus, } from './shipGate';
 export { findingKind, isCiWorkflowSuggestion, isDatabaseSafetyNetAdvisory, isRlsWithoutPolicyAdvisory, isIssueFinding, type FindingKind, } from './findingKind';
 export { excludeGitIgnoredFiles, isAssurlyEnvExamplePath, isGitIgnorePath, isGitIgnored, parseGitIgnoreSources, type GitIgnoreFileInput, type GitIgnoreSource, } from './gitIgnore';

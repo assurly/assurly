@@ -31,33 +31,22 @@ export const supabaseRules: Rule = {
     const sqlFindings = scanSqlMigrations(sql, { usesSupabase: true }).findings;
     // Kept under its own rule id: findingKind files it as an unscored note.
     findings.push(...sqlFindings.filter(isRlsWithoutPolicyAdvisory));
-    findings.push(
-      // This rule only runs on Supabase projects.
-      ...sqlFindings
-        .filter((finding) => finding.ruleId === 'supabase-rls')
-        .map((finding) => ({
-          ...finding,
-          ruleId: this.id,
-          message: finding.message.replace('is created but', 'is created in migration files, but'),
-        })),
-    );
+    // Findings keep scanner-core's own rule ids and messages, exactly as the
+    // dashboard reports them: consequence copy, the AI fix prompt and live
+    // confirmation are keyed by those ids, and a wrapper id matched none.
+    findings.push(...sqlFindings.filter((finding) => finding.ruleId === 'supabase-rls'));
 
     for (const file of context.files.filter((candidate) => candidate.startsWith('.env'))) {
       findings.push(
-        ...scanEnvVariables(read(file), '', file, 'code.ts')
-          .findings.filter((finding) => finding.ruleId === 'public-secret')
-          .map((finding) => ({ ...finding, ruleId: this.id })),
+        ...scanEnvVariables(read(file), '', file, 'code.ts').findings.filter(
+          (finding) => finding.ruleId === 'public-secret',
+        ),
       );
     }
     for (const file of context.files.filter((candidate) =>
       /\.(?:js|ts|jsx|tsx)$/.test(candidate),
     )) {
-      findings.push(
-        ...scanSupabaseClientLeaks(read(file), file).findings.map((finding) => ({
-          ...finding,
-          ruleId: this.id,
-        })),
-      );
+      findings.push(...scanSupabaseClientLeaks(read(file), file).findings);
     }
     return findings;
   },

@@ -14,12 +14,12 @@ The comparison is exact, down to file and line, so a rule change cannot trade a
 missed defect for a quieter report (or the reverse) without someone editing the
 case's `.expected.json` in the same diff.
 
-`apps/web/src/utils/corpusParity.test.ts` holds the dashboard to the same answers:
-it scans each case through `dashboardScanEngine` (the Instant Gate users run from
-the dashboard), with files read from disk as the GitHub tree would list them. One
-known difference is compared through an alias rather than hidden: the CLI reports
-scanner-core's `supabase-rls` under its wrapper id `supabase-security-checks`.
-A new rule therefore has to be wired into both engines, or one of the two gates fails.
+`apps/web/src/utils/corpusParity.test.ts` holds the web app to the same answers:
+it scans each case through `dashboardScanEngine` (the Instant Gate behind the
+dashboard and the landing page's free scan), with files read from disk as the
+GitHub tree would list them, and through Manual Checker's uploaded-folder scan.
+Rule ids and messages must match the CLI's exactly, so a new rule has to be wired
+into every engine or one of the gates fails.
 
 ## Cases
 

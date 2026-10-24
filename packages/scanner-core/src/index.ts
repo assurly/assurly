@@ -1357,6 +1357,7 @@ export function runDeeperStackScans(
   return result(findings);
 }
 
+export { canonicalizeLegacyFinding } from './legacyRuleIds';
 export {
   BLOCKED_SCORE_CAP,
   RLS_SCORE_GROUP_CAP,

@@ -45,15 +45,6 @@ interface ExpectedAnswer {
   dashboard?: Partial<Omit<ExpectedAnswer, 'dashboard'>>;
 }
 
-/**
- * The CLI reports scanner-core's `supabase-rls` under its wrapper rule's id
- * (packages/cli/src/rules/supabaseRules.ts). Same check, same file and line;
- * only the name differs, so the dashboard's id is compared under the CLI's.
- */
-const CLI_RULE_ID: Readonly<Record<string, string>> = {
-  'supabase-rls': 'supabase-security-checks',
-};
-
 function issueKey(issue: ExpectedIssue): string {
   return [issue.ruleId, issue.severity, issue.file ?? '-', issue.line ?? '-'].join(' · ');
 }
@@ -156,7 +147,7 @@ describe('precision corpus, as the web app scans it', () => {
       .filter((finding) => findingKind(finding) === 'issue')
       .map((finding) =>
         issueKey({
-          ruleId: CLI_RULE_ID[finding.ruleId] ?? finding.ruleId,
+          ruleId: finding.ruleId,
           severity: finding.severity,
           file: finding.file,
           line: finding.line,

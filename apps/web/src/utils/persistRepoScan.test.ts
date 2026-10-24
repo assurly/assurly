@@ -57,6 +57,45 @@ describe('persistRepoScan', () => {
     );
   });
 
+  it("stores an older CLI's wrapper-id finding under scanner-core's rule id", async () => {
+    // CLI <= 1.2.x uploads missing RLS as `supabase-security-checks`; pinned
+    // versions keep doing so after the CLI itself stopped.
+    const db = {
+      saveScan: vi.fn().mockResolvedValue({ id: 'scan-2', repository_id: 'repo-1' }),
+      getRepository: vi.fn().mockResolvedValue({ id: 'repo-1', organization_id: 'org-1' }),
+      getTargetByIdentifier: vi.fn().mockResolvedValue(null),
+      updateRepositoryDefaultBranch: vi.fn().mockResolvedValue(undefined),
+      upsertTarget: vi.fn().mockResolvedValue({}),
+    };
+
+    await persistRepoScan(db as never, {
+      repoId: 'repo-1',
+      commitSha: 'abc',
+      branch: 'main',
+      status: 'failed',
+      findings: [
+        {
+          rule_id: 'supabase-security-checks',
+          severity: 'error',
+          confidence: 'high',
+          file_path: 'supabase/migrations/0001.sql',
+          line_number: 1,
+          message:
+            "Supabase table 'customers' is created in migration files, but Row-Level Security (RLS) is not enabled.",
+        },
+      ],
+      meta: { shipScore: 59, verdict: 'blocked', scannedFileCount: 9, cleanFileCount: 8 },
+    });
+
+    expect(db.saveScan.mock.calls[0][6]).toEqual([
+      expect.objectContaining({
+        rule_id: 'supabase-rls',
+        message:
+          "Supabase table 'customers' is created but Row-Level Security (RLS) is not enabled.",
+      }),
+    ]);
+  });
+
   it('projects a failed empty scan as unscanned with a null score', async () => {
     const db = {
       saveScan: vi.fn().mockResolvedValue({

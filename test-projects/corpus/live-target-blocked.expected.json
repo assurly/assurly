@@ -9,7 +9,7 @@
   },
   "issues": [
     {
-      "ruleId": "supabase-security-checks",
+      "ruleId": "supabase-rls",
       "severity": "error",
       "file": "supabase/migrations/0001_customers.sql",
       "line": 1
