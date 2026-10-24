@@ -63,9 +63,24 @@ export class VercelApiError extends Error {
   constructor(
     readonly status: number,
     readonly operation: string,
+    /** Vercel's own error code and message. Never the request, never a token. */
+    readonly detail: string | null = null,
   ) {
-    super(`Vercel ${operation} failed (${status}).`);
+    super(`Vercel ${operation} failed (${status})${detail ? `: ${detail}` : ''}.`);
     this.name = 'VercelApiError';
+  }
+}
+
+/** `{ error: { code, message } }` from a Vercel response, trimmed for a log line. */
+async function vercelErrorDetail(response: Response): Promise<string | null> {
+  try {
+    const body = (await response.json()) as { error?: { code?: unknown; message?: unknown } };
+    const code = typeof body.error?.code === 'string' ? body.error.code : '';
+    const message = typeof body.error?.message === 'string' ? body.error.message : '';
+    const text = [code, message].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    return text ? text.slice(0, 300) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -146,7 +161,9 @@ export function createVercelIntegrationApi(
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    if (!response.ok) throw new VercelApiError(response.status, operation);
+    if (!response.ok) {
+      throw new VercelApiError(response.status, operation, await vercelErrorDetail(response));
+    }
     return response;
   };
 

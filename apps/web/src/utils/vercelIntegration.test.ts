@@ -126,3 +126,25 @@ describe('vercel install state', () => {
     expect(readVercelInstallState(edited, 2_000)).toBeNull();
   });
 });
+
+describe('vercel error detail', () => {
+  it("keeps Vercel's error code and message so a failed call can be diagnosed", async () => {
+    const fetchImpl = vi.fn(async () =>
+      json({ error: { code: 'bad_request', message: 'Invalid request: detailsUrl is bad' } }, 400),
+    );
+    const api = createVercelIntegrationApi('tok', null, fetchImpl as never);
+    await expect(
+      api.createCheck('dpl_1', { blocking: false, detailsUrl: 'https://assurly.dev/dashboard' }),
+    ).rejects.toMatchObject({
+      status: 400,
+      detail: 'bad_request Invalid request: detailsUrl is bad',
+    });
+  });
+
+  it('does not put the token in the error', async () => {
+    const fetchImpl = vi.fn(async () => json({ error: { code: 'forbidden', message: 'no' } }, 403));
+    const api = createVercelIntegrationApi('super-secret-token', null, fetchImpl as never);
+    const error = await api.listProjects().catch((caught: unknown) => caught);
+    expect(String((error as Error).message)).not.toContain('super-secret-token');
+  });
+});
