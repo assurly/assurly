@@ -16,7 +16,7 @@ vi.mock('../../../../../utils/ownership', async (importOriginal) => {
   return { ...actual, verifyOwnership: verifyOwnershipMock };
 });
 
-const TARGET_ID = '11111111-1111-1111-1111-111111111111';
+const TARGET_ID = '11111111-1111-4111-8111-111111111111';
 
 function urlTarget(overrides: Record<string, unknown> = {}) {
   return {

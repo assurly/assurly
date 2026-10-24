@@ -1216,7 +1216,7 @@ var package_default = {
     commander: "^11.1.0",
     ora: "^5.4.1",
     "ts-morph": "^20.0.0",
-    zod: "^3.22.4"
+    zod: "^4.6.6"
   },
   devDependencies: {
     "@types/node": "^20.11.0",

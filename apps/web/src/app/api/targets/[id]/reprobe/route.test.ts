@@ -16,7 +16,7 @@ vi.mock('../../../../../utils/reprobe', async (importOriginal) => {
   return { ...actual, reprobeTargetAndRecord: reprobeMock };
 });
 
-const TARGET_ID = '11111111-1111-1111-1111-111111111111';
+const TARGET_ID = '11111111-1111-4111-8111-111111111111';
 
 function urlTarget(overrides: Record<string, unknown> = {}) {
   return {

@@ -8,7 +8,7 @@ import {
 
 const baseInput = {
   organizationId: 'org-1',
-  targetId: '11111111-1111-1111-1111-111111111111',
+  targetId: '11111111-1111-4111-8111-111111111111',
   identifier: 'https://app.com',
 };
 
@@ -24,7 +24,7 @@ describe('deriveOwnershipToken', () => {
   it('differs when the target id differs (a token cannot be replayed across targets)', () => {
     const other = deriveOwnershipToken({
       ...baseInput,
-      targetId: '22222222-2222-2222-2222-222222222222',
+      targetId: '22222222-2222-4222-8222-222222222222',
     });
     expect(other).not.toBe(deriveOwnershipToken(baseInput));
   });

@@ -18,7 +18,7 @@ export type ProbeHandler = (
 interface ProbePrimitiveDefinition {
   name: ProbePrimitiveName;
   /** Zod schema for planner-supplied params. Extra keys are rejected. */
-  paramsSchema: z.ZodTypeAny;
+  paramsSchema: z.ZodType<Record<string, unknown>>;
   execute: ProbeHandler;
 }
 

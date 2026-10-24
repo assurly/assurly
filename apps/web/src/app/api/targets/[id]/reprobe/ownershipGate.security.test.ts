@@ -28,7 +28,7 @@ vi.mock('node:dns/promises', () => ({
   resolveTxt: vi.fn(async () => []),
 }));
 
-const TARGET_ID = '11111111-1111-1111-1111-111111111111';
+const TARGET_ID = '11111111-1111-4111-8111-111111111111';
 const PAGE_URL = 'https://myapp.example/';
 const SUPABASE_URL = 'https://demo.supabase.co';
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
