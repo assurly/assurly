@@ -95,6 +95,17 @@ describe('GitHub Public Scan Proxy (GET /api/github/public-scan)', () => {
     expect(data.error.code).toBe('invalid_request');
   });
 
+  it.each(['../..', 'owner/..', './repo'])('rejects %s before calling GitHub', async (repo) => {
+    mockFetch.mockClear();
+    const res = await GET(
+      new Request(
+        `http://localhost/api/github/public-scan?repo=${encodeURIComponent(repo)}&type=tree`,
+      ),
+    );
+    expect(res.status).toBe(400);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   it('should resolve default branch and return tree data with real commit_sha', async () => {
     mockPublicGitHub({ branch: 'canary' });
 

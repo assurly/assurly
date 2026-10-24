@@ -13,12 +13,11 @@ import {
   resolveCanaryCallbackOrigin,
 } from '../../../../utils/canaryPlant';
 import { getApplicationUrl } from '../../../../utils/env';
-
-const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+import { isGitHubRepositoryName } from '../../../../utils/githubNames';
 
 const issueBody = z
   .object({
-    repo: z.string().trim().max(201).regex(REPO_PATTERN),
+    repo: z.string().trim().max(201).refine(isGitHubRepositoryName),
   })
   .strict();
 

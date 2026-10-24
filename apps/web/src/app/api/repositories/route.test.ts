@@ -79,6 +79,19 @@ describe('POST /api/repositories tenant boundary', () => {
     expect(db.addRepository).not.toHaveBeenCalled();
   });
 
+  it('refuses a repository name with a dot segment', async () => {
+    // Stored, it would become `repos/../..` in every later GitHub call.
+    const response = await POST(
+      new Request('http://localhost/api/repositories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '../..', githubRepoId: 123 }),
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(db.addRepository).not.toHaveBeenCalled();
+  });
+
   it('creates a repository inside the verified organization', async () => {
     const response = await POST(
       new Request('http://localhost/api/repositories', {

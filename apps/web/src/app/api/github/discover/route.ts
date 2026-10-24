@@ -7,17 +7,10 @@ import {
   githubRepositoryApiUrl,
   resolveGitHubReadToken,
 } from '../../../../utils/githubApp';
+import { isGitHubNameSegment, isGitHubRepositoryName } from '../../../../utils/githubNames';
 
-const ownerName = z
-  .string()
-  .min(1)
-  .max(100)
-  .regex(/^[A-Za-z0-9_.-]+$/);
-const repositoryName = z
-  .string()
-  .min(3)
-  .max(201)
-  .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/);
+const ownerName = z.string().min(1).max(100).refine(isGitHubNameSegment);
+const repositoryName = z.string().min(3).max(201).refine(isGitHubRepositoryName);
 
 const discoverQuery = z.discriminatedUnion('type', [
   z.object({ type: z.literal('user-repos'), owner: ownerName }).strict(),

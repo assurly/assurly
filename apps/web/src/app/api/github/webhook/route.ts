@@ -57,6 +57,7 @@ import { deleteClosedFixBranch } from '../../../../utils/githubFixBranchCleanup'
 import { syncInstallationRepositories } from '../../../../utils/githubInstallationSync';
 import { handlePushDelivery } from '../../../../utils/pushWebhook';
 import { isAssurlyFixBranch } from '../../../../utils/scanBranch';
+import { isGitHubRepositoryName } from '../../../../utils/githubNames';
 
 // A push runs Full Gate on the whole commit in after(); PR checks stay quick.
 export const maxDuration = 300;
@@ -79,11 +80,7 @@ const pullRequestWebhookSchema = z
     repository: z
       .object({
         id: z.number().int().positive().safe(),
-        full_name: z
-          .string()
-          .min(3)
-          .max(201)
-          .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
+        full_name: z.string().min(3).max(201).refine(isGitHubRepositoryName),
         private: z.boolean().optional(),
         default_branch: z.string().min(1).max(255).optional(),
         homepage: z.string().nullable().optional(),

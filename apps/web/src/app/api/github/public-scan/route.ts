@@ -18,12 +18,9 @@ import {
   REPOSITORY_TOO_LARGE_MESSAGE,
 } from '../../../../utils/instantGateTree';
 import { INSTANT_GATE_MAX_FILES } from '@assurly/scanner-core';
+import { isGitHubRepositoryName } from '../../../../utils/githubNames';
 
-const repositoryName = z
-  .string()
-  .min(3)
-  .max(201)
-  .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/);
+const repositoryName = z.string().min(3).max(201).refine(isGitHubRepositoryName);
 const branchName = z
   .string()
   .min(1)

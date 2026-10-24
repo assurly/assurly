@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { ConfigurationError } from './env';
+import { isGitHubRepositoryName as isSafeGitHubRepositoryName } from './githubNames';
 
 const GITHUB_API_URL = 'https://api.github.com';
 const GITHUB_API_VERSION = '2026-03-10';
@@ -432,11 +433,7 @@ export async function getGitHubInstallation(installationId: string): Promise<unk
  * of letting {@link parseGitHubRepositoryName} throw an opaque error.
  */
 export function isGitHubRepositoryName(fullName: string): boolean {
-  const parts = fullName.split('/');
-  return (
-    parts.length === 2 &&
-    parts.every((part) => /^[A-Za-z0-9_.-]+$/.test(part) && part.length <= 100)
-  );
+  return isSafeGitHubRepositoryName(fullName);
 }
 
 export function parseGitHubRepositoryName(fullName: string): [string, string] {

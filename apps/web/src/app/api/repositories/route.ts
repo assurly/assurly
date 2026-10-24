@@ -9,15 +9,11 @@ import {
 } from '../../../utils/apiSecurity';
 import { requireOrganizationMember } from '../../../utils/authorization';
 import { getAdminDbAdapter } from '../../../utils/dbAdapter';
+import { isGitHubRepositoryName } from '../../../utils/githubNames';
 
 const repositoryBody = z
   .object({
-    name: z
-      .string()
-      .trim()
-      .min(3)
-      .max(201)
-      .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
+    name: z.string().trim().min(3).max(201).refine(isGitHubRepositoryName),
     githubRepoId: z.number().int().positive().safe(),
   })
   .strict();

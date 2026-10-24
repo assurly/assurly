@@ -6,8 +6,6 @@ import { isGitHubRepositoryName } from '../../../../utils/githubApp';
 import { persistFullGateScan } from '../../../../utils/fullGatePersist';
 import { PERSISTED_FINDINGS_LIMIT } from '../../../../utils/scanGateAuthority';
 
-const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-
 const findingSchema = z
   .object({
     ruleId: z.string().trim().min(1).max(120),
@@ -22,7 +20,7 @@ const findingSchema = z
 
 const submitBody = z
   .object({
-    repo: z.string().trim().max(201).regex(REPO_PATTERN),
+    repo: z.string().trim().max(201).refine(isGitHubRepositoryName),
     commitSha: z
       .string()
       .min(1)

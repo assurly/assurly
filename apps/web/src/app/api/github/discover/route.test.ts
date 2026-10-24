@@ -16,6 +16,15 @@ describe('GitHub discover proxy (GET /api/github/discover)', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each(['type=user-repos&owner=..', 'type=repository&repo=..%2F..'])(
+    'rejects a dot segment before calling GitHub (%s)',
+    async (query) => {
+      const response = await GET(new Request(`http://localhost/api/github/discover?${query}`));
+      expect(response.status).toBe(400);
+      expect(mockFetch).not.toHaveBeenCalled();
+    },
+  );
+
   it('lists public repositories for a GitHub user', async () => {
     mockFetch.mockResolvedValueOnce(
       new Response(

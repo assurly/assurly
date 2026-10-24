@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { DbAdapter } from './dbAdapter';
 import { scanPushedCommit, trackedBranch, type PushEvent, type PushScanDeps } from './pushScan';
+import { isGitHubRepositoryName } from './githubNames';
 
 const ZERO_SHA = /^0+$/;
 
@@ -12,11 +13,7 @@ const pushWebhookSchema = z
     repository: z
       .object({
         id: z.number().int().positive().safe(),
-        full_name: z
-          .string()
-          .min(3)
-          .max(201)
-          .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
+        full_name: z.string().min(3).max(201).refine(isGitHubRepositoryName),
         default_branch: z.string().min(1).max(255),
       })
       .passthrough(),

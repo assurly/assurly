@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ApiError } from './apiSecurity';
 import type { DbAdapter, GitHubRepositoryMapping } from './dbAdapter';
 import { getGitHubInstallation, getInstallationAccessToken, githubHeaders } from './githubApp';
+import { isGitHubRepositoryName } from './githubNames';
 
 const MAX_REPOSITORY_PAGES = 10;
 const REPOSITORIES_PER_PAGE = 100;
@@ -17,10 +18,7 @@ const repositoryPageSchema = z
         z
           .object({
             id: z.number().int().positive().safe(),
-            full_name: z
-              .string()
-              .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/)
-              .max(201),
+            full_name: z.string().refine(isGitHubRepositoryName).max(201),
           })
           .passthrough(),
       )
