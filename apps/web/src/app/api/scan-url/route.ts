@@ -6,6 +6,7 @@ import { ApiError, emptyObjectSchema, RATE_LIMITS, secureRoute } from '../../../
 import { detectGeneratorFingerprint } from '../../../utils/generatorFingerprint';
 import { persistUrlTargetShipGateVerdict } from '../../../utils/guardian';
 import { scanLiveUrlWithEvidence, type ProbeEvidence } from '../../../utils/runtimeScanner';
+import { unreachableReason } from '../../../utils/unreachableTarget';
 import { assertScannableUrl, UrlSafetyError } from '../../../utils/urlSafety';
 import { isActiveProbeAllowed, normalizeUrlIdentifier } from '../../../utils/ownership';
 import { replaceProbeEvidenceForTarget } from '../../../utils/probeEvidence';
@@ -223,13 +224,28 @@ export const POST = secureRoute(
     // point — the UI cannot bypass it. The planner never runs around this gate.
     const gate = auth ? await resolveUrlTargetGate(auth, parsedUrl.toString()) : PASSIVE_GATE;
 
-    const { findings, evidence, planSource, pageText, visibility, blocked, bundleCoverage } =
-      await scanLiveUrlWithEvidence(parsedUrl.toString(), fetch, undefined, {
+    let scanned;
+    try {
+      scanned = await scanLiveUrlWithEvidence(parsedUrl.toString(), fetch, undefined, {
         activeProbe: gate.activeProbe,
         organizationId: gate.organizationId ?? undefined,
         // Always run — free users get the headline (conversion); paid get checks.
         visibilityAudit: true,
       });
+    } catch (error) {
+      // A site we could not reach is the visitor's to fix, not an internal error.
+      const reason = unreachableReason(error, parsedUrl.hostname);
+      if (reason) {
+        throw new ApiError(
+          422,
+          'target_unreachable',
+          `${reason} Check the address and that the app is deployed and public, then try again.`,
+        );
+      }
+      throw error;
+    }
+    const { findings, evidence, planSource, pageText, visibility, blocked, bundleCoverage } =
+      scanned;
 
     // Findings that live in an unread chunk were never looked for. The bundle
     // budgets were sized from real apps; this is how we learn when one outgrows
