@@ -319,14 +319,44 @@ export function githubHeaders(token?: string, accept = 'application/vnd.github+j
   };
 }
 
-export async function getInstallationAccessToken(
+/**
+ * Installation tokens last an hour; minting one is a signed JWT plus a GitHub
+ * round trip on every "Show the code", "Fix it" and proxied file read. This
+ * instance keeps each one for a while. The key includes the repository, so a
+ * token scoped to one repository is never handed out for another.
+ */
+const TOKEN_REUSE_MS = 10 * 60_000;
+/** Never hand out a token this close to GitHub's expiry. */
+const TOKEN_EXPIRY_MARGIN_MS = 5 * 60_000;
+const TOKEN_CACHE_LIMIT = 500;
+
+const installationTokens = new Map<string, { token: string; reuseUntil: number }>();
+const installationTokensInFlight = new Map<string, Promise<{ token: string; expiresAt: number }>>();
+
+/**
+ * Forgets this instance's tokens for one installation, after GitHub reports it
+ * changed (new permissions, repositories, suspension). Other instances drop
+ * theirs within TOKEN_REUSE_MS.
+ */
+export function forgetInstallationTokens(installationId: string): void {
+  for (const key of installationTokens.keys()) {
+    if (key.split(':')[1] === installationId) installationTokens.delete(key);
+  }
+}
+
+/** Forgets every cached installation token (tests). */
+export function clearInstallationTokenCache(): void {
+  installationTokens.clear();
+  installationTokensInFlight.clear();
+}
+
+async function mintInstallationAccessToken(
+  config: GitHubAppConfig,
   installationId: string,
   repositoryId?: number,
-): Promise<string> {
-  const config = getGitHubAppConfig();
-  const normalizedInstallationId = requireNumericId(installationId, 'installation ID');
+): Promise<{ token: string; expiresAt: number }> {
   const response = await fetch(
-    `${GITHUB_API_URL}/app/installations/${normalizedInstallationId}/access_tokens`,
+    `${GITHUB_API_URL}/app/installations/${installationId}/access_tokens`,
     {
       method: 'POST',
       headers: {
@@ -343,11 +373,47 @@ export async function getInstallationAccessToken(
       `GitHub installation token request failed (${response.status}).`,
     );
   }
-  const data = (await response.json()) as { token?: unknown };
+  const data = (await response.json()) as { token?: unknown; expires_at?: unknown };
   if (typeof data.token !== 'string' || !data.token) {
     throw new GitHubApiError(502, 'GitHub installation token response is invalid.');
   }
-  return data.token;
+  const expiresAt = typeof data.expires_at === 'string' ? Date.parse(data.expires_at) : NaN;
+  return { token: data.token, expiresAt };
+}
+
+export async function getInstallationAccessToken(
+  installationId: string,
+  repositoryId?: number,
+): Promise<string> {
+  const config = getGitHubAppConfig();
+  const normalizedInstallationId = requireNumericId(installationId, 'installation ID');
+  const key = `${config.appId}:${normalizedInstallationId}:${repositoryId ?? '*'}`;
+
+  const cached = installationTokens.get(key);
+  if (cached && Date.now() < cached.reuseUntil) return cached.token;
+  installationTokens.delete(key);
+
+  let pending = installationTokensInFlight.get(key);
+  if (!pending) {
+    pending = mintInstallationAccessToken(config, normalizedInstallationId, repositoryId);
+    installationTokensInFlight.set(key, pending);
+  }
+  try {
+    const { token, expiresAt } = await pending;
+    // No usable expiry from GitHub: use the token once, keep nothing.
+    if (Number.isFinite(expiresAt)) {
+      const reuseUntil = Math.min(Date.now() + TOKEN_REUSE_MS, expiresAt - TOKEN_EXPIRY_MARGIN_MS);
+      if (reuseUntil > Date.now()) {
+        if (installationTokens.size >= TOKEN_CACHE_LIMIT) {
+          installationTokens.delete(installationTokens.keys().next().value as string);
+        }
+        installationTokens.set(key, { token, reuseUntil });
+      }
+    }
+    return token;
+  } finally {
+    installationTokensInFlight.delete(key);
+  }
 }
 
 export async function getGitHubInstallation(installationId: string): Promise<unknown> {

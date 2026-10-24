@@ -1,6 +1,10 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { generateKeyPairSync } from 'node:crypto';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  clearInstallationTokenCache,
   fetchGitHubFilesBatch,
+  forgetInstallationTokens,
+  getInstallationAccessToken,
   getGitHubServerPat,
   githubHeaders,
   listGitHubBranchNames,
@@ -140,5 +144,96 @@ describe('listGitHubBranchNames', () => {
     expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
       'https://api.github.com/repos/owner/repo/branches?per_page=100',
     );
+  });
+});
+
+describe('getInstallationAccessToken', () => {
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const MINUTE = 60_000;
+  let minted = 0;
+
+  /** GitHub's token endpoint: a fresh token per call, valid for an hour. */
+  function stubTokenEndpoint(status = 201): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn(async () => {
+      if (status !== 201) return new Response('{}', { status });
+      minted += 1;
+      return Response.json(
+        {
+          token: `ghs_token_${minted}`,
+          expires_at: new Date(Date.now() + 60 * MINUTE).toISOString(),
+        },
+        { status: 201 },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  beforeEach(() => {
+    minted = 0;
+    clearInstallationTokenCache();
+    vi.stubEnv('GITHUB_APP_ID', '12345');
+    vi.stubEnv('GITHUB_PRIVATE_KEY', privateKey.export({ type: 'pkcs1', format: 'pem' }) as string);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('reuses a token for the same installation and repository', async () => {
+    const fetchMock = stubTokenEndpoint();
+    const first = await getInstallationAccessToken('42', 7);
+    const second = await getInstallationAccessToken('42', 7);
+    expect(second).toBe(first);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('never hands a token scoped to one repository to another', async () => {
+    const fetchMock = stubTokenEndpoint();
+    const repoSeven = await getInstallationAccessToken('42', 7);
+    const repoEight = await getInstallationAccessToken('42', 8);
+    const wholeInstallation = await getInstallationAccessToken('42');
+    expect(new Set([repoSeven, repoEight, wholeInstallation]).size).toBe(3);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1].body))).toEqual({ repository_ids: [8] });
+  });
+
+  it('mints once for concurrent requests', async () => {
+    const fetchMock = stubTokenEndpoint();
+    const tokens = await Promise.all([1, 2, 3].map(() => getInstallationAccessToken('42', 7)));
+    expect(new Set(tokens).size).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('mints a new token after ten minutes, so changed permissions apply soon', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const fetchMock = stubTokenEndpoint();
+    await getInstallationAccessToken('42', 7);
+    vi.setSystemTime(Date.now() + 9 * MINUTE);
+    await getInstallationAccessToken('42', 7);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(Date.now() + 2 * MINUTE);
+    await getInstallationAccessToken('42', 7);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('forgets only the installation GitHub reported a change for', async () => {
+    const fetchMock = stubTokenEndpoint();
+    await getInstallationAccessToken('42', 7);
+    await getInstallationAccessToken('99', 7);
+    forgetInstallationTokens('42');
+    await getInstallationAccessToken('42', 7);
+    await getInstallationAccessToken('99', 7);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not remember a failure', async () => {
+    stubTokenEndpoint(404);
+    await expect(getInstallationAccessToken('42', 7)).rejects.toThrow(/404/);
+    const fetchMock = stubTokenEndpoint();
+    await expect(getInstallationAccessToken('42', 7)).resolves.toBe('ghs_token_1');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

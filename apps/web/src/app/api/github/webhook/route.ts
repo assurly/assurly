@@ -15,6 +15,7 @@ import {
 import {
   fetchGitHubFile,
   getGitHubWebhookSecret,
+  forgetInstallationTokens,
   getInstallationAccessToken,
   githubHeaders,
   githubRepositoryApiUrl,
@@ -560,6 +561,8 @@ export const POST = secureRoute(
     const event = request.headers.get('x-github-event');
     if (event === 'installation' || event === 'installation_repositories') {
       const installationEvent = installationWebhookSchema.parse(rawPayload);
+      // Any installation change can alter what a cached token may do.
+      forgetInstallationTokens(String(installationEvent.installation.id));
       if (!changesInstallationRepositories(event, installationEvent.action)) {
         return NextResponse.json({ message: 'Action ignored.' });
       }
