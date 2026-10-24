@@ -6,6 +6,7 @@ import { publicPageUrl } from '../utils/siteMetadata';
 const PUBLIC_PATHS = [
   { path: '/', priority: 1, changeFrequency: 'weekly' as const },
   { path: '/mcp', priority: 0.8, changeFrequency: 'weekly' as const },
+  { path: '/live-lock', priority: 0.6, changeFrequency: 'monthly' as const },
   { path: '/trust', priority: 0.6, changeFrequency: 'monthly' as const },
   { path: '/privacy', priority: 0.3, changeFrequency: 'yearly' as const },
   { path: '/terms', priority: 0.3, changeFrequency: 'yearly' as const },

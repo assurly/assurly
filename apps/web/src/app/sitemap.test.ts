@@ -13,6 +13,7 @@ describe('sitemap', () => {
     expect(sitemap().map((entry) => entry.url)).toEqual([
       'https://assurly.dev/',
       'https://assurly.dev/mcp',
+      'https://assurly.dev/live-lock',
       'https://assurly.dev/trust',
       'https://assurly.dev/privacy',
       'https://assurly.dev/terms',
