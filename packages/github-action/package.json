@@ -10,7 +10,8 @@
   ],
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js",
-    "test": "vitest run src"
+    "test": "vitest run src",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@actions/exec": "^1.1.1"

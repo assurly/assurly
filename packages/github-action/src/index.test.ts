@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as core from './runtime';
@@ -44,7 +45,7 @@ describe('Assurly GitHub Action', () => {
 
   it('pins the CLI package version to packages/cli/package.json', () => {
     const cliVersion = (
-      JSON.parse(readFileSync(new URL('../../cli/package.json', import.meta.url), 'utf8')) as {
+      JSON.parse(readFileSync(path.join(__dirname, '../../cli/package.json'), 'utf8')) as {
         version: string;
       }
     ).version;

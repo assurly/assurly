@@ -42,6 +42,11 @@ jobs:
       - name: Build GitHub Action
         run: npm run build:action
 
+      # esbuild bundles these two without checking types, so a type error
+      # (or an unresolvable import) would otherwise never fail CI.
+      - name: Typecheck esbuild-bundled packages
+        run: npm run typecheck -w packages/mcp-server -w packages/github-action
+
       - name: Build web application
         run: npm run build:web
         env:
