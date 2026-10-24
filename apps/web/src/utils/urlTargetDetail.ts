@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type {
   FixOutcomeRow,
+  LiveLockCheckRow,
   LiveLockSummary,
   ProbeEvidenceKind,
   ProbeEvidenceRow,
@@ -67,12 +68,49 @@ export interface UrlTargetDetail {
     checkedAt: string | null;
     stoppedDeploy: boolean;
   };
-  /** What the Lock deploys button still needs. No secrets. */
+  /** Where production protection stands for this URL. No secrets. */
   liveLockSetup: {
-    repositoryName: string | null;
+    /** The Vercel integration exists on Assurly. */
+    vercelConfigured: boolean;
+    /** This workspace installed it. */
     vercelConnected: boolean;
-    locked: boolean;
-    pullRequestUrl: string | null;
+    projectName: string | null;
+    mode: 'monitor' | 'enforce' | null;
+  };
+  /** Recent production deployments the Vercel check ran on, newest first. */
+  liveLockChecks: {
+    deploymentId: string;
+    deploymentUrl: string;
+    gitSha: string | null;
+    blocking: boolean;
+    status: 'registered' | 'running' | 'completed';
+    conclusion: 'succeeded' | 'failed' | 'neutral' | null;
+    reason: string | null;
+    shipScore: number | null;
+    blockers: { ruleId: string; message: string; location: string }[];
+    checkedAt: string;
+  }[];
+}
+
+const EMPTY_SETUP: UrlTargetDetail['liveLockSetup'] = {
+  vercelConfigured: false,
+  vercelConnected: false,
+  projectName: null,
+  mode: null,
+};
+
+function toLiveLockCheck(row: LiveLockCheckRow): UrlTargetDetail['liveLockChecks'][number] {
+  return {
+    deploymentId: row.deployment_id,
+    deploymentUrl: row.deployment_url,
+    gitSha: row.git_sha,
+    blocking: row.blocking,
+    status: row.status,
+    conclusion: row.conclusion,
+    reason: row.reason,
+    shipScore: row.ship_score,
+    blockers: Array.isArray(row.blockers) ? row.blockers : [],
+    checkedAt: row.completed_at ?? row.started_at ?? row.created_at,
   };
 }
 
@@ -121,12 +159,8 @@ export function buildUrlTargetDetail(
   evidenceRows: readonly ProbeEvidenceRow[],
   outcomeRows: readonly FixOutcomeRow[],
   liveLock: LiveLockSummary = { latest: null, stoppedDeploy: false },
-  liveLockSetup: UrlTargetDetail['liveLockSetup'] = {
-    repositoryName: null,
-    vercelConnected: false,
-    locked: false,
-    pullRequestUrl: null,
-  },
+  liveLockSetup: UrlTargetDetail['liveLockSetup'] = EMPTY_SETUP,
+  liveLockChecks: readonly LiveLockCheckRow[] = [],
 ): UrlTargetDetail {
   const evidence = evidenceRows.map(toEvidence);
   const evidenceByRule = new Map(evidence.map((item) => [item.findingRuleId, item]));
@@ -169,5 +203,6 @@ export function buildUrlTargetDetail(
       stoppedDeploy: liveLock.stoppedDeploy,
     },
     liveLockSetup,
+    liveLockChecks: liveLockChecks.map(toLiveLockCheck),
   };
 }

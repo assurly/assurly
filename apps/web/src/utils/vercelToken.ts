@@ -16,14 +16,6 @@ export function getVercelTokenKey(): Buffer {
   return key;
 }
 
-export function vercelConnectConfigured(): boolean {
-  return Boolean(
-    process.env.VERCEL_CLIENT_ID?.trim() &&
-    process.env.VERCEL_CLIENT_SECRET?.trim() &&
-    process.env.VERCEL_TOKEN_KEY?.trim(),
-  );
-}
-
 /** AES-256-GCM. The token never sits in a column the Data API can select. */
 export function encryptVercelToken(plaintext: string, key: Buffer = getVercelTokenKey()): string {
   const iv = crypto.randomBytes(12);

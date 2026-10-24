@@ -8,11 +8,7 @@ import {
 } from '../../../../utils/apiSecurity';
 import { getAdminDbAdapter, type Target } from '../../../../utils/dbAdapter';
 import { applyGuardianAfterReprobe } from '../../../../utils/guardian';
-import { settlePreviewDeployment } from '../../../../utils/previewSettle';
-import { readPreviewDeployment } from '../../../../utils/liveLockPreview';
 import { reprobeTargetAndRecord } from '../../../../utils/reprobe';
-import { createVercelApi } from '../../../../utils/vercelApi';
-import { decryptVercelToken } from '../../../../utils/vercelToken';
 import {
   extractDeployOrigins,
   getVercelWebhookSecret,
@@ -93,66 +89,12 @@ export const POST = secureRoute(
       throw new ApiError(400, 'invalid_deploy', 'Invalid deployment id.');
     }
 
-    const db = getAdminDbAdapter();
-    const preview = readPreviewDeployment(rawPayload);
-    if (preview && preview.target !== 'production' && preview.projectId) {
-      const link = await db.getLiveLockProjectByVercelProject(preview.projectId);
-      if (link?.production_deploy_held && link.vercel_project_id && link.vercel_project_name) {
-        const lockedTarget = await db.getTargetById(link.target_id);
-        if (lockedTarget?.kind === 'url' && lockedTarget.ownership_verified) {
-          const claimedPreview = await db.claimVercelDelivery(
-            deployId,
-            event.type,
-            lockedTarget.organization_id,
-            lockedTarget.id,
-          );
-          if (!claimedPreview) {
-            return NextResponse.json({ message: 'Duplicate delivery ignored.' });
-          }
-          const projectId = link.vercel_project_id;
-          const projectName = link.vercel_project_name;
-          after(async () => {
-            try {
-              const connection = await db.getVercelConnection(lockedTarget.organization_id);
-              const token = connection ? decryptVercelToken(connection.token_ciphertext) : null;
-              await settlePreviewDeployment({
-                target: lockedTarget,
-                linkedProjectId: projectId,
-                deployment: preview,
-                db,
-                promote: async (deploymentId) => {
-                  if (!token) return;
-                  await createVercelApi(token, connection?.team_id ?? null).promote(
-                    projectName,
-                    deploymentId,
-                  );
-                },
-              });
-              await db.finishVercelDelivery(deployId, true);
-            } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
-              console.error(
-                JSON.stringify({
-                  service: 'assurly-api',
-                  requestId,
-                  route: 'vercel:webhook:preview',
-                  status: 'failed',
-                  errorType: error instanceof Error ? error.name : 'UnknownError',
-                }),
-              );
-              await db.finishVercelDelivery(deployId, false, message).catch(() => undefined);
-            }
-          });
-          return NextResponse.json({ message: 'Webhook accepted.' }, { status: 202 });
-        }
-      }
-    }
-
     const origins = extractDeployOrigins(rawPayload);
     if (origins.length === 0) {
       return NextResponse.json({ message: 'No deploy origin.' });
     }
 
+    const db = getAdminDbAdapter();
     // Resolve the target from OUR DB by identity. The payload origin is only a
     // lookup key; we probe the stored, verified identifier, never the payload.
     let target: Target | null = null;

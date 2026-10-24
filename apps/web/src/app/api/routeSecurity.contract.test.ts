@@ -25,7 +25,9 @@ import { DELETE as targetsDelete } from './targets/[id]/route';
 import { GET as findingCode } from './findings/[id]/code/route';
 import { POST as liveLock } from './v1/live-lock/route';
 import { POST as liveLockEnable } from './targets/[id]/live-lock/enable/route';
-import { GET as vercelConnect } from './vercel/connect/route';
+import { POST as liveLockMode } from './targets/[id]/live-lock/mode/route';
+import { GET as vercelIntegrationCallback } from './vercel/integration/callback/route';
+import { POST as vercelIntegrationWebhook } from './vercel/integration/webhook/route';
 import { POST as stripeCheckout } from './stripe/checkout/route';
 import { POST as stripePortal } from './stripe/portal/route';
 import { POST as stripeWebhook } from './stripe/webhook/route';
@@ -116,11 +118,25 @@ const routes: RouteContract[] = [
     handler: liveLockEnable,
   },
   {
-    name: 'vercel connect',
+    name: 'live lock mode',
+    method: 'POST',
+    auth: 'required',
+    csrf: true,
+    handler: liveLockMode,
+  },
+  {
+    name: 'vercel integration callback',
     method: 'GET',
     auth: 'required',
     csrf: false,
-    handler: vercelConnect,
+    handler: vercelIntegrationCallback,
+  },
+  {
+    name: 'vercel integration webhook',
+    method: 'POST',
+    auth: 'none',
+    csrf: false,
+    handler: vercelIntegrationWebhook,
   },
   { name: 'scans create', method: 'POST', auth: 'required', csrf: true, handler: scansCreate },
   { name: 'scans delete', method: 'DELETE', auth: 'required', csrf: true, handler: scansDelete },

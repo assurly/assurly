@@ -1,4 +1,10 @@
 import type { BillingPlan } from './entitlements';
+import type {
+  DeploymentBlocker,
+  DeploymentCheckConclusion,
+  DeploymentCheckOutcome,
+  LiveLockMode,
+} from './liveLockCheck';
 import { getSupabaseAdminConfig, getSupabaseConfig } from './env';
 import { indexLatestVerdictOwningSummaries } from './verdictOwningScan';
 
@@ -309,27 +315,70 @@ export interface LiveLockSummary {
   stoppedDeploy: boolean;
 }
 
-/** Lock setup for one URL. Holds no API key and no Vercel token. */
+/** Which Vercel project guards one verified URL. Holds no token. */
 export interface LiveLockProjectRow {
   target_id: string;
   organization_id: string;
-  repository_id: string | null;
-  vercel_project_id: string | null;
-  vercel_project_name: string | null;
-  production_deploy_held: boolean;
-  pull_request_url: string | null;
-  secrets_written: boolean;
+  vercel_project_id: string;
+  vercel_project_name: string;
+  vercel_team_id: string | null;
+  mode: LiveLockMode;
 }
 
 export interface UpsertLiveLockProjectInput {
   organizationId: string;
   targetId: string;
-  repositoryId: string;
-  vercelProjectId: string | null;
-  vercelProjectName: string | null;
-  productionDeployHeld: boolean;
-  pullRequestUrl: string | null;
-  secretsWritten: boolean;
+  vercelProjectId: string;
+  vercelProjectName: string;
+  vercelTeamId: string | null;
+  mode: LiveLockMode;
+}
+
+export interface VercelConnectionRow {
+  team_id: string | null;
+  configuration_id: string;
+  token_ciphertext: string;
+}
+
+export type LiveLockCheckStatus = 'registered' | 'running' | 'completed';
+
+/** One production deployment Assurly put a Vercel check on. */
+export interface LiveLockCheckRow {
+  id: string;
+  organization_id: string;
+  target_id: string;
+  vercel_project_id: string;
+  deployment_id: string;
+  deployment_url: string;
+  git_sha: string | null;
+  vercel_check_id: string | null;
+  blocking: boolean;
+  status: LiveLockCheckStatus;
+  conclusion: DeploymentCheckConclusion | null;
+  reason: DeploymentCheckOutcome | null;
+  ship_score: number | null;
+  blockers: DeploymentBlocker[];
+  run: number;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface RegisterLiveLockCheckInput {
+  organizationId: string;
+  targetId: string;
+  vercelProjectId: string;
+  deploymentId: string;
+  deploymentUrl: string;
+  gitSha: string | null;
+  blocking: boolean;
+}
+
+export interface CompleteLiveLockCheckInput {
+  conclusion: DeploymentCheckConclusion;
+  reason: DeploymentCheckOutcome;
+  shipScore: number | null;
+  blockers: DeploymentBlocker[];
 }
 
 export type FixOutcomeStatus = 'verified_fixed' | 'still_open' | 'regressed';
@@ -647,15 +696,33 @@ export interface DbAdapter {
   getLiveLockProject(targetId: string): Promise<LiveLockProjectRow | null>;
   getLiveLockProjectByVercelProject(projectId: string): Promise<LiveLockProjectRow | null>;
   upsertLiveLockProject(input: UpsertLiveLockProjectInput): Promise<LiveLockProjectRow>;
+  setLiveLockMode(targetId: string, mode: LiveLockMode): Promise<LiveLockProjectRow | null>;
+  deleteLiveLockProject(targetId: string): Promise<void>;
   /** Service role only. Ciphertext, never a plaintext token. */
   upsertVercelConnection(
     organizationId: string,
     teamId: string | null,
+    configurationId: string,
     tokenCiphertext: string,
   ): Promise<void>;
-  getVercelConnection(
-    organizationId: string,
-  ): Promise<{ team_id: string | null; token_ciphertext: string } | null>;
+  getVercelConnection(organizationId: string): Promise<VercelConnectionRow | null>;
+  /** Uninstall: drops the token and every lock it powered. Returns the workspace id. */
+  removeVercelConnection(configurationId: string): Promise<string | null>;
+  /** Inserts once per deployment; a repeat returns the stored row. */
+  registerLiveLockCheck(input: RegisterLiveLockCheckInput): Promise<LiveLockCheckRow>;
+  getLiveLockCheck(deploymentId: string): Promise<LiveLockCheckRow | null>;
+  setLiveLockCheckId(deploymentId: string, checkId: string): Promise<void>;
+  /**
+   * Starts the next run if no run is in flight. Null means another delivery
+   * already holds it, so this one must not probe.
+   */
+  claimLiveLockCheckRun(deploymentId: string): Promise<LiveLockCheckRow | null>;
+  completeLiveLockCheck(
+    deploymentId: string,
+    run: number,
+    input: CompleteLiveLockCheckInput,
+  ): Promise<void>;
+  listLiveLockChecks(targetId: string, limit: number): Promise<LiveLockCheckRow[]>;
   getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]>;
   /**
    * Total number of monitored apps (targets) across all orgs. Aggregate scalar
@@ -1544,9 +1611,7 @@ export class SupabaseDbAdapter implements DbAdapter {
   }
 
   getLiveLockProjectByVercelProject(projectId: string): Promise<LiveLockProjectRow | null> {
-    return this.first(
-      `live_lock_project?select=*&vercel_project_id=eq.${eq(projectId)}&production_deploy_held=eq.true`,
-    );
+    return this.first(`live_lock_project?select=*&vercel_project_id=eq.${eq(projectId)}`);
   }
 
   async upsertLiveLockProject(input: UpsertLiveLockProjectInput): Promise<LiveLockProjectRow> {
@@ -1558,12 +1623,10 @@ export class SupabaseDbAdapter implements DbAdapter {
         body: JSON.stringify({
           organization_id: input.organizationId,
           target_id: input.targetId,
-          repository_id: input.repositoryId,
           vercel_project_id: input.vercelProjectId,
           vercel_project_name: input.vercelProjectName,
-          production_deploy_held: input.productionDeployHeld,
-          pull_request_url: input.pullRequestUrl,
-          secrets_written: input.secretsWritten,
+          vercel_team_id: input.vercelTeamId,
+          mode: input.mode,
           updated_at: new Date().toISOString(),
         }),
       },
@@ -1573,9 +1636,29 @@ export class SupabaseDbAdapter implements DbAdapter {
     return row;
   }
 
+  async setLiveLockMode(targetId: string, mode: LiveLockMode): Promise<LiveLockProjectRow | null> {
+    const rows = await this.fetchDb<LiveLockProjectRow[]>(
+      `live_lock_project?target_id=eq.${eq(targetId)}`,
+      {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({ mode, updated_at: new Date().toISOString() }),
+      },
+    );
+    return rows[0] ?? null;
+  }
+
+  async deleteLiveLockProject(targetId: string): Promise<void> {
+    await this.fetchDb(`live_lock_project?target_id=eq.${eq(targetId)}`, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
+    });
+  }
+
   async upsertVercelConnection(
     organizationId: string,
     teamId: string | null,
+    configurationId: string,
     tokenCiphertext: string,
   ): Promise<void> {
     await this.fetchDb('rpc/upsert_vercel_connection', {
@@ -1584,22 +1667,117 @@ export class SupabaseDbAdapter implements DbAdapter {
       body: JSON.stringify({
         target_organization_id: organizationId,
         target_team_id: teamId,
+        target_configuration_id: configurationId,
         target_token_ciphertext: tokenCiphertext,
       }),
     });
   }
 
-  async getVercelConnection(
-    organizationId: string,
-  ): Promise<{ team_id: string | null; token_ciphertext: string } | null> {
-    const rows = await this.fetchDb<{ team_id: string | null; token_ciphertext: string }[]>(
-      'rpc/read_vercel_connection',
+  async getVercelConnection(organizationId: string): Promise<VercelConnectionRow | null> {
+    const rows = await this.fetchDb<VercelConnectionRow[]>('rpc/read_vercel_connection', {
+      method: 'POST',
+      body: JSON.stringify({ target_organization_id: organizationId }),
+    });
+    return rows[0] ?? null;
+  }
+
+  async removeVercelConnection(configurationId: string): Promise<string | null> {
+    const organizationId = await this.fetchDb<string | null>('rpc/remove_vercel_connection', {
+      method: 'POST',
+      body: JSON.stringify({ target_configuration_id: configurationId }),
+    });
+    return organizationId ?? null;
+  }
+
+  async registerLiveLockCheck(input: RegisterLiveLockCheckInput): Promise<LiveLockCheckRow> {
+    const rows = await this.fetchDb<LiveLockCheckRow[]>(
+      'live_lock_check?on_conflict=deployment_id&select=*',
       {
         method: 'POST',
-        body: JSON.stringify({ target_organization_id: organizationId }),
+        headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
+        body: JSON.stringify({
+          organization_id: input.organizationId,
+          target_id: input.targetId,
+          vercel_project_id: input.vercelProjectId,
+          deployment_id: input.deploymentId,
+          deployment_url: input.deploymentUrl,
+          git_sha: input.gitSha,
+          blocking: input.blocking,
+        }),
+      },
+    );
+    const row = rows[0] ?? (await this.getLiveLockCheck(input.deploymentId));
+    if (!row) throw new Error('Live Lock check insert returned no row.');
+    return row;
+  }
+
+  getLiveLockCheck(deploymentId: string): Promise<LiveLockCheckRow | null> {
+    return this.first(`live_lock_check?select=*&deployment_id=eq.${eq(deploymentId)}`);
+  }
+
+  async setLiveLockCheckId(deploymentId: string, checkId: string): Promise<void> {
+    await this.fetchDb(
+      `live_lock_check?deployment_id=eq.${eq(deploymentId)}&vercel_check_id=is.null`,
+      {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ vercel_check_id: checkId, updated_at: new Date().toISOString() }),
+      },
+    );
+  }
+
+  async claimLiveLockCheckRun(deploymentId: string): Promise<LiveLockCheckRow | null> {
+    const current = await this.getLiveLockCheck(deploymentId);
+    if (!current || current.status === 'running') return null;
+    // The run number is the compare-and-set token: two deliveries that read the
+    // same row race on one UPDATE, and only one of them matches it.
+    const now = new Date().toISOString();
+    const rows = await this.fetchDb<LiveLockCheckRow[]>(
+      `live_lock_check?deployment_id=eq.${eq(deploymentId)}&run=eq.${current.run}&status=neq.running&select=*`,
+      {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({
+          status: 'running',
+          run: current.run + 1,
+          conclusion: null,
+          reason: null,
+          ship_score: null,
+          blockers: [],
+          started_at: now,
+          completed_at: null,
+          updated_at: now,
+        }),
       },
     );
     return rows[0] ?? null;
+  }
+
+  async completeLiveLockCheck(
+    deploymentId: string,
+    run: number,
+    input: CompleteLiveLockCheckInput,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    await this.fetchDb(`live_lock_check?deployment_id=eq.${eq(deploymentId)}&run=eq.${run}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        status: 'completed',
+        conclusion: input.conclusion,
+        reason: input.reason,
+        ship_score: input.shipScore,
+        blockers: input.blockers,
+        completed_at: now,
+        updated_at: now,
+      }),
+    });
+  }
+
+  listLiveLockChecks(targetId: string, limit: number): Promise<LiveLockCheckRow[]> {
+    return this.fetchDb(
+      `live_lock_check?select=*&target_id=eq.${eq(targetId)}&order=created_at.desc&limit=${Math.max(1, Math.min(limit, 50))}`,
+    );
   }
 
   getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]> {

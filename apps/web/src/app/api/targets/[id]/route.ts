@@ -9,6 +9,7 @@ import {
 } from '../../../../utils/apiSecurity';
 import { getAdminDbAdapter } from '../../../../utils/dbAdapter';
 import { buildUrlTargetDetail } from '../../../../utils/urlTargetDetail';
+import { getVercelIntegrationConfig } from '../../../../utils/vercelIntegration';
 
 const idParams = z.object({ id: z.string().uuid() }).strict();
 
@@ -39,28 +40,28 @@ export const GET = secureRoute(
     }
 
     const admin = getAdminDbAdapter();
-    const [evidence, outcomes, liveLock, project, repositories, connection] = await Promise.all([
+    const [evidence, outcomes, liveLock, project, checks, connection] = await Promise.all([
       context.db.getLatestProbeEvidenceForTarget(target.id),
       context.db.getFixOutcomesForTarget(target.id),
       context.db.getLiveLockSummary(target.id),
       context.db.getLiveLockProject(target.id),
-      context.db.getRepositories(organization.id),
+      context.db.listLiveLockChecks(target.id, 10),
       admin.getVercelConnection(organization.id).catch(() => null),
     ]);
-    let origin = target.identifier;
-    try {
-      origin = new URL(target.identifier).origin;
-    } catch {
-      origin = target.identifier;
-    }
-    const linked = repositories.find((repo) => repo.homepage_url === origin && repo.is_active);
     return NextResponse.json(
-      buildUrlTargetDetail(target, evidence, outcomes, liveLock, {
-        repositoryName: linked?.name ?? null,
-        vercelConnected: connection !== null,
-        locked: project?.production_deploy_held === true,
-        pullRequestUrl: project?.pull_request_url ?? null,
-      }),
+      buildUrlTargetDetail(
+        target,
+        evidence,
+        outcomes,
+        liveLock,
+        {
+          vercelConfigured: getVercelIntegrationConfig() !== null,
+          vercelConnected: connection !== null,
+          projectName: project?.vercel_project_name ?? null,
+          mode: project?.mode ?? null,
+        },
+        checks,
+      ),
     );
   },
 );

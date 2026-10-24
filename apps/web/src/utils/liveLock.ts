@@ -1,9 +1,18 @@
-import { BLOCKED_SCORE_CAP, type ScannerFinding } from '@assurly/scanner-core';
+import {
+  BLOCKED_SCORE_CAP,
+  isShipGateBlockerFinding,
+  type ScannerFinding,
+} from '@assurly/scanner-core';
 import type { DbAdapter, LiveLockAttemptRow, LiveLockReason, Target } from './dbAdapter';
 import { isActiveProbeAllowed } from './ownership';
 import { persistUrlTargetShipGateVerdict, scannerFindingsToScanFindings } from './guardian';
+import {
+  isVercelDeploymentUrl,
+  type DeploymentBlocker,
+  type DeploymentCheckOutcome,
+} from './liveLockCheck';
 import { reprobeTargetAndRecord, type ScanLiveUrlFn } from './reprobe';
-import { isVercelPreviewUrl } from './liveLockPreview';
+import { safeFetch, scanLiveUrlWithEvidence, type LookupImpl } from './runtimeScanner';
 import { resolveVerdictFromScanFindings } from './shipGate';
 
 export interface LiveLockRequest {
@@ -15,15 +24,6 @@ export interface LiveLockRequest {
   scanImpl?: ScanLiveUrlFn;
   fetchImpl?: typeof fetch;
   now?: () => Date;
-  /**
-   * Internal preview check. The public route never sets this. A project id
-   * that does not match, or a host that is not `*.vercel.app`, is not fetched.
-   */
-  preview?: {
-    projectId: string;
-    deploymentProjectId: string;
-    previewUrl: string;
-  };
 }
 
 export interface LiveLockResult {
@@ -65,23 +65,6 @@ export async function runLiveLock(request: LiveLockRequest): Promise<LiveLockRes
     ownershipVerified: target.ownership_verified,
   });
 
-  if (request.preview) {
-    const allowed =
-      request.preview.projectId === request.preview.deploymentProjectId &&
-      isVercelPreviewUrl(request.preview.previewUrl);
-    if (!allowed) {
-      return {
-        status: 'blocked',
-        shipScore: 0,
-        reason: 'probe_refused',
-        gitSha,
-        attemptId: request.attemptId,
-        checkedAt: (request.now ?? (() => new Date()))().toISOString(),
-        fresh: true,
-      };
-    }
-  }
-
   if (target.kind !== 'url' || !owned) {
     const row = await db.insertLiveLockAttempt({
       organizationId: target.organization_id,
@@ -102,7 +85,6 @@ export async function runLiveLock(request: LiveLockRequest): Promise<LiveLockRes
     scanImpl: request.scanImpl,
     fetchImpl: request.fetchImpl,
     useAiPlanner: false,
-    probeUrlOverride: request.preview?.previewUrl,
   });
 
   if (!probe.probed) {
@@ -151,4 +133,135 @@ function verdictForFindings(findings: readonly ScannerFinding[]): {
     cleanFileCount: findings.length === 0 ? 1 : 0,
   });
   return { status: verdict.status, shipScore: verdict.shipScore };
+}
+
+export interface DeploymentProbeResult {
+  outcome: DeploymentCheckOutcome;
+  shipScore: number | null;
+  blockers: DeploymentBlocker[];
+}
+
+/**
+ * Leaves room inside Vercel's five-minute `running` window to send the
+ * conclusion. A probe that runs out of time is `probe_unavailable`, never READY.
+ */
+export const DEPLOYMENT_PROBE_BUDGET_MS = 120_000;
+
+export interface DeploymentProbeRequest {
+  target: Target;
+  /** The generated `*.vercel.app` URL of the deployment Vercel is holding. */
+  deploymentUrl: string;
+  scanImpl?: ScanLiveUrlFn;
+  fetchImpl?: typeof fetch;
+  lookupImpl?: LookupImpl;
+  budgetMs?: number;
+}
+
+/**
+ * Checks the exact deployment Vercel is about to put on the production domain.
+ *
+ * The caller has already tied the deployment to the verified URL: the signed
+ * webhook names the Vercel project, and that project serves the verified
+ * domain. Nothing here is recorded against the target. The deployment is not
+ * live yet, so its findings must not overwrite the target's evidence, verdict
+ * or verified-fix history.
+ */
+export async function probeDeployment(
+  request: DeploymentProbeRequest,
+): Promise<DeploymentProbeResult> {
+  const { target } = request;
+  if (
+    target.kind !== 'url' ||
+    !isActiveProbeAllowed({ kind: target.kind, ownershipVerified: target.ownership_verified })
+  ) {
+    return { outcome: 'ownership_unverified', shipScore: null, blockers: [] };
+  }
+  if (!isVercelDeploymentUrl(`${request.deploymentUrl}/`)) {
+    return { outcome: 'probe_refused', shipScore: null, blockers: [] };
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<DeploymentProbeResult>((resolve) => {
+    timer = setTimeout(
+      () => resolve({ outcome: 'probe_unavailable', shipScore: null, blockers: [] }),
+      request.budgetMs ?? DEPLOYMENT_PROBE_BUDGET_MS,
+    );
+  });
+  try {
+    return await Promise.race([scanDeployment(request), timeout]);
+  } catch {
+    return { outcome: 'probe_unavailable', shipScore: null, blockers: [] };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function scanDeployment(request: DeploymentProbeRequest): Promise<DeploymentProbeResult> {
+  const fetchImpl = request.fetchImpl ?? fetch;
+  // Deployment Protection answers a generated URL with 401, or sends it to a
+  // Vercel login. The full scan follows redirects, so it would grade
+  // vercel.com's login page as the app. Look first, and stay on the origin.
+  const { response } = await safeFetch(
+    request.deploymentUrl,
+    { method: 'GET' },
+    fetchImpl,
+    request.lookupImpl,
+    { redirects: 'same-origin' },
+  );
+  await response.body?.cancel().catch(() => undefined);
+  if (response.status === 401 || response.status === 403) {
+    return { outcome: 'deployment_protected', shipScore: null, blockers: [] };
+  }
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.get('location') ?? '';
+    const protectedRedirect = /^https:\/\/vercel\.com\//.test(location);
+    return {
+      outcome: protectedRedirect ? 'deployment_protected' : 'probe_refused',
+      shipScore: null,
+      blockers: [],
+    };
+  }
+
+  const scan = request.scanImpl ?? scanLiveUrlWithEvidence;
+  const { findings, blocked } = await scan(request.deploymentUrl, fetchImpl, request.lookupImpl, {
+    activeProbe: true,
+    organizationId: request.target.organization_id,
+    useAiPlanner: false,
+  });
+  if (blocked) {
+    return {
+      outcome:
+        blocked.status === 401 || blocked.status === 403 ? 'deployment_protected' : 'probe_refused',
+      shipScore: null,
+      blockers: [],
+    };
+  }
+
+  const verdict = verdictForFindings(findings);
+  const blockers = findings
+    .filter((finding) =>
+      isShipGateBlockerFinding({
+        severity: finding.severity,
+        confidence: finding.confidence,
+        message: finding.message,
+        file: finding.file,
+        line: finding.line,
+        ruleId: finding.ruleId,
+        suggestion: finding.suggestion,
+      }),
+    )
+    .slice(0, 20)
+    .map((finding) => ({
+      ruleId: finding.ruleId,
+      message: finding.message.slice(0, 500),
+      location: (finding.file ?? 'runtime').slice(0, 300),
+    }));
+  if (verdict.status === 'blocked') {
+    return {
+      outcome: 'runtime_blocker',
+      shipScore: Math.min(verdict.shipScore, BLOCKED_SCORE_CAP),
+      blockers,
+    };
+  }
+  return { outcome: 'clear', shipScore: verdict.shipScore, blockers: [] };
 }

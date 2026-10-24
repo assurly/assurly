@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { useAccessibleMenu } from '../../../hooks/useAccessibleMenu';
 import {
   ClientApiError,
@@ -10,6 +10,7 @@ import {
   type UrlTargetEvidence,
 } from '../../../utils/clientApi';
 import { formatScanDateTime } from '../../../utils/scanHistoryDisplay';
+import { ProductionProtectionPanel } from './ProductionProtectionPanel';
 import { EvidenceDetail } from './ProofEvidence';
 import { verdictStatusLabel } from './VerdictCard';
 import { VerifiedFixTimeline } from './VerifiedFixTimeline';
@@ -61,11 +62,7 @@ function liveLockCopy(lock: UrlTargetDetail['liveLock']): { title: string; body:
   };
 }
 
-/**
- * Shows the latest Live Lock attempt only. One-click setup is withdrawn until
- * it is rebuilt on Vercel Checks: the preview-then-promote flow could ship a
- * feature branch and gated a different build than the one that went live.
- */
+/** The latest Live Lock attempt a deploy pipeline made through the public API. */
 function LiveLockPanel({
   lock,
   ownershipVerified,
@@ -196,6 +193,8 @@ export function UrlTargetDetailDialog({
     .join(' · ');
   const titleId = `url-proof-title-${card.id}`;
 
+  const reloadDetail = useCallback(() => setReloadKey((key) => key + 1), []);
+
   const rescan = async (): Promise<void> => {
     await onRescan(card);
     setReloadKey((key) => key + 1);
@@ -235,6 +234,13 @@ export function UrlTargetDetailDialog({
         {detail ? (
           <>
             <LiveLockPanel lock={detail.liveLock} ownershipVerified={ownershipVerified} />
+            <ProductionProtectionPanel
+              targetId={card.id}
+              ownershipVerified={ownershipVerified}
+              setup={detail.liveLockSetup}
+              checks={detail.liveLockChecks}
+              onChanged={reloadDetail}
+            />
             <DetailBody detail={detail} />
           </>
         ) : null}

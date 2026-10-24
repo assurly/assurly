@@ -24,7 +24,7 @@ const ENVIRONMENT_VARIABLE = /^[A-Z_][A-Z0-9_]{0,127}$/;
 // dependencies installed nor a lockfile, so the workflow does not run `npm ci`
 // (which would fail on repos whose package.json lives in a subdirectory) and
 // omits setup-node's `cache: 'npm'` (which itself requires a root lockfile).
-export const ASSURLY_WORKFLOW_TEMPLATE = `name: Assurly Security & Config Scan
+const ASSURLY_WORKFLOW_TEMPLATE = `name: Assurly Security & Config Scan
 
 on:
   push:
@@ -49,7 +49,10 @@ jobs:
       - name: Run Assurly Scan
         run: npx --yes assurly@1 scan
 
+      # Live Lock checks the URL that is live now. On a pull request that is
+      # still the old code, so a PR fixing a blocker would fail on the blocker.
       - name: Assurly Live Lock
+        if: github.event_name != 'pull_request'
         env:
           ASSURLY_API_KEY: \${{ secrets.ASSURLY_API_KEY }}
           ASSURLY_TARGET_URL: \${{ secrets.ASSURLY_TARGET_URL }}
@@ -227,17 +230,6 @@ function isGithubActionsIntegrationFinding(message: string, ruleId?: string): bo
   return lowerMessage.includes('github actions workflow') && lowerMessage.includes('assurly');
 }
 
-/** The workflow file Live Lock commits. Same template the missing-CI fix uses. */
-export function liveLockWorkflowFix(): GitHubAutoFix {
-  return {
-    statement: ASSURLY_WORKFLOW_TEMPLATE,
-    description: 'Add the Assurly GitHub Actions workflow at `.github/workflows/assurly.yml`.',
-    title: 'ci(assurly): add security scan workflow',
-    targetFilePath: '.github/workflows/assurly.yml',
-    applyMode: 'create',
-  };
-}
-
 export function buildGitHubAutoFix(
   filePath: string,
   message: string,
@@ -285,7 +277,13 @@ export function buildGitHubAutoFix(
   }
 
   if (isGithubActionsIntegrationFinding(message, ruleId)) {
-    return liveLockWorkflowFix();
+    return {
+      statement: ASSURLY_WORKFLOW_TEMPLATE,
+      description: 'Add the Assurly GitHub Actions workflow at `.github/workflows/assurly.yml`.',
+      title: 'ci(assurly): add security scan workflow',
+      targetFilePath: '.github/workflows/assurly.yml',
+      applyMode: 'create',
+    };
   }
 
   return null;

@@ -1,158 +1,122 @@
-import type { Repository, Target } from './dbAdapter';
-import type { ActionsSecretWrite } from './githubActionsSecret';
-import { LIVE_LOCK_API_KEY_SECRET, LIVE_LOCK_TARGET_URL_SECRET } from './githubActionsSecret';
-import { normalizeHomepageOrigin } from './repoHomepage';
+import type { LiveLockProjectRow, Target, UpsertLiveLockProjectInput } from './dbAdapter';
+import type { LiveLockMode } from './liveLockCheck';
 import {
-  ignoredBuildStepUpdate,
-  PRODUCTION_IGNORE_BUILD_STEP,
-  projectForOrigin,
+  VercelApiError,
+  type VercelIntegrationApi,
   type VercelProjectSummary,
-} from './vercelLiveLock';
+} from './vercelIntegration';
 
-export type EnableLiveLockStatus =
+export type LiveLockSetupStatus =
   | 'ownership_required'
-  | 'repo_required'
-  | 'github_permission_required'
   | 'vercel_not_configured'
   | 'vercel_required'
   | 'vercel_project_required'
-  | 'ignored_build_conflict'
-  | 'workflow_blocked'
-  | 'locked';
+  | 'project_mismatch'
+  | 'active';
 
-export interface EnableLiveLockResult {
-  status: EnableLiveLockStatus;
+export interface LiveLockSetupResult {
+  status: LiveLockSetupStatus;
+  /** Where to install or reinstall the integration. */
   installUrl: string | null;
-  connectPath: string | null;
-  pullRequestUrl: string | null;
+  /** Shown when no project serves the URL, so the user can pick one. */
+  projects: VercelProjectSummary[];
+  projectName: string | null;
+  mode: LiveLockMode | null;
 }
 
-export interface EnableLiveLockDeps {
-  repositories: readonly Repository[];
-  installationId: string | null;
-  installUrl: string;
-  vercelConfigured: boolean;
-  vercel: {
-    listProjects: () => Promise<readonly VercelProjectSummary[]>;
-    setIgnoredBuildStep: (projectId: string, command: string) => Promise<void>;
-  } | null;
-  createKey: () => Promise<{ plaintext: string; revoke: () => Promise<void> }>;
-  writeSecret: (name: string, value: string) => Promise<ActionsSecretWrite>;
-  openWorkflow: () => Promise<{ url: string | null; blocked: boolean }>;
-  saveProject: (input: {
-    repositoryId: string;
-    vercelProjectId: string | null;
-    vercelProjectName: string | null;
-    productionDeployHeld: boolean;
-    pullRequestUrl: string | null;
-    secretsWritten: boolean;
-  }) => Promise<void>;
+const PROBE_BATCH = 10;
+
+export function setupResult(
+  status: LiveLockSetupStatus,
+  extra: Partial<Omit<LiveLockSetupResult, 'status'>> = {},
+): LiveLockSetupResult {
+  return {
+    status,
+    installUrl: extra.installUrl ?? null,
+    projects: extra.projects ?? [],
+    projectName: extra.projectName ?? null,
+    mode: extra.mode ?? null,
+  };
+}
+
+function hostOf(target: Target): string | null {
+  try {
+    return new URL(target.identifier).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** The first project, in list order, whose production domains include the host. */
+async function projectServing(
+  api: VercelIntegrationApi,
+  projects: readonly VercelProjectSummary[],
+  host: string,
+): Promise<VercelProjectSummary | null> {
+  for (let start = 0; start < projects.length; start += PROBE_BATCH) {
+    const batch = projects.slice(start, start + PROBE_BATCH);
+    const hosts = await Promise.all(batch.map((project) => api.productionHosts(project.id)));
+    const index = hosts.findIndex((list) => list.includes(host));
+    if (index >= 0) return batch[index] ?? null;
+  }
+  return null;
+}
+
+export interface LinkLiveLockInput {
+  target: Target;
+  api: VercelIntegrationApi;
+  teamId: string | null;
+  /** A project the user picked. It must still serve the verified domain. */
+  chosenProjectId: string | null;
+  existing: LiveLockProjectRow | null;
+  installUrl: string | null;
+  save: (input: UpsertLiveLockProjectInput) => Promise<LiveLockProjectRow>;
 }
 
 /**
- * Turns Live Lock on for one verified URL. The API key plaintext is used only
- * to seal the GitHub secret and is not part of the result.
+ * Locks a verified URL to the Vercel project that serves it in production.
+ *
+ * That link is what lets Live Lock probe a deployment's generated URL without
+ * taking a URL from anyone: a deployment of this project is a build of this
+ * domain. A project that does not list the domain is never linked, even when
+ * the user picks it. A new lock starts in monitor mode.
  */
-export async function enableLiveLock(
-  target: Target,
-  deps: EnableLiveLockDeps,
-): Promise<EnableLiveLockResult> {
+export async function linkLiveLockProject(input: LinkLiveLockInput): Promise<LiveLockSetupResult> {
+  const { target, api } = input;
   if (target.kind !== 'url' || !target.ownership_verified) {
-    return empty('ownership_required');
+    return setupResult('ownership_required');
   }
-  const origin = normalizeHomepageOrigin(target.identifier);
-  if (!origin) return empty('repo_required');
-  const repo = deps.repositories.find((item) => item.homepage_url === origin && item.is_active);
-  if (!repo) return empty('repo_required');
-  if (!deps.installationId) {
-    return { ...empty('github_permission_required'), installUrl: deps.installUrl };
-  }
+  const host = hostOf(target);
+  if (!host) return setupResult('ownership_required');
 
-  const key = await deps.createKey();
-  let secretsWritten = false;
+  let projects: VercelProjectSummary[];
+  let match: VercelProjectSummary | null;
   try {
-    const keyWrite = await deps.writeSecret(LIVE_LOCK_API_KEY_SECRET, key.plaintext);
-    const urlWrite = await deps.writeSecret(LIVE_LOCK_TARGET_URL_SECRET, origin);
-    if (keyWrite === 'permission_required' || urlWrite === 'permission_required') {
-      await key.revoke();
-      return { ...empty('github_permission_required'), installUrl: deps.installUrl };
+    projects = await api.listProjects();
+    if (input.chosenProjectId) {
+      const chosen = projects.find((project) => project.id === input.chosenProjectId) ?? null;
+      const serves = chosen ? (await api.productionHosts(chosen.id)).includes(host) : false;
+      if (!chosen || !serves) return setupResult('project_mismatch', { projects });
+      match = chosen;
+    } else {
+      match = await projectServing(api, projects, host);
     }
-    secretsWritten = true;
   } catch (error) {
-    await key.revoke();
+    if (error instanceof VercelApiError && (error.status === 401 || error.status === 403)) {
+      return setupResult('vercel_required', { installUrl: input.installUrl });
+    }
     throw error;
   }
+  if (!match) return setupResult('vercel_project_required', { projects });
 
-  const workflow = await deps.openWorkflow();
-  const pullRequestUrl = workflow.url;
-  if (workflow.blocked) {
-    await deps.saveProject({
-      repositoryId: repo.id,
-      vercelProjectId: null,
-      vercelProjectName: null,
-      productionDeployHeld: false,
-      pullRequestUrl,
-      secretsWritten,
-    });
-    return { ...empty('workflow_blocked'), pullRequestUrl };
-  }
-
-  if (!deps.vercelConfigured) {
-    await savePartial(deps, repo.id, pullRequestUrl, secretsWritten);
-    return { ...empty('vercel_not_configured'), pullRequestUrl };
-  }
-  if (!deps.vercel) {
-    await savePartial(deps, repo.id, pullRequestUrl, secretsWritten);
-    return { ...empty('vercel_required'), connectPath: '/api/vercel/connect', pullRequestUrl };
-  }
-
-  const project = projectForOrigin(await deps.vercel.listProjects(), origin);
-  if (!project) {
-    await savePartial(deps, repo.id, pullRequestUrl, secretsWritten);
-    return { ...empty('vercel_project_required'), pullRequestUrl };
-  }
-  const step = ignoredBuildStepUpdate(project.ignoredBuildStep);
-  if (step === 'conflict') {
-    await deps.saveProject({
-      repositoryId: repo.id,
-      vercelProjectId: project.id,
-      vercelProjectName: project.name,
-      productionDeployHeld: false,
-      pullRequestUrl,
-      secretsWritten,
-    });
-    return { ...empty('ignored_build_conflict'), pullRequestUrl };
-  }
-  if (step === 'set') {
-    await deps.vercel.setIgnoredBuildStep(project.id, PRODUCTION_IGNORE_BUILD_STEP);
-  }
-  await deps.saveProject({
-    repositoryId: repo.id,
-    vercelProjectId: project.id,
-    vercelProjectName: project.name,
-    productionDeployHeld: true,
-    pullRequestUrl,
-    secretsWritten,
+  const mode = input.existing?.vercel_project_id === match.id ? input.existing.mode : 'monitor';
+  const row = await input.save({
+    organizationId: target.organization_id,
+    targetId: target.id,
+    vercelProjectId: match.id,
+    vercelProjectName: match.name,
+    vercelTeamId: input.teamId,
+    mode,
   });
-  return { ...empty('locked'), pullRequestUrl };
-}
-
-function empty(status: EnableLiveLockStatus): EnableLiveLockResult {
-  return { status, installUrl: null, connectPath: null, pullRequestUrl: null };
-}
-
-function savePartial(
-  deps: EnableLiveLockDeps,
-  repositoryId: string,
-  pullRequestUrl: string | null,
-  secretsWritten: boolean,
-): Promise<void> {
-  return deps.saveProject({
-    repositoryId,
-    vercelProjectId: null,
-    vercelProjectName: null,
-    productionDeployHeld: false,
-    pullRequestUrl,
-    secretsWritten,
-  });
+  return setupResult('active', { projectName: row.vercel_project_name, mode: row.mode });
 }

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ScannerFinding } from '@assurly/scanner-core';
 import type { DbAdapter, LiveLockAttemptRow, Target } from './dbAdapter';
-import { runLiveLock } from './liveLock';
+import { probeDeployment, runLiveLock } from './liveLock';
+import type { LookupImpl } from './runtimeScanner';
 
 function target(overrides: Partial<Target> = {}): Target {
   return {
@@ -128,26 +129,6 @@ describe('runLiveLock', () => {
     expect(result.shipScore).toBeLessThanOrEqual(59);
   });
 
-  it('does not fetch when the preview project does not match', async () => {
-    const db = adapter();
-    const scanImpl = vi.fn();
-    const result = await runLiveLock({
-      target: target(),
-      gitSha: 'abc1234',
-      attemptId: 'dpl_other',
-      db,
-      scanImpl: scanImpl as never,
-      preview: {
-        projectId: 'prj_owned',
-        deploymentProjectId: 'prj_other',
-        previewUrl: 'https://other.vercel.app',
-      },
-    });
-    expect(result).toMatchObject({ status: 'blocked', reason: 'probe_refused' });
-    expect(scanImpl).not.toHaveBeenCalled();
-    expect(db.insertLiveLockAttempt).not.toHaveBeenCalled();
-  });
-
   it('is ready only when the fresh probe has no blocker', async () => {
     const db = adapter();
     const scanImpl = vi.fn(async () => ({
@@ -163,5 +144,115 @@ describe('runLiveLock', () => {
       scanImpl: scanImpl as never,
     });
     expect(result).toMatchObject({ status: 'ready', reason: 'clear', shipScore: 100 });
+  });
+});
+
+describe('probeDeployment', () => {
+  const DEPLOYMENT = 'https://app-abc123-team.vercel.app';
+  const PUBLIC_DNS: LookupImpl = async () => [{ address: '76.76.21.21', family: 4 }];
+
+  function page(status: number, headers: Record<string, string> = {}): typeof fetch {
+    return vi.fn(async () => new Response('<html></html>', { status, headers })) as never;
+  }
+
+  it('does not fetch a deployment of an unverified URL', async () => {
+    const fetchImpl = page(200);
+    const result = await probeDeployment({
+      target: target({ ownership_verified: false }),
+      deploymentUrl: DEPLOYMENT,
+      fetchImpl,
+      lookupImpl: PUBLIC_DNS,
+    });
+    expect(result.outcome).toBe('ownership_unverified');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('refuses a URL Vercel did not generate', async () => {
+    const fetchImpl = page(200);
+    const result = await probeDeployment({
+      target: target(),
+      deploymentUrl: 'https://app.example.com',
+      fetchImpl,
+      lookupImpl: PUBLIC_DNS,
+    });
+    expect(result.outcome).toBe('probe_refused');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('reports Deployment Protection instead of grading the login page', async () => {
+    const scanImpl = vi.fn();
+    const result = await probeDeployment({
+      target: target(),
+      deploymentUrl: DEPLOYMENT,
+      fetchImpl: page(401),
+      lookupImpl: PUBLIC_DNS,
+      scanImpl: scanImpl as never,
+    });
+    expect(result.outcome).toBe('deployment_protected');
+    expect(scanImpl).not.toHaveBeenCalled();
+  });
+
+  it('does not follow a redirect to the Vercel login', async () => {
+    const scanImpl = vi.fn();
+    const result = await probeDeployment({
+      target: target(),
+      deploymentUrl: DEPLOYMENT,
+      fetchImpl: page(307, { location: 'https://vercel.com/sso-api?url=x' }),
+      lookupImpl: PUBLIC_DNS,
+      scanImpl: scanImpl as never,
+    });
+    expect(result.outcome).toBe('deployment_protected');
+    expect(scanImpl).not.toHaveBeenCalled();
+  });
+
+  it('is clear when the deployment has no proven blocker', async () => {
+    const scanImpl = vi.fn(async () => ({ findings: [], evidence: [], blocked: undefined }));
+    const result = await probeDeployment({
+      target: target(),
+      deploymentUrl: DEPLOYMENT,
+      fetchImpl: page(200),
+      lookupImpl: PUBLIC_DNS,
+      scanImpl: scanImpl as never,
+    });
+    expect(result).toEqual({ outcome: 'clear', shipScore: 100, blockers: [] });
+    expect(scanImpl).toHaveBeenCalledWith(
+      DEPLOYMENT,
+      expect.any(Function),
+      PUBLIC_DNS,
+      expect.objectContaining({ activeProbe: true, useAiPlanner: false }),
+    );
+  });
+
+  it('names the blockers the deployment would ship', async () => {
+    const scanImpl = vi.fn(async () => ({
+      findings: [finding('runtime-supabase-rls')],
+      evidence: [],
+      blocked: undefined,
+    }));
+    const result = await probeDeployment({
+      target: target(),
+      deploymentUrl: DEPLOYMENT,
+      fetchImpl: page(200),
+      lookupImpl: PUBLIC_DNS,
+      scanImpl: scanImpl as never,
+    });
+    expect(result.outcome).toBe('runtime_blocker');
+    expect(result.shipScore).toBeLessThanOrEqual(59);
+    expect(result.blockers).toEqual([
+      { ruleId: 'runtime-supabase-rls', message: 'Rows are readable.', location: 'runtime' },
+    ]);
+  });
+
+  it('is unavailable, never clear, when the probe runs out of time', async () => {
+    const scanImpl = vi.fn(() => new Promise(() => undefined));
+    const result = await probeDeployment({
+      target: target(),
+      deploymentUrl: DEPLOYMENT,
+      fetchImpl: page(200),
+      lookupImpl: PUBLIC_DNS,
+      scanImpl: scanImpl as never,
+      budgetMs: 20,
+    });
+    expect(result.outcome).toBe('probe_unavailable');
   });
 });

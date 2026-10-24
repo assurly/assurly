@@ -76,11 +76,12 @@ const OPEN_DETAIL: UrlTargetDetail = {
     stoppedDeploy: true,
   },
   liveLockSetup: {
-    repositoryName: 'acme/app',
+    vercelConfigured: false,
     vercelConnected: false,
-    locked: false,
-    pullRequestUrl: null,
+    projectName: null,
+    mode: null,
   },
+  liveLockChecks: [],
   otherEvidence: [
     {
       findingRuleId: 'runtime-missing-security-headers',
@@ -185,12 +186,20 @@ describe('UrlTargetDetailDialog', () => {
     expect(screen.getByText(/Live Lock stopped a deploy/)).toBeTruthy();
   });
 
-  it('does not offer the withdrawn one-click Live Lock setup', async () => {
+  it('offers no production protection until the Vercel integration exists', async () => {
     targetDetail.mockResolvedValue(OPEN_DETAIL);
     renderDialog();
     await screen.findByTestId('live-lock');
-    expect(screen.queryByRole('button', { name: /lock deploys/i })).toBeNull();
-    expect(screen.queryByRole('link', { name: /connect vercel/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /protect production deploys/i })).toBeNull();
+  });
+
+  it('offers production protection on a verified URL once Vercel is set up', async () => {
+    targetDetail.mockResolvedValue({
+      ...OPEN_DETAIL,
+      liveLockSetup: { ...OPEN_DETAIL.liveLockSetup, vercelConfigured: true },
+    });
+    renderDialog();
+    expect(await screen.findByRole('button', { name: /protect production deploys/i })).toBeTruthy();
   });
 
   it('says Live Lock has not been called when there is no attempt', async () => {

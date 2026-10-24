@@ -1,149 +1,128 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Repository, Target } from './dbAdapter';
-import { enableLiveLock, type EnableLiveLockDeps } from './enableLiveLock';
-import { PRODUCTION_IGNORE_BUILD_STEP } from './vercelLiveLock';
+import type { LiveLockProjectRow, Target, UpsertLiveLockProjectInput } from './dbAdapter';
+import { linkLiveLockProject } from './enableLiveLock';
+import { VercelApiError, type VercelIntegrationApi } from './vercelIntegration';
 
-const PLAINTEXT = 'ask_live_lock_plaintext_do_not_leak';
+const TARGET: Target = {
+  id: 'target-1',
+  organization_id: 'org-1',
+  kind: 'url',
+  identifier: 'https://app.example.com',
+  display_name: 'App',
+  repository_id: null,
+  generator_fingerprint: null,
+  ownership_verified: true,
+  ownership_method: 'dns_txt',
+  current_verdict: 'ready',
+  current_ship_score: 90,
+  verdict_evidence: null,
+  last_checked_at: null,
+  badge_token: 'a'.repeat(32),
+  created_at: '2026-10-01T00:00:00.000Z',
+  updated_at: '2026-10-01T00:00:00.000Z',
+};
 
-function target(overrides: Partial<Target> = {}): Target {
+function api(hosts: Record<string, string[]>): VercelIntegrationApi {
   return {
-    id: '11111111-1111-4111-8111-111111111111',
-    organization_id: 'org-1',
-    kind: 'url',
-    identifier: 'https://app.example.com',
-    display_name: 'App',
-    repository_id: null,
-    generator_fingerprint: null,
-    ownership_verified: true,
-    ownership_method: 'dns_txt',
-    current_verdict: 'blocked',
-    current_ship_score: 59,
-    verdict_evidence: null,
-    last_checked_at: null,
-    badge_token: null,
-    created_at: '2026-10-01T00:00:00.000Z',
-    updated_at: '2026-10-01T00:00:00.000Z',
-    ...overrides,
+    listProjects: vi.fn(async () =>
+      Object.keys(hosts).map((id) => ({ id, name: id.replace('prj_', '') })),
+    ),
+    productionHosts: vi.fn(async (id: string) => hosts[id] ?? []),
+    createCheck: vi.fn(),
+    markCheckRunning: vi.fn(),
+    completeCheck: vi.fn(),
   };
 }
 
-function repo(): Repository {
+function link(
+  client: VercelIntegrationApi,
+  overrides: Partial<Parameters<typeof linkLiveLockProject>[0]> = {},
+) {
+  const save = vi.fn(
+    async (input: UpsertLiveLockProjectInput): Promise<LiveLockProjectRow> => ({
+      target_id: input.targetId,
+      organization_id: input.organizationId,
+      vercel_project_id: input.vercelProjectId,
+      vercel_project_name: input.vercelProjectName,
+      vercel_team_id: input.vercelTeamId,
+      mode: input.mode,
+    }),
+  );
   return {
-    id: '22222222-2222-4222-8222-222222222222',
-    organization_id: 'org-1',
-    name: 'acme/app',
-    github_repo_id: 42,
-    is_active: true,
-    created_at: '2026-10-01T00:00:00.000Z',
-    homepage_url: 'https://app.example.com',
-    default_branch: 'main',
+    save,
+    result: linkLiveLockProject({
+      target: TARGET,
+      api: client,
+      teamId: 'team_1',
+      chosenProjectId: null,
+      existing: null,
+      installUrl: 'https://vercel.com/integrations/x/new',
+      save,
+      ...overrides,
+    }),
   };
 }
 
-function deps(overrides: Partial<EnableLiveLockDeps> = {}): EnableLiveLockDeps {
-  return {
-    repositories: [repo()],
-    installationId: '123',
-    installUrl: 'https://github.com/apps/assurly/installations/new',
-    vercelConfigured: true,
-    vercel: {
-      listProjects: async () => [
-        {
-          id: 'prj_owned',
-          name: 'app',
-          origins: ['https://app.example.com'],
-          ignoredBuildStep: null,
-        },
-      ],
-      setIgnoredBuildStep: vi.fn(async () => undefined),
-    },
-    createKey: async () => ({ plaintext: PLAINTEXT, revoke: async () => undefined }),
-    writeSecret: vi.fn(async () => 'written' as const),
-    openWorkflow: async () => ({ url: 'https://github.com/acme/app/pull/7', blocked: false }),
-    saveProject: vi.fn(async () => undefined),
-    ...overrides,
-  };
-}
-
-describe('enableLiveLock', () => {
-  it('does not put the API key in the result', async () => {
-    const result = await enableLiveLock(target(), deps());
-    expect(JSON.stringify(result)).not.toContain(PLAINTEXT);
-    expect(result.status).toBe('locked');
-  });
-
-  it('asks for the GitHub permission and revokes the unused key', async () => {
-    const revoke = vi.fn(async () => undefined);
-    const result = await enableLiveLock(
-      target(),
-      deps({
-        createKey: async () => ({ plaintext: PLAINTEXT, revoke }),
-        writeSecret: async () => 'permission_required',
-      }),
+describe('linkLiveLockProject', () => {
+  it('locks the project that serves the verified domain, in monitor mode', async () => {
+    const { result, save } = link(
+      api({ prj_other: ['other.example.com'], prj_app: ['app.example.com', 'app.vercel.app'] }),
     );
-    expect(result.status).toBe('github_permission_required');
-    expect(result.installUrl).toContain('github.com/apps');
-    expect(revoke).toHaveBeenCalledOnce();
-    expect(JSON.stringify(result)).not.toContain(PLAINTEXT);
-  });
-
-  it('does not overwrite a custom ignored-build command', async () => {
-    const setIgnoredBuildStep = vi.fn();
-    const result = await enableLiveLock(
-      target(),
-      deps({
-        vercel: {
-          listProjects: async () => [
-            {
-              id: 'prj_owned',
-              name: 'app',
-              origins: ['https://app.example.com'],
-              ignoredBuildStep: 'exit 1',
-            },
-          ],
-          setIgnoredBuildStep,
-        },
-      }),
-    );
-    expect(result.status).toBe('ignored_build_conflict');
-    expect(setIgnoredBuildStep).not.toHaveBeenCalled();
-  });
-
-  it('sets the production ignore step and records the project', async () => {
-    const setIgnoredBuildStep = vi.fn(async () => undefined);
-    const saveProject = vi.fn(async () => undefined);
-    const result = await enableLiveLock(
-      target(),
-      deps({
-        vercel: {
-          listProjects: async () => [
-            {
-              id: 'prj_owned',
-              name: 'app',
-              origins: ['https://app.example.com'],
-              ignoredBuildStep: null,
-            },
-          ],
-          setIgnoredBuildStep,
-        },
-        saveProject,
-      }),
-    );
-    expect(result.status).toBe('locked');
-    expect(setIgnoredBuildStep).toHaveBeenCalledWith('prj_owned', PRODUCTION_IGNORE_BUILD_STEP);
-    expect(saveProject).toHaveBeenCalledWith(
+    expect(await result).toMatchObject({ status: 'active', projectName: 'app', mode: 'monitor' });
+    expect(save).toHaveBeenCalledWith(
       expect.objectContaining({
-        vercelProjectId: 'prj_owned',
-        productionDeployHeld: true,
-        secretsWritten: true,
+        vercelProjectId: 'prj_app',
+        vercelTeamId: 'team_1',
+        mode: 'monitor',
       }),
     );
   });
 
-  it('stops when the URL is not tied to a repository', async () => {
-    const writeSecret = vi.fn();
-    const result = await enableLiveLock(target(), deps({ repositories: [], writeSecret }));
-    expect(result.status).toBe('repo_required');
-    expect(writeSecret).not.toHaveBeenCalled();
+  it('keeps the mode when the same project is linked again', async () => {
+    const { result } = link(api({ prj_app: ['app.example.com'] }), {
+      existing: {
+        target_id: 'target-1',
+        organization_id: 'org-1',
+        vercel_project_id: 'prj_app',
+        vercel_project_name: 'app',
+        vercel_team_id: 'team_1',
+        mode: 'enforce',
+      },
+    });
+    expect((await result).mode).toBe('enforce');
+  });
+
+  it('lists projects when none serves the domain', async () => {
+    const { result, save } = link(api({ prj_app: ['other.example.com'] }));
+    expect(await result).toMatchObject({
+      status: 'vercel_project_required',
+      projects: [{ id: 'prj_app', name: 'app' }],
+    });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('refuses a picked project that does not serve the domain', async () => {
+    const { result, save } = link(api({ prj_app: ['other.example.com'] }), {
+      chosenProjectId: 'prj_app',
+    });
+    expect((await result).status).toBe('project_mismatch');
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('asks to reconnect when Vercel rejects the token', async () => {
+    const client = api({});
+    vi.mocked(client.listProjects).mockRejectedValue(new VercelApiError(403, 'project list'));
+    const { result } = link(client);
+    expect(await result).toMatchObject({
+      status: 'vercel_required',
+      installUrl: 'https://vercel.com/integrations/x/new',
+    });
+  });
+
+  it('does nothing for an unverified URL', async () => {
+    const client = api({ prj_app: ['app.example.com'] });
+    const { result } = link(client, { target: { ...TARGET, ownership_verified: false } });
+    expect((await result).status).toBe('ownership_required');
+    expect(client.listProjects).not.toHaveBeenCalled();
   });
 });

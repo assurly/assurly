@@ -95,6 +95,8 @@ describe('buildGitHubAutoFix', () => {
     expect(fix?.statement).toContain('npx --yes assurly@1 scan');
     expect(fix?.statement).toContain('name: Assurly Live Lock');
     expect(fix?.statement).toContain('Live Lock blocked this deploy.');
+    // A PR still runs against the old live code, so the step would fail the fix itself.
+    expect(fix?.statement).toContain("if: github.event_name != 'pull_request'");
     // The scan is static analysis: no dependency install and no lockfile-bound
     // npm cache, so the workflow works on repos with package.json in a subdir.
     expect(fix?.statement).not.toContain('npm ci');

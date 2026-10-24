@@ -29,7 +29,7 @@ const db = {
   getFixOutcomesForTarget: vi.fn(),
   getLiveLockSummary: vi.fn(),
   getLiveLockProject: vi.fn(),
-  getRepositories: vi.fn(),
+  listLiveLockChecks: vi.fn(),
 };
 
 describe('DELETE /api/targets/[id]', () => {
@@ -156,7 +156,7 @@ describe('GET /api/targets/[id]', () => {
       },
     ]);
     db.getLiveLockProject.mockResolvedValue(null);
-    db.getRepositories.mockResolvedValue([]);
+    db.listLiveLockChecks.mockResolvedValue([]);
     mocks.getVercelConnection.mockResolvedValue(null);
     db.getLiveLockSummary.mockResolvedValue({
       latest: {
@@ -203,6 +203,32 @@ describe('GET /api/targets/[id]', () => {
     });
     // Only the whitelisted, already-redacted fields leave the server.
     expect(JSON.stringify(body)).not.toContain('never@shown.example');
+  });
+
+  it('reports where production protection stands without any secret', async () => {
+    db.getTargetById.mockResolvedValue(liveTarget);
+    db.getLiveLockProject.mockResolvedValue({
+      target_id: TARGET_ID,
+      organization_id: 'org-1',
+      vercel_project_id: 'prj_app',
+      vercel_project_name: 'app',
+      vercel_team_id: 'team_1',
+      mode: 'enforce',
+    });
+    mocks.getVercelConnection.mockResolvedValue({
+      team_id: 'team_1',
+      configuration_id: 'icfg_1',
+      token_ciphertext: 'v1.secret-ciphertext',
+    });
+
+    const body = await (await get()).json();
+    expect(body.liveLockSetup).toMatchObject({
+      vercelConnected: true,
+      projectName: 'app',
+      mode: 'enforce',
+    });
+    expect(db.listLiveLockChecks).toHaveBeenCalledWith(TARGET_ID, 10);
+    expect(JSON.stringify(body)).not.toContain('secret-ciphertext');
   });
 
   it('returns 404 for another org’s target without reading its evidence', async () => {

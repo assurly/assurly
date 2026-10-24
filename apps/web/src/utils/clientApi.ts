@@ -167,19 +167,48 @@ const urlTargetDetailSchema = z.object({
     }),
   liveLockSetup: z
     .object({
-      repositoryName: z.string().nullable(),
+      vercelConfigured: z.boolean(),
       vercelConnected: z.boolean(),
-      locked: z.boolean(),
-      pullRequestUrl: z.string().nullable(),
+      projectName: z.string().nullable(),
+      mode: z.enum(['monitor', 'enforce']).nullable(),
     })
-    .default({
-      repositoryName: null,
-      vercelConnected: false,
-      locked: false,
-      pullRequestUrl: null,
-    }),
+    .default({ vercelConfigured: false, vercelConnected: false, projectName: null, mode: null }),
+  liveLockChecks: z
+    .array(
+      z.object({
+        deploymentId: z.string(),
+        deploymentUrl: z.string(),
+        gitSha: z.string().nullable(),
+        blocking: z.boolean(),
+        status: z.enum(['registered', 'running', 'completed']),
+        conclusion: z.enum(['succeeded', 'failed', 'neutral']).nullable(),
+        reason: z.string().nullable(),
+        shipScore: z.number().nullable(),
+        blockers: z.array(
+          z.object({ ruleId: z.string(), message: z.string(), location: z.string() }),
+        ),
+        checkedAt: z.string(),
+      }),
+    )
+    .default([]),
 });
 export type UrlTargetDetail = z.infer<typeof urlTargetDetailSchema>;
+
+const liveLockSetupResultSchema = z.object({
+  status: z.enum([
+    'ownership_required',
+    'vercel_not_configured',
+    'vercel_required',
+    'vercel_project_required',
+    'project_mismatch',
+    'active',
+  ]),
+  installUrl: z.string().nullable(),
+  projects: z.array(z.object({ id: z.string(), name: z.string() })),
+  projectName: z.string().nullable(),
+  mode: z.enum(['monitor', 'enforce']).nullable(),
+});
+export type LiveLockSetupResult = z.infer<typeof liveLockSetupResultSchema>;
 
 const sharedReportSchema = z.object({
   scanId: z.string(),
@@ -607,26 +636,17 @@ export const clientApi = {
       reprobeSchema,
       jsonRequest('POST'),
     ),
-  enableLiveLock: (targetId: string) =>
+  enableLiveLock: (targetId: string, vercelProjectId?: string) =>
     requestJson(
       `/api/targets/${encodeURIComponent(targetId)}/live-lock/enable`,
-      z.object({
-        status: z.enum([
-          'ownership_required',
-          'repo_required',
-          'github_permission_required',
-          'vercel_not_configured',
-          'vercel_required',
-          'vercel_project_required',
-          'ignored_build_conflict',
-          'workflow_blocked',
-          'locked',
-        ]),
-        installUrl: z.string().nullable(),
-        connectPath: z.string().nullable(),
-        pullRequestUrl: z.string().nullable(),
-      }),
-      jsonRequest('POST'),
+      liveLockSetupResultSchema,
+      jsonRequest('POST', vercelProjectId ? { vercelProjectId } : {}),
+    ),
+  setLiveLockMode: (targetId: string, mode: 'monitor' | 'enforce' | 'off') =>
+    requestJson(
+      `/api/targets/${encodeURIComponent(targetId)}/live-lock/mode`,
+      z.object({ mode: z.enum(['monitor', 'enforce']).nullable() }),
+      jsonRequest('POST', { mode }),
     ),
   apiKeys: {
     list: (): Promise<{ keys: ApiKeySummary[] }> => requestJson('/api/api-keys', apiKeysListSchema),
