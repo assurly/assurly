@@ -61,49 +61,17 @@ function liveLockCopy(lock: UrlTargetDetail['liveLock']): { title: string; body:
   };
 }
 
-type EnableLiveLockResult = Awaited<ReturnType<typeof clientApi.enableLiveLock>>;
-
-function enableStatusCopy(status: EnableLiveLockResult['status']): string {
-  switch (status) {
-    case 'ownership_required':
-      return 'Verify you own this URL before Live Lock can stop a deploy.';
-    case 'repo_required':
-      return 'Connect the GitHub repository that deploys this URL.';
-    case 'github_permission_required':
-      return 'Allow Assurly to store the deploy secret on that repository.';
-    case 'vercel_not_configured':
-      return 'Vercel is not connected on this workspace yet.';
-    case 'vercel_required':
-      return 'Connect Vercel so production waits for this check.';
-    case 'vercel_project_required':
-      return 'No Vercel project uses this URL yet.';
-    case 'ignored_build_conflict':
-      return 'This project already has its own ignored-build command, so production was left as it is.';
-    case 'workflow_blocked':
-      return 'The secret is stored. GitHub did not accept the workflow file from here.';
-    case 'locked':
-      return 'Live Lock is on. The next preview is checked before production.';
-    default: {
-      const exhaustive: never = status;
-      return exhaustive;
-    }
-  }
-}
-
+/**
+ * Shows the latest Live Lock attempt only. One-click setup is withdrawn until
+ * it is rebuilt on Vercel Checks: the preview-then-promote flow could ship a
+ * feature branch and gated a different build than the one that went live.
+ */
 function LiveLockPanel({
   lock,
-  setup,
   ownershipVerified,
-  action,
-  locking,
-  onLock,
 }: {
   lock: UrlTargetDetail['liveLock'];
-  setup: UrlTargetDetail['liveLockSetup'];
   ownershipVerified: boolean;
-  action: EnableLiveLockResult | null;
-  locking: boolean;
-  onLock: () => void;
 }): ReactElement {
   const copy = liveLockCopy(lock);
   const when = lock.checkedAt ? `Checked ${formatScanDateTime(lock.checkedAt)}` : null;
@@ -111,8 +79,6 @@ function LiveLockPanel({
   const meta = [when, sha, lock.shipScore !== null ? `${lock.shipScore}/100` : null]
     .filter(Boolean)
     .join(' · ');
-  const note = action ? enableStatusCopy(action.status) : null;
-  const pullRequestUrl = action?.pullRequestUrl ?? setup.pullRequestUrl;
 
   return (
     <section
@@ -125,38 +91,6 @@ function LiveLockPanel({
       {meta ? <p className="url-proof__lock-meta">{meta}</p> : null}
       {!ownershipVerified ? (
         <p>Verify you own this URL before Live Lock can stop a deploy.</p>
-      ) : null}
-      {ownershipVerified && !setup.repositoryName && !action ? (
-        <p>Connect the GitHub repository that deploys this URL.</p>
-      ) : null}
-      {note ? <p role="status">{note}</p> : null}
-      {setup.locked && !note ? (
-        <p>Live Lock is on. The next preview is checked before production.</p>
-      ) : null}
-      {pullRequestUrl ? (
-        <p>
-          <a href={pullRequestUrl}>Workflow pull request</a>
-        </p>
-      ) : null}
-      {ownershipVerified && !setup.locked ? (
-        action?.installUrl ? (
-          <p>
-            <a href={action.installUrl}>Allow secret access</a>
-          </p>
-        ) : action?.connectPath ? (
-          <p>
-            <a href={action.connectPath}>Connect Vercel</a>
-          </p>
-        ) : (
-          <button
-            type="button"
-            className="dashboard-scan-action-btn dashboard-scan-action-btn--primary url-proof__lock-action"
-            disabled={locking || !setup.repositoryName}
-            onClick={onLock}
-          >
-            {locking ? 'Locking…' : 'Lock deploys'}
-          </button>
-        )
       ) : null}
     </section>
   );
@@ -224,8 +158,6 @@ export function UrlTargetDetailDialog({
 }: UrlTargetDetailDialogProps): ReactElement {
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
-  const [locking, setLocking] = useState(false);
-  const [lockAction, setLockAction] = useState<EnableLiveLockResult | null>(null);
   const { menuRef: dialogRef } = useAccessibleMenu<HTMLDivElement>({ open: true, onClose });
 
   useEffect(() => {
@@ -302,31 +234,7 @@ export function UrlTargetDetailDialog({
         ) : null}
         {detail ? (
           <>
-            <LiveLockPanel
-              lock={detail.liveLock}
-              setup={detail.liveLockSetup}
-              ownershipVerified={ownershipVerified}
-              action={lockAction}
-              locking={locking}
-              onLock={() => {
-                setLocking(true);
-                void clientApi
-                  .enableLiveLock(card.id)
-                  .then((result) => {
-                    setLockAction(result);
-                    setReloadKey((key) => key + 1);
-                  })
-                  .catch(() => {
-                    setLockAction({
-                      status: 'workflow_blocked',
-                      installUrl: null,
-                      connectPath: null,
-                      pullRequestUrl: null,
-                    });
-                  })
-                  .finally(() => setLocking(false));
-              }}
-            />
+            <LiveLockPanel lock={detail.liveLock} ownershipVerified={ownershipVerified} />
             <DetailBody detail={detail} />
           </>
         ) : null}

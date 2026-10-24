@@ -185,6 +185,14 @@ describe('UrlTargetDetailDialog', () => {
     expect(screen.getByText(/Live Lock stopped a deploy/)).toBeTruthy();
   });
 
+  it('does not offer the withdrawn one-click Live Lock setup', async () => {
+    targetDetail.mockResolvedValue(OPEN_DETAIL);
+    renderDialog();
+    await screen.findByTestId('live-lock');
+    expect(screen.queryByRole('button', { name: /lock deploys/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /connect vercel/i })).toBeNull();
+  });
+
   it('says Live Lock has not been called when there is no attempt', async () => {
     targetDetail.mockResolvedValue({
       ...OPEN_DETAIL,
