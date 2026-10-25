@@ -15,7 +15,7 @@ const MAX_BLOCKERS_SHOWN = 3;
 
 const NOT_VERIFIED: Record<string, string> = {
   deployment_protected:
-    'Vercel Deployment Protection kept Assurly out, so the deploy went out unchecked.',
+    'Vercel Deployment Protection kept Assurly out, so the deploy went out unchecked. Approve the integration’s Protection Bypass permission in Vercel to check protected deploys.',
   probe_refused: 'The deployment refused the check, so it went out unchecked.',
   probe_unavailable: 'Assurly could not finish in time, so the deploy went out unchecked.',
   ownership_unverified:

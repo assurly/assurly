@@ -8,7 +8,9 @@ import {
   secureRoute,
 } from '../../../../../../utils/apiSecurity';
 import { requireOrganizationMember } from '../../../../../../utils/authorization';
-import { getAdminDbAdapter } from '../../../../../../utils/dbAdapter';
+import { getAdminDbAdapter, type DbAdapter } from '../../../../../../utils/dbAdapter';
+import { createVercelIntegrationApi } from '../../../../../../utils/vercelIntegration';
+import { decryptVercelToken } from '../../../../../../utils/vercelToken';
 
 const targetParams = z.object({ id: z.string().uuid() }).strict();
 
@@ -45,6 +47,7 @@ export const POST = secureRoute(
 
     const admin = getAdminDbAdapter();
     if (body.mode === 'off') {
+      await revokeBypass(admin, target.id, organization.id);
       await admin.deleteLiveLockProject(target.id);
       return NextResponse.json({ mode: null });
     }
@@ -53,3 +56,32 @@ export const POST = secureRoute(
     return NextResponse.json({ mode: row.mode });
   },
 );
+
+/**
+ * Turning the lock off withdraws the integration's protection bypass: the
+ * stored copy always goes, and Vercel is asked to revoke it. A failed revoke
+ * still turns the lock off; the bypass stays listed in Vercel for the user.
+ */
+async function revokeBypass(
+  admin: DbAdapter,
+  targetId: string,
+  organizationId: string,
+): Promise<void> {
+  const stored = await admin.getLiveLockBypass(targetId).catch(() => null);
+  if (!stored) return;
+  try {
+    const connection = await admin.getVercelConnection(organizationId);
+    if (connection) {
+      await createVercelIntegrationApi(
+        decryptVercelToken(connection.token_ciphertext),
+        connection.team_id,
+      ).revokeProtectionBypass(
+        stored.vercel_project_id,
+        decryptVercelToken(stored.secret_ciphertext),
+      );
+    }
+  } catch {
+    // Revoking is best effort; the stored secret is removed below either way.
+  }
+  await admin.deleteLiveLockBypass(targetId);
+}

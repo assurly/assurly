@@ -21,7 +21,7 @@ import {
   createVercelIntegrationApi,
   getVercelIntegrationSecret,
 } from '../../../../../utils/vercelIntegration';
-import { decryptVercelToken } from '../../../../../utils/vercelToken';
+import { decryptVercelToken, encryptVercelToken } from '../../../../../utils/vercelToken';
 import { verifyVercelWebhookSignature } from '../../../../../utils/vercelWebhook';
 
 /** The probe budget plus room to send the conclusion. */
@@ -72,7 +72,23 @@ export const POST = secureRoute(
           decryptVercelToken(connection.token_ciphertext),
           connection.team_id,
         ),
-      probe: (target, deploymentUrl) => probeDeployment({ target, deploymentUrl }),
+      probe: (target, deploymentUrl, bypassSecret) =>
+        probeDeployment({ target, deploymentUrl, bypassSecret }),
+      bypass: {
+        read: async (targetId, vercelProjectId) => {
+          const stored = await db.getLiveLockBypass(targetId);
+          if (!stored || stored.vercel_project_id !== vercelProjectId) return null;
+          return decryptVercelToken(stored.secret_ciphertext);
+        },
+        save: (target, vercelProjectId, secret) =>
+          db.saveLiveLockBypass(
+            target.id,
+            target.organization_id,
+            vercelProjectId,
+            encryptVercelToken(secret),
+          ),
+        remove: (targetId) => db.deleteLiveLockBypass(targetId),
+      },
       detailsUrl: () => `${getApplicationUrl()}/dashboard`,
     };
 

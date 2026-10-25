@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ScannerFinding } from '@assurly/scanner-core';
 import type { DbAdapter, LiveLockAttemptRow, Target } from './dbAdapter';
-import { probeDeployment, runLiveLock } from './liveLock';
+import { probeDeployment, runLiveLock, withDeploymentBypass } from './liveLock';
 import type { LookupImpl } from './runtimeScanner';
 
 function target(overrides: Partial<Target> = {}): Target {
@@ -254,5 +254,59 @@ describe('probeDeployment', () => {
       budgetMs: 20,
     });
     expect(result.outcome).toBe('probe_unavailable');
+  });
+});
+
+describe('withDeploymentBypass', () => {
+  const SECRET = 'a'.repeat(32);
+  const ORIGIN = 'https://app-abc123-team.vercel.app';
+
+  function sentHeaders(fetchImpl: ReturnType<typeof vi.fn>, call: number): Headers {
+    const init = fetchImpl.mock.calls[call]?.[1] as RequestInit | undefined;
+    return new Headers(init?.headers);
+  }
+
+  it('sends the bypass only to the deployment origin', async () => {
+    const fetchImpl = vi.fn(async () => new Response('ok'));
+    const wrapped = withDeploymentBypass(fetchImpl as never, ORIGIN, SECRET);
+
+    await wrapped(`${ORIGIN}/api/admin/customers`, { headers: { accept: 'text/html' } });
+    await wrapped('https://xyz.supabase.co/rest/v1/customers', { headers: { apikey: 'anon' } });
+    await wrapped('https://app-abc123-team.vercel.app.evil.com/', {});
+
+    expect(sentHeaders(fetchImpl, 0).get('x-vercel-protection-bypass')).toBe(SECRET);
+    expect(sentHeaders(fetchImpl, 0).get('accept')).toBe('text/html');
+    expect(sentHeaders(fetchImpl, 1).get('x-vercel-protection-bypass')).toBeNull();
+    expect(sentHeaders(fetchImpl, 1).get('apikey')).toBe('anon');
+    expect(sentHeaders(fetchImpl, 2).get('x-vercel-protection-bypass')).toBeNull();
+  });
+
+  it('lets probeDeployment through protection with the secret', async () => {
+    const fetchImpl = vi.fn(async (_input: unknown, init?: RequestInit) =>
+      new Headers(init?.headers).get('x-vercel-protection-bypass') === SECRET
+        ? new Response('<html></html>', { status: 200 })
+        : new Response('', { status: 302, headers: { location: 'https://vercel.com/sso-api' } }),
+    );
+    const scanImpl = vi.fn(async () => ({ findings: [], evidence: [], blocked: undefined }));
+    const PUBLIC_DNS: LookupImpl = async () => [{ address: '76.76.21.21', family: 4 }];
+
+    const without = await probeDeployment({
+      target: target(),
+      deploymentUrl: ORIGIN,
+      fetchImpl: fetchImpl as never,
+      lookupImpl: PUBLIC_DNS,
+      scanImpl: scanImpl as never,
+    });
+    expect(without.outcome).toBe('deployment_protected');
+
+    const withSecret = await probeDeployment({
+      target: target(),
+      deploymentUrl: ORIGIN,
+      fetchImpl: fetchImpl as never,
+      lookupImpl: PUBLIC_DNS,
+      scanImpl: scanImpl as never,
+      bypassSecret: SECRET,
+    });
+    expect(withSecret.outcome).toBe('clear');
   });
 });

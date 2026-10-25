@@ -127,17 +127,32 @@ function harness(
     createCheck: vi.fn(async () => ({ id: 'check_1' })),
     markCheckRunning: vi.fn(async () => undefined),
     completeCheck: vi.fn(async () => undefined),
+    createProtectionBypass: vi.fn(async () => 'b'.repeat(32)),
+    revokeProtectionBypass: vi.fn(async () => undefined),
   };
-  const probe = vi.fn(
+  const probe = vi.fn<DeploymentCheckDeps['probe']>(
     async () => options.probe ?? { outcome: 'clear' as const, shipScore: 95, blockers: [] },
   );
+  const bypasses = new Map<string, { projectId: string; secret: string }>();
   const deps: DeploymentCheckDeps = {
     db,
     apiFor: () => api,
     probe,
+    bypass: {
+      read: async (targetId, projectId) => {
+        const stored = bypasses.get(targetId);
+        return stored && stored.projectId === projectId ? stored.secret : null;
+      },
+      save: async (target, projectId, secret) => {
+        bypasses.set(target.id, { projectId, secret });
+      },
+      remove: async (targetId) => {
+        bypasses.delete(targetId);
+      },
+    },
     detailsUrl: () => 'https://assurly.dev/dashboard',
   };
-  return { rows, db, api, probe, deps };
+  return { rows, db, api, probe, deps, bypasses };
 }
 
 describe('registerDeploymentCheck', () => {
@@ -219,7 +234,7 @@ describe('startDeploymentCheck', () => {
     expect(probe).not.toHaveBeenCalled();
 
     await run?.();
-    expect(probe).toHaveBeenCalledWith(TARGET, 'https://app-abc.vercel.app');
+    expect(probe).toHaveBeenCalledWith(TARGET, 'https://app-abc.vercel.app', null);
     expect(api.completeCheck).toHaveBeenCalledWith('dpl_1', 'check_1', {
       conclusion: 'failed',
       detailsUrl: 'https://assurly.dev/dashboard',
@@ -296,5 +311,74 @@ describe('rerunDeploymentCheck', () => {
     );
     await rerun?.();
     expect(probe).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Deployment Protection', () => {
+  const PROTECTED: DeploymentProbeResult = {
+    outcome: 'deployment_protected',
+    shipScore: null,
+    blockers: [],
+  };
+  const BLOCKED: DeploymentProbeResult = {
+    outcome: 'runtime_blocker',
+    shipScore: 40,
+    blockers: [{ ruleId: 'rls', message: 'Readable table.', location: 'runtime' }],
+  };
+
+  async function runOnce(h: ReturnType<typeof harness>): Promise<void> {
+    await registerDeploymentCheck(EVENT, h.deps);
+    await (
+      await startDeploymentCheck({ ...EVENT, type: 'deployment.ready' }, h.deps)
+    )?.();
+  }
+
+  it('never mints a bypass for a project that is not protected', async () => {
+    const h = harness();
+    await runOnce(h);
+    expect(h.probe).toHaveBeenCalledTimes(1);
+    expect(h.api.createProtectionBypass).not.toHaveBeenCalled();
+  });
+
+  it('mints the integration bypass when protection keeps the probe out, then checks the build', async () => {
+    const h = harness();
+    h.probe.mockResolvedValueOnce(PROTECTED).mockResolvedValueOnce(BLOCKED);
+    await runOnce(h);
+    expect(h.api.createProtectionBypass).toHaveBeenCalledWith('prj_app', 'icfg_1');
+    expect(h.probe).toHaveBeenLastCalledWith(TARGET, 'https://app-abc.vercel.app', 'b'.repeat(32));
+    expect(h.bypasses.get('target-1')).toEqual({ projectId: 'prj_app', secret: 'b'.repeat(32) });
+    expect(h.rows.get('dpl_1')).toMatchObject({ conclusion: 'failed', reason: 'runtime_blocker' });
+  });
+
+  it('uses the stored bypass first and replaces it once it stops working', async () => {
+    const h = harness();
+    h.bypasses.set('target-1', { projectId: 'prj_app', secret: 'a'.repeat(32) });
+    h.probe.mockResolvedValueOnce(PROTECTED).mockResolvedValueOnce(BLOCKED);
+    await runOnce(h);
+    expect(h.probe.mock.calls[0]?.[2]).toBe('a'.repeat(32));
+    expect(h.probe.mock.calls[1]?.[2]).toBe('b'.repeat(32));
+    expect(h.bypasses.get('target-1')?.secret).toBe('b'.repeat(32));
+  });
+
+  it('ignores a stored bypass for a different project', async () => {
+    const h = harness();
+    h.bypasses.set('target-1', { projectId: 'prj_other', secret: 'a'.repeat(32) });
+    await runOnce(h);
+    expect(h.probe.mock.calls[0]?.[2]).toBeNull();
+  });
+
+  it('stays not verified, and never holds the deploy, without the bypass scope', async () => {
+    const h = harness();
+    h.probe.mockResolvedValue(PROTECTED);
+    vi.mocked(h.api.createProtectionBypass).mockRejectedValueOnce(
+      new VercelApiError(403, 'protection bypass create'),
+    );
+    await runOnce(h);
+    expect(h.probe).toHaveBeenCalledTimes(1);
+    expect(h.bypasses.size).toBe(0);
+    expect(h.rows.get('dpl_1')).toMatchObject({
+      conclusion: 'neutral',
+      reason: 'deployment_protected',
+    });
   });
 });

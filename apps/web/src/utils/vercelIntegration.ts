@@ -145,6 +145,33 @@ export interface VercelIntegrationApi {
     checkId: string,
     input: { conclusion: CheckConclusion; detailsUrl: string },
   ): Promise<void>;
+  /**
+   * Mints a Deployment Protection bypass owned by this installation and
+   * returns its secret. Vercel generates the value; we never choose it.
+   */
+  createProtectionBypass(projectId: string, configurationId: string): Promise<string>;
+  revokeProtectionBypass(projectId: string, secret: string): Promise<void>;
+}
+
+const BYPASS_SECRET = /^[A-Za-z0-9]{32}$/;
+const BYPASS_NOTE = 'Assurly Live Lock: checks production deploys before release';
+
+/**
+ * Vercel answers with every bypass on the project, keyed by secret. Ours is the
+ * newest one this installation created; a bypass a person made is never used.
+ */
+export function pickInstallationBypass(body: unknown, configurationId: string): string | null {
+  const map = (body as { protectionBypass?: unknown })?.protectionBypass;
+  if (!map || typeof map !== 'object') return null;
+  let picked: { secret: string; createdAt: number } | null = null;
+  for (const [secret, meta] of Object.entries(map as Record<string, unknown>)) {
+    if (!BYPASS_SECRET.test(secret) || !meta || typeof meta !== 'object') continue;
+    const entry = meta as { configurationId?: unknown; createdAt?: unknown };
+    if (entry.configurationId !== configurationId) continue;
+    const createdAt = typeof entry.createdAt === 'number' ? entry.createdAt : 0;
+    if (!picked || createdAt > picked.createdAt) picked = { secret, createdAt };
+  }
+  return picked?.secret ?? null;
 }
 
 /** REST calls made with one installation's token. The token is never logged. */
@@ -220,6 +247,23 @@ export function createVercelIntegrationApi(
         'check update',
         `/v1/deployments/${encodeURIComponent(deploymentId)}/checks/${encodeURIComponent(checkId)}`,
         { method: 'PATCH', body: JSON.stringify({ status: 'running' }) },
+      );
+    },
+    async createProtectionBypass(projectId, configurationId) {
+      const response = await call(
+        'protection bypass create',
+        `/v1/projects/${encodeURIComponent(projectId)}/protection-bypass`,
+        { method: 'PATCH', body: JSON.stringify({ generate: { note: BYPASS_NOTE } }) },
+      );
+      const secret = pickInstallationBypass(await response.json(), configurationId);
+      if (!secret) throw new VercelApiError(502, 'protection bypass create');
+      return secret;
+    },
+    async revokeProtectionBypass(projectId, secret) {
+      await call(
+        'protection bypass revoke',
+        `/v1/projects/${encodeURIComponent(projectId)}/protection-bypass`,
+        { method: 'PATCH', body: JSON.stringify({ revoke: { secret, regenerate: false } }) },
       );
     },
     async completeCheck(deploymentId, checkId, input) {

@@ -31,6 +31,8 @@ function api(hosts: Record<string, string[]>): VercelIntegrationApi {
     createCheck: vi.fn(),
     markCheckRunning: vi.fn(),
     completeCheck: vi.fn(),
+    createProtectionBypass: vi.fn(),
+    revokeProtectionBypass: vi.fn(),
   };
 }
 

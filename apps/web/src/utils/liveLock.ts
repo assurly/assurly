@@ -155,6 +155,40 @@ export interface DeploymentProbeRequest {
   fetchImpl?: typeof fetch;
   lookupImpl?: LookupImpl;
   budgetMs?: number;
+  /** The integration's Deployment Protection bypass for this project, if any. */
+  bypassSecret?: string | null;
+}
+
+const BYPASS_HEADER = 'x-vercel-protection-bypass';
+
+function requestUrl(input: Parameters<typeof fetch>[0]): string {
+  if (typeof input === 'string') return input;
+  return input instanceof URL ? input.href : input.url;
+}
+
+/**
+ * Adds the bypass header to requests for the deployment's own origin and to
+ * nothing else. Every scanner request, including each redirect hop, goes
+ * through this fetch, so the secret never reaches Supabase, a CDN, or a host a
+ * redirect points at.
+ */
+export function withDeploymentBypass(
+  fetchImpl: typeof fetch,
+  deploymentOrigin: string,
+  secret: string,
+): typeof fetch {
+  return (input, init) => {
+    let origin: string | null = null;
+    try {
+      origin = new URL(requestUrl(input)).origin;
+    } catch {
+      origin = null;
+    }
+    if (origin !== deploymentOrigin) return fetchImpl(input, init);
+    const headers = new Headers(init?.headers);
+    headers.set(BYPASS_HEADER, secret);
+    return fetchImpl(input, { ...init, headers });
+  };
 }
 
 /**
@@ -197,7 +231,10 @@ export async function probeDeployment(
 }
 
 async function scanDeployment(request: DeploymentProbeRequest): Promise<DeploymentProbeResult> {
-  const fetchImpl = request.fetchImpl ?? fetch;
+  const baseFetch = request.fetchImpl ?? fetch;
+  const fetchImpl = request.bypassSecret
+    ? withDeploymentBypass(baseFetch, new URL(request.deploymentUrl).origin, request.bypassSecret)
+    : baseFetch;
   // Deployment Protection answers a generated URL with 401, or sends it to a
   // Vercel login. The full scan follows redirects, so it would grade
   // vercel.com's login page as the app. Look first, and stay on the origin.

@@ -723,6 +723,17 @@ export interface DbAdapter {
     input: CompleteLiveLockCheckInput,
   ): Promise<void>;
   listLiveLockChecks(targetId: string, limit: number): Promise<LiveLockCheckRow[]>;
+  /** Service role only. Ciphertext of the integration-owned protection bypass. */
+  saveLiveLockBypass(
+    targetId: string,
+    organizationId: string,
+    vercelProjectId: string,
+    secretCiphertext: string,
+  ): Promise<void>;
+  getLiveLockBypass(
+    targetId: string,
+  ): Promise<{ vercel_project_id: string; secret_ciphertext: string } | null>;
+  deleteLiveLockBypass(targetId: string): Promise<void>;
   getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]>;
   /**
    * Total number of monitored apps (targets) across all orgs. Aggregate scalar
@@ -1789,6 +1800,41 @@ export class SupabaseDbAdapter implements DbAdapter {
     return this.fetchDb(
       `live_lock_check?select=*&target_id=eq.${eq(targetId)}&order=created_at.desc&limit=${Math.max(1, Math.min(limit, 50))}`,
     );
+  }
+  async saveLiveLockBypass(
+    targetId: string,
+    organizationId: string,
+    vercelProjectId: string,
+    secretCiphertext: string,
+  ): Promise<void> {
+    await this.fetchDb('rpc/save_live_lock_bypass', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        target_target_id: targetId,
+        target_organization_id: organizationId,
+        target_vercel_project_id: vercelProjectId,
+        target_secret_ciphertext: secretCiphertext,
+      }),
+    });
+  }
+
+  async getLiveLockBypass(
+    targetId: string,
+  ): Promise<{ vercel_project_id: string; secret_ciphertext: string } | null> {
+    const rows = await this.fetchDb<{ vercel_project_id: string; secret_ciphertext: string }[]>(
+      'rpc/read_live_lock_bypass',
+      { method: 'POST', body: JSON.stringify({ target_target_id: targetId }) },
+    );
+    return rows[0] ?? null;
+  }
+
+  async deleteLiveLockBypass(targetId: string): Promise<void> {
+    await this.fetchDb('rpc/delete_live_lock_bypass', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ target_target_id: targetId }),
+    });
   }
 
   getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]> {

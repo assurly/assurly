@@ -3,6 +3,7 @@ import {
   createVercelIntegrationApi,
   exchangeIntegrationCode,
   getVercelIntegrationConfig,
+  pickInstallationBypass,
   VercelApiError,
   vercelIntegrationInstallUrl,
 } from './vercelIntegration';
@@ -146,5 +147,59 @@ describe('vercel error detail', () => {
     const api = createVercelIntegrationApi('super-secret-token', null, fetchImpl as never);
     const error = await api.listProjects().catch((caught: unknown) => caught);
     expect(String((error as Error).message)).not.toContain('super-secret-token');
+  });
+});
+
+describe('integration protection bypass', () => {
+  const OURS_OLD = 'a'.repeat(32);
+  const OURS_NEW = 'b'.repeat(32);
+  const HUMAN = 'c'.repeat(32);
+  const body = {
+    protectionBypass: {
+      [OURS_OLD]: {
+        configurationId: 'icfg_1',
+        integrationId: 'oac_1',
+        scope: 'x',
+        createdAt: 1,
+        createdBy: 'u',
+      },
+      [OURS_NEW]: {
+        configurationId: 'icfg_1',
+        integrationId: 'oac_1',
+        scope: 'x',
+        createdAt: 9,
+        createdBy: 'u',
+      },
+      [HUMAN]: { scope: 'automation-bypass', createdAt: 99, createdBy: 'u' },
+      'not-a-secret': { configurationId: 'icfg_1', createdAt: 100 },
+    },
+  };
+
+  it("picks the newest bypass this installation created and never a person's", () => {
+    expect(pickInstallationBypass(body, 'icfg_1')).toBe(OURS_NEW);
+    expect(pickInstallationBypass(body, 'icfg_other')).toBeNull();
+    expect(pickInstallationBypass({}, 'icfg_1')).toBeNull();
+  });
+
+  it('asks Vercel to generate the secret and does not choose it', async () => {
+    const fetchImpl = vi.fn(async () => json(body));
+    const api = createVercelIntegrationApi('tok', 'team_1', fetchImpl as never);
+    expect(await api.createProtectionBypass('prj_app', 'icfg_1')).toBe(OURS_NEW);
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.vercel.com/v1/projects/prj_app/protection-bypass?teamId=team_1');
+    expect(init.method).toBe('PATCH');
+    const sent = JSON.parse(String(init.body)) as { generate: { secret?: string; note: string } };
+    expect(sent.generate.secret).toBeUndefined();
+    expect(sent.generate.note).toContain('Assurly Live Lock');
+  });
+
+  it('revokes only the given secret without regenerating', async () => {
+    const fetchImpl = vi.fn(async () => json({ protectionBypass: {} }));
+    const api = createVercelIntegrationApi('tok', null, fetchImpl as never);
+    await api.revokeProtectionBypass('prj_app', OURS_NEW);
+    const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      revoke: { secret: OURS_NEW, regenerate: false },
+    });
   });
 });

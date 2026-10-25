@@ -13,7 +13,17 @@ export interface DeploymentCheckDeps {
   db: DbAdapter;
   /** Builds the REST client from a stored connection. The token stays inside. */
   apiFor: (connection: VercelConnectionRow) => VercelIntegrationApi;
-  probe: (target: Target, deploymentUrl: string) => Promise<DeploymentProbeResult>;
+  probe: (
+    target: Target,
+    deploymentUrl: string,
+    bypassSecret: string | null,
+  ) => Promise<DeploymentProbeResult>;
+  /** The integration-owned protection bypass, stored encrypted per guarded URL. */
+  bypass: {
+    read: (targetId: string, vercelProjectId: string) => Promise<string | null>;
+    save: (target: Target, vercelProjectId: string, secret: string) => Promise<void>;
+    remove: (targetId: string) => Promise<void>;
+  };
   detailsUrl: (targetId: string) => string;
 }
 
@@ -23,6 +33,7 @@ export type DeploymentCheckRun = () => Promise<void>;
 interface Linked {
   target: Target;
   api: VercelIntegrationApi;
+  configurationId: string;
 }
 
 /**
@@ -43,7 +54,12 @@ async function resolveLock(
   }
   const connection = await deps.db.getVercelConnection(project.organization_id);
   if (!connection) return null;
-  return { target, api: deps.apiFor(connection), blocking: project.mode === 'enforce' };
+  return {
+    target,
+    api: deps.apiFor(connection),
+    configurationId: connection.configuration_id,
+    blocking: project.mode === 'enforce',
+  };
 }
 
 async function linkedForRow(
@@ -54,7 +70,7 @@ async function linkedForRow(
   if (!target || target.organization_id !== row.organization_id) return null;
   const connection = await deps.db.getVercelConnection(row.organization_id);
   if (!connection) return null;
-  return { target, api: deps.apiFor(connection) };
+  return { target, api: deps.apiFor(connection), configurationId: connection.configuration_id };
 }
 
 /**
@@ -175,7 +191,7 @@ async function concludeRun(
   if (!checkId) return;
   let result: DeploymentProbeResult;
   try {
-    result = await deps.probe(linked.target, row.deployment_url);
+    result = await probeThroughProtection(row, linked, deps);
   } catch {
     result = { outcome: 'probe_unavailable', shipScore: null, blockers: [] };
   }
@@ -195,4 +211,32 @@ async function concludeRun(
   } catch {
     await linked.api.completeCheck(row.deployment_id, checkId, { conclusion, detailsUrl });
   }
+}
+
+/**
+ * Probes once as Vercel serves the deployment. Only when Deployment Protection
+ * keeps the probe out does it mint the integration's own bypass (or replace a
+ * stored one the user revoked) and probe again. An unprotected project is
+ * never touched. Without the Project Protection Bypass scope the mint fails
+ * and the result stays `deployment_protected`, which never holds a deploy.
+ */
+async function probeThroughProtection(
+  row: LiveLockCheckRow,
+  linked: Linked,
+  deps: DeploymentCheckDeps,
+): Promise<DeploymentProbeResult> {
+  const { target } = linked;
+  const stored = await deps.bypass.read(target.id, row.vercel_project_id).catch(() => null);
+  const first = await deps.probe(target, row.deployment_url, stored);
+  if (first.outcome !== 'deployment_protected') return first;
+
+  if (stored) await deps.bypass.remove(target.id).catch(() => undefined);
+  let minted: string;
+  try {
+    minted = await linked.api.createProtectionBypass(row.vercel_project_id, linked.configurationId);
+  } catch {
+    return first;
+  }
+  await deps.bypass.save(target, row.vercel_project_id, minted);
+  return deps.probe(target, row.deployment_url, minted);
 }
