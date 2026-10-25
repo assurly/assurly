@@ -1,7 +1,7 @@
 import type { DbAdapter, LiveLockCheckRow, Target, VercelConnectionRow } from './dbAdapter';
 import type { DeploymentProbeResult } from './liveLock';
 import { conclusionFor, type IntegrationEvent } from './liveLockCheck';
-import type { VercelIntegrationApi } from './vercelIntegration';
+import { VercelApiError, type VercelIntegrationApi } from './vercelIntegration';
 
 type DeploymentEvent = Extract<
   IntegrationEvent,
@@ -81,10 +81,27 @@ export async function registerDeploymentCheck(
   });
   if (row.vercel_check_id) return row;
 
-  const check = await lock.api.createCheck(event.deploymentId, {
-    blocking: row.blocking,
-    detailsUrl: deps.detailsUrl(lock.target.id),
-  });
+  let check: { id: string };
+  try {
+    check = await lock.api.createCheck(event.deploymentId, {
+      blocking: row.blocking,
+      detailsUrl: deps.detailsUrl(lock.target.id),
+    });
+  } catch (error) {
+    // A 4xx will not change on redelivery (the deployment finished, or Vercel
+    // rejects the request), so close the row as not verified instead of
+    // leaving it waiting forever. A 5xx is thrown so Vercel retries.
+    if (error instanceof VercelApiError && error.status >= 400 && error.status < 500) {
+      await deps.db.completeLiveLockCheck(event.deploymentId, row.run, {
+        conclusion: 'neutral',
+        reason: 'probe_unavailable',
+        shipScore: null,
+        blockers: [],
+      });
+      return null;
+    }
+    throw error;
+  }
   await deps.db.setLiveLockCheckId(event.deploymentId, check.id);
   return { ...row, vercel_check_id: check.id };
 }

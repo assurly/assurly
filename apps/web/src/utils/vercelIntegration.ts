@@ -202,7 +202,9 @@ export function createVercelIntegrationApi(
           body: JSON.stringify({
             name: LIVE_LOCK_CHECK_NAME,
             blocking: input.blocking,
-            rerequestable: true,
+            // Vercel refuses a rerunnable check unless the integration subscribes to
+            // deployment.check-rerequested, which the Integration Console does not offer.
+            rerequestable: false,
             detailsUrl: input.detailsUrl,
           }),
         },

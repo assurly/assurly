@@ -13,7 +13,7 @@ import {
   startDeploymentCheck,
   type DeploymentCheckDeps,
 } from './liveLockDeploymentCheck';
-import type { VercelIntegrationApi } from './vercelIntegration';
+import { VercelApiError, type VercelIntegrationApi } from './vercelIntegration';
 
 const TARGET: Target = {
   id: 'target-1',
@@ -174,6 +174,33 @@ describe('registerDeploymentCheck', () => {
     for (const { api } of [preview, unlocked, otherTeam]) {
       expect(api.createCheck).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe('a check Vercel will not create', () => {
+  it('closes the row as not verified on a 4xx, so it never waits forever', async () => {
+    const { api, deps, rows } = harness();
+    vi.mocked(api.createCheck).mockRejectedValueOnce(
+      new VercelApiError(
+        400,
+        'check create',
+        'bad_request Cannot create check for finished deployment',
+      ),
+    );
+    expect(await registerDeploymentCheck(EVENT, deps)).toBeNull();
+    expect(rows.get('dpl_1')).toMatchObject({
+      status: 'completed',
+      conclusion: 'neutral',
+      reason: 'probe_unavailable',
+    });
+    expect(await startDeploymentCheck({ ...EVENT, type: 'deployment.ready' }, deps)).toBeNull();
+  });
+
+  it('throws on a 5xx so Vercel redelivers the event', async () => {
+    const { api, deps, rows } = harness();
+    vi.mocked(api.createCheck).mockRejectedValueOnce(new VercelApiError(503, 'check create'));
+    await expect(registerDeploymentCheck(EVENT, deps)).rejects.toBeInstanceOf(VercelApiError);
+    expect(rows.get('dpl_1')?.status).toBe('registered');
   });
 });
 

@@ -72,7 +72,7 @@ describe('vercel integration', () => {
     ).rejects.toBeInstanceOf(VercelApiError);
   });
 
-  it('scopes every call to the team and registers a rerunnable check', async () => {
+  it('scopes every call to the team and registers a check Vercel accepts', async () => {
     const fetchImpl = vi.fn(async () => json({ id: 'check_1' }));
     const api = createVercelIntegrationApi('tok', 'team_1', fetchImpl as never);
     await api.createCheck('dpl_1', { blocking: true, detailsUrl: 'https://assurly.dev/dashboard' });
@@ -81,7 +81,7 @@ describe('vercel integration', () => {
     expect(JSON.parse(String(init.body))).toEqual({
       name: 'Assurly Live Lock',
       blocking: true,
-      rerequestable: true,
+      rerequestable: false,
       detailsUrl: 'https://assurly.dev/dashboard',
     });
   });
