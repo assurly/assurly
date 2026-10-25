@@ -25,6 +25,8 @@ export interface DeploymentCheckDeps {
     remove: (targetId: string) => Promise<void>;
   };
   detailsUrl: (targetId: string) => string;
+  /** Records why minting the bypass failed. Never receives the secret. */
+  onBypassError?: (error: unknown) => void;
 }
 
 /** The background half of a run: probe, then conclude the Vercel check. */
@@ -234,7 +236,8 @@ async function probeThroughProtection(
   let minted: string;
   try {
     minted = await linked.api.createProtectionBypass(row.vercel_project_id, linked.configurationId);
-  } catch {
+  } catch (error) {
+    deps.onBypassError?.(error);
     return first;
   }
   await deps.bypass.save(target, row.vercel_project_id, minted);

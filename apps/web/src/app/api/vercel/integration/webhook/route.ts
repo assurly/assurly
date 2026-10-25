@@ -90,6 +90,18 @@ export const POST = secureRoute(
         remove: (targetId) => db.deleteLiveLockBypass(targetId),
       },
       detailsUrl: () => `${getApplicationUrl()}/dashboard`,
+      // VercelApiError carries Vercel's code and message, never the secret.
+      onBypassError: (error) =>
+        console.error(
+          JSON.stringify({
+            service: 'assurly-api',
+            requestId,
+            route: 'vercel:integration:webhook:bypass',
+            status: 'failed',
+            errorType: error instanceof Error ? error.name : 'UnknownError',
+            errorMessage: error instanceof Error ? error.message : String(error),
+          }),
+        ),
     };
 
     let run: DeploymentCheckRun | null = null;

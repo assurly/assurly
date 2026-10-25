@@ -373,7 +373,10 @@ describe('Deployment Protection', () => {
     vi.mocked(h.api.createProtectionBypass).mockRejectedValueOnce(
       new VercelApiError(403, 'protection bypass create'),
     );
+    const onBypassError = vi.fn();
+    h.deps.onBypassError = onBypassError;
     await runOnce(h);
+    expect(onBypassError).toHaveBeenCalledWith(expect.objectContaining({ status: 403 }));
     expect(h.probe).toHaveBeenCalledTimes(1);
     expect(h.bypasses.size).toBe(0);
     expect(h.rows.get('dpl_1')).toMatchObject({
