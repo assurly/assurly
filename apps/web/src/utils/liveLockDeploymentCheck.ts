@@ -49,7 +49,8 @@ async function resolveLock(
   deps: DeploymentCheckDeps,
 ): Promise<(Linked & { blocking: boolean }) | null> {
   const project = await deps.db.getLiveLockProjectByVercelProject(projectId);
-  if (!project || project.vercel_team_id !== teamId) return null;
+  // A native lock is checked through its project check, never per deployment.
+  if (!project || project.resource_id || project.vercel_team_id !== teamId) return null;
   const target = await deps.db.getTargetById(project.target_id);
   if (!target || target.kind !== 'url' || target.organization_id !== project.organization_id) {
     return null;
@@ -193,7 +194,9 @@ async function concludeRun(
   if (!checkId) return;
   let result: DeploymentProbeResult;
   try {
-    result = await probeThroughProtection(row, linked, deps);
+    result = await probeThroughProtection(row, linked.target, deps, () =>
+      linked.api.createProtectionBypass(row.vercel_project_id, linked.configurationId),
+    );
   } catch {
     result = { outcome: 'probe_unavailable', shipScore: null, blockers: [] };
   }
@@ -219,15 +222,16 @@ async function concludeRun(
  * Probes once as Vercel serves the deployment. Only when Deployment Protection
  * keeps the probe out does it mint the integration's own bypass (or replace a
  * stored one the user revoked) and probe again. An unprotected project is
- * never touched. Without the Project Protection Bypass scope the mint fails
- * and the result stays `deployment_protected`, which never holds a deploy.
+ * never touched. Vercel lets only native installations mint one; for any
+ * other the mint fails and the result stays `deployment_protected`, which
+ * never holds a deploy.
  */
-async function probeThroughProtection(
-  row: LiveLockCheckRow,
-  linked: Linked,
-  deps: DeploymentCheckDeps,
+export async function probeThroughProtection(
+  row: Pick<LiveLockCheckRow, 'vercel_project_id' | 'deployment_url'>,
+  target: Target,
+  deps: Pick<DeploymentCheckDeps, 'probe' | 'bypass' | 'onBypassError'>,
+  mint: () => Promise<string>,
 ): Promise<DeploymentProbeResult> {
-  const { target } = linked;
   const stored = await deps.bypass.read(target.id, row.vercel_project_id).catch(() => null);
   const first = await deps.probe(target, row.deployment_url, stored);
   if (first.outcome !== 'deployment_protected') return first;
@@ -235,7 +239,7 @@ async function probeThroughProtection(
   if (stored) await deps.bypass.remove(target.id).catch(() => undefined);
   let minted: string;
   try {
-    minted = await linked.api.createProtectionBypass(row.vercel_project_id, linked.configurationId);
+    minted = await mint();
   } catch (error) {
     deps.onBypassError?.(error);
     return first;

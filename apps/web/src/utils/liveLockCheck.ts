@@ -58,6 +58,19 @@ const TEAM_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const CHECK_ID = /^[A-Za-z0-9_-]{1,120}$/;
 const CONFIGURATION_ID = /^icfg_[A-Za-z0-9]{1,64}$/;
 const GIT_SHA = /^[0-9a-f]{7,64}$/;
+const RESOURCE_ID = /^[A-Za-z0-9_-]{1,120}$/;
+const HOST = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+/** A public DNS name only: no scheme games, ports, paths, IPs or `localhost`. */
+function productionOrigin(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const host = value
+    .trim()
+    .toLowerCase()
+    .replace(/^https:\/\//, '')
+    .replace(/\/$/, '');
+  return HOST.test(host) ? `https://${host}` : null;
+}
 
 export type IntegrationEvent =
   | {
@@ -71,6 +84,28 @@ export type IntegrationEvent =
     }
   | { type: 'deployment.check-rerequested'; deploymentId: string; checkId: string }
   | { type: 'integration-configuration.removed'; configurationId: string }
+  | {
+      type: 'integration-resource.project-connected';
+      installationId: string;
+      resourceId: string;
+      projectId: string;
+      projectName: string;
+      /** `https://<production domain>`, as Vercel reports it for the project. */
+      productionOrigin: string | null;
+    }
+  | {
+      type: 'integration-resource.project-disconnected';
+      installationId: string;
+      resourceId: string;
+      projectId: string;
+    }
+  | {
+      type: 'deployment.checkrun.start';
+      installationId: string;
+      resourceId: string;
+      deploymentId: string;
+      checkRunId: string;
+    }
   | { type: 'ignored' };
 
 function record(value: unknown): Record<string, unknown> {
@@ -119,6 +154,51 @@ export function readIntegrationEvent(raw: unknown): IntegrationEvent {
   if (type === 'integration-configuration.removed') {
     const configurationId = matching(record(payload.configuration).id, CONFIGURATION_ID);
     return configurationId ? { type, configurationId } : { type: 'ignored' };
+  }
+
+  if (
+    type === 'integration-resource.project-connected' ||
+    type === 'integration-resource.project-disconnected'
+  ) {
+    const installationId =
+      matching(payload.installationId, CONFIGURATION_ID) ??
+      matching(record(payload.configuration).id, CONFIGURATION_ID);
+    const resourceId = matching(payload.resourceId, RESOURCE_ID);
+    const project = record(payload.project);
+    const projectId = matching(project.id, PROJECT_ID) ?? matching(payload.projectId, PROJECT_ID);
+    if (!installationId || !resourceId || !projectId) return { type: 'ignored' };
+    if (type === 'integration-resource.project-disconnected') {
+      return { type, installationId, resourceId, projectId };
+    }
+    const name = typeof project.name === 'string' ? project.name.trim().slice(0, 100) : '';
+    return {
+      type,
+      installationId,
+      resourceId,
+      projectId,
+      projectName: name || projectId,
+      productionOrigin: productionOrigin(payload.productionDomain),
+    };
+  }
+
+  if (type === 'deployment.checkrun.start') {
+    const checkRun = record(payload.checkRun);
+    const source = record(checkRun.source);
+    const installationId = matching(source.integrationConfigurationId, CONFIGURATION_ID);
+    const resourceId = matching(source.externalResourceId, RESOURCE_ID);
+    const deploymentId =
+      matching(deployment.id, DEPLOYMENT_ID) ?? matching(checkRun.deploymentId, DEPLOYMENT_ID);
+    const checkRunId = matching(checkRun.id, CHECK_ID);
+    if (
+      source.kind !== 'integration' ||
+      !installationId ||
+      !resourceId ||
+      !deploymentId ||
+      !checkRunId
+    ) {
+      return { type: 'ignored' };
+    }
+    return { type, installationId, resourceId, deploymentId, checkRunId };
   }
 
   return { type: 'ignored' };

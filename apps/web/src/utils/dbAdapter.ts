@@ -170,7 +170,13 @@ export interface ScanFinding {
 
 export type TargetKind = 'repo' | 'url';
 export type TargetVerdict = 'ready' | 'review' | 'blocked' | 'unknown';
-export type TargetOwnershipMethod = 'github_app' | 'dns_txt' | 'meta_tag' | 'file' | 'deploy_link';
+export type TargetOwnershipMethod =
+  | 'github_app'
+  | 'dns_txt'
+  | 'meta_tag'
+  | 'file'
+  | 'deploy_link'
+  | 'vercel_project';
 
 /**
  * The persistent "current verdict" for one monitored app. Scans remain the
@@ -323,6 +329,8 @@ export interface LiveLockProjectRow {
   vercel_project_name: string;
   vercel_team_id: string | null;
   mode: LiveLockMode;
+  /** Set for a native Marketplace lock, whose checks Vercel runs as check runs. */
+  resource_id: string | null;
 }
 
 export interface UpsertLiveLockProjectInput {
@@ -332,6 +340,7 @@ export interface UpsertLiveLockProjectInput {
   vercelProjectName: string;
   vercelTeamId: string | null;
   mode: LiveLockMode;
+  resourceId?: string | null;
 }
 
 export interface VercelConnectionRow {
@@ -339,6 +348,43 @@ export interface VercelConnectionRow {
   configuration_id: string;
   token_ciphertext: string;
 }
+
+/** A native Marketplace installation. Service role only; holds the token ciphertext. */
+export interface VercelInstallationRow {
+  organization_id: string;
+  account_id: string;
+  token_ciphertext: string;
+  billing_plan_id: 'free' | 'pro';
+}
+
+export interface UpsertVercelInstallationInput {
+  installationId: string;
+  accountId: string;
+  tokenCiphertext: string;
+  accountName: string | null;
+  contactEmail: string | null;
+}
+
+/** One Live Lock a team created in Vercel; connected to at most one project. */
+export interface LiveLockResourceRow {
+  resource_id: string;
+  installation_id: string;
+  organization_id: string;
+  name: string;
+  mode: LiveLockMode;
+  status: 'ready' | 'suspended';
+  vercel_project_id: string | null;
+  target_id: string | null;
+  vercel_check_id: string | null;
+  created_at: string;
+}
+
+export type LiveLockResourcePatch = Partial<
+  Pick<
+    LiveLockResourceRow,
+    'name' | 'mode' | 'status' | 'vercel_project_id' | 'target_id' | 'vercel_check_id'
+  >
+>;
 
 export type LiveLockCheckStatus = 'registered' | 'running' | 'completed';
 
@@ -372,6 +418,9 @@ export interface RegisterLiveLockCheckInput {
   deploymentUrl: string;
   gitSha: string | null;
   blocking: boolean;
+  /** A v2 check run arrives with its id; a v1 check gets one after creation. */
+  source?: 'deployment_check' | 'check_run';
+  checkId?: string | null;
 }
 
 export interface CompleteLiveLockCheckInput {
@@ -717,6 +766,8 @@ export interface DbAdapter {
    * already holds it, so this one must not probe.
    */
   claimLiveLockCheckRun(deploymentId: string): Promise<LiveLockCheckRow | null>;
+  /** Points a v2 check-run row at the run Vercel started last (Rerun makes a new one). */
+  setLiveLockCheckRun(deploymentId: string, checkRunId: string): Promise<void>;
   completeLiveLockCheck(
     deploymentId: string,
     run: number,
@@ -734,6 +785,29 @@ export interface DbAdapter {
     targetId: string,
   ): Promise<{ vercel_project_id: string; secret_ciphertext: string } | null>;
   deleteLiveLockBypass(targetId: string): Promise<void>;
+  /** Service role only. Returns the installation's organization, created on first sight. */
+  upsertVercelInstallation(input: UpsertVercelInstallationInput): Promise<string>;
+  getVercelInstallation(installationId: string): Promise<VercelInstallationRow | null>;
+  setVercelInstallationPlan(installationId: string, planId: 'free' | 'pro'): Promise<boolean>;
+  /** Drops the token, the resources and their locks. Returns the organization, if any. */
+  deleteVercelInstallation(installationId: string): Promise<string | null>;
+  createLiveLockResource(input: {
+    installationId: string;
+    organizationId: string;
+    name: string;
+    mode: LiveLockMode;
+  }): Promise<LiveLockResourceRow>;
+  getLiveLockResource(
+    installationId: string,
+    resourceId: string,
+  ): Promise<LiveLockResourceRow | null>;
+  listLiveLockResources(installationId: string): Promise<LiveLockResourceRow[]>;
+  updateLiveLockResource(
+    installationId: string,
+    resourceId: string,
+    patch: LiveLockResourcePatch,
+  ): Promise<LiveLockResourceRow | null>;
+  deleteLiveLockResource(installationId: string, resourceId: string): Promise<void>;
   getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]>;
   /**
    * Total number of monitored apps (targets) across all orgs. Aggregate scalar
@@ -1641,6 +1715,7 @@ export class SupabaseDbAdapter implements DbAdapter {
           vercel_project_name: input.vercelProjectName,
           vercel_team_id: input.vercelTeamId,
           mode: input.mode,
+          resource_id: input.resourceId ?? null,
           updated_at: new Date().toISOString(),
         }),
       },
@@ -1717,6 +1792,8 @@ export class SupabaseDbAdapter implements DbAdapter {
           deployment_url: input.deploymentUrl,
           git_sha: input.gitSha,
           blocking: input.blocking,
+          source: input.source ?? 'deployment_check',
+          vercel_check_id: input.checkId ?? null,
         }),
       },
     );
@@ -1738,6 +1815,14 @@ export class SupabaseDbAdapter implements DbAdapter {
         body: JSON.stringify({ vercel_check_id: checkId, updated_at: new Date().toISOString() }),
       },
     );
+  }
+
+  async setLiveLockCheckRun(deploymentId: string, checkRunId: string): Promise<void> {
+    await this.fetchDb(`live_lock_check?deployment_id=eq.${eq(deploymentId)}&source=eq.check_run`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ vercel_check_id: checkRunId, updated_at: new Date().toISOString() }),
+    });
   }
 
   async claimLiveLockCheckRun(deploymentId: string): Promise<LiveLockCheckRow | null> {
@@ -1835,6 +1920,108 @@ export class SupabaseDbAdapter implements DbAdapter {
       headers: { Prefer: 'return=minimal' },
       body: JSON.stringify({ target_target_id: targetId }),
     });
+  }
+
+  async upsertVercelInstallation(input: UpsertVercelInstallationInput): Promise<string> {
+    return this.fetchDb<string>('rpc/upsert_vercel_installation', {
+      method: 'POST',
+      body: JSON.stringify({
+        target_installation_id: input.installationId,
+        target_account_id: input.accountId,
+        target_token_ciphertext: input.tokenCiphertext,
+        target_account_name: input.accountName,
+        target_contact_email: input.contactEmail,
+      }),
+    });
+  }
+
+  async getVercelInstallation(installationId: string): Promise<VercelInstallationRow | null> {
+    const rows = await this.fetchDb<VercelInstallationRow[]>('rpc/read_vercel_installation', {
+      method: 'POST',
+      body: JSON.stringify({ target_installation_id: installationId }),
+    });
+    return rows[0] ?? null;
+  }
+
+  async setVercelInstallationPlan(
+    installationId: string,
+    planId: 'free' | 'pro',
+  ): Promise<boolean> {
+    const updated = await this.fetchDb<boolean | null>('rpc/set_vercel_installation_plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        target_installation_id: installationId,
+        target_billing_plan_id: planId,
+      }),
+    });
+    return updated === true;
+  }
+
+  async deleteVercelInstallation(installationId: string): Promise<string | null> {
+    const organizationId = await this.fetchDb<string | null>('rpc/delete_vercel_installation', {
+      method: 'POST',
+      body: JSON.stringify({ target_installation_id: installationId }),
+    });
+    return organizationId ?? null;
+  }
+
+  async createLiveLockResource(input: {
+    installationId: string;
+    organizationId: string;
+    name: string;
+    mode: LiveLockMode;
+  }): Promise<LiveLockResourceRow> {
+    const rows = await this.fetchDb<LiveLockResourceRow[]>('live_lock_resource?select=*', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({
+        installation_id: input.installationId,
+        organization_id: input.organizationId,
+        name: input.name,
+        mode: input.mode,
+      }),
+    });
+    const row = rows[0];
+    if (!row) throw new Error('Live Lock resource insert returned no row.');
+    return row;
+  }
+
+  getLiveLockResource(
+    installationId: string,
+    resourceId: string,
+  ): Promise<LiveLockResourceRow | null> {
+    return this.first(
+      `live_lock_resource?select=*&installation_id=eq.${eq(installationId)}&resource_id=eq.${eq(resourceId)}`,
+    );
+  }
+
+  listLiveLockResources(installationId: string): Promise<LiveLockResourceRow[]> {
+    return this.fetchDb(
+      `live_lock_resource?select=*&installation_id=eq.${eq(installationId)}&order=created_at.asc&limit=200`,
+    );
+  }
+
+  async updateLiveLockResource(
+    installationId: string,
+    resourceId: string,
+    patch: LiveLockResourcePatch,
+  ): Promise<LiveLockResourceRow | null> {
+    const rows = await this.fetchDb<LiveLockResourceRow[]>(
+      `live_lock_resource?installation_id=eq.${eq(installationId)}&resource_id=eq.${eq(resourceId)}&select=*`,
+      {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }),
+      },
+    );
+    return rows[0] ?? null;
+  }
+
+  async deleteLiveLockResource(installationId: string, resourceId: string): Promise<void> {
+    await this.fetchDb(
+      `live_lock_resource?installation_id=eq.${eq(installationId)}&resource_id=eq.${eq(resourceId)}`,
+      { method: 'DELETE', headers: { Prefer: 'return=minimal' } },
+    );
   }
 
   getFixOutcomeCorpus(): Promise<FixOutcomeCorpusRow[]> {

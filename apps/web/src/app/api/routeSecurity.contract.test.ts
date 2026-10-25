@@ -28,6 +28,20 @@ import { POST as liveLockEnable } from './targets/[id]/live-lock/enable/route';
 import { POST as liveLockMode } from './targets/[id]/live-lock/mode/route';
 import { GET as vercelIntegrationCallback } from './vercel/integration/callback/route';
 import { POST as vercelIntegrationWebhook } from './vercel/integration/webhook/route';
+import {
+  DELETE as marketplaceInstallationDelete,
+  GET as marketplaceInstallationGet,
+  PATCH as marketplaceInstallationPatch,
+  PUT as marketplaceInstallationPut,
+} from './vercel/marketplace/v1/installations/[installationId]/route';
+import { GET as marketplaceInstallationPlans } from './vercel/marketplace/v1/installations/[installationId]/plans/route';
+import { POST as marketplaceResourceProvision } from './vercel/marketplace/v1/installations/[installationId]/resources/route';
+import {
+  DELETE as marketplaceResourceDelete,
+  GET as marketplaceResourceGet,
+  PATCH as marketplaceResourcePatch,
+} from './vercel/marketplace/v1/installations/[installationId]/resources/[resourceId]/route';
+import { GET as marketplaceProductPlans } from './vercel/marketplace/v1/products/[productSlug]/plans/route';
 import { POST as stripeCheckout } from './stripe/checkout/route';
 import { POST as stripePortal } from './stripe/portal/route';
 import { POST as stripeWebhook } from './stripe/webhook/route';
@@ -42,7 +56,7 @@ import { POST as dependencyProvenance } from './dependencies/provenance/route';
 
 interface RouteContract {
   name: string;
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   auth: AuthMode;
   csrf: boolean;
   handler: SecuredRouteHandler<unknown, unknown, unknown>;
@@ -235,6 +249,76 @@ const routes: RouteContract[] = [
     auth: 'required',
     csrf: true,
     handler: targetsDelete,
+  },
+  {
+    name: 'marketplace installation upsert',
+    method: 'PUT',
+    auth: 'none',
+    csrf: false,
+    handler: marketplaceInstallationPut as SecuredRouteHandler<unknown, unknown, unknown>,
+  },
+  {
+    name: 'marketplace installation get',
+    method: 'GET',
+    auth: 'none',
+    csrf: false,
+    handler: marketplaceInstallationGet as SecuredRouteHandler<unknown, unknown, unknown>,
+  },
+  {
+    name: 'marketplace installation update',
+    method: 'PATCH',
+    auth: 'none',
+    csrf: false,
+    handler: marketplaceInstallationPatch as SecuredRouteHandler<unknown, unknown, unknown>,
+  },
+  {
+    name: 'marketplace installation delete',
+    method: 'DELETE',
+    auth: 'none',
+    csrf: false,
+    handler: marketplaceInstallationDelete as SecuredRouteHandler<unknown, unknown, unknown>,
+  },
+  {
+    name: 'marketplace installation plans',
+    method: 'GET',
+    auth: 'none',
+    csrf: false,
+    handler: marketplaceInstallationPlans as SecuredRouteHandler<unknown, unknown, unknown>,
+  },
+  {
+    name: 'marketplace resource provision',
+    method: 'POST',
+    auth: 'none',
+    csrf: false,
+    handler: marketplaceResourceProvision as SecuredRouteHandler<unknown, unknown, unknown>,
+  },
+  {
+    name: 'marketplace resource get',
+    method: 'GET',
+    auth: 'none',
+    csrf: false,
+    handler: marketplaceResourceGet as SecuredRouteHandler<unknown, unknown, unknown>,
+  },
+  {
+    name: 'marketplace resource update',
+    method: 'PATCH',
+    auth: 'none',
+    csrf: false,
+    handler: marketplaceResourcePatch as SecuredRouteHandler<unknown, unknown, unknown>,
+  },
+  {
+    name: 'marketplace resource delete',
+    method: 'DELETE',
+    auth: 'none',
+    csrf: false,
+    handler: marketplaceResourceDelete as SecuredRouteHandler<unknown, unknown, unknown>,
+  },
+  {
+    name: 'marketplace product plans',
+    method: 'GET',
+    auth: 'none',
+    csrf: false,
+    handler: marketplaceProductPlans as SecuredRouteHandler<unknown, unknown, unknown>,
   },
 ];
 

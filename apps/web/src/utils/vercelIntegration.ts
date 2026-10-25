@@ -72,7 +72,7 @@ export class VercelApiError extends Error {
 }
 
 /** `{ error: { code, message } }` from a Vercel response, trimmed for a log line. */
-async function vercelErrorDetail(response: Response): Promise<string | null> {
+export async function vercelErrorDetail(response: Response): Promise<string | null> {
   try {
     const body = (await response.json()) as { error?: { code?: unknown; message?: unknown } };
     const code = typeof body.error?.code === 'string' ? body.error.code : '';

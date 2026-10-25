@@ -22,7 +22,14 @@ import {
   getVercelIntegrationSecret,
 } from '../../../../../utils/vercelIntegration';
 import { decryptVercelToken, encryptVercelToken } from '../../../../../utils/vercelToken';
+import { createVercelMarketplaceApi } from '../../../../../utils/vercelMarketplaceApi';
 import { verifyVercelWebhookSignature } from '../../../../../utils/vercelWebhook';
+import {
+  connectResource,
+  disconnectResource,
+  startCheckRun,
+  type NativeLockDeps,
+} from '../../../../../utils/liveLockNative';
 
 /** The probe budget plus room to send the conclusion. */
 export const maxDuration = 300;
@@ -104,8 +111,27 @@ export const POST = secureRoute(
         ),
     };
 
+    const native: NativeLockDeps = {
+      db,
+      probe: deps.probe,
+      bypass: deps.bypass,
+      onBypassError: deps.onBypassError,
+      detailsUrl: deps.detailsUrl,
+      decryptToken: decryptVercelToken,
+      marketplaceApiFor: (token) => createVercelMarketplaceApi(token),
+      integrationApiFor: (token) => createVercelIntegrationApi(token, null),
+    };
+
     let run: DeploymentCheckRun | null = null;
     switch (event.type) {
+      case 'integration-resource.project-connected':
+        return NextResponse.json({ message: await connectResource(event, native) });
+      case 'integration-resource.project-disconnected':
+        await disconnectResource(event, native);
+        return NextResponse.json({ message: 'Disconnected.' });
+      case 'deployment.checkrun.start':
+        run = await startCheckRun(event, native);
+        break;
       case 'ignored':
         return NextResponse.json({ message: 'Event ignored.' });
       case 'integration-configuration.removed':

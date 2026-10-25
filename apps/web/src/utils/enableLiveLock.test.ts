@@ -48,6 +48,7 @@ function link(
       vercel_project_name: input.vercelProjectName,
       vercel_team_id: input.vercelTeamId,
       mode: input.mode,
+      resource_id: null,
     }),
   );
   return {
@@ -89,6 +90,7 @@ describe('linkLiveLockProject', () => {
         vercel_project_name: 'app',
         vercel_team_id: 'team_1',
         mode: 'enforce',
+        resource_id: null,
       },
     });
     expect((await result).mode).toBe('enforce');

@@ -41,6 +41,7 @@ const PROJECT: LiveLockProjectRow = {
   vercel_project_name: 'app',
   vercel_team_id: 'team_1',
   mode: 'enforce',
+  resource_id: null,
 };
 
 const EVENT = {
