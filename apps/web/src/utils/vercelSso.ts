@@ -41,10 +41,19 @@ export type SsoFailure =
   | 'session_failed';
 
 export class SsoError extends Error {
-  constructor(readonly reason: SsoFailure) {
-    super(`Vercel SSO failed: ${reason}.`);
+  constructor(
+    readonly reason: SsoFailure,
+    /** What Vercel or Supabase said, for the server log. Never a code, token or secret. */
+    readonly detail: string | null = null,
+  ) {
+    super(`Vercel SSO failed: ${reason}${detail ? ` (${detail})` : ''}.`);
     this.name = 'SsoError';
   }
+}
+
+/** A short, log-safe description of an upstream failure. */
+function describe(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).slice(0, 300);
 }
 
 /** Trades the one-time SSO code for Vercel's id_token. */
@@ -101,18 +110,25 @@ export function createSupabaseSessionIssuer(): SessionIssuer {
       user_metadata: name ? { full_name: name } : {},
     });
     if (created.error && created.error.code !== 'email_exists' && created.error.status !== 422) {
-      throw new SsoError('session_failed');
+      throw new SsoError(
+        'session_failed',
+        `create user: ${created.error.code ?? created.error.status}`,
+      );
     }
 
     const link = await admin.auth.admin.generateLink({ type: 'magiclink', email });
     const tokenHash = link.data.properties?.hashed_token;
-    if (link.error || !tokenHash) throw new SsoError('session_failed');
+    if (link.error || !tokenHash) {
+      throw new SsoError('session_failed', `magic link: ${link.error?.code ?? 'no token'}`);
+    }
 
     const { data, error } = await createStatelessSupabaseClient().auth.verifyOtp({
       type: 'magiclink',
       token_hash: tokenHash,
     });
-    if (error || !data.session || !data.user) throw new SsoError('session_failed');
+    if (error || !data.session || !data.user) {
+      throw new SsoError('session_failed', `verify: ${error?.code ?? 'no session'}`);
+    }
     return {
       userId: data.user.id,
       session: {
@@ -184,14 +200,15 @@ export async function completeVercelSso(
     idToken = await deps.exchange(code, query.state ?? null);
   } catch (error) {
     if (error instanceof SsoError) throw error;
-    throw new SsoError('exchange_failed');
+    // VercelApiError carries Vercel's error code and message, never the secret.
+    throw new SsoError('exchange_failed', describe(error));
   }
 
   let caller: MarketplaceCaller;
   try {
     caller = await deps.verify(idToken);
-  } catch {
-    throw new SsoError('invalid_token');
+  } catch (error) {
+    throw new SsoError('invalid_token', describe(error));
   }
   if (caller.kind !== 'user' || !caller.userId || !caller.installationId) {
     throw new SsoError('invalid_token');
@@ -204,8 +221,9 @@ export async function completeVercelSso(
   let issued: IssuedSession;
   try {
     issued = await deps.issueSession(caller.verifiedEmail, caller.userName);
-  } catch {
-    throw new SsoError('session_failed');
+  } catch (error) {
+    if (error instanceof SsoError) throw error;
+    throw new SsoError('session_failed', describe(error));
   }
   const organizationId = await deps.db.joinVercelInstallation(
     caller.installationId,

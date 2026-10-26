@@ -190,6 +190,18 @@ describe('completeVercelSso', () => {
     );
   });
 
+  it('keeps Vercel’s reason for the server log', async () => {
+    const { deps } = setup({
+      exchange: vi.fn(async () =>
+        Promise.reject(new VercelApiError(400, 'sso exchange', 'invalid_grant Code expired')),
+      ),
+    });
+    const error = await completeVercelSso({ code: 'c' }, deps).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SsoError);
+    expect((error as SsoError).detail).toContain('invalid_grant Code expired');
+    expect((error as SsoError).message).not.toContain('secret');
+  });
+
   it('reports a failed session and an installation removed mid-flight', async () => {
     const broken = setup({ issueSession: vi.fn(async () => Promise.reject(new Error('down'))) });
     expect(await failure(completeVercelSso({ code: 'c' }, broken.deps))).toBe('session_failed');
