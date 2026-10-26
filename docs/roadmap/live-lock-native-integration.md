@@ -163,12 +163,32 @@ installation token; `probeThroughProtection` mints the bypass as designed.
 
 ### Phase 3: SSO and the dashboard
 
-`redirectLoginUrl` → SSO token exchange → verified email → Supabase user
-(admin link + server-side OTP verify sets the session cookie, so GitHub users
-with the same email land in the same account) → membership in the installation
-org (`ADMIN` → admin, `USER` → viewer) → deep link to the resource or the
-`path` Vercel asked for (`billing`, `usage`, `support`, `onboarding`).
-Provider-initiated SSO links in the dashboard and emails.
+Built (2026-10-26):
+
+- `redirectLoginUrl` = `<app>/api/vercel/marketplace/sso`. It exchanges the
+  code at `POST https://api.vercel.com/v1/integrations/sso/token`
+  (`{ code, state, client_id, client_secret }`, as the example integration
+  does), verifies the `id_token` with the Marketplace keys, and never stores it.
+- The Assurly account is the one for the Vercel-verified email (`user_email`
+  or `email`, only when marked verified). It is created on first sight with the
+  email confirmed; the session comes from a server-generated magic link that is
+  redeemed on the server, so nothing is emailed. Someone who already signed in
+  with GitHub under that address lands in the same account.
+- Membership in the installation's workspace: Vercel `ADMIN` → `admin`,
+  anything else → `member`; the role is refreshed on every sign-in.
+- People can now belong to several workspaces. The active one is the
+  membership selected last (`memberships.last_selected_at`), and the dashboard
+  header shows a workspace switcher when there is more than one.
+- Destination: support requests open the contact form, a `url` is followed only
+  inside Assurly, everything else opens the dashboard. Failures land on
+  `/sso-error` with a plain explanation, never a raw error.
+
+Integration Console: set **Redirect Login URL** to the SSO route above.
+
+Still open: provider-initiated SSO links
+(`https://vercel.com/sso/integrations/{slug}/{installationId}`) from Assurly
+emails and the dashboard, and a deep link from `resource_id` to the guarded
+app in the dashboard (the dashboard has no per-target URL yet).
 
 ### Phase 4: billing
 

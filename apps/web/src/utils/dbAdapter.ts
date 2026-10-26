@@ -52,6 +52,14 @@ export interface Organization {
   created_at: string;
 }
 
+/** One workspace in the switcher. */
+export interface WorkspaceChoice {
+  id: string;
+  name: string;
+  billing_plan: BillingPlan;
+  role: Membership['role'];
+}
+
 export interface Membership {
   id: string;
   user_id: string;
@@ -603,6 +611,16 @@ export interface DbAdapter {
   ): Promise<ApiRateLimitResult>;
   getOrganization(orgId: string): Promise<Organization | null>;
   getOrganizationByUserId(userId: string): Promise<Organization | null>;
+  /** The workspaces a user belongs to, the active one first. */
+  listOrganizationsForUser(userId: string): Promise<WorkspaceChoice[]>;
+  /** User token: makes one of the caller's own workspaces the active one. */
+  selectOrganization(organizationId: string): Promise<boolean>;
+  /** Service role: adds a Vercel team member to the installation's workspace and activates it. */
+  joinVercelInstallation(
+    installationId: string,
+    userId: string,
+    role: Membership['role'],
+  ): Promise<string | null>;
   getOrganizationByGitHubInstallationId(installationId: string): Promise<Organization | null>;
   createOrganization(name: string): Promise<Organization>;
   getMembership(userId: string, orgId: string): Promise<Membership | null>;
@@ -996,11 +1014,60 @@ export class SupabaseDbAdapter implements DbAdapter {
   }
 
   async getOrganizationByUserId(userId: string): Promise<Organization | null> {
+    // A person can belong to several workspaces (their own and a Vercel team's).
+    // The active one is the one selected last; the oldest is the default.
     const row = await this.first<{ organizations: Organization | Organization[] | null }>(
-      `memberships?select=organizations(*)&user_id=eq.${eq(userId)}`,
+      `memberships?select=organizations(*)&user_id=eq.${eq(userId)}&order=last_selected_at.desc.nullslast,created_at.asc`,
     );
     if (!row?.organizations) return null;
     return Array.isArray(row.organizations) ? (row.organizations[0] ?? null) : row.organizations;
+  }
+
+  async listOrganizationsForUser(userId: string): Promise<WorkspaceChoice[]> {
+    const rows = await this.fetchDb<
+      { role: Membership['role']; organizations: Organization | Organization[] | null }[]
+    >(
+      `memberships?select=role,organizations(id,name,billing_plan)&user_id=eq.${eq(userId)}&order=last_selected_at.desc.nullslast,created_at.asc&limit=50`,
+    );
+    return rows.flatMap((row) => {
+      const organization = Array.isArray(row.organizations)
+        ? row.organizations[0]
+        : row.organizations;
+      return organization
+        ? [
+            {
+              id: organization.id,
+              name: organization.name,
+              billing_plan: organization.billing_plan,
+              role: row.role,
+            },
+          ]
+        : [];
+    });
+  }
+
+  async selectOrganization(organizationId: string): Promise<boolean> {
+    const selected = await this.fetchDb<boolean | null>('rpc/select_organization', {
+      method: 'POST',
+      body: JSON.stringify({ target_organization_id: organizationId }),
+    });
+    return selected === true;
+  }
+
+  async joinVercelInstallation(
+    installationId: string,
+    userId: string,
+    role: Membership['role'],
+  ): Promise<string | null> {
+    const organizationId = await this.fetchDb<string | null>('rpc/join_vercel_installation', {
+      method: 'POST',
+      body: JSON.stringify({
+        target_installation_id: installationId,
+        target_user_id: userId,
+        target_role: role,
+      }),
+    });
+    return organizationId ?? null;
   }
 
   async createOrganization(name: string): Promise<Organization> {

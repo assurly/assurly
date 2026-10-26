@@ -41,7 +41,26 @@ const claimsSchema = z.object({
   user_email: z.string().max(320).optional(),
   user_email_verified: z.boolean().optional(),
   user_name: z.string().max(200).optional(),
+  // The SSO exchange's id_token may carry the standard OIDC names instead.
+  email: z.string().max(320).optional(),
+  email_verified: z.boolean().optional(),
+  name: z.string().max(200).optional(),
 });
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** An address Vercel says it verified, lower-cased; anything else is null. */
+function verifiedEmailOf(claims: z.infer<typeof claimsSchema>): string | null {
+  const candidates: [string | undefined, boolean | undefined][] = [
+    [claims.user_email, claims.user_email_verified],
+    [claims.email, claims.email_verified ?? claims.user_email_verified],
+  ];
+  for (const [email, verified] of candidates) {
+    const value = email?.trim().toLowerCase();
+    if (value && verified === true && EMAIL.test(value)) return value;
+  }
+  return null;
+}
 
 export interface MarketplaceCaller {
   kind: 'user' | 'system';
@@ -157,9 +176,8 @@ export async function verifyMarketplaceToken(
     accountId: claims.account_id,
     userId: claims.user_id ?? null,
     userRole: claims.user_role ?? null,
-    verifiedEmail:
-      claims.user_email && claims.user_email_verified === true ? claims.user_email : null,
-    userName: claims.user_name ?? null,
+    verifiedEmail: verifiedEmailOf(claims),
+    userName: claims.user_name ?? claims.name ?? null,
   };
 }
 

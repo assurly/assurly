@@ -522,6 +522,18 @@ function jsonRequest(method: 'POST' | 'PATCH' | 'DELETE', body?: unknown): Reque
   };
 }
 
+const workspaceChoiceSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  billing_plan: z.enum(['free', 'pro', 'oem']),
+  role: z.enum(['admin', 'member']),
+});
+const workspaceListSchema = z.object({
+  organizations: z.array(workspaceChoiceSchema),
+  activeId: z.string().uuid().nullable(),
+});
+export type WorkspaceChoice = z.infer<typeof workspaceChoiceSchema>;
+
 export const clientApi = {
   session: (): Promise<SessionResult> => requestJson('/api/auth/session', sessionSchema),
   createRepository: (name: string, githubRepoId: number): Promise<Repository> =>
@@ -642,6 +654,16 @@ export const clientApi = {
       liveLockSetupResultSchema,
       jsonRequest('POST', vercelProjectId ? { vercelProjectId } : {}),
     ),
+  workspaces: {
+    list: (): Promise<z.infer<typeof workspaceListSchema>> =>
+      requestJson('/api/organizations', workspaceListSchema),
+    select: (organizationId: string): Promise<{ activeId: string }> =>
+      requestJson(
+        '/api/organizations/active',
+        z.object({ activeId: z.string().uuid() }),
+        jsonRequest('POST', { organizationId }),
+      ),
+  },
   setLiveLockMode: (targetId: string, mode: 'monitor' | 'enforce' | 'off') =>
     requestJson(
       `/api/targets/${encodeURIComponent(targetId)}/live-lock/mode`,

@@ -79,6 +79,26 @@ describe('verifyMarketplaceToken', () => {
     expect(unverified.verifiedEmail).toBeNull();
   });
 
+  it('reads the standard OIDC email claims an SSO id_token may carry', async () => {
+    const base = {
+      ...userClaims,
+      user_email: undefined,
+      user_email_verified: undefined,
+      user_name: undefined,
+    };
+    const sso = await verify(
+      sign({ ...base, email: 'Dev@Example.com', email_verified: true, name: 'Dev' }),
+    );
+    expect(sso.verifiedEmail).toBe('dev@example.com');
+    expect(sso.userName).toBe('Dev');
+    const unverified = await verify(
+      sign({ ...base, email: 'dev@example.com', email_verified: false }),
+    );
+    expect(unverified.verifiedEmail).toBeNull();
+    const garbage = await verify(sign({ ...base, email: 'not-an-email', email_verified: true }));
+    expect(garbage.verifiedEmail).toBeNull();
+  });
+
   it('accepts a system token', async () => {
     const caller = await verify(sign(systemClaims));
     expect(caller.kind).toBe('system');

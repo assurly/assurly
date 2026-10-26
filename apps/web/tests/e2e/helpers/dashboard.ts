@@ -53,6 +53,11 @@ export async function mockDashboardClientApis(page: Page): Promise<void> {
     await route.fulfill(jsonOk({ targets: [] }));
   });
 
+  // One workspace, so the header shows no switcher.
+  await page.route('**/api/organizations', async (route: Route) => {
+    await route.fulfill(jsonOk({ organizations: [], activeId: null }));
+  });
+
   await page.route('**/api/api-keys', async (route: Route) => {
     if (route.request().method() !== 'GET') {
       await route.fallback();

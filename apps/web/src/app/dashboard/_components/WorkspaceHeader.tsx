@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import type { BillingPlan } from '../../../utils/entitlements';
 import { resolveWorkspaceDisplayName } from '../../../utils/workspaceName';
 import { DashboardBuildingIcon } from './icons/DashboardIcons';
+import { useWorkspaceChoices, WorkspaceSwitcher } from './WorkspaceSwitcher';
 
 export interface WorkspaceHeaderProps {
   orgName?: string | null;
@@ -47,6 +48,7 @@ export function WorkspaceHeader({
   billingPlan = null,
 }: WorkspaceHeaderProps): ReactElement {
   const displayName = resolveWorkspaceDisplayName(orgName, ownerLabel);
+  const choices = useWorkspaceChoices();
 
   return (
     <>
@@ -64,6 +66,7 @@ export function WorkspaceHeader({
             {billingPlan ? <PlanBadge plan={billingPlan} /> : null}
           </div>
         </div>
+        <WorkspaceSwitcher {...choices} />
       </section>
 
       <details className="dashboard-workspace dashboard-workspace--mobile">
@@ -78,6 +81,7 @@ export function WorkspaceHeader({
         </summary>
         <div className="dashboard-workspace__panel">
           <p className="dashboard-workspace__eyebrow">Active Workspace</p>
+          <WorkspaceSwitcher {...choices} />
         </div>
       </details>
     </>

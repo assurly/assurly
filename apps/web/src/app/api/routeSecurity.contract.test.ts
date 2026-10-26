@@ -41,6 +41,8 @@ import {
   GET as marketplaceResourceGet,
   PATCH as marketplaceResourcePatch,
 } from './vercel/marketplace/v1/installations/[installationId]/resources/[resourceId]/route';
+import { GET as organizationsList } from './organizations/route';
+import { POST as organizationsSelect } from './organizations/active/route';
 import { GET as marketplaceProductPlans } from './vercel/marketplace/v1/products/[productSlug]/plans/route';
 import { POST as stripeCheckout } from './stripe/checkout/route';
 import { POST as stripePortal } from './stripe/portal/route';
@@ -319,6 +321,20 @@ const routes: RouteContract[] = [
     auth: 'none',
     csrf: false,
     handler: marketplaceProductPlans as SecuredRouteHandler<unknown, unknown, unknown>,
+  },
+  {
+    name: 'organizations list',
+    method: 'GET',
+    auth: 'required',
+    csrf: false,
+    handler: organizationsList as SecuredRouteHandler<unknown, unknown, unknown>,
+  },
+  {
+    name: 'organizations select',
+    method: 'POST',
+    auth: 'required',
+    csrf: true,
+    handler: organizationsSelect as SecuredRouteHandler<unknown, unknown, unknown>,
   },
 ];
 
