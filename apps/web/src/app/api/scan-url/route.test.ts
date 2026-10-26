@@ -149,6 +149,66 @@ describe('POST /api/scan-url', () => {
     expect(json.findings).toBeUndefined();
   });
 
+  it.each([
+    [
+      // Vercel's resolver fails a domain that does not exist with EBUSY, not ENOTFOUND.
+      Object.assign(new Error('getaddrinfo EBUSY x.example.com'), {
+        code: 'EBUSY',
+        syscall: 'getaddrinfo',
+      }),
+      'The domain x.example.com does not resolve to a server.',
+    ],
+    [
+      Object.assign(new Error('The operation was aborted due to timeout'), {
+        name: 'TimeoutError',
+      }),
+      'x.example.com did not answer within 8 seconds.',
+    ],
+    [
+      new TypeError('fetch failed'),
+      'Could not connect to x.example.com (connection refused or a TLS certificate problem).',
+    ],
+    [
+      new Error('Too many redirects while scanning the target URL.'),
+      'x.example.com redirects too many times to reach a page.',
+    ],
+  ])(
+    'tells the visitor why an unreachable site could not be scanned (%s)',
+    async (error, reason) => {
+      scanLiveUrlMock.mockRejectedValue(error);
+
+      const response = await POST(
+        new Request('http://localhost/api/scan-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: 'https://x.example.com' }),
+        }),
+      );
+
+      expect(response.status).toBe(422);
+      const { error: body } = await response.json();
+      expect(body.code).toBe('target_unreachable');
+      expect(body.message).toBe(
+        `${reason} Check the address and that the app is deployed and public, then try again.`,
+      );
+    },
+  );
+
+  it('still reports an unexpected scan failure as an internal error', async () => {
+    scanLiveUrlMock.mockRejectedValue(new Error('Unexpected scanner failure.'));
+
+    const response = await POST(
+      new Request('http://localhost/api/scan-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://x.example.com' }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect((await response.json()).error.code).toBe('internal_error');
+  });
+
   it('returns NOT READY TO SHIP when runtime RLS is open', async () => {
     scanLiveUrlMock.mockResolvedValue({
       findings: [
