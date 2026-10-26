@@ -22,7 +22,9 @@ import {
   getVercelIntegrationSecret,
 } from '../../../../../utils/vercelIntegration';
 import { decryptVercelToken, encryptVercelToken } from '../../../../../utils/vercelToken';
+import { handleInvoiceEvent } from '../../../../../utils/vercelMarketplace';
 import { createVercelMarketplaceApi } from '../../../../../utils/vercelMarketplaceApi';
+import { marketplaceDeps } from '../../../../../utils/vercelMarketplaceRoute';
 import { verifyVercelWebhookSignature } from '../../../../../utils/vercelWebhook';
 import {
   connectResource,
@@ -132,6 +134,8 @@ export const POST = secureRoute(
       case 'deployment.checkrun.start':
         run = await startCheckRun(event, native);
         break;
+      case 'marketplace.invoice':
+        return NextResponse.json({ message: await handleInvoiceEvent(event, marketplaceDeps()) });
       case 'ignored':
         return NextResponse.json({ message: 'Event ignored.' });
       case 'integration-configuration.removed':

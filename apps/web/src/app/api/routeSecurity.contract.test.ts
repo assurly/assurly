@@ -42,6 +42,7 @@ import {
   PATCH as marketplaceResourcePatch,
 } from './vercel/marketplace/v1/installations/[installationId]/resources/[resourceId]/route';
 import { GET as organizationsList } from './organizations/route';
+import { GET as vercelBillingCron } from './cron/vercel-billing/route';
 import { POST as organizationsSelect } from './organizations/active/route';
 import { GET as marketplaceProductPlans } from './vercel/marketplace/v1/products/[productSlug]/plans/route';
 import { POST as stripeCheckout } from './stripe/checkout/route';
@@ -335,6 +336,13 @@ const routes: RouteContract[] = [
     auth: 'required',
     csrf: true,
     handler: organizationsSelect as SecuredRouteHandler<unknown, unknown, unknown>,
+  },
+  {
+    name: 'vercel billing cron',
+    method: 'GET',
+    auth: 'none',
+    csrf: false,
+    handler: vercelBillingCron as SecuredRouteHandler<unknown, unknown, unknown>,
   },
 ];
 

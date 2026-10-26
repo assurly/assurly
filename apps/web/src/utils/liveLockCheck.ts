@@ -106,7 +106,25 @@ export type IntegrationEvent =
       deploymentId: string;
       checkRunId: string;
     }
+  | {
+      type: 'marketplace.invoice';
+      state: VercelInvoiceEventState;
+      installationId: string;
+      invoiceId: string;
+    }
   | { type: 'ignored' };
+
+/** What an invoice webhook says happened to an invoice Assurly sent. */
+export type VercelInvoiceEventState = 'invoiced' | 'paid' | 'notpaid' | 'overdue' | 'refunded';
+
+const INVOICE_EVENTS: Record<string, VercelInvoiceEventState> = {
+  'marketplace.invoice.created': 'invoiced',
+  'marketplace.invoice.paid': 'paid',
+  'marketplace.invoice.notpaid': 'notpaid',
+  'marketplace.invoice.overdue': 'overdue',
+  'marketplace.invoice.refunded': 'refunded',
+};
+const INVOICE_ID = /^[A-Za-z0-9_-]{1,120}$/;
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
@@ -179,6 +197,17 @@ export function readIntegrationEvent(raw: unknown): IntegrationEvent {
       projectName: name || projectId,
       productionOrigin: productionOrigin(payload.productionDomain),
     };
+  }
+
+  if (typeof type === 'string' && Object.hasOwn(INVOICE_EVENTS, type)) {
+    const installationId =
+      matching(record(payload.configuration).id, CONFIGURATION_ID) ??
+      matching(payload.installationId, CONFIGURATION_ID);
+    const invoiceId = matching(payload.invoiceId, INVOICE_ID);
+    const state = INVOICE_EVENTS[type];
+    return installationId && invoiceId && state
+      ? { type: 'marketplace.invoice', state, installationId, invoiceId }
+      : { type: 'ignored' };
   }
 
   if (type === 'deployment.checkrun.start') {

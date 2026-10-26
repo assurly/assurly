@@ -12,6 +12,7 @@ import {
   type DeploymentCheckRun,
 } from './liveLockDeploymentCheck';
 import type { VercelIntegrationApi } from './vercelIntegration';
+import { effectivePlan } from './vercelMarketplace';
 import type { VercelMarketplaceApi } from './vercelMarketplaceApi';
 
 /**
@@ -59,15 +60,15 @@ async function linkedResource(
 ): Promise<Linked | null> {
   if (!RESOURCE_ID.test(resourceId)) return null;
   const installation = await deps.db.getVercelInstallation(installationId);
-  if (!installation) return null;
+  if (!installation || installation.deleted_at) return null;
   const resource = await deps.db.getLiveLockResource(installationId, resourceId);
   if (!resource || resource.organization_id !== installation.organization_id) return null;
   return { installation, resource, token: deps.decryptToken(installation.token_ciphertext) };
 }
 
-/** Enforce only blocks while the installation is on Pro. */
+/** Enforce only blocks while Pro is paid for (see `effectivePlan`). */
 function effectiveMode(linked: Linked): LiveLockMode {
-  return linked.resource.mode === 'enforce' && linked.installation.billing_plan_id === 'pro'
+  return linked.resource.mode === 'enforce' && effectivePlan(linked.installation) === 'pro'
     ? 'enforce'
     : 'monitor';
 }

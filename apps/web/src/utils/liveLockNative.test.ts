@@ -29,6 +29,9 @@ function installation(plan: 'free' | 'pro' = 'pro'): VercelInstallationRow {
     account_id: 'acc_1',
     token_ciphertext: 'cipher',
     billing_plan_id: plan,
+    billing_status: 'ok',
+    deleted_at: null,
+    created_at: '2026-10-01T00:00:00Z',
   };
 }
 
@@ -116,6 +119,9 @@ function setup() {
         gitSha: 'abc1234',
       }),
     ),
+    submitBillingData: vi.fn(async () => undefined),
+    submitInvoice: vi.fn(async () => ({ invoiceId: 'inv_1' })),
+    setInstallationNotification: vi.fn(async () => undefined),
   } satisfies VercelMarketplaceApi;
   const integration = {
     createProtectionBypass: vi.fn(async () => 'b'.repeat(32)),
@@ -406,6 +412,25 @@ describe('checkRunSummary', () => {
 });
 
 describe('readIntegrationEvent (native events)', () => {
+  it('reads invoice webhooks by Vercel’s event names', () => {
+    const payload = { configuration: { id: INSTALLATION }, invoiceId: 'inv_1' };
+    expect(readIntegrationEvent({ type: 'marketplace.invoice.overdue', payload })).toEqual({
+      type: 'marketplace.invoice',
+      state: 'overdue',
+      installationId: INSTALLATION,
+      invoiceId: 'inv_1',
+    });
+    expect(readIntegrationEvent({ type: 'marketplace.invoice.created', payload })).toMatchObject({
+      state: 'invoiced',
+    });
+    expect(
+      readIntegrationEvent({ type: 'marketplace.invoice.paid', payload: { invoiceId: 'inv_1' } }),
+    ).toEqual({ type: 'ignored' });
+    expect(readIntegrationEvent({ type: 'marketplace.invoice.unknown', payload })).toEqual({
+      type: 'ignored',
+    });
+  });
+
   it('reads project-connected with a safe production origin', () => {
     const event = readIntegrationEvent({
       type: 'integration-resource.project-connected',

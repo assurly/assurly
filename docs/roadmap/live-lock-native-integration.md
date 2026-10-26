@@ -192,12 +192,46 @@ app in the dashboard (the dashboard has no per-target URL yet).
 
 ### Phase 4: billing
 
-Plans endpoints, plan change via PATCH installation, `billing_source=vercel`
-entitlements, daily interim billing data and monthly invoice (cron), invoice
-webhooks (paid → active; notpaid/overdue → warn, downgrade to Free after 15
-days, never delete data), refunds via invoice actions, delete-installation
-finalization. Test-mode invoices before launch, then one real invoice and a
-refund as the checklist asks.
+Built (2026-10-26):
+
+- **Model.** Installation-level plans: Free and Pro ($17/month, USD only on
+  Vercel). The period is the UTC calendar month and Pro is billed **in
+  arrears, prorated by the time spent on Pro**: early each month the previous
+  month is invoiced. Upgrades and downgrades mid-month are fair both ways and
+  nothing is charged in advance, so nothing ever needs refunding.
+- **History.** Every plan change is logged (`private.vercel_plan_change`), so
+  any month's amount can be recomputed. Every invoice is recorded before it is
+  sent (`private.vercel_invoice`, unique per installation and month, external
+  id `icfg_…:YYYY-MM`) and sent only from `pending`/`failed`: a retry never
+  charges twice; a failing one is retried up to five runs.
+- **Billing run** `/api/cron/vercel-billing` (cron secret): invoices the month
+  that ended, sends every installation's running total and usage (guarded
+  projects) with Submit Billing Data, settles and purges deleted
+  installations.
+- **Entitlements.** `organizations.billing_source = 'vercel'` and the
+  workspace plan follows the installation: Pro only while the plan is Pro, no
+  invoice is overdue and the installation is not being deleted. Stripe
+  checkout, portal and reconcile refuse or skip such a workspace.
+- **Invoice webhooks.** `overdue` (Vercel's 15 days) pauses Enforce in Vercel
+  (project checks stop blocking) and shows a notice on the installation; the
+  person's choice of Enforce is kept. `paid` resumes it. `notpaid` only warns.
+  Nothing is ever deleted for non-payment.
+- **Uninstall.** Locks and checks go at once; the Pro time not yet invoiced
+  is sent as the `final` invoice. Finalized at once when that succeeds or
+  nothing is owed; otherwise the billing run retries within Vercel's 24 hours.
+
+Integration Console, before Phase 0:
+
+- enable **Installation-level Billing Plans**;
+- subscribe the webhook to `marketplace.invoice.created`, `.paid`, `.notpaid`,
+  `.overdue`, `.refunded` (same webhook URL as the deployment events);
+- after the move to Vercel Pro, change the `vercel-billing` cron in
+  `vercel.json` from daily (`0 2 * * *`, the Hobby limit) to hourly
+  (`0 * * * *`), as Vercel asks for hourly billing data.
+
+Still open: refunds through the Invoice Actions API (a support action, not
+automated), test-mode invoices in Phase 0, then one real invoice and a refund
+as the approval checklist asks.
 
 ### Phase 5: listing and approval
 

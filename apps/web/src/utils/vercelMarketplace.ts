@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import type { DbAdapter, LiveLockResourceRow, VercelInstallationRow } from './dbAdapter';
-import type { LiveLockMode } from './liveLockCheck';
-import type { VercelMarketplaceApi } from './vercelMarketplaceApi';
+import type { LiveLockMode, VercelInvoiceEventState } from './liveLockCheck';
+import { money, PRO_MONTHLY_USD } from './vercelBilling';
+import { settleInstallation } from './vercelBillingRun';
+import type { InstallationNotification, VercelMarketplaceApi } from './vercelMarketplaceApi';
 
 /**
  * The Partner API behind the native "Live Lock" product. Route handlers stay
@@ -17,12 +19,6 @@ export const LIVE_LOCK_PRODUCT_ID = 'live-lock';
 
 export type MarketplacePlanId = 'free' | 'pro';
 
-/**
- * Vercel bills Marketplace plans in USD only. Assurly Pro is €17 through
- * Stripe; through Vercel it is $17 (decided 2026-10-25).
- */
-const PRO_MONTHLY_USD = '17.00';
-
 export interface MarketplaceBillingPlan {
   id: MarketplacePlanId;
   type: 'subscription';
@@ -30,6 +26,8 @@ export interface MarketplaceBillingPlan {
   name: string;
   description: string;
   paymentMethodRequired: boolean;
+  /** USD Vercel checks the card can carry; nothing is charged by it. */
+  preauthorizationAmount?: number;
   cost?: string;
   details: { label: string; value?: string }[];
   highlightedDetails?: { label: string; value?: string }[];
@@ -53,9 +51,11 @@ export const MARKETPLACE_PLANS: Record<MarketplacePlanId, MarketplaceBillingPlan
     type: 'subscription',
     scope: 'installation',
     name: 'Pro',
-    description: 'Hold back a production deploy when the live check proves a blocker.',
+    description:
+      'Hold back a production deploy when the live check proves a blocker. Billed monthly in arrears through Vercel, prorated by day.',
     paymentMethodRequired: true,
-    cost: `$${PRO_MONTHLY_USD}/month`,
+    preauthorizationAmount: PRO_MONTHLY_USD,
+    cost: `$${money(PRO_MONTHLY_USD)}/month`,
     details: [
       { label: 'Guarded projects', value: 'Unlimited' },
       { label: 'Mode', value: 'Monitor or Enforce' },
@@ -209,18 +209,43 @@ async function requireInstallation(
   deps: MarketplaceDeps,
 ): Promise<VercelInstallationRow> {
   const installation = await deps.db.getVercelInstallation(installationId);
-  if (!installation) {
+  if (!installation || installation.deleted_at) {
     throw new MarketplaceError(404, 'not_found', 'Installation not found.');
   }
   return installation;
 }
 
+/**
+ * The plan Assurly acts on: Pro only while it is paid for. An installation
+ * whose invoice went overdue keeps its choice of Pro but runs as Free until
+ * the invoice is paid.
+ */
+export function effectivePlan(
+  installation: Pick<VercelInstallationRow, 'billing_plan_id' | 'billing_status' | 'deleted_at'>,
+): MarketplacePlanId {
+  return installation.billing_plan_id === 'pro' &&
+    installation.billing_status === 'ok' &&
+    !installation.deleted_at
+    ? 'pro'
+    : 'free';
+}
+
+const OVERDUE_NOTICE: InstallationNotification = {
+  level: 'error',
+  title: 'Payment overdue: Enforce is paused',
+  message:
+    'An Assurly invoice is overdue, so Live Lock reports but does not hold deploys. It resumes as soon as the invoice is paid.',
+};
+
 export async function getInstallation(
   installationId: string,
   deps: MarketplaceDeps,
-): Promise<{ billingPlan: MarketplaceBillingPlan }> {
+): Promise<{ billingPlan: MarketplaceBillingPlan; notification?: InstallationNotification }> {
   const installation = await requireInstallation(installationId, deps);
-  return { billingPlan: MARKETPLACE_PLANS[installation.billing_plan_id] };
+  return {
+    billingPlan: MARKETPLACE_PLANS[installation.billing_plan_id],
+    ...(installation.billing_status === 'overdue' ? { notification: OVERDUE_NOTICE } : {}),
+  };
 }
 
 /**
@@ -246,27 +271,105 @@ export async function updateInstallationPlan(
 
 /**
  * Uninstall. Our project checks are removed while the token still works, so
- * Vercel is not left waiting on a check nobody will conclude. There are no
- * open invoices to settle yet, so the installation is finalized at once.
+ * Vercel is not left waiting on a check nobody will conclude. Then the Pro
+ * time not yet invoiced is billed as the final invoice. When that is done (or
+ * nothing is owed) the installation is finalized at once; otherwise Vercel
+ * keeps it open and the billing run retries within Vercel's 24 hours.
  */
 export async function deleteInstallation(
   installationId: string,
   deps: MarketplaceDeps,
-): Promise<{ finalized: true }> {
+  now: Date = new Date(),
+): Promise<{ finalized: boolean }> {
   const installation = await deps.db.getVercelInstallation(installationId);
-  if (installation) {
-    const api = deps.apiFor(deps.decryptToken(installation.token_ciphertext));
-    const resources = await deps.db.listLiveLockResources(installationId);
-    await Promise.allSettled(
-      resources.map((resource) =>
-        resource.vercel_project_id && resource.vercel_check_id
-          ? api.deleteProjectCheck(resource.vercel_project_id, resource.vercel_check_id)
-          : Promise.resolve(),
-      ),
-    );
-    await deps.db.deleteVercelInstallation(installationId);
+  if (!installation) return { finalized: true };
+
+  const token = deps.decryptToken(installation.token_ciphertext);
+  const api = deps.apiFor(token);
+  const resources = await deps.db.listLiveLockResources(installationId);
+  await Promise.allSettled(
+    resources.map((resource) =>
+      resource.vercel_project_id && resource.vercel_check_id
+        ? api.deleteProjectCheck(resource.vercel_project_id, resource.vercel_check_id)
+        : Promise.resolve(),
+    ),
+  );
+  await deps.db.markVercelInstallationDeleted(installationId);
+
+  const settled = await settleInstallation(installationId, api, deps.db, {
+    final: true,
+    until: now,
+  }).catch(() => false);
+  if (settled) await deps.db.deleteVercelInstallation(installationId);
+  return { finalized: settled };
+}
+
+/**
+ * An invoice webhook moved the installation in or out of `overdue`. Enforce
+ * locks stop (or resume) holding deploys in Vercel, and the installation shows
+ * why. The person's choice of Enforce is kept, so paying restores it.
+ */
+export async function applyBillingStatus(
+  installationId: string,
+  status: 'ok' | 'overdue',
+  deps: MarketplaceDeps,
+): Promise<void> {
+  const installation = await deps.db.getVercelInstallation(installationId);
+  if (!installation || installation.deleted_at) return;
+  if (installation.billing_status !== status) {
+    await deps.db.setVercelBillingStatus(installationId, status);
   }
-  return { finalized: true };
+  const api = deps.apiFor(deps.decryptToken(installation.token_ciphertext));
+  const blocking = effectivePlan({ ...installation, billing_status: status }) === 'pro';
+  const resources = await deps.db.listLiveLockResources(installationId);
+  for (const resource of resources) {
+    if (resource.mode !== 'enforce' || !resource.vercel_project_id || !resource.vercel_check_id) {
+      continue;
+    }
+    await api.setProjectCheckBlocking(
+      resource.vercel_project_id,
+      resource.vercel_check_id,
+      blocking,
+    );
+  }
+  await api.setInstallationNotification(
+    installationId,
+    status === 'overdue' ? OVERDUE_NOTICE : null,
+  );
+}
+
+const UNPAID_NOTICE: InstallationNotification = {
+  level: 'warn',
+  title: 'Payment for Assurly failed',
+  message:
+    'Vercel will retry the payment. Update the payment method for this integration to keep Enforce running.',
+};
+
+/**
+ * A `marketplace.invoice.*` webhook. Only invoices Assurly sent are acted on.
+ * Overdue pauses Enforce, paid resumes it, a failed payment only warns: Vercel
+ * retries for 15 days before an invoice becomes overdue.
+ */
+export async function handleInvoiceEvent(
+  event: { state: VercelInvoiceEventState; installationId: string; invoiceId: string },
+  deps: MarketplaceDeps,
+): Promise<'unknown_invoice' | 'recorded'> {
+  const installationId = await deps.db.setVercelInvoiceState(event.invoiceId, event.state);
+  if (!installationId || installationId !== event.installationId) return 'unknown_invoice';
+
+  if (event.state === 'overdue') {
+    await applyBillingStatus(installationId, 'overdue', deps);
+  } else if (event.state === 'paid') {
+    await applyBillingStatus(installationId, 'ok', deps);
+  } else if (event.state === 'notpaid') {
+    const installation = await deps.db.getVercelInstallation(installationId);
+    if (installation && !installation.deleted_at && installation.billing_status === 'ok') {
+      await deps
+        .apiFor(deps.decryptToken(installation.token_ciphertext))
+        .setInstallationNotification(installationId, UNPAID_NOTICE);
+    }
+  }
+  return 'recorded';
 }
 
 // ---------------------------------------------------------------------------
@@ -318,7 +421,10 @@ export async function provisionResource(
   const installation = await requireInstallation(installationId, deps);
   // Installation-level billing: a plan picked in this flow applies to the installation.
   const requestedPlan = planFrom(body.billingPlanId);
-  const plan = requestedPlan ?? installation.billing_plan_id;
+  const plan = effectivePlan({
+    ...installation,
+    billing_plan_id: requestedPlan ?? installation.billing_plan_id,
+  });
   const mode = modeFrom(body.metadata);
   if (mode === 'invalid') throw invalidMode();
   if (mode === 'enforce' && plan !== 'pro') throw enforceNeedsPro();
@@ -387,7 +493,7 @@ async function applyMode(
     await api.setProjectCheckBlocking(
       resource.vercel_project_id,
       resource.vercel_check_id,
-      mode === 'enforce',
+      mode === 'enforce' && effectivePlan(installation) === 'pro',
     );
   }
   if (resource.target_id) await deps.db.setLiveLockMode(resource.target_id, mode);
@@ -410,7 +516,7 @@ export async function updateResource(
   if (body.metadata !== undefined) {
     const mode = modeFrom(body.metadata);
     if (mode === 'invalid') throw invalidMode();
-    if (mode === 'enforce' && installation.billing_plan_id !== 'pro') throw enforceNeedsPro();
+    if (mode === 'enforce' && effectivePlan(installation) !== 'pro') throw enforceNeedsPro();
     if (mode !== resource.mode) resource = await applyMode(installation, resource, mode, deps);
   }
   if (body.name !== undefined && body.name !== resource.name) {

@@ -49,6 +49,8 @@ export interface Organization {
   stripe_customer_id?: string;
   github_org_id?: number;
   github_installation_id?: string;
+  /** `vercel` for a workspace billed through the Vercel Marketplace; Stripe never touches it. */
+  billing_source?: 'stripe' | 'vercel' | null;
   created_at: string;
 }
 
@@ -363,6 +365,47 @@ export interface VercelInstallationRow {
   account_id: string;
   token_ciphertext: string;
   billing_plan_id: 'free' | 'pro';
+  /** `overdue` once Vercel reports an unpaid invoice past its 15 days. */
+  billing_status: 'ok' | 'overdue';
+  /** Set when Vercel deleted the installation; the row stays for the final invoice. */
+  deleted_at: string | null;
+  created_at: string;
+}
+
+/** One installation as the billing run sees it. Service role only. */
+export interface VercelBillingInstallationRow {
+  installation_id: string;
+  token_ciphertext: string;
+  billing_plan_id: 'free' | 'pro';
+  billing_status: 'ok' | 'overdue';
+  deleted_at: string | null;
+  created_at: string;
+}
+
+export interface VercelPlanChangeRow {
+  plan_id: 'free' | 'pro';
+  effective_at: string;
+}
+
+export type VercelInvoiceState =
+  | 'pending'
+  | 'failed'
+  | 'submitted'
+  | 'scheduled'
+  | 'invoiced'
+  | 'paid'
+  | 'notpaid'
+  | 'overdue'
+  | 'refund_requested'
+  | 'refunded';
+
+export interface ClaimVercelInvoiceInput {
+  installationId: string;
+  periodStart: string;
+  periodEnd: string;
+  externalId: string;
+  total: string;
+  final: boolean;
 }
 
 export interface UpsertVercelInstallationInput {
@@ -809,6 +852,29 @@ export interface DbAdapter {
   setVercelInstallationPlan(installationId: string, planId: 'free' | 'pro'): Promise<boolean>;
   /** Drops the token, the resources and their locks. Returns the organization, if any. */
   deleteVercelInstallation(installationId: string): Promise<string | null>;
+  /** Uninstall step one: locks go, the token stays for the final invoice. */
+  markVercelInstallationDeleted(installationId: string): Promise<string | null>;
+  setVercelBillingStatus(installationId: string, status: 'ok' | 'overdue'): Promise<boolean>;
+  listVercelInstallationsForBilling(): Promise<VercelBillingInstallationRow[]>;
+  /** The plan in force at `since`, then every change before `until`. */
+  listVercelPlanChanges(
+    installationId: string,
+    since: string,
+    until: string,
+  ): Promise<VercelPlanChangeRow[]>;
+  /** Records an invoice before it is sent; an existing row comes back unchanged. */
+  claimVercelInvoice(
+    input: ClaimVercelInvoiceInput,
+  ): Promise<{ state: VercelInvoiceState; vercel_invoice_id: string | null; attempts: number }>;
+  recordVercelInvoiceAttempt(
+    installationId: string,
+    periodStart: string,
+    vercelInvoiceId: string | null,
+    error: string | null,
+  ): Promise<void>;
+  /** Invoice webhooks. Returns the installation, or null for an invoice we did not send. */
+  setVercelInvoiceState(vercelInvoiceId: string, state: VercelInvoiceState): Promise<string | null>;
+  listOpenVercelInvoices(installationId: string): Promise<{ period_start: string }[]>;
   createLiveLockResource(input: {
     installationId: string;
     organizationId: string;
@@ -2030,6 +2096,97 @@ export class SupabaseDbAdapter implements DbAdapter {
       body: JSON.stringify({ target_installation_id: installationId }),
     });
     return organizationId ?? null;
+  }
+
+  async markVercelInstallationDeleted(installationId: string): Promise<string | null> {
+    const organizationId = await this.fetchDb<string | null>(
+      'rpc/mark_vercel_installation_deleted',
+      { method: 'POST', body: JSON.stringify({ target_installation_id: installationId }) },
+    );
+    return organizationId ?? null;
+  }
+
+  async setVercelBillingStatus(installationId: string, status: 'ok' | 'overdue'): Promise<boolean> {
+    const updated = await this.fetchDb<boolean | null>('rpc/set_vercel_billing_status', {
+      method: 'POST',
+      body: JSON.stringify({ target_installation_id: installationId, target_status: status }),
+    });
+    return updated === true;
+  }
+
+  listVercelInstallationsForBilling(): Promise<VercelBillingInstallationRow[]> {
+    return this.fetchDb('rpc/list_vercel_installations_for_billing', {
+      method: 'POST',
+      body: '{}',
+    });
+  }
+
+  listVercelPlanChanges(
+    installationId: string,
+    since: string,
+    until: string,
+  ): Promise<VercelPlanChangeRow[]> {
+    return this.fetchDb('rpc/list_vercel_plan_changes', {
+      method: 'POST',
+      body: JSON.stringify({ target_installation_id: installationId, since, until }),
+    });
+  }
+
+  async claimVercelInvoice(
+    input: ClaimVercelInvoiceInput,
+  ): Promise<{ state: VercelInvoiceState; vercel_invoice_id: string | null; attempts: number }> {
+    const rows = await this.fetchDb<
+      { state: VercelInvoiceState; vercel_invoice_id: string | null; attempts: number }[]
+    >('rpc/claim_vercel_invoice', {
+      method: 'POST',
+      body: JSON.stringify({
+        target_installation_id: input.installationId,
+        target_period_start: input.periodStart,
+        target_period_end: input.periodEnd,
+        target_external_id: input.externalId,
+        target_total: input.total,
+        target_final: input.final,
+      }),
+    });
+    const row = rows[0];
+    if (!row) throw new Error('Vercel invoice claim returned no row.');
+    return row;
+  }
+
+  async recordVercelInvoiceAttempt(
+    installationId: string,
+    periodStart: string,
+    vercelInvoiceId: string | null,
+    error: string | null,
+  ): Promise<void> {
+    await this.fetchDb('rpc/record_vercel_invoice_attempt', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        target_installation_id: installationId,
+        target_period_start: periodStart,
+        target_vercel_invoice_id: vercelInvoiceId,
+        target_error: error,
+      }),
+    });
+  }
+
+  async setVercelInvoiceState(
+    vercelInvoiceId: string,
+    state: VercelInvoiceState,
+  ): Promise<string | null> {
+    const installationId = await this.fetchDb<string | null>('rpc/set_vercel_invoice_state', {
+      method: 'POST',
+      body: JSON.stringify({ target_vercel_invoice_id: vercelInvoiceId, target_state: state }),
+    });
+    return installationId ?? null;
+  }
+
+  listOpenVercelInvoices(installationId: string): Promise<{ period_start: string }[]> {
+    return this.fetchDb('rpc/list_open_vercel_invoices', {
+      method: 'POST',
+      body: JSON.stringify({ target_installation_id: installationId }),
+    });
   }
 
   async createLiveLockResource(input: {

@@ -50,6 +50,17 @@ describe('reconcileOrganizationBilling', () => {
     expect(mocks.processStripeBillingEvent).not.toHaveBeenCalled();
   });
 
+  it('does not touch a workspace billed through Vercel', async () => {
+    mocks.subscriptionSearch.mockResolvedValue({ data: [trialingSub()] });
+    await reconcileOrganizationBilling(stripe, db as never, {
+      ...freeOrg,
+      billing_plan: 'pro',
+      billing_source: 'vercel',
+    });
+    expect(mocks.subscriptionSearch).not.toHaveBeenCalled();
+    expect(mocks.processStripeBillingEvent).not.toHaveBeenCalled();
+  });
+
   it('promotes a free workspace when Stripe reports a trialing subscription', async () => {
     mocks.subscriptionSearch.mockResolvedValue({ data: [trialingSub()] });
 

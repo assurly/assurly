@@ -65,6 +65,8 @@ export async function reconcileOrganizationBilling(
   organization: Organization,
 ): Promise<void> {
   if (organization.billing_plan === 'oem') return;
+  // A Marketplace workspace's plan follows its Vercel installation, never Stripe.
+  if (organization.billing_source === 'vercel') return;
 
   const [live, evidence] = await Promise.all([
     listLiveOrganizationSubscriptions(stripe, organization.id),

@@ -38,6 +38,13 @@ export const POST = secureRoute(
     if (organization.billing_plan === 'oem') {
       throw new ApiError(403, 'plan_required', 'OEM workspaces are billed out of band.');
     }
+    if (organization.billing_source === 'vercel') {
+      throw new ApiError(
+        409,
+        'billed_by_vercel',
+        'This workspace is billed through the Vercel Marketplace. Change its plan in Vercel.',
+      );
+    }
 
     const stripe = getStripeClient();
     const adminDb = getAdminDbAdapter();

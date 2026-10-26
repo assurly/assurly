@@ -55,6 +55,25 @@ export interface VercelMarketplaceApi {
         },
   ): Promise<void>;
   getDeployment(deploymentId: string): Promise<MarketplaceDeployment>;
+  /** Display-only usage and running total (POST /v1/installations/{id}/billing). */
+  submitBillingData(installationId: string, body: Record<string, unknown>): Promise<void>;
+  /** Charges the customer through Vercel (POST /v1/installations/{id}/billing/invoices). */
+  submitInvoice(
+    installationId: string,
+    body: Record<string, unknown>,
+  ): Promise<{ invoiceId: string }>;
+  /** The banner on the installation in the Vercel dashboard; null clears it. */
+  setInstallationNotification(
+    installationId: string,
+    notification: InstallationNotification | null,
+  ): Promise<void>;
+}
+
+export interface InstallationNotification {
+  level: 'info' | 'warn' | 'error';
+  title: string;
+  message?: string;
+  href?: string;
 }
 
 export function createVercelMarketplaceApi(
@@ -157,6 +176,34 @@ export function createVercelMarketplaceApi(
         production: body.target === 'production',
         gitSha: GIT_SHA.test(sha.toLowerCase()) ? sha.toLowerCase() : null,
       };
+    },
+    async submitBillingData(installationId, body) {
+      await call(
+        'billing data submit',
+        `/v1/installations/${encodeURIComponent(installationId)}/billing`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        },
+      );
+    },
+    async submitInvoice(installationId, body) {
+      const response = await call(
+        'invoice submit',
+        `/v1/installations/${encodeURIComponent(installationId)}/billing/invoices`,
+        { method: 'POST', body: JSON.stringify(body) },
+      );
+      const result = (await response.json()) as { invoiceId?: unknown };
+      if (typeof result.invoiceId !== 'string' || !result.invoiceId) {
+        throw new VercelApiError(502, 'invoice submit');
+      }
+      return { invoiceId: result.invoiceId };
+    },
+    async setInstallationNotification(installationId, notification) {
+      await call('installation update', `/v1/installations/${encodeURIComponent(installationId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ notification }),
+      });
     },
   };
 }

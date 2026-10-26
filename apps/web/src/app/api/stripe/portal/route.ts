@@ -36,6 +36,13 @@ export const POST = secureRoute(
       throw new ApiError(404, 'not_found', 'Workspace not found.');
     }
     await requireOrganizationMember(context, organization.id);
+    if (organization.billing_source === 'vercel') {
+      throw new ApiError(
+        409,
+        'billed_by_vercel',
+        'This workspace is billed through the Vercel Marketplace. Manage billing in Vercel.',
+      );
+    }
 
     const stripe = getStripeClient();
     const adminDb = getAdminDbAdapter();

@@ -192,6 +192,33 @@ describe('billing API ownership and request safety', () => {
     expect(mocks.customerCreate).not.toHaveBeenCalled();
   });
 
+  it('refuses Checkout and the portal for a workspace billed through Vercel', async () => {
+    db.getOrganizationByUserId.mockResolvedValue({
+      id: 'org-a',
+      name: 'Acme',
+      billing_plan: 'pro',
+      billing_source: 'vercel',
+    });
+
+    const checkoutResponse = await checkout(
+      new Request('http://localhost/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: 'monthly' }),
+      }),
+    );
+    const portalResponse = await portal(
+      new Request('http://localhost/api/stripe/portal', { method: 'POST' }),
+    );
+
+    expect(checkoutResponse.status).toBe(409);
+    expect((await checkoutResponse.json()).error.code).toBe('billed_by_vercel');
+    expect(portalResponse.status).toBe(409);
+    expect(mocks.checkoutCreate).not.toHaveBeenCalled();
+    expect(mocks.customerCreate).not.toHaveBeenCalled();
+    expect(mocks.portalCreate).not.toHaveBeenCalled();
+  });
+
   it('rejects an arbitrary client-side price or plan', async () => {
     const response = await checkout(
       new Request('http://localhost/api/stripe/checkout', {
