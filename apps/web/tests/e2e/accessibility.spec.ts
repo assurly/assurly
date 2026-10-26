@@ -1,7 +1,16 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-const routes = ['/', '/dashboard', '/privacy', '/terms', '/mcp', '/live-lock'] as const;
+const routes = [
+  '/',
+  '/dashboard',
+  '/privacy',
+  '/terms',
+  '/mcp',
+  '/live-lock',
+  '/live-lock/getting-started',
+  '/sso-error',
+] as const;
 const widths = [320, 390, 768, 1024, 1440] as const;
 
 const targetSelector = [

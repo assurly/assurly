@@ -1,0 +1,23 @@
+{
+  "name": "live-lock-nextjs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Next.js starter guarded by Assurly Live Lock: every production deploy is checked before it reaches your domain.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "16.4.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

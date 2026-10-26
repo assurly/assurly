@@ -47,7 +47,7 @@ export default async function LiveLockPage(): Promise<ReactElement> {
 
       <main className="legal-content">
         <h1>Live Lock for Vercel</h1>
-        <p className="last-updated">Last updated: October 25, 2026</p>
+        <p className="last-updated">Last updated: October 26, 2026</p>
 
         <section className="legal-section">
           <h2>What it does</h2>
@@ -114,17 +114,15 @@ export default async function LiveLockPage(): Promise<ReactElement> {
         <section className="legal-section">
           <h2>Projects with Deployment Protection</h2>
           <p>
-            A protected deployment sends visitors to a Vercel login, so Assurly could not see the
-            build. When a check runs into that, the integration creates its own Protection Bypass
-            for Automation on the project, labelled <em>Assurly Live Lock</em>, and checks again. It
-            does this only for a project that is protected, and only with the Project Protection
-            Bypass permission you approve in Vercel.
+            A protected deployment sends visitors to a Vercel login, so Assurly cannot see the
+            build. With the setup on this page, those deployments are released and marked as not
+            verified: Vercel lets only integrations installed from the Vercel Marketplace create a
+            Protection Bypass for Automation.
           </p>
           <p>
-            The bypass is sent only to that deployment&apos;s own address, never to your database or
-            any other service the app calls. You can revoke it in Vercel at any time; Assurly then
-            creates a new one on the next protected deploy, or reports the deploy as not verified if
-            the permission is gone.
+            Live Lock installed from the Vercel Marketplace checks protected projects too. It is in
+            review with Vercel; see{' '}
+            <Link href="/live-lock/getting-started">Get started with Live Lock on Vercel</Link>.
           </p>
         </section>
 
@@ -140,10 +138,9 @@ export default async function LiveLockPage(): Promise<ReactElement> {
               each blocker. It does not store probe samples for these checks.
             </li>
             <li>
-              The integration asks Vercel for access to read your projects and deployments, to write
-              deployment checks, and to manage its own Protection Bypass. It does not change your
-              domains, environment variables or any bypass you created. The installation token and
-              the bypass are encrypted and never shown.
+              The integration asks Vercel for access to read your projects and deployments and to
+              write deployment checks. It does not change your domains, environment variables or any
+              bypass you created. The installation token is encrypted and never shown.
             </li>
           </ul>
         </section>
@@ -151,9 +148,8 @@ export default async function LiveLockPage(): Promise<ReactElement> {
         <section className="legal-section">
           <h2>Turn it off</h2>
           <p>
-            Choose <em>Turn off</em> in the dashboard, which also revokes the Assurly bypass in
-            Vercel, or remove the integration in Vercel. Removing it deletes the stored token, the
-            bypass and every lock it powered.
+            Choose <em>Turn off</em> in the dashboard, or remove the integration in Vercel. Removing
+            it deletes the stored token and every lock it powered.
           </p>
         </section>
 

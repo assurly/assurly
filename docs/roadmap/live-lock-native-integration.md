@@ -243,6 +243,26 @@ privacy updates (Vercel bills and collects tax), the full approval checklist run
 including logged-out install, existing-user install, reinstall and uninstall.
 Then email integrations@vercel.com and hold the walkthrough call.
 
+Built (2026-10-26), see `docs/marketplace/live-lock-listing.md`:
+
+- Getting Started guide at `/live-lock/getting-started` (the Documentation
+  URL), reachable but `noindex` and out of the sitemap until the listing is
+  public (`MARKETPLACE_LISTED`). `/live-lock` corrected: with the dashboard
+  install, protected deployments are not verified; only the Marketplace
+  install can bypass Deployment Protection.
+- Five 1920×1080 gallery images from `apps/web/scripts/marketplace-gallery`
+  (HTML source + Playwright renderer, so copy changes are one command).
+- Marketplace template `templates/live-lock-nextjs` with the `stores` deploy
+  button; builds clean on Next.js 16.4.3.
+- Listing kit: console fields, overview and instructions copy, the product's
+  Metadata Schema (validated against Vercel's published schema), webhook
+  events, permissions, and the approval checklist with each item's status.
+- Privacy Policy and Terms sections for Vercel integration data and
+  Marketplace billing.
+
+Owner actions left: publish the template repository, Phase 0, the test and
+real invoice, then the email to Vercel.
+
 ### Phase 6: migration
 
 Existing connectable locks keep working. After approval, the dashboard offers

@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Assurly Live Lock: Marketplace gallery</title>
+    <!--
+      Source of the Vercel Marketplace gallery images (1920×1080).
+      Render with: node scripts/marketplace-gallery/render.mjs
+      Each slide is a <section data-slide="n">; the renderer screenshots one at a time.
+      Every claim here must match what Live Lock does (see /live-lock/getting-started).
+    -->
+    <style>
+      :root {
+        --bg: #0c0e12;
+        --surface: #14171c;
+        --border: #262b33;
+        --text: #f5f6f8;
+        --muted: #a3aab5;
+        --dim: #7b8390;
+        --green: #3ddc97;
+        --red: #ff6b6b;
+        --amber: #f5b14c;
+        --grey: #8a93a0;
+        --font:
+          -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Helvetica, Arial, sans-serif;
+        --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font);
+      }
+      section {
+        width: 1920px;
+        height: 1080px;
+        padding: 140px 160px;
+        display: grid;
+        grid-template-columns: 820px 1fr;
+        gap: 120px;
+        align-items: center;
+        background:
+          radial-gradient(1200px 600px at 85% 15%, rgba(61, 220, 151, 0.06), transparent 60%),
+          var(--bg);
+      }
+      section.single {
+        grid-template-columns: 1fr;
+        gap: 64px;
+        align-content: center;
+      }
+      .eyebrow {
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--green);
+        margin-bottom: 36px;
+      }
+      h1 {
+        font-size: 96px;
+        line-height: 1.02;
+        letter-spacing: -0.03em;
+        font-weight: 800;
+      }
+      h1.compact {
+        font-size: 84px;
+      }
+      .lead {
+        margin-top: 44px;
+        font-size: 38px;
+        line-height: 1.4;
+        color: var(--muted);
+      }
+      .label {
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--dim);
+        margin-bottom: 28px;
+      }
+      .card {
+        position: relative;
+        background: var(--surface);
+        border: 2px solid var(--border);
+        border-radius: 22px;
+        padding: 34px 40px 34px 46px;
+        margin-bottom: 28px;
+        overflow: hidden;
+      }
+      .card::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 8px;
+        background: var(--grey);
+      }
+      .card.pass::before {
+        background: var(--green);
+      }
+      .card.hold::before {
+        background: var(--red);
+      }
+      .card.would::before {
+        background: var(--amber);
+      }
+      .card h3 {
+        font-size: 40px;
+        font-weight: 750;
+        margin-bottom: 10px;
+      }
+      .card .meta {
+        font-size: 28px;
+        color: var(--dim);
+        margin-bottom: 14px;
+      }
+      .card p {
+        font-size: 30px;
+        line-height: 1.4;
+        color: var(--muted);
+      }
+      .card code,
+      .mono {
+        font-family: var(--mono);
+        font-size: 0.92em;
+        color: var(--text);
+      }
+      .columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 40px;
+      }
+      .mode {
+        background: var(--surface);
+        border: 2px solid var(--border);
+        border-radius: 26px;
+        padding: 52px;
+      }
+      .mode h2 {
+        font-size: 56px;
+        letter-spacing: -0.02em;
+        margin-bottom: 8px;
+      }
+      .mode .tag {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 34px;
+      }
+      .mode ul {
+        list-style: none;
+      }
+      .mode li {
+        font-size: 32px;
+        line-height: 1.4;
+        color: var(--muted);
+        padding-left: 44px;
+        position: relative;
+        margin-bottom: 22px;
+      }
+      .mode li::before {
+        content: '→';
+        position: absolute;
+        left: 0;
+        color: var(--dim);
+      }
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 40px;
+      }
+      .step {
+        background: var(--surface);
+        border: 2px solid var(--border);
+        border-radius: 26px;
+        padding: 48px;
+        min-height: 420px;
+      }
+      .step .n {
+        width: 76px;
+        height: 76px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: rgba(61, 220, 151, 0.12);
+        color: var(--green);
+        font-size: 40px;
+        font-weight: 800;
+        margin-bottom: 36px;
+      }
+      .step h3 {
+        font-size: 42px;
+        line-height: 1.15;
+        margin-bottom: 20px;
+        letter-spacing: -0.01em;
+      }
+      .step p {
+        font-size: 30px;
+        line-height: 1.45;
+        color: var(--muted);
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 24px;
+        font-size: 30px;
+        padding: 20px 0;
+        border-top: 2px solid var(--border);
+      }
+      .row:first-of-type {
+        border-top: 0;
+      }
+      .row span:first-child {
+        color: var(--dim);
+      }
+      .pill {
+        display: inline-block;
+        white-space: nowrap;
+        padding: 6px 18px;
+        border-radius: 999px;
+        font-size: 26px;
+        font-weight: 700;
+      }
+      .pill.red {
+        background: rgba(255, 107, 107, 0.14);
+        color: var(--red);
+      }
+      .pill.grey {
+        background: rgba(138, 147, 160, 0.16);
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 1: what it does -->
+    <section data-slide="1">
+      <div>
+        <div class="eyebrow">Assurly Live Lock</div>
+        <h1>Check every production deploy before it ships.</h1>
+        <p class="lead">
+          Vercel keeps your domain on the previous deploy until Assurly has checked the exact build
+          that is about to go live.
+        </p>
+      </div>
+      <div>
+        <div class="label">Recent production deploys</div>
+        <div class="card pass">
+          <h3>Passed</h3>
+          <div class="meta">Commit 9f2a1c4 · 96/100</div>
+          <p>Released to production.</p>
+        </div>
+        <div class="card hold">
+          <h3>Held back</h3>
+          <div class="meta">Commit 4be7d10 · 40/100</div>
+          <p>A database table is readable by anyone. Production stayed on the previous deploy.</p>
+        </div>
+        <div class="card">
+          <h3>Not verified</h3>
+          <div class="meta">Commit c01d8e3</div>
+          <p>The deploy did not answer in time, so it was released unchecked.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2: monitor and enforce -->
+    <section data-slide="2" class="single">
+      <div>
+        <div class="eyebrow">Two modes</div>
+        <h1 class="compact">Watch first. Enforce when you trust it.</h1>
+      </div>
+      <div class="columns">
+        <div class="mode">
+          <h2>Monitor</h2>
+          <div class="tag" style="color: var(--amber)">Free plan</div>
+          <ul>
+            <li>Checks every production deploy</li>
+            <li>Never holds one back</li>
+            <li>Shows which deploys <em>would</em> have been held</li>
+          </ul>
+        </div>
+        <div class="mode">
+          <h2>Enforce</h2>
+          <div class="tag" style="color: var(--green)">Pro plan</div>
+          <ul>
+            <li>Holds a deploy only for a proven, high-severity blocker</li>
+            <li>Production stays on the previous deploy</li>
+            <li>Force Promote in Vercel ships it anyway</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3: only proof holds a deploy -->
+    <section data-slide="3">
+      <div>
+        <div class="eyebrow">No false holds</div>
+        <h1>Only proof holds a deploy.</h1>
+        <p class="lead">
+          If Assurly cannot decide, the check ends neutral and Vercel releases the deploy. Your
+          release never waits on us.
+        </p>
+      </div>
+      <div class="card" style="padding: 44px 52px">
+        <div class="label">What the check concludes</div>
+        <div class="row">
+          <span>Proven blocker, high confidence</span><span class="pill red">Held back</span>
+        </div>
+        <div class="row">
+          <span>No proven blocker</span
+          ><span class="pill" style="background: rgba(61, 220, 151, 0.14); color: var(--green)"
+            >Passed</span
+          >
+        </div>
+        <div class="row">
+          <span>Timed out or unreachable</span><span class="pill grey">Released</span>
+        </div>
+        <div class="row"><span>Assurly outage</span><span class="pill grey">Released</span></div>
+        <div class="row">
+          <span>Any finding in Monitor mode</span><span class="pill grey">Released</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4: what a held deploy shows -->
+    <section data-slide="4">
+      <div>
+        <div class="eyebrow">Evidence, not a score</div>
+        <h1>See exactly why a deploy was held.</h1>
+        <p class="lead">
+          Each check names the blocker and where it was found on the live build. Open in Assurly for
+          the fix.
+        </p>
+      </div>
+      <div>
+        <div class="label">Assurly Live Lock · check run</div>
+        <div class="card hold">
+          <h3>Held back</h3>
+          <div class="meta">1 proven blocker · commit 4be7d10</div>
+          <p>Supabase table <code>profiles</code> returns rows to anyone with the public key.</p>
+        </div>
+        <div class="card" style="padding: 36px 46px">
+          <div class="row">
+            <span>Rule</span><span class="mono">runtime-supabase-rls-open</span>
+          </div>
+          <div class="row"><span>Where</span><span class="mono">table profiles</span></div>
+          <div class="row"><span>Severity</span><span>High · proven</span></div>
+          <div class="row"><span>Next step</span><span>Open in Assurly</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5: setup -->
+    <section data-slide="5" class="single">
+      <div>
+        <div class="eyebrow">Set up in minutes</div>
+        <h1 class="compact">Three steps. No new account.</h1>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="n">1</div>
+          <h3>Add Live Lock from the Vercel Marketplace</h3>
+          <p>Billing goes through your Vercel account.</p>
+        </div>
+        <div class="step">
+          <div class="n">2</div>
+          <h3>Connect it to a project</h3>
+          <p>Pick Monitor or Enforce. Its production domain is the one Assurly checks.</p>
+        </div>
+        <div class="step">
+          <div class="n">3</div>
+          <h3>Deploy as usual</h3>
+          <p>Every production deploy gets an Assurly check in Vercel, with a Rerun button.</p>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>
