@@ -53,7 +53,7 @@ export default async function TermsPage(): Promise<ReactElement> {
 
       <main className="legal-content">
         <h1>Terms of Service</h1>
-        <p className="last-updated">Last updated: August 17, 2026</p>
+        <p className="last-updated">Last updated: October 26, 2026</p>
 
         <section className="legal-section">
           <h2>1. These Terms and who you are contracting with</h2>
@@ -304,6 +304,32 @@ export default async function TermsPage(): Promise<ReactElement> {
             subscription lapses, your workspace returns to the Free plan. We do not delete your scan
             history solely because a payment failed.
           </p>
+
+          <h3>6.6 Plans bought through the Vercel Marketplace</h3>
+          <p>
+            If your team adds Assurly Live Lock from the Vercel Marketplace, Vercel bills you on our
+            behalf and its terms govern payment, payment methods and tax. Sections 6.1 to 6.5 and 7
+            do not apply to that plan; this section does:
+          </p>
+          <ul>
+            <li>
+              The Pro plan costs the price shown in the Vercel Marketplace (USD). There is no free
+              trial.
+            </li>
+            <li>
+              Pro is billed monthly in arrears for each calendar month (UTC), prorated by the time
+              your installation spent on Pro. Nothing is charged in advance.
+            </li>
+            <li>
+              You change plan or cancel in Vercel at any time. Moving to Free or removing the
+              integration stops further charges; Pro time already used is invoiced, including a
+              final invoice when you remove the integration.
+            </li>
+            <li>
+              If an invoice becomes overdue, Enforce mode pauses until it is paid. We do not delete
+              your data because a payment failed.
+            </li>
+          </ul>
         </section>
 
         <section className="legal-section">

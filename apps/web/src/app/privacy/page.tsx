@@ -55,7 +55,7 @@ export default async function PrivacyPage(): Promise<ReactElement> {
 
       <main className="legal-content">
         <h1>Privacy Policy</h1>
-        <p className="last-updated">Last updated: September 27, 2026</p>
+        <p className="last-updated">Last updated: October 26, 2026</p>
 
         <section className="legal-section">
           <h2>1. Who we are and how to reach us</h2>
@@ -246,7 +246,35 @@ export default async function PrivacyPage(): Promise<ReactElement> {
             </li>
           </ul>
 
-          <h3>4.6 Support correspondence</h3>
+          <h3>4.6 Vercel integration data</h3>
+          <p>
+            If you connect Assurly Live Lock to Vercel, either from the dashboard or by installing
+            it from the Vercel Marketplace, we receive and store:
+          </p>
+          <ul>
+            <li>
+              <strong>Installation:</strong> Vercel team and installation identifiers, the team name
+              and contact email Vercel shares, and an access token, which we store encrypted.
+            </li>
+            <li>
+              <strong>Projects and deployments:</strong> the connected project&apos;s identifier,
+              name and production domain, and for each checked deployment its identifier, generated
+              address, commit SHA and the check result.
+            </li>
+            <li>
+              <strong>Open in Assurly:</strong> when you sign in from Vercel, your name, the email
+              address Vercel has verified and your role on the Vercel team. We use them to create or
+              find your Assurly account and to give you the matching role in your team&apos;s
+              workspace.
+            </li>
+            <li>
+              <strong>Marketplace billing:</strong> your plan history and the invoices we send
+              through Vercel (period, amount, status). Vercel collects payment; we never receive
+              your payment details.
+            </li>
+          </ul>
+
+          <h3>4.7 Support correspondence</h3>
           <p>
             If you contact us through the support form, we collect your <strong>name</strong>,{' '}
             <strong>email address</strong>, <strong>subject</strong>, and <strong>message</strong>,
@@ -406,6 +434,14 @@ export default async function PrivacyPage(): Promise<ReactElement> {
                   <td>Server access logs, request metadata</td>
                 </tr>
                 <tr>
+                  <td>Vercel Marketplace</td>
+                  <td>Billing, sign-in and checks for teams that install Assurly from Vercel</td>
+                  <td>
+                    Installation and project identifiers, invoice amounts and status, deployment
+                    check results
+                  </td>
+                </tr>
+                <tr>
                   <td>Stripe</td>
                   <td>Payment processing and billing portal</td>
                   <td>Billing identifiers, payment details you enter on Stripe pages</td>
@@ -493,6 +529,13 @@ export default async function PrivacyPage(): Promise<ReactElement> {
                 <tr>
                   <td>Webhook delivery records</td>
                   <td>Retained only as long as needed to prevent duplicate processing</td>
+                </tr>
+                <tr>
+                  <td>Vercel installation, access token and Live Lock links</td>
+                  <td>
+                    Until you disconnect the project or remove the integration; after removal the
+                    token is kept only until the final invoice is sent, and at most two days
+                  </td>
                 </tr>
                 <tr>
                   <td>Support correspondence</td>
