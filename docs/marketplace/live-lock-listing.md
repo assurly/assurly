@@ -26,13 +26,16 @@ Integration slug: `assurly-live-lock` · Product slug: `live-lock`
 | Gallery (1920×1080)              | `apps/web/public/marketplace/live-lock-gallery-1.png` … `-5.png` (first one is the Open Graph image) |
 | Redirect URL (connectable flow)  | Keep until existing dashboard locks are migrated (Phase 6), then remove                              |
 
-Webhook events to subscribe: `deployment.created`, `deployment.ready`,
-`deployment.check-rerequested`, `deployment.checkrun.start`,
-`integration-configuration.removed`,
-`integration-resource.project-connected`,
-`integration-resource.project-disconnected`, `marketplace.invoice.created`,
-`marketplace.invoice.paid`, `marketplace.invoice.notpaid`,
-`marketplace.invoice.overdue`, `marketplace.invoice.refunded`.
+Webhook events to subscribe (as the Integration Console names them):
+`deployment.created`, `deployment.ready` (under Check Events),
+`deployment.checkrun.start`, `integration-resource.project-connected`,
+`integration-resource.project-disconnected`.
+
+Subscribed automatically, not selectable: `marketplace.invoice.created`,
+`.paid`, `.notpaid`, `.overdue`, `.refunded` and
+`integration-configuration.removed`. The console does not offer
+`deployment.check-rerequested`; a Rerun of a native check arrives as a new
+`deployment.checkrun.start`.
 
 Permissions: Deployments (read), Deployment Checks (read/write), Projects
 (read), Project Protection Bypass (read/write), Integration Configuration

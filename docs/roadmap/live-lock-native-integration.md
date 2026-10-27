@@ -223,8 +223,8 @@ Built (2026-10-26):
 Integration Console, before Phase 0:
 
 - enable **Installation-level Billing Plans**;
-- subscribe the webhook to `marketplace.invoice.created`, `.paid`, `.notpaid`,
-  `.overdue`, `.refunded` (same webhook URL as the deployment events);
+- nothing to subscribe for invoices: the console subscribes
+  `marketplace.invoice.*` automatically (checked 2026-10-27);
 - after the move to Vercel Pro, change the `vercel-billing` cron in
   `vercel.json` from daily (`0 2 * * *`, the Hobby limit) to hourly
   (`0 * * * *`), as Vercel asks for hourly billing data.
